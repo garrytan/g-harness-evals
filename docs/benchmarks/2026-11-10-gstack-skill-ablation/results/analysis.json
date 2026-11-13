@@ -1,0 +1,3501 @@
+{
+  "run_id": "gstack-skill-ablation-2026-11",
+  "stage": "main",
+  "records": {
+    "stage0": 164,
+    "main": 1312,
+    "other_stage": 0,
+    "outside_spec": 0
+  },
+  "truncated_captures": {
+    "opus": {
+      "none": 0,
+      "full": 0,
+      "minus-verify": 2,
+      "diet": 0
+    },
+    "sol": {
+      "none": 0,
+      "full": 0,
+      "minus-verify": 0,
+      "diet": 0
+    },
+    "particle": {}
+  },
+  "method": {
+    "seed": 7,
+    "draws": 10000,
+    "alpha": 0.05,
+    "ni_margin": 0.1,
+    "frontier_hosts": [
+      "claude",
+      "codex"
+    ],
+    "pass_rate": "task mean (each task's mean over its scored attempts, then the mean over tasks), task bootstrap 95% interval",
+    "paired": "per task, arm mean minus reference mean over scored attempts, tasks scored in both; clusteredPairedDelta task bootstrap 95% interval and two-sided task-level sign-flip p; Holm within model over the selected minus arms, the diet and full vs none (no paired task counts as p = 1)",
+    "tokens": "tokens per scored trial; total = input + output (input holds cached); paired ratio arm over reference = sum of per-task mean total tokens, paired task bootstrap",
+    "cost": "recorded usd of every trial of the arm (excluded ones included) over scored passes, task bootstrap",
+    "pooled": "frontier models that passed headroom; mean of all per-task differences, bootstrap resampling tasks within each model; within-10 when the 90% lower bound is above -0.1",
+    "verdicts": "KEEP when the pooled 95% interval is wholly below 0; else CUT-CANDIDATE when within-10 and the pooled token ratio is at or below 1; else FIX-METHOD with the MDD (half the pooled 95% interval width)"
+  },
+  "diet": {
+    "skills": [
+      "benchmark",
+      "benchmark-models",
+      "browse",
+      "canary",
+      "captain",
+      "careful",
+      "claude-code",
+      "codex",
+      "context-restore",
+      "context-save",
+      "cso",
+      "design-consultation",
+      "design-html",
+      "design-motion",
+      "design-review",
+      "design-shotgun",
+      "deslop-shared-libs",
+      "devex-review",
+      "diagram",
+      "document-generate",
+      "eval-plan",
+      "freeze",
+      "guard",
+      "health",
+      "ios-clean",
+      "ios-design-review",
+      "ios-fix",
+      "ios-qa",
+      "ios-sync",
+      "land-and-deploy",
+      "landing-report",
+      "learn",
+      "make-pdf",
+      "modernize",
+      "open-gstack-browser",
+      "pair-agent",
+      "plan-tune",
+      "qa-only",
+      "retro",
+      "review",
+      "runaway-stopper",
+      "scrape",
+      "setup-browser-cookies",
+      "setup-deploy",
+      "setup-gbrain",
+      "skillify",
+      "spec",
+      "sync-gbrain",
+      "test-audit",
+      "ubicloud",
+      "unfreeze",
+      "write-skill"
+    ],
+    "spec": "full,-skill:benchmark,-skill:benchmark-models,-skill:browse,-skill:canary,-skill:captain,-skill:careful,-skill:claude-code,-skill:codex,-skill:context-restore,-skill:context-save,-skill:cso,-skill:design-consultation,-skill:design-html,-skill:design-motion,-skill:design-review,-skill:design-shotgun,-skill:deslop-shared-libs,-skill:devex-review,-skill:diagram,-skill:document-generate,-skill:eval-plan,-skill:freeze,-skill:guard,-skill:health,-skill:ios-clean,-skill:ios-design-review,-skill:ios-fix,-skill:ios-qa,-skill:ios-sync,-skill:land-and-deploy,-skill:landing-report,-skill:learn,-skill:make-pdf,-skill:modernize,-skill:open-gstack-browser,-skill:pair-agent,-skill:plan-tune,-skill:qa-only,-skill:retro,-skill:review,-skill:runaway-stopper,-skill:scrape,-skill:setup-browser-cookies,-skill:setup-deploy,-skill:setup-gbrain,-skill:skillify,-skill:spec,-skill:sync-gbrain,-skill:test-audit,-skill:ubicloud,-skill:unfreeze,-skill:write-skill",
+    "spec_sha256": "c6dbd187f0a2824af41b2374d31aabbac901bbe70cc6f5131b4bb66af950037c",
+    "put_back": []
+  },
+  "pooled_models": [
+    "opus",
+    "sol"
+  ],
+  "pooled_descriptive": false,
+  "models": [
+    {
+      "model": "opus",
+      "label": "Opus 5.5 (Claude Code)",
+      "role": "frontier",
+      "host": "claude",
+      "headroom": "passed",
+      "pooling": "pooled",
+      "arms": [
+        {
+          "arm": "none",
+          "cell": "opus-none",
+          "trials": 168,
+          "scored_trials": 168,
+          "excluded": 0,
+          "pass_rate": {
+            "estimate": 0.702381,
+            "ci95": [
+              0.529762,
+              0.857143
+            ],
+            "tasks": 21
+          },
+          "tokens_per_trial": {
+            "input": 825685.303571,
+            "cached": 783467.005952,
+            "output": 15364.339286,
+            "total": 841049.642857
+          },
+          "listing_bytes_mean": null,
+          "opened_body_tokens_mean": null,
+          "cost": {
+            "usd_total": 113.406387,
+            "solves": 118,
+            "usd_per_solve": 0.961071,
+            "ci95": [
+              0.501907,
+              1.514579
+            ],
+            "note": null
+          }
+        },
+        {
+          "arm": "full",
+          "cell": "opus-full",
+          "trials": 168,
+          "scored_trials": 168,
+          "excluded": 0,
+          "pass_rate": {
+            "estimate": 0.666667,
+            "ci95": [
+              0.505952,
+              0.809524
+            ],
+            "tasks": 21
+          },
+          "tokens_per_trial": {
+            "input": 748841.666667,
+            "cached": 705411.363095,
+            "output": 14501.672619,
+            "total": 763343.339286
+          },
+          "listing_bytes_mean": 5919,
+          "opened_body_tokens_mean": 0,
+          "cost": {
+            "usd_total": 108.903619,
+            "solves": 112,
+            "usd_per_solve": 0.972354,
+            "ci95": [
+              0.555978,
+              1.484124
+            ],
+            "note": null
+          }
+        },
+        {
+          "arm": "diet",
+          "cell": "opus-diet",
+          "trials": 168,
+          "scored_trials": 168,
+          "excluded": 0,
+          "pass_rate": {
+            "estimate": 0.672619,
+            "ci95": [
+              0.494048,
+              0.833333
+            ],
+            "tasks": 21
+          },
+          "tokens_per_trial": {
+            "input": 820442.916667,
+            "cached": 773140.35119,
+            "output": 16331.791667,
+            "total": 836774.708333
+          },
+          "listing_bytes_mean": 967,
+          "opened_body_tokens_mean": 0,
+          "cost": {
+            "usd_total": 120.580985,
+            "solves": 113,
+            "usd_per_solve": 1.067088,
+            "ci95": [
+              0.527095,
+              1.776573
+            ],
+            "note": null
+          }
+        },
+        {
+          "arm": "minus-verify",
+          "cell": "opus-minus-verify",
+          "trials": 168,
+          "scored_trials": 168,
+          "excluded": 0,
+          "pass_rate": {
+            "estimate": 0.678571,
+            "ci95": [
+              0.511905,
+              0.827381
+            ],
+            "tasks": 21
+          },
+          "tokens_per_trial": {
+            "input": 843449.446429,
+            "cached": 796220.232143,
+            "output": 15055.720238,
+            "total": 858505.166667
+          },
+          "listing_bytes_mean": 5833,
+          "opened_body_tokens_mean": 0,
+          "cost": {
+            "usd_total": 117.007106,
+            "solves": 114,
+            "usd_per_solve": 1.026378,
+            "ci95": [
+              0.554903,
+              1.644685
+            ],
+            "note": null
+          }
+        }
+      ],
+      "comparisons": [
+        {
+          "arm": "minus-verify",
+          "reference": "full",
+          "tasks_paired": 21,
+          "tasks_dropped": [],
+          "estimate": 0.011905,
+          "mean_arm": 0.678571,
+          "mean_reference": 0.666667,
+          "ci95": [
+            -0.047619,
+            0.077381
+          ],
+          "p_two_sided": 0.854915,
+          "p_method": "monte-carlo-sign-flip",
+          "holm_p": 1,
+          "worse": 5,
+          "better": 6,
+          "ties": 10,
+          "tokens_ratio": {
+            "ratio": 1.124665,
+            "ci95": [
+              0.926131,
+              1.418555
+            ],
+            "note": null
+          },
+          "per_task": [
+            {
+              "task": "chess-best-move",
+              "pass_arm": 0.75,
+              "pass_ref": 0.625,
+              "diff": 0.125,
+              "tokens_arm": 109202.75,
+              "tokens_ref": 117884.75
+            },
+            {
+              "task": "configure-git-webserver",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 147078.875,
+              "tokens_ref": 162963.375
+            },
+            {
+              "task": "dna-assembly",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 38369,
+              "tokens_ref": 38487
+            },
+            {
+              "task": "dna-insert",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 66227,
+              "tokens_ref": 66468.625
+            },
+            {
+              "task": "extract-moves-from-video",
+              "pass_arm": 0.25,
+              "pass_ref": 0.375,
+              "diff": -0.125,
+              "tokens_arm": 2899725.125,
+              "tokens_ref": 1349127.75
+            },
+            {
+              "task": "feal-linear-cryptanalysis",
+              "pass_arm": 0.5,
+              "pass_ref": 0.125,
+              "diff": 0.375,
+              "tokens_arm": 85825,
+              "tokens_ref": 69764.875
+            },
+            {
+              "task": "filter-js-from-html",
+              "pass_arm": 0.25,
+              "pass_ref": 0.5,
+              "diff": -0.25,
+              "tokens_arm": 839001.125,
+              "tokens_ref": 800869.375
+            },
+            {
+              "task": "gcode-to-text",
+              "pass_arm": 1,
+              "pass_ref": 0.875,
+              "diff": 0.125,
+              "tokens_arm": 356812.125,
+              "tokens_ref": 320763.5
+            },
+            {
+              "task": "install-windows-3.11",
+              "pass_arm": 0.875,
+              "pass_ref": 0.875,
+              "diff": 0,
+              "tokens_arm": 2244100.75,
+              "tokens_ref": 2714955.125
+            },
+            {
+              "task": "mailman",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 641554.125,
+              "tokens_ref": 687576.625
+            },
+            {
+              "task": "make-mips-interpreter",
+              "pass_arm": 1,
+              "pass_ref": 0.875,
+              "diff": 0.125,
+              "tokens_arm": 1607256.5,
+              "tokens_ref": 1329532.875
+            },
+            {
+              "task": "model-extraction-relu-logits",
+              "pass_arm": 0.875,
+              "pass_ref": 0.875,
+              "diff": 0,
+              "tokens_arm": 259136.875,
+              "tokens_ref": 244431.875
+            },
+            {
+              "task": "nginx-request-logging",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 102718.125,
+              "tokens_ref": 108407.75
+            },
+            {
+              "task": "protein-assembly",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 38853,
+              "tokens_ref": 38971
+            },
+            {
+              "task": "pytorch-model-recovery",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 107860.125,
+              "tokens_ref": 122642.625
+            },
+            {
+              "task": "query-optimize",
+              "pass_arm": 1,
+              "pass_ref": 0.875,
+              "diff": 0.125,
+              "tokens_arm": 344470.875,
+              "tokens_ref": 391271.875
+            },
+            {
+              "task": "raman-fitting",
+              "pass_arm": 1,
+              "pass_ref": 0.75,
+              "diff": 0.25,
+              "tokens_arm": 203930.875,
+              "tokens_ref": 184742.875
+            },
+            {
+              "task": "schemelike-metacircular-eval",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 3362110.875,
+              "tokens_ref": 3792011
+            },
+            {
+              "task": "train-fasttext",
+              "pass_arm": 0.75,
+              "pass_ref": 0.75,
+              "diff": 0,
+              "tokens_arm": 663091.75,
+              "tokens_ref": 636940.125
+            },
+            {
+              "task": "video-processing",
+              "pass_arm": 0.25,
+              "pass_ref": 0.5,
+              "diff": -0.25,
+              "tokens_arm": 563398.75,
+              "tokens_ref": 492314.75
+            },
+            {
+              "task": "winning-avg-corewars",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 3347884.875,
+              "tokens_ref": 2360082.375
+            }
+          ]
+        },
+        {
+          "arm": "diet",
+          "reference": "full",
+          "tasks_paired": 21,
+          "tasks_dropped": [],
+          "estimate": 0.005952,
+          "mean_arm": 0.672619,
+          "mean_reference": 0.666667,
+          "ci95": [
+            -0.077381,
+            0.095238
+          ],
+          "p_two_sided": 1,
+          "p_method": "monte-carlo-sign-flip",
+          "holm_p": 1,
+          "worse": 6,
+          "better": 6,
+          "ties": 9,
+          "tokens_ratio": {
+            "ratio": 1.096197,
+            "ci95": [
+              0.846071,
+              1.455642
+            ],
+            "note": null
+          },
+          "per_task": [
+            {
+              "task": "chess-best-move",
+              "pass_arm": 1,
+              "pass_ref": 0.625,
+              "diff": 0.375,
+              "tokens_arm": 122433.25,
+              "tokens_ref": 117884.75
+            },
+            {
+              "task": "configure-git-webserver",
+              "pass_arm": 0.75,
+              "pass_ref": 1,
+              "diff": -0.25,
+              "tokens_arm": 123990.75,
+              "tokens_ref": 162963.375
+            },
+            {
+              "task": "dna-assembly",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 34665,
+              "tokens_ref": 38487
+            },
+            {
+              "task": "dna-insert",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 60818.625,
+              "tokens_ref": 66468.625
+            },
+            {
+              "task": "extract-moves-from-video",
+              "pass_arm": 0.125,
+              "pass_ref": 0.375,
+              "diff": -0.25,
+              "tokens_arm": 1110073.125,
+              "tokens_ref": 1349127.75
+            },
+            {
+              "task": "feal-linear-cryptanalysis",
+              "pass_arm": 0.625,
+              "pass_ref": 0.125,
+              "diff": 0.5,
+              "tokens_arm": 100228.5,
+              "tokens_ref": 69764.875
+            },
+            {
+              "task": "filter-js-from-html",
+              "pass_arm": 0.125,
+              "pass_ref": 0.5,
+              "diff": -0.375,
+              "tokens_arm": 1725149,
+              "tokens_ref": 800869.375
+            },
+            {
+              "task": "gcode-to-text",
+              "pass_arm": 1,
+              "pass_ref": 0.875,
+              "diff": 0.125,
+              "tokens_arm": 345159.625,
+              "tokens_ref": 320763.5
+            },
+            {
+              "task": "install-windows-3.11",
+              "pass_arm": 1,
+              "pass_ref": 0.875,
+              "diff": 0.125,
+              "tokens_arm": 1874618.75,
+              "tokens_ref": 2714955.125
+            },
+            {
+              "task": "mailman",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 594259,
+              "tokens_ref": 687576.625
+            },
+            {
+              "task": "make-mips-interpreter",
+              "pass_arm": 0.75,
+              "pass_ref": 0.875,
+              "diff": -0.125,
+              "tokens_arm": 1492419.25,
+              "tokens_ref": 1329532.875
+            },
+            {
+              "task": "model-extraction-relu-logits",
+              "pass_arm": 1,
+              "pass_ref": 0.875,
+              "diff": 0.125,
+              "tokens_arm": 236763.875,
+              "tokens_ref": 244431.875
+            },
+            {
+              "task": "nginx-request-logging",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 103740.875,
+              "tokens_ref": 108407.75
+            },
+            {
+              "task": "protein-assembly",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 35149,
+              "tokens_ref": 38971
+            },
+            {
+              "task": "pytorch-model-recovery",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 88151.875,
+              "tokens_ref": 122642.625
+            },
+            {
+              "task": "query-optimize",
+              "pass_arm": 0.875,
+              "pass_ref": 0.875,
+              "diff": 0,
+              "tokens_arm": 358945.75,
+              "tokens_ref": 391271.875
+            },
+            {
+              "task": "raman-fitting",
+              "pass_arm": 1,
+              "pass_ref": 0.75,
+              "diff": 0.25,
+              "tokens_arm": 175419.5,
+              "tokens_ref": 184742.875
+            },
+            {
+              "task": "schemelike-metacircular-eval",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 3414864.375,
+              "tokens_ref": 3792011
+            },
+            {
+              "task": "train-fasttext",
+              "pass_arm": 0.625,
+              "pass_ref": 0.75,
+              "diff": -0.125,
+              "tokens_arm": 668052.875,
+              "tokens_ref": 636940.125
+            },
+            {
+              "task": "video-processing",
+              "pass_arm": 0.25,
+              "pass_ref": 0.5,
+              "diff": -0.25,
+              "tokens_arm": 425070.25,
+              "tokens_ref": 492314.75
+            },
+            {
+              "task": "winning-avg-corewars",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 4482295.625,
+              "tokens_ref": 2360082.375
+            }
+          ]
+        },
+        {
+          "arm": "full",
+          "reference": "none",
+          "tasks_paired": 21,
+          "tasks_dropped": [],
+          "estimate": -0.035714,
+          "mean_arm": 0.666667,
+          "mean_reference": 0.702381,
+          "ci95": [
+            -0.107143,
+            0.035714
+          ],
+          "p_two_sided": 0.433157,
+          "p_method": "monte-carlo-sign-flip",
+          "holm_p": 1,
+          "worse": 7,
+          "better": 3,
+          "ties": 11,
+          "tokens_ratio": {
+            "ratio": 0.907608,
+            "ci95": [
+              0.667601,
+              1.208725
+            ],
+            "note": null
+          },
+          "per_task": [
+            {
+              "task": "chess-best-move",
+              "pass_arm": 0.625,
+              "pass_ref": 0.875,
+              "diff": -0.25,
+              "tokens_arm": 117884.75,
+              "tokens_ref": 112193.75
+            },
+            {
+              "task": "configure-git-webserver",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 162963.375,
+              "tokens_ref": 121180.625
+            },
+            {
+              "task": "dna-assembly",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 38487,
+              "tokens_ref": 33811
+            },
+            {
+              "task": "dna-insert",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 66468.625,
+              "tokens_ref": 62269.875
+            },
+            {
+              "task": "extract-moves-from-video",
+              "pass_arm": 0.375,
+              "pass_ref": 0.25,
+              "diff": 0.125,
+              "tokens_arm": 1349127.75,
+              "tokens_ref": 1137581.125
+            },
+            {
+              "task": "feal-linear-cryptanalysis",
+              "pass_arm": 0.125,
+              "pass_ref": 0.375,
+              "diff": -0.25,
+              "tokens_arm": 69764.875,
+              "tokens_ref": 82587.875
+            },
+            {
+              "task": "filter-js-from-html",
+              "pass_arm": 0.5,
+              "pass_ref": 0.875,
+              "diff": -0.375,
+              "tokens_arm": 800869.375,
+              "tokens_ref": 596644.375
+            },
+            {
+              "task": "gcode-to-text",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 320763.5,
+              "tokens_ref": 279460.75
+            },
+            {
+              "task": "install-windows-3.11",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 2714955.125,
+              "tokens_ref": 2923762.125
+            },
+            {
+              "task": "mailman",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 687576.625,
+              "tokens_ref": 587532
+            },
+            {
+              "task": "make-mips-interpreter",
+              "pass_arm": 0.875,
+              "pass_ref": 0.875,
+              "diff": 0,
+              "tokens_arm": 1329532.875,
+              "tokens_ref": 1547223.875
+            },
+            {
+              "task": "model-extraction-relu-logits",
+              "pass_arm": 0.875,
+              "pass_ref": 0.875,
+              "diff": 0,
+              "tokens_arm": 244431.875,
+              "tokens_ref": 251427.375
+            },
+            {
+              "task": "nginx-request-logging",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 108407.75,
+              "tokens_ref": 89410.25
+            },
+            {
+              "task": "protein-assembly",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 38971,
+              "tokens_ref": 34295
+            },
+            {
+              "task": "pytorch-model-recovery",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 122642.625,
+              "tokens_ref": 100045.75
+            },
+            {
+              "task": "query-optimize",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 391271.875,
+              "tokens_ref": 259820
+            },
+            {
+              "task": "raman-fitting",
+              "pass_arm": 0.75,
+              "pass_ref": 1,
+              "diff": -0.25,
+              "tokens_arm": 184742.875,
+              "tokens_ref": 149233.5
+            },
+            {
+              "task": "schemelike-metacircular-eval",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 3792011,
+              "tokens_ref": 2856222.625
+            },
+            {
+              "task": "train-fasttext",
+              "pass_arm": 0.75,
+              "pass_ref": 0.5,
+              "diff": 0.25,
+              "tokens_arm": 636940.125,
+              "tokens_ref": 563720.25
+            },
+            {
+              "task": "video-processing",
+              "pass_arm": 0.5,
+              "pass_ref": 0.125,
+              "diff": 0.375,
+              "tokens_arm": 492314.75,
+              "tokens_ref": 749978.125
+            },
+            {
+              "task": "winning-avg-corewars",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 2360082.375,
+              "tokens_ref": 5123642.25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "sol",
+      "label": "GPT-6.1 Sol (Codex)",
+      "role": "frontier",
+      "host": "codex",
+      "headroom": "passed",
+      "pooling": "pooled",
+      "arms": [
+        {
+          "arm": "none",
+          "cell": "sol-none",
+          "trials": 160,
+          "scored_trials": 160,
+          "excluded": 0,
+          "pass_rate": {
+            "estimate": 0.6375,
+            "ci95": [
+              0.48125,
+              0.78125
+            ],
+            "tasks": 20
+          },
+          "tokens_per_trial": {
+            "input": 449605.83125,
+            "cached": 414926.34375,
+            "output": 9984.8,
+            "total": 459590.63125
+          },
+          "listing_bytes_mean": null,
+          "opened_body_tokens_mean": null,
+          "cost": {
+            "usd_total": 45.423105,
+            "solves": 102,
+            "usd_per_solve": 0.445325,
+            "ci95": [
+              0.265477,
+              0.765371
+            ],
+            "note": null
+          }
+        },
+        {
+          "arm": "full",
+          "cell": "sol-full",
+          "trials": 160,
+          "scored_trials": 160,
+          "excluded": 0,
+          "pass_rate": {
+            "estimate": 0.66875,
+            "ci95": [
+              0.49375,
+              0.825
+            ],
+            "tasks": 20
+          },
+          "tokens_per_trial": {
+            "input": 547149.79375,
+            "cached": 504206.3375,
+            "output": 9887.13125,
+            "total": 557036.925
+          },
+          "listing_bytes_mean": 28282,
+          "opened_body_tokens_mean": 1027.83125,
+          "cost": {
+            "usd_total": 53.853814,
+            "solves": 107,
+            "usd_per_solve": 0.503307,
+            "ci95": [
+              0.295791,
+              0.927871
+            ],
+            "note": null
+          }
+        },
+        {
+          "arm": "diet",
+          "cell": "sol-diet",
+          "trials": 160,
+          "scored_trials": 160,
+          "excluded": 0,
+          "pass_rate": {
+            "estimate": 0.63125,
+            "ci95": [
+              0.475,
+              0.775
+            ],
+            "tasks": 20
+          },
+          "tokens_per_trial": {
+            "input": 504908.66875,
+            "cached": 466332.8,
+            "output": 10625.16875,
+            "total": 515533.8375
+          },
+          "listing_bytes_mean": 5678,
+          "opened_body_tokens_mean": 1398.09375,
+          "cost": {
+            "usd_total": 80.167668,
+            "solves": 101,
+            "usd_per_solve": 0.793739,
+            "ci95": [
+              0.423829,
+              1.413487
+            ],
+            "note": null
+          }
+        },
+        {
+          "arm": "minus-verify",
+          "cell": "sol-minus-verify",
+          "trials": 160,
+          "scored_trials": 160,
+          "excluded": 0,
+          "pass_rate": {
+            "estimate": 0.63125,
+            "ci95": [
+              0.46875,
+              0.7875
+            ],
+            "tasks": 20
+          },
+          "tokens_per_trial": {
+            "input": 520571.575,
+            "cached": 480248.2375,
+            "output": 9424.3125,
+            "total": 529995.8875
+          },
+          "listing_bytes_mean": 27939,
+          "opened_body_tokens_mean": 38.95,
+          "cost": {
+            "usd_total": 49.832742,
+            "solves": 101,
+            "usd_per_solve": 0.493393,
+            "ci95": [
+              0.291991,
+              0.874755
+            ],
+            "note": null
+          }
+        }
+      ],
+      "comparisons": [
+        {
+          "arm": "minus-verify",
+          "reference": "full",
+          "tasks_paired": 20,
+          "tasks_dropped": [],
+          "estimate": -0.0375,
+          "mean_arm": 0.63125,
+          "mean_reference": 0.66875,
+          "ci95": [
+            -0.1,
+            0.01875
+          ],
+          "p_two_sided": 0.341797,
+          "p_method": "exact-sign-flip",
+          "holm_p": 1,
+          "worse": 7,
+          "better": 5,
+          "ties": 8,
+          "tokens_ratio": {
+            "ratio": 0.951456,
+            "ci95": [
+              0.828908,
+              1.046426
+            ],
+            "note": null
+          },
+          "per_task": [
+            {
+              "task": "configure-git-webserver",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 180577.5,
+              "tokens_ref": 222631.875
+            },
+            {
+              "task": "dna-assembly",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 461797.5,
+              "tokens_ref": 527246.125
+            },
+            {
+              "task": "filter-js-from-html",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 547642,
+              "tokens_ref": 753589.625
+            },
+            {
+              "task": "gcode-to-text",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 257764.375,
+              "tokens_ref": 263465.875
+            },
+            {
+              "task": "headless-terminal",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 202705.25,
+              "tokens_ref": 328415.75
+            },
+            {
+              "task": "install-windows-3.11",
+              "pass_arm": 0.5,
+              "pass_ref": 0.5,
+              "diff": 0,
+              "tokens_arm": 2219223,
+              "tokens_ref": 2106911.75
+            },
+            {
+              "task": "largest-eigenval",
+              "pass_arm": 1,
+              "pass_ref": 0.875,
+              "diff": 0.125,
+              "tokens_arm": 234575.625,
+              "tokens_ref": 345382.875
+            },
+            {
+              "task": "mailman",
+              "pass_arm": 0.75,
+              "pass_ref": 1,
+              "diff": -0.25,
+              "tokens_arm": 1028352,
+              "tokens_ref": 1039640.75
+            },
+            {
+              "task": "model-extraction-relu-logits",
+              "pass_arm": 0.125,
+              "pass_ref": 0,
+              "diff": 0.125,
+              "tokens_arm": 55041.875,
+              "tokens_ref": 82477.25
+            },
+            {
+              "task": "mteb-retrieve",
+              "pass_arm": 0.125,
+              "pass_ref": 0.25,
+              "diff": -0.125,
+              "tokens_arm": 176147.125,
+              "tokens_ref": 196230.625
+            },
+            {
+              "task": "nginx-request-logging",
+              "pass_arm": 1,
+              "pass_ref": 0.875,
+              "diff": 0.125,
+              "tokens_arm": 136983.125,
+              "tokens_ref": 138277.125
+            },
+            {
+              "task": "protein-assembly",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 838935.25,
+              "tokens_ref": 721669.125
+            },
+            {
+              "task": "pytorch-model-cli",
+              "pass_arm": 1,
+              "pass_ref": 0.875,
+              "diff": 0.125,
+              "tokens_arm": 187626,
+              "tokens_ref": 261623
+            },
+            {
+              "task": "pytorch-model-recovery",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 138156.5,
+              "tokens_ref": 183164.25
+            },
+            {
+              "task": "query-optimize",
+              "pass_arm": 0.625,
+              "pass_ref": 1,
+              "diff": -0.375,
+              "tokens_arm": 453900.25,
+              "tokens_ref": 432502.5
+            },
+            {
+              "task": "raman-fitting",
+              "pass_arm": 0.25,
+              "pass_ref": 0.5,
+              "diff": -0.25,
+              "tokens_arm": 218221.25,
+              "tokens_ref": 269901.5
+            },
+            {
+              "task": "sam-cell-seg",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 596336.875,
+              "tokens_ref": 857091.75
+            },
+            {
+              "task": "sanitize-git-repo",
+              "pass_arm": 0.375,
+              "pass_ref": 0.25,
+              "diff": 0.125,
+              "tokens_arm": 1550216.375,
+              "tokens_ref": 1218210.125
+            },
+            {
+              "task": "torch-pipeline-parallelism",
+              "pass_arm": 0.625,
+              "pass_ref": 0.75,
+              "diff": -0.125,
+              "tokens_arm": 413704.625,
+              "tokens_ref": 547565.25
+            },
+            {
+              "task": "video-processing",
+              "pass_arm": 0.5,
+              "pass_ref": 0.5,
+              "diff": 0,
+              "tokens_arm": 702011.25,
+              "tokens_ref": 644741.375
+            }
+          ]
+        },
+        {
+          "arm": "diet",
+          "reference": "full",
+          "tasks_paired": 20,
+          "tasks_dropped": [],
+          "estimate": -0.0375,
+          "mean_arm": 0.63125,
+          "mean_reference": 0.66875,
+          "ci95": [
+            -0.11875,
+            0.025
+          ],
+          "p_two_sided": 0.5,
+          "p_method": "exact-sign-flip",
+          "holm_p": 1,
+          "worse": 5,
+          "better": 4,
+          "ties": 11,
+          "tokens_ratio": {
+            "ratio": 0.925493,
+            "ci95": [
+              0.86204,
+              0.995435
+            ],
+            "note": null
+          },
+          "per_task": [
+            {
+              "task": "configure-git-webserver",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 197823.625,
+              "tokens_ref": 222631.875
+            },
+            {
+              "task": "dna-assembly",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 394378.125,
+              "tokens_ref": 527246.125
+            },
+            {
+              "task": "filter-js-from-html",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 694587.25,
+              "tokens_ref": 753589.625
+            },
+            {
+              "task": "gcode-to-text",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 199331.875,
+              "tokens_ref": 263465.875
+            },
+            {
+              "task": "headless-terminal",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 230863.125,
+              "tokens_ref": 328415.75
+            },
+            {
+              "task": "install-windows-3.11",
+              "pass_arm": 0.625,
+              "pass_ref": 0.5,
+              "diff": 0.125,
+              "tokens_arm": 1779023,
+              "tokens_ref": 2106911.75
+            },
+            {
+              "task": "largest-eigenval",
+              "pass_arm": 0.875,
+              "pass_ref": 0.875,
+              "diff": 0,
+              "tokens_arm": 401965.5,
+              "tokens_ref": 345382.875
+            },
+            {
+              "task": "mailman",
+              "pass_arm": 0.75,
+              "pass_ref": 1,
+              "diff": -0.25,
+              "tokens_arm": 1134158.5,
+              "tokens_ref": 1039640.75
+            },
+            {
+              "task": "model-extraction-relu-logits",
+              "pass_arm": 0.125,
+              "pass_ref": 0,
+              "diff": 0.125,
+              "tokens_arm": 89146.375,
+              "tokens_ref": 82477.25
+            },
+            {
+              "task": "mteb-retrieve",
+              "pass_arm": 0.25,
+              "pass_ref": 0.25,
+              "diff": 0,
+              "tokens_arm": 141431.75,
+              "tokens_ref": 196230.625
+            },
+            {
+              "task": "nginx-request-logging",
+              "pass_arm": 0.875,
+              "pass_ref": 0.875,
+              "diff": 0,
+              "tokens_arm": 120999.625,
+              "tokens_ref": 138277.125
+            },
+            {
+              "task": "protein-assembly",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 665128,
+              "tokens_ref": 721669.125
+            },
+            {
+              "task": "pytorch-model-cli",
+              "pass_arm": 0.25,
+              "pass_ref": 0.875,
+              "diff": -0.625,
+              "tokens_arm": 295991,
+              "tokens_ref": 261623
+            },
+            {
+              "task": "pytorch-model-recovery",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 200667.375,
+              "tokens_ref": 183164.25
+            },
+            {
+              "task": "query-optimize",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 455223,
+              "tokens_ref": 432502.5
+            },
+            {
+              "task": "raman-fitting",
+              "pass_arm": 0.5,
+              "pass_ref": 0.5,
+              "diff": 0,
+              "tokens_arm": 201078.5,
+              "tokens_ref": 269901.5
+            },
+            {
+              "task": "sam-cell-seg",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 869301.5,
+              "tokens_ref": 857091.75
+            },
+            {
+              "task": "sanitize-git-repo",
+              "pass_arm": 0.375,
+              "pass_ref": 0.25,
+              "diff": 0.125,
+              "tokens_arm": 1154203.625,
+              "tokens_ref": 1218210.125
+            },
+            {
+              "task": "torch-pipeline-parallelism",
+              "pass_arm": 0.625,
+              "pass_ref": 0.75,
+              "diff": -0.125,
+              "tokens_arm": 358225.625,
+              "tokens_ref": 547565.25
+            },
+            {
+              "task": "video-processing",
+              "pass_arm": 0.625,
+              "pass_ref": 0.5,
+              "diff": 0.125,
+              "tokens_arm": 727149.375,
+              "tokens_ref": 644741.375
+            }
+          ]
+        },
+        {
+          "arm": "full",
+          "reference": "none",
+          "tasks_paired": 20,
+          "tasks_dropped": [],
+          "estimate": 0.03125,
+          "mean_arm": 0.66875,
+          "mean_reference": 0.6375,
+          "ci95": [
+            -0.0375,
+            0.1
+          ],
+          "p_two_sided": 0.5,
+          "p_method": "exact-sign-flip",
+          "holm_p": 1,
+          "worse": 3,
+          "better": 5,
+          "ties": 12,
+          "tokens_ratio": {
+            "ratio": 1.212028,
+            "ci95": [
+              1.101581,
+              1.417799
+            ],
+            "note": null
+          },
+          "per_task": [
+            {
+              "task": "configure-git-webserver",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 222631.875,
+              "tokens_ref": 135441.75
+            },
+            {
+              "task": "dna-assembly",
+              "pass_arm": 1,
+              "pass_ref": 0.625,
+              "diff": 0.375,
+              "tokens_arm": 527246.125,
+              "tokens_ref": 373314.25
+            },
+            {
+              "task": "filter-js-from-html",
+              "pass_arm": 0,
+              "pass_ref": 0,
+              "diff": 0,
+              "tokens_arm": 753589.625,
+              "tokens_ref": 487030.375
+            },
+            {
+              "task": "gcode-to-text",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 263465.875,
+              "tokens_ref": 212018
+            },
+            {
+              "task": "headless-terminal",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 328415.75,
+              "tokens_ref": 179433.125
+            },
+            {
+              "task": "install-windows-3.11",
+              "pass_arm": 0.5,
+              "pass_ref": 0.5,
+              "diff": 0,
+              "tokens_arm": 2106911.75,
+              "tokens_ref": 2109732.125
+            },
+            {
+              "task": "largest-eigenval",
+              "pass_arm": 0.875,
+              "pass_ref": 0.875,
+              "diff": 0,
+              "tokens_arm": 345382.875,
+              "tokens_ref": 172267.25
+            },
+            {
+              "task": "mailman",
+              "pass_arm": 1,
+              "pass_ref": 0.625,
+              "diff": 0.375,
+              "tokens_arm": 1039640.75,
+              "tokens_ref": 1097561.5
+            },
+            {
+              "task": "model-extraction-relu-logits",
+              "pass_arm": 0,
+              "pass_ref": 0.25,
+              "diff": -0.25,
+              "tokens_arm": 82477.25,
+              "tokens_ref": 59637
+            },
+            {
+              "task": "mteb-retrieve",
+              "pass_arm": 0.25,
+              "pass_ref": 0.25,
+              "diff": 0,
+              "tokens_arm": 196230.625,
+              "tokens_ref": 148512.875
+            },
+            {
+              "task": "nginx-request-logging",
+              "pass_arm": 0.875,
+              "pass_ref": 1,
+              "diff": -0.125,
+              "tokens_arm": 138277.125,
+              "tokens_ref": 86006.375
+            },
+            {
+              "task": "protein-assembly",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 721669.125,
+              "tokens_ref": 724676.125
+            },
+            {
+              "task": "pytorch-model-cli",
+              "pass_arm": 0.875,
+              "pass_ref": 0.875,
+              "diff": 0,
+              "tokens_arm": 261623,
+              "tokens_ref": 159009.875
+            },
+            {
+              "task": "pytorch-model-recovery",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 183164.25,
+              "tokens_ref": 84305.5
+            },
+            {
+              "task": "query-optimize",
+              "pass_arm": 1,
+              "pass_ref": 0.75,
+              "diff": 0.25,
+              "tokens_arm": 432502.5,
+              "tokens_ref": 367653.75
+            },
+            {
+              "task": "raman-fitting",
+              "pass_arm": 0.5,
+              "pass_ref": 0.75,
+              "diff": -0.25,
+              "tokens_arm": 269901.5,
+              "tokens_ref": 174191.875
+            },
+            {
+              "task": "sam-cell-seg",
+              "pass_arm": 1,
+              "pass_ref": 1,
+              "diff": 0,
+              "tokens_arm": 857091.75,
+              "tokens_ref": 536985.75
+            },
+            {
+              "task": "sanitize-git-repo",
+              "pass_arm": 0.25,
+              "pass_ref": 0.125,
+              "diff": 0.125,
+              "tokens_arm": 1218210.125,
+              "tokens_ref": 1142825.375
+            },
+            {
+              "task": "torch-pipeline-parallelism",
+              "pass_arm": 0.75,
+              "pass_ref": 0.75,
+              "diff": 0,
+              "tokens_arm": 547565.25,
+              "tokens_ref": 400332.25
+            },
+            {
+              "task": "video-processing",
+              "pass_arm": 0.5,
+              "pass_ref": 0.375,
+              "diff": 0.125,
+              "tokens_arm": 644741.375,
+              "tokens_ref": 540877.5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "particle",
+      "label": "Particle-1 (Hermes), low-cost",
+      "role": "low-cost",
+      "host": "hermes",
+      "headroom": "no scored trial",
+      "pooling": "low-cost, never pooled",
+      "arms": [],
+      "comparisons": [
+        {
+          "arm": "minus-verify",
+          "reference": "full",
+          "tasks_paired": 0,
+          "tasks_dropped": [],
+          "estimate": null,
+          "mean_arm": null,
+          "mean_reference": null,
+          "ci95": null,
+          "p_two_sided": null,
+          "p_method": null,
+          "holm_p": 1,
+          "worse": 0,
+          "better": 0,
+          "ties": 0,
+          "tokens_ratio": {
+            "ratio": null,
+            "ci95": null,
+            "note": "no minus-verify records"
+          },
+          "per_task": []
+        },
+        {
+          "arm": "diet",
+          "reference": "full",
+          "tasks_paired": 0,
+          "tasks_dropped": [],
+          "estimate": null,
+          "mean_arm": null,
+          "mean_reference": null,
+          "ci95": null,
+          "p_two_sided": null,
+          "p_method": null,
+          "holm_p": 1,
+          "worse": 0,
+          "better": 0,
+          "ties": 0,
+          "tokens_ratio": {
+            "ratio": null,
+            "ci95": null,
+            "note": "no diet records"
+          },
+          "per_task": []
+        },
+        {
+          "arm": "full",
+          "reference": "none",
+          "tasks_paired": 0,
+          "tasks_dropped": [],
+          "estimate": null,
+          "mean_arm": null,
+          "mean_reference": null,
+          "ci95": null,
+          "p_two_sided": null,
+          "p_method": null,
+          "holm_p": 1,
+          "worse": 0,
+          "better": 0,
+          "ties": 0,
+          "tokens_ratio": {
+            "ratio": null,
+            "ci95": null,
+            "note": "no full records"
+          },
+          "per_task": []
+        }
+      ]
+    }
+  ],
+  "pooled": [
+    {
+      "arm": "minus-verify",
+      "skills": [
+        "verify"
+      ],
+      "models": [
+        "opus",
+        "sol"
+      ],
+      "tasks": 41,
+      "descriptive": false,
+      "estimate": -0.012195,
+      "ci95": [
+        -0.054878,
+        0.033537
+      ],
+      "lower_bound_90": -0.04878,
+      "within_10": true,
+      "tokens_ratio": {
+        "estimate": 1.053645,
+        "ci95": [
+          0.925947,
+          1.2106
+        ]
+      },
+      "mdd": 0.044207,
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 4.4 points"
+    },
+    {
+      "arm": "diet",
+      "skills": [
+        "benchmark",
+        "benchmark-models",
+        "browse",
+        "canary",
+        "captain",
+        "careful",
+        "claude-code",
+        "codex",
+        "context-restore",
+        "context-save",
+        "cso",
+        "design-consultation",
+        "design-html",
+        "design-motion",
+        "design-review",
+        "design-shotgun",
+        "deslop-shared-libs",
+        "devex-review",
+        "diagram",
+        "document-generate",
+        "eval-plan",
+        "freeze",
+        "guard",
+        "health",
+        "ios-clean",
+        "ios-design-review",
+        "ios-fix",
+        "ios-qa",
+        "ios-sync",
+        "land-and-deploy",
+        "landing-report",
+        "learn",
+        "make-pdf",
+        "modernize",
+        "open-gstack-browser",
+        "pair-agent",
+        "plan-tune",
+        "qa-only",
+        "retro",
+        "review",
+        "runaway-stopper",
+        "scrape",
+        "setup-browser-cookies",
+        "setup-deploy",
+        "setup-gbrain",
+        "skillify",
+        "spec",
+        "sync-gbrain",
+        "test-audit",
+        "ubicloud",
+        "unfreeze",
+        "write-skill"
+      ],
+      "models": [
+        "opus",
+        "sol"
+      ],
+      "tasks": 41,
+      "descriptive": false,
+      "estimate": -0.015244,
+      "ci95": [
+        -0.073171,
+        0.039634
+      ],
+      "lower_bound_90": -0.064024,
+      "within_10": true,
+      "tokens_ratio": {
+        "estimate": 1.026204,
+        "ci95": [
+          0.875307,
+          1.231835
+        ]
+      },
+      "mdd": 0.056402,
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points"
+    }
+  ],
+  "skills": [
+    {
+      "rank": 1,
+      "skill": "verify",
+      "fit": "yes",
+      "kind": "minus arm",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 4.4 points",
+      "arm": "minus-verify",
+      "open_rate_pooled": 0.195122,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0.4,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0.425
+      },
+      "listing_bytes": {
+        "claude": 81,
+        "codex": 304,
+        "hermes": 73,
+        "frontier": 385
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 2,
+      "skill": "browse",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0.003049,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0.00625,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 134,
+        "codex": 298,
+        "hermes": 73,
+        "frontier": 432
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 3,
+      "skill": "careful",
+      "fit": "yes",
+      "kind": "diet group",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points",
+      "arm": "diet",
+      "open_rate_pooled": 0.003049,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0.00625,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 59,
+        "codex": 369,
+        "hermes": 74,
+        "frontier": 428
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 4,
+      "skill": "office-hours",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 51,
+        "codex": 763,
+        "hermes": 79,
+        "frontier": 814
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "claude: MODULE_EXCLUSION_UNSAFE",
+        "codex: MODULE_EXCLUSION_UNSAFE"
+      ]
+    },
+    {
+      "rank": 5,
+      "skill": "ios-qa",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 51,
+        "codex": 752,
+        "hermes": 73,
+        "frontier": 803
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 6,
+      "skill": "ios-design-review",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 76,
+        "codex": 703,
+        "hermes": 84,
+        "frontier": 779
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 7,
+      "skill": "design-html",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 94,
+        "codex": 658,
+        "hermes": 78,
+        "frontier": 752
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 8,
+      "skill": "qa",
+      "fit": "yes",
+      "kind": "not removable at the pin",
+      "verdict": null,
+      "reason": "claude: MODULE_EXCLUSION_UNSAFE; codex: MODULE_EXCLUSION_UNSAFE",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 63,
+        "codex": 675,
+        "hermes": 69,
+        "frontier": 738
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "claude: MODULE_EXCLUSION_UNSAFE",
+        "codex: MODULE_EXCLUSION_UNSAFE"
+      ]
+    },
+    {
+      "rank": 9,
+      "skill": "benchmark-models",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 65,
+        "codex": 660,
+        "hermes": 83,
+        "frontier": 725
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 10,
+      "skill": "autoplan",
+      "fit": "yes",
+      "kind": "not removable at the pin",
+      "verdict": null,
+      "reason": "claude: MODULE_PINNED; codex: MODULE_PINNED",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 172,
+        "codex": 539,
+        "hermes": 75,
+        "frontier": 711
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "claude: MODULE_PINNED",
+        "codex: MODULE_PINNED"
+      ]
+    },
+    {
+      "rank": 11,
+      "skill": "pair-agent",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 60,
+        "codex": 642,
+        "hermes": 77,
+        "frontier": 702
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 12,
+      "skill": "design-review",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 203,
+        "codex": 498,
+        "hermes": 80,
+        "frontier": 701
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 13,
+      "skill": "ios-clean",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 94,
+        "codex": 603,
+        "hermes": 76,
+        "frontier": 697
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 14,
+      "skill": "design-consultation",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 227,
+        "codex": 442,
+        "hermes": 86,
+        "frontier": 669
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 15,
+      "skill": "devex-review",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 53,
+        "codex": 614,
+        "hermes": 79,
+        "frontier": 667
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 16,
+      "skill": "make-pdf",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 71,
+        "codex": 592,
+        "hermes": 75,
+        "frontier": 663
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 17,
+      "skill": "ios-fix",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 41,
+        "codex": 621,
+        "hermes": 74,
+        "frontier": 662
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 18,
+      "skill": "plan-devex-review",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 71,
+        "codex": 584,
+        "hermes": 84,
+        "frontier": 655
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "claude: MODULE_EXCLUSION_UNSAFE",
+        "codex: MODULE_EXCLUSION_UNSAFE"
+      ]
+    },
+    {
+      "rank": 19,
+      "skill": "ios-sync",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 94,
+        "codex": 552,
+        "hermes": 75,
+        "frontier": 646
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 20,
+      "skill": "diagram",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 184,
+        "codex": 411,
+        "hermes": 74,
+        "frontier": 595
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 21,
+      "skill": "open-gstack-browser",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 104,
+        "codex": 486,
+        "hermes": 86,
+        "frontier": 590
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 22,
+      "skill": "document-release",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 53,
+        "codex": 531,
+        "hermes": 83,
+        "frontier": 584
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "claude: MODULE_EXCLUSION_UNSAFE",
+        "codex: MODULE_EXCLUSION_UNSAFE"
+      ]
+    },
+    {
+      "rank": 23,
+      "skill": "captain",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 212,
+        "codex": 368,
+        "hermes": 74,
+        "frontier": 580
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 24,
+      "skill": "design-motion",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 97,
+        "codex": 466,
+        "hermes": 80,
+        "frontier": 563
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 25,
+      "skill": "document-generate",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 111,
+        "codex": 448,
+        "hermes": 84,
+        "frontier": 559
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 26,
+      "skill": "benchmark",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 55,
+        "codex": 502,
+        "hermes": 76,
+        "frontier": 557
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 27,
+      "skill": "skillify",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 103,
+        "codex": 441,
+        "hermes": 75,
+        "frontier": 544
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 28,
+      "skill": "plan-tune",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 108,
+        "codex": 413,
+        "hermes": 76,
+        "frontier": 521
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 29,
+      "skill": "setup-gbrain",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 166,
+        "codex": 355,
+        "hermes": 79,
+        "frontier": 521
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 30,
+      "skill": "ship",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 115,
+        "codex": 396,
+        "hermes": 71,
+        "frontier": 511
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "claude: MODULE_PINNED",
+        "codex: MODULE_PINNED"
+      ]
+    },
+    {
+      "rank": 31,
+      "skill": "plan-ceo-review",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 53,
+        "codex": 450,
+        "hermes": 82,
+        "frontier": 503
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "claude: MODULE_EXCLUSION_UNSAFE",
+        "codex: MODULE_EXCLUSION_UNSAFE"
+      ]
+    },
+    {
+      "rank": 32,
+      "skill": "setup-deploy",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 63,
+        "codex": 430,
+        "hermes": 79,
+        "frontier": 493
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 33,
+      "skill": "sync-gbrain",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 109,
+        "codex": 373,
+        "hermes": 78,
+        "frontier": 482
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 34,
+      "skill": "landing-report",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 74,
+        "codex": 391,
+        "hermes": 81,
+        "frontier": 465
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 35,
+      "skill": "design-shotgun",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 143,
+        "codex": 316,
+        "hermes": 81,
+        "frontier": 459
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 36,
+      "skill": "context-restore",
+      "fit": "yes",
+      "kind": "diet group",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 79,
+        "codex": 377,
+        "hermes": 82,
+        "frontier": 456
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 37,
+      "skill": "cso",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 113,
+        "codex": 343,
+        "hermes": 70,
+        "frontier": 456
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 38,
+      "skill": "guard",
+      "fit": "yes",
+      "kind": "diet group",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 86,
+        "codex": 368,
+        "hermes": 72,
+        "frontier": 454
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 39,
+      "skill": "qa-only",
+      "fit": "yes",
+      "kind": "diet group",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 63,
+        "codex": 390,
+        "hermes": 74,
+        "frontier": 453
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 40,
+      "skill": "setup-browser-cookies",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 110,
+        "codex": 321,
+        "hermes": 88,
+        "frontier": 431
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 41,
+      "skill": "plan-design-review",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 95,
+        "codex": 331,
+        "hermes": 85,
+        "frontier": 426
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "claude: MODULE_EXCLUSION_UNSAFE",
+        "codex: MODULE_EXCLUSION_UNSAFE"
+      ]
+    },
+    {
+      "rank": 42,
+      "skill": "freeze",
+      "fit": "yes",
+      "kind": "diet group",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 75,
+        "codex": 347,
+        "hermes": 73,
+        "frontier": 422
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 43,
+      "skill": "spec",
+      "fit": "yes",
+      "kind": "diet group",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 78,
+        "codex": 339,
+        "hermes": 71,
+        "frontier": 417
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 44,
+      "skill": "write-skill",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 133,
+        "codex": 259,
+        "hermes": 78,
+        "frontier": 392
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 45,
+      "skill": "gstack-upgrade",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 51,
+        "codex": 327,
+        "hermes": 74,
+        "frontier": 378
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "pinned"
+      ]
+    },
+    {
+      "rank": 46,
+      "skill": "retro",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 47,
+        "codex": 321,
+        "hermes": 72,
+        "frontier": 368
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 47,
+      "skill": "canary",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 45,
+        "codex": 318,
+        "hermes": 73,
+        "frontier": 363
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 48,
+      "skill": "gstack",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 49,
+        "codex": 311,
+        "hermes": 66,
+        "frontier": 360
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "pinned"
+      ]
+    },
+    {
+      "rank": 49,
+      "skill": "review",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 50,
+        "codex": 306,
+        "hermes": 73,
+        "frontier": 356
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 50,
+      "skill": "health",
+      "fit": "yes",
+      "kind": "diet group",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 38,
+        "codex": 317,
+        "hermes": 73,
+        "frontier": 355
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 51,
+      "skill": "ubicloud",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 148,
+        "codex": 205,
+        "hermes": 75,
+        "frontier": 353
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 52,
+      "skill": "unfreeze",
+      "fit": "yes",
+      "kind": "diet group",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 99,
+        "codex": 250,
+        "hermes": 75,
+        "frontier": 349
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 53,
+      "skill": "scrape",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 109,
+        "codex": 239,
+        "hermes": 73,
+        "frontier": 348
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 54,
+      "skill": "eval-plan",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 169,
+        "codex": 169,
+        "hermes": 76,
+        "frontier": 338
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 55,
+      "skill": "context-save",
+      "fit": "yes",
+      "kind": "diet group",
+      "verdict": "FIX-METHOD",
+      "reason": "within-10, but the pooled token ratio is above 1; MDD 5.6 points",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 42,
+        "codex": 282,
+        "hermes": 79,
+        "frontier": 324
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 56,
+      "skill": "runaway-stopper",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 113,
+        "codex": 205,
+        "hermes": 82,
+        "frontier": 318
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 57,
+      "skill": "claude-code",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": null,
+        "codex": 301,
+        "hermes": 78,
+        "frontier": 301
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 58,
+      "skill": "modernize",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": null,
+        "codex": 298,
+        "hermes": 76,
+        "frontier": 298
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 59,
+      "skill": "deslop-shared-libs",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 82,
+        "codex": 194,
+        "hermes": 85,
+        "frontier": 276
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 60,
+      "skill": "land-and-deploy",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": null,
+        "codex": 267,
+        "hermes": 82,
+        "frontier": 267
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 61,
+      "skill": "test-audit",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 92,
+        "codex": 153,
+        "hermes": 77,
+        "frontier": 245
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 62,
+      "skill": "learn",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 30,
+        "codex": 213,
+        "hermes": 72,
+        "frontier": 243
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 63,
+      "skill": "codex",
+      "fit": "no",
+      "kind": "listing cost only",
+      "verdict": null,
+      "reason": "fit no; in the diet arm, whose verdict is FIX-METHOD",
+      "arm": "diet",
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 55,
+        "codex": null,
+        "hermes": 72,
+        "frontier": 55
+      },
+      "excludable": true,
+      "removal_reasons": []
+    },
+    {
+      "rank": 64,
+      "skill": "plan-eng-review",
+      "fit": "yes",
+      "kind": "not removable at the pin",
+      "verdict": null,
+      "reason": "claude: MODULE_EXCLUSION_UNSAFE",
+      "arm": null,
+      "open_rate_pooled": 0,
+      "open_rate": {
+        "opus": 0,
+        "sol": 0,
+        "particle": null
+      },
+      "stage0_open_rate": {
+        "opus": 0,
+        "sol": 0
+      },
+      "listing_bytes": {
+        "claude": 53,
+        "codex": null,
+        "hermes": null,
+        "frontier": 53
+      },
+      "excludable": false,
+      "removal_reasons": [
+        "claude: MODULE_EXCLUSION_UNSAFE"
+      ]
+    }
+  ]
+}

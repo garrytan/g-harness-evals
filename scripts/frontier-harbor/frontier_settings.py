@@ -371,6 +371,13 @@ def gstack_install_facts(stdout: str) -> dict[str, Any]:
 SKILL_LINKS_DIR = "/logs/agent/sessions/skills"
 
 
+def drops_skill_links(release: dict[str, Any] | None, manifest: dict[str, Any] | None) -> bool:
+    """Whether a Claude Code run ends with drop_skill_links_command: a release arm, or a skill ablation arm whose built
+    manifest has a layout (it installed skills, and gstack's setup links its router files into the checkout by absolute
+    path, which Harbor's scrub then trips on). The none arm installs nothing and has no layout, so it skips the step."""
+    return release is not None or bool(manifest and manifest.get("layout"))
+
+
 def drop_skill_links_command(skills_dir: str = SKILL_LINKS_DIR) -> str:
     """The shell the task container runs when a Claude Code run with a gstack arm ends: every symbolic link under
     skills_dir (the trial's CLAUDE_CONFIG_DIR/skills, which Harbor's ClaudeCode fills with cp -r from ~/.claude/skills)

@@ -1,0 +1,88 @@
+{
+  "run": "2026-11-10-gstack-skill-ablation",
+  "about": "gstack-skill-ablation-2026-11: gstack's skill list removed one skill at a time on Terminal-Bench 2.1, with Opus 5.5 in Claude Code and GPT-6.1 Sol in Codex (stage 0 headroom and arm selection, and the main-stage analysis with its verdicts).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/ablation.ts",
+        "headroom",
+        "--results",
+        "{run}/results/stage0/readings-input.jsonl",
+        "--spec",
+        "{run}/ablation-spec.json",
+        "--stages",
+        "{run}/results/merged/stages.json",
+        "--out",
+        "{run}/results/stage0"
+      ],
+      "outputs": [
+        "results/stage0/headroom.json",
+        "results/stage0/headroom.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/ablation.ts",
+        "select",
+        "--results",
+        "{run}/results/stage0/readings-input.jsonl",
+        "--spec",
+        "{run}/ablation-spec.json",
+        "--stages",
+        "{run}/results/merged/stages.json",
+        "--opens",
+        "docs/benchmarks/2026-11-10-gstack-skill-ablation/results/stage0/opens.json",
+        "--out",
+        "{run}/results/stage0"
+      ],
+      "outputs": [
+        "results/stage0/selection.json",
+        "results/stage0/selection.md"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import os, subprocess, sys\nrun = sys.argv[1]\nd = run + '/results/rebuild-recorded-zeros'\nos.makedirs(d)\nr = subprocess.call(['bun', '--no-env-file', 'scripts/frontier-harbor/ablation.ts', 'select', '--results', run + '/results/stage0/readings-input.jsonl', '--spec', run + '/ablation-spec.json', '--stages', run + '/results/merged/stages.json', '--out', d])\nif r: sys.exit(r)\nfor e in ('json', 'md'):\n    os.replace(d + '/selection.' + e, run + '/results/stage0/selection-recorded-zeros.' + e)\n",
+        "{run}"
+      ],
+      "outputs": [
+        "results/stage0/selection-recorded-zeros.json",
+        "results/stage0/selection-recorded-zeros.md"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import os, subprocess, sys\nrun = sys.argv[1]\nd = run + '/results/rebuild-analysis'\nos.makedirs(d)\nwith open(d + '/trials.jsonl', 'w') as out:\n    for part in ('base', 'arms'):\n        out.write(open(run + '/results/merged/' + part + '/trials.jsonl').read())\nr = subprocess.call(['bun', '--no-env-file', 'scripts/frontier-harbor/ablation.ts', 'analyze', '--results', d + '/trials.jsonl', '--spec', run + '/ablation-spec.json', '--headroom', run + '/results/stage0/headroom.json', '--selection', run + '/results/stage0/selection.json', '--stages', run + '/results/merged/stages.json', '--out', d])\nif r: sys.exit(r)\nfor e in ('json', 'md'):\n    os.replace(d + '/ablation.' + e, run + '/results/analysis.' + e)\n",
+        "{run}"
+      ],
+      "outputs": [
+        "results/analysis.json",
+        "results/analysis.md"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "results/stage0/opens.json (amendment 2's re-measured skill opens)",
+      "reason": "ablation.ts opens reads each trial's proxy capture under trials/, and the per-trial capture folders were never committed."
+    },
+    {
+      "what": "results/audit.json (the contamination audit)",
+      "reason": "audit.ts scans each trial's captured proxy requests in its trial folder under trials/, and the trial folders were never committed."
+    },
+    {
+      "what": "results/charged-reservations.json, results/batched-exec-audit.json and results/count-tokens.json",
+      "reason": "No script in the repository writes them, so there is no command to rerun; the results README cites them as receipts."
+    },
+    {
+      "what": "results/README.md prose numbers",
+      "reason": "Typed by hand from analysis.md and the receipts above; verify does not check report prose."
+    }
+  ]
+}

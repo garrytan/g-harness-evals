@@ -1,0 +1,202 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "gstack-skill-ablation-2026-11",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "shared_order_seed": "harn50-frontier-2026-11-07",
+  "cap_usd": 629.56,
+  "reserve_usd": 0,
+  "concurrency": 4,
+  "gstack_pin": {
+    "repo": "garrytan/gstack",
+    "commit": "68b1d056a4fcf300ca2b61a1406940c5dd336916"
+  },
+  "cells": [
+    {
+      "id": "opus-minus-verify",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "claude-code",
+      "attempts": 8,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+        "key": "opus",
+        "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+      },
+      "stage": "core",
+      "priority": 5,
+      "split": "dev",
+      "gstack": {
+        "arm": "minus-verify",
+        "spec": "full,-skill:verify",
+        "lock": "docs/benchmarks/2026-11-10-gstack-skill-ablation/locks/claude/minus-verify.lock.json",
+        "spec_sha256": "a9fd211ddbe0b041bb4d6e2aade31c4b9914d9cc5bb237cf281d3f4b8aab5286"
+      }
+    },
+    {
+      "id": "opus-diet",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "claude-code",
+      "attempts": 8,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+        "key": "opus",
+        "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+      },
+      "stage": "core",
+      "priority": 6,
+      "split": "dev",
+      "gstack": {
+        "arm": "diet",
+        "spec": "full,-skill:benchmark,-skill:benchmark-models,-skill:browse,-skill:canary,-skill:captain,-skill:careful,-skill:claude-code,-skill:codex,-skill:context-restore,-skill:context-save,-skill:cso,-skill:design-consultation,-skill:design-html,-skill:design-motion,-skill:design-review,-skill:design-shotgun,-skill:deslop-shared-libs,-skill:devex-review,-skill:diagram,-skill:document-generate,-skill:eval-plan,-skill:freeze,-skill:guard,-skill:health,-skill:ios-clean,-skill:ios-design-review,-skill:ios-fix,-skill:ios-qa,-skill:ios-sync,-skill:land-and-deploy,-skill:landing-report,-skill:learn,-skill:make-pdf,-skill:modernize,-skill:open-gstack-browser,-skill:pair-agent,-skill:plan-tune,-skill:qa-only,-skill:retro,-skill:review,-skill:runaway-stopper,-skill:scrape,-skill:setup-browser-cookies,-skill:setup-deploy,-skill:setup-gbrain,-skill:skillify,-skill:spec,-skill:sync-gbrain,-skill:test-audit,-skill:ubicloud,-skill:unfreeze,-skill:write-skill",
+        "lock": "docs/benchmarks/2026-11-10-gstack-skill-ablation/locks/claude/diet.lock.json",
+        "spec_sha256": "c6dbd187f0a2824af41b2374d31aabbac901bbe70cc6f5131b4bb66af950037c"
+      }
+    },
+    {
+      "id": "sol-minus-verify",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "codex",
+      "attempts": 8,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+        "key": "sol",
+        "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+      },
+      "stage": "core",
+      "priority": 7,
+      "split": "dev",
+      "gstack": {
+        "arm": "minus-verify",
+        "spec": "full,-skill:verify",
+        "lock": "docs/benchmarks/2026-11-10-gstack-skill-ablation/locks/codex/minus-verify.lock.json",
+        "spec_sha256": "a9fd211ddbe0b041bb4d6e2aade31c4b9914d9cc5bb237cf281d3f4b8aab5286"
+      }
+    },
+    {
+      "id": "sol-diet",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "codex",
+      "attempts": 8,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+        "key": "sol",
+        "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+      },
+      "stage": "core",
+      "priority": 8,
+      "split": "dev",
+      "gstack": {
+        "arm": "diet",
+        "spec": "full,-skill:benchmark,-skill:benchmark-models,-skill:browse,-skill:canary,-skill:captain,-skill:careful,-skill:claude-code,-skill:codex,-skill:context-restore,-skill:context-save,-skill:cso,-skill:design-consultation,-skill:design-html,-skill:design-motion,-skill:design-review,-skill:design-shotgun,-skill:deslop-shared-libs,-skill:devex-review,-skill:diagram,-skill:document-generate,-skill:eval-plan,-skill:freeze,-skill:guard,-skill:health,-skill:ios-clean,-skill:ios-design-review,-skill:ios-fix,-skill:ios-qa,-skill:ios-sync,-skill:land-and-deploy,-skill:landing-report,-skill:learn,-skill:make-pdf,-skill:modernize,-skill:open-gstack-browser,-skill:pair-agent,-skill:plan-tune,-skill:qa-only,-skill:retro,-skill:review,-skill:runaway-stopper,-skill:scrape,-skill:setup-browser-cookies,-skill:setup-deploy,-skill:setup-gbrain,-skill:skillify,-skill:spec,-skill:sync-gbrain,-skill:test-audit,-skill:ubicloud,-skill:unfreeze,-skill:write-skill",
+        "lock": "docs/benchmarks/2026-11-10-gstack-skill-ablation/locks/codex/diet.lock.json",
+        "spec_sha256": "c6dbd187f0a2824af41b2374d31aabbac901bbe70cc6f5131b4bb66af950037c"
+      }
+    }
+  ],
+  "stages": [
+    {
+      "name": "main",
+      "trials": {
+        "opus-minus-verify": {
+          "attempts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "opus",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        },
+        "opus-diet": {
+          "attempts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "opus",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        },
+        "sol-minus-verify": {
+          "attempts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "sol",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        },
+        "sol-diet": {
+          "attempts": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "tasks": {
+            "subset": "docs/benchmarks/2026-11-10-gstack-skill-ablation/subsets.json",
+            "key": "sol",
+            "sha256": "6eb8ed11ac3f1214aa54964421c42c5660814bfdd077c3c995c8416091f6cf3f"
+          }
+        }
+      }
+    }
+  ],
+  "shards": [
+    {
+      "name": "opus-minus-verify",
+      "cells": [
+        "opus-minus-verify"
+      ],
+      "lease_usd": 117.01
+    },
+    {
+      "name": "opus-diet",
+      "cells": [
+        "opus-diet"
+      ],
+      "lease_usd": 120.59
+    },
+    {
+      "name": "sol-minus-verify",
+      "cells": [
+        "sol-minus-verify"
+      ],
+      "lease_usd": 181.28
+    },
+    {
+      "name": "sol-diet",
+      "cells": [
+        "sol-diet"
+      ],
+      "lease_usd": 210
+    }
+  ]
+}

@@ -203,7 +203,7 @@ class FrontierClaudeCode(_Frontier, ClaudeCode):
         try:
             await super().run(instruction, environment, context)
         finally:
-            if self._frontier_gstack_release is not None:
+            if fs.drops_skill_links(self._frontier_gstack_release, self._frontier_gstack):
                 try:
                     res = await environment.exec(command=fs.drop_skill_links_command(), timeout_sec=60)
                     words = (res.stdout or "").split()

@@ -4,6 +4,8 @@
 //
 //   bun scripts/frontier-harbor/gstack-arm.ts singles --commit <40 hex> --out <run folder> [--hosts claude,codex,hermes]
 //       [--work <dir>] [--all-locks]
+//   bun scripts/frontier-harbor/gstack-arm.ts locks --commit <40 hex> --out <run folder> --arm <id>=<spec> [--arm ...]
+//       [--hosts claude,codex,hermes] [--work <dir>]
 //
 // gstack-build.ts, beside plan.ts, is vm-run.sh's step before any lease: for every gstack cell of the shard it builds the arm the way a user
 // installs gstack (the pinned checkout, bun install --frozen-lockfile, ./setup --host <h> --no-browser, then
@@ -12,7 +14,9 @@
 // hold, and writes <run>/gstack/cells/<cell>.json, the manifest agents.py reads. A lock mismatch exits HE-FRONTIER-009;
 // a gstack refusal, a failed builder or an unresolved path exits HE-FRONTIER-008. Both print the message on stderr, and
 // nothing else runs. singles renders full, none and every single removal per host at a pin and writes <out>/skills.json
-// and the full and none locks under <out>/locks/<host>/ (gstack-singles.ts).
+// and the full and none locks under <out>/locks/<host>/ (gstack-singles.ts). locks renders the named arms the same way
+// and writes <out>/locks/<host>/<id>.lock.json (the stage 0 amendment's minus and diet locks); a gstack refusal of any
+// arm is an error and writes nothing for that host.
 //
 // Arms: none (nothing installed), full, diet and minus-<skill>. Specs: none, full, or full,-skill:<dir>,... with the
 // removed dirs distinct and sorted. minus-<skill> is exactly full,-skill:<skill>; diet removes at least one skill.
@@ -358,7 +362,17 @@ if (import.meta.main) {
     if (cmd === 'singles') {
       const { singles } = await import('./gstack-singles.ts');
       singles({ commit: need('--commit'), out: resolve(need('--out')), hosts: (flag('--hosts') ?? GSTACK_HOSTS.join(',')).split(',') as GstackHost[], work: flag('--work'), allLocks: argv.includes('--all-locks') });
-    } else specFail('usage: gstack-arm.ts singles (see the header); the build step is gstack-build.ts');
+    } else if (cmd === 'locks') {
+      const { armLocks } = await import('./gstack-singles.ts');
+      const arms = argv.flatMap((a, i) => (a === '--arm' && argv[i + 1] ? [argv[i + 1]!] : [])).map((a) => {
+        const at = a.indexOf('=');
+        const arm = { id: a.slice(0, at), spec: a.slice(at + 1) };
+        checkArm(arm.id, arm.spec);
+        return arm;
+      });
+      if (!arms.length) specFail('locks needs at least one --arm <id>=<spec>');
+      armLocks({ commit: need('--commit'), out: resolve(need('--out')), hosts: (flag('--hosts') ?? GSTACK_HOSTS.join(',')).split(',') as GstackHost[], work: flag('--work'), arms });
+    } else specFail('usage: gstack-arm.ts singles|locks (see the header); the build step is gstack-build.ts');
   } catch (e) {
     if (e instanceof RunnerError) { console.error(e.message); process.exit(e.exit); }
     throw e;

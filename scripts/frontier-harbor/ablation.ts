@@ -4,6 +4,8 @@
 //
 //   bun scripts/frontier-harbor/ablation.ts headroom --results <dir> --spec <ablation-spec.json> --out <dir> [--stages <stages.json>]
 //   bun scripts/frontier-harbor/ablation.ts select   --results <dir> --spec <ablation-spec.json> --out <dir> [--stages <stages.json>]
+//       [--opens <opens.json>]
+//   bun scripts/frontier-harbor/ablation.ts opens    --results <dir> [--results <dir> ...] --out <opens.json>
 //   bun scripts/frontier-harbor/ablation.ts analyze  --results <dir> --spec <ablation-spec.json> --out <dir>
 //       --headroom <headroom.json> --selection <selection.json> [--stages <stages.json>]
 //
@@ -42,6 +44,13 @@
 // "full,-skill:a,-skill:b". Put-back order, if gstack refuses the diet render: smallest summed listing_bytes first, then
 // name; fallbacks lists the spec after each put-back.
 //
+// opens (amendment 2). Re-measures every gstack record that is not a none arm with gstack-exposure.ts measureGstack, from
+// its unchanged capture (<dir>/trials/<cell>/<task>/a<n>/harbor/proxy-capture/proxy-requests.ndjson) and its record's
+// lock, and writes per trial id the recorded opens beside the re-measured opens and section reads. A record with no
+// capture (launch 1's unfinished trials) is listed under no_capture and gets no entry; a trial id in two directories is
+// refused. trials.jsonl is read and never written. select --opens takes
+// that file's opens and section reads in place of the records' own; every stage-0 full-arm record must have an entry.
+//
 // analyze (main stage). Per model and arm: task-mean pass rate; tokens per scored trial (input, cached, output and
 // total = input + output, from usage; input already holds cache reads and writes); mean gstack listing_bytes and
 // opened_body_tokens; cost per solve (as analyze.ts: recorded usd of every trial, excluded ones included, over scored
@@ -73,7 +82,7 @@ import { clusteredPairedDelta, holmAdjusted, PairingError, seededRandom } from '
 import { pairTaskMeans, type TrialValue } from '../../runner/stats/task-means.ts';
 import { trialValue } from '../matrix-analysis.ts';
 import { specSha256 } from './gstack-arm.ts';
-import type { GstackHost, GstackTrial } from './gstack-exposure.ts';
+import { GSTACK_HOSTS, loadLocks, measureGstack, readCapture, type GstackHost, type GstackTrial } from './gstack-exposure.ts';
 
 const ROOT = resolve(import.meta.dir, '../..');
 const SKILL = '<skill>';
@@ -120,6 +129,13 @@ export type AblationRecord = TrialRecord & { frontier?: { stage?: string | null;
 export type StageMembership = Readonly<Record<string, readonly string[]>>;
 
 export class AblationError extends Error {}
+
+/** ablation.ts opens: per trial id, the recorded opens and the opens re-measured from the unchanged capture. */
+export interface OpensFile {
+  schema: 'gstack-skill-ablation-opens/1';
+  no_capture: string[];
+  trials: Record<string, { cell: string; recorded: Record<string, number>; opens: Record<string, number>; section_reads: Record<string, number>; capture_truncated: boolean }>;
+}
 
 const fail = (m: string): never => { throw new AblationError(m); };
 const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -593,12 +609,56 @@ export function renderAnalysis(a: AblationResult): string {
 
 // ---- CLI
 
+export function remeasureOpens(dirs: readonly string[]): OpensFile {
+  const trials: OpensFile['trials'] = {};
+  const noCapture: string[] = [];
+  for (const dir of dirs) for (const t of readJsonLines<AblationRecord>(join(dir, 'trials.jsonl'))) {
+    const g = t.gstack;
+    if (!g || g.arm === 'none') continue;
+    if (trials[t.trial_id]) fail(`trial ${t.trial_id} is in two --results directories`);
+    const host = GSTACK_HOSTS[t.harness] ?? fail(`trial ${t.trial_id}: ${t.harness} is not a gstack host`);
+    const attempt = t.trial_id.slice(t.trial_id.lastIndexOf('/') + 1);
+    const capture = readCapture(join(dir, 'trials', t.cell, t.task, attempt, 'harbor', 'proxy-capture', 'proxy-requests.ndjson'));
+    if (!capture) { noCapture.push(t.trial_id); continue; }
+    const m = measureGstack({ cell: { arm: g.arm, spec: g.arm, lock: g.lock, spec_sha256: g.spec_sha256 }, host, cellModel: t.model, ...loadLocks(resolve(import.meta.dir, '../..', g.lock)),
+      requests: capture.requests, inputTokens: 0, answered: true, truncated: capture.truncated });
+    trials[t.trial_id] = { cell: t.cell, recorded: g.opens, opens: m.opens, section_reads: m.section_reads, capture_truncated: m.capture_truncated };
+  }
+  return { schema: 'gstack-skill-ablation-opens/1', no_capture: noCapture.sort(), trials };
+}
+
+/** The records with each listed trial's opens and section reads taken from an opens file; a full-arm record in stage 0 (stageOf, with --stages for reruns) with no entry is refused. */
+export function withOpens(records: readonly AblationRecord[], file: OpensFile, stages?: StageMembership): AblationRecord[] {
+  const planStage = stages && new Map(Object.entries(stages).flatMap(([name, ids]) => ids.map((id): [string, string] => [id, name])));
+  return records.map((t) => {
+    const o = file.trials[t.trial_id];
+    if (!t.gstack) return t;
+    if (!o) return t.gstack.arm === 'full' && stageOf(t, planStage) === 'stage0' ? fail(`trial ${t.trial_id} has no entry in the opens file`) : t;
+    return { ...t, gstack: { ...t.gstack, opens: o.opens, section_reads: o.section_reads } };
+  });
+}
+
 if (import.meta.main) {
   const [cmd] = process.argv.slice(2);
+  if (cmd === 'opens') {
+    const dirs = process.argv.flatMap((a, i) => (a === '--results' && process.argv[i + 1] ? [process.argv[i + 1]!] : []));
+    const outFile = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : undefined;
+    if (!dirs.length || !outFile) { console.error('usage: bun scripts/frontier-harbor/ablation.ts opens --results <dir> [--results <dir> ...] --out <opens.json>'); process.exit(2); }
+    try {
+      const o = remeasureOpens(dirs);
+      writeFileSync(outFile, JSON.stringify(o, null, 2) + '\n');
+      console.log(`wrote ${outFile}: ${Object.keys(o.trials).length} trial(s)`);
+    } catch (e) {
+      if (!(e instanceof AblationError)) throw e;
+      console.error(`ablation: ${e.message}`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
   const arg = (n: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : undefined; };
   const results = arg('results'), specPath = arg('spec'), out = arg('out');
   if (!['headroom', 'select', 'analyze'].includes(cmd ?? '') || !results || !specPath || !out || (cmd === 'analyze' && (!arg('headroom') || !arg('selection')))) {
-    console.error('usage: bun scripts/frontier-harbor/ablation.ts <headroom|select|analyze> --results <dir or trials.jsonl> --spec <ablation-spec.json> --out <dir> [--headroom <headroom.json> --selection <selection.json>] [--stages <stages.json>]');
+    console.error('usage: bun scripts/frontier-harbor/ablation.ts <headroom|select|analyze> --results <dir or trials.jsonl> --spec <ablation-spec.json> --out <dir> [--headroom <headroom.json> --selection <selection.json>] [--stages <stages.json>] [--opens <opens.json>]; ablation.ts opens --results <dir> ... --out <opens.json>');
     process.exit(2);
   }
   try {
@@ -615,7 +675,11 @@ if (import.meta.main) {
       console.log(`wrote ${join(out, name)}.json and .md`);
     };
     if (cmd === 'headroom') { const h = headroom(records, spec, cat, stages); write('headroom', h, renderHeadroom(h)); }
-    else if (cmd === 'select') { const s = select(records, spec, cat, stages); write('selection', s, renderSelection(s)); }
+    else if (cmd === 'select') {
+      const opensPath = arg('opens');
+      const s = select(opensPath === undefined ? records : withOpens(records, readJsonFile<OpensFile>(opensPath), stages), spec, cat, stages);
+      write('selection', opensPath === undefined ? s : { ...s, opens_file: opensPath }, renderSelection(s) + (opensPath === undefined ? '' : `\nOpens: re-measured, from ${opensPath} (ablation.ts opens), not the records' own.\n`));
+    }
     else {
       const a = analyze(records, spec, cat, readJsonFile<HeadroomResult>(arg('headroom')!), readJsonFile<SelectionResult>(arg('selection')!), stages);
       write('ablation', a, renderAnalysis(a));

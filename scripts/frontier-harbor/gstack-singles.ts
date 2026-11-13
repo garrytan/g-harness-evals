@@ -134,4 +134,26 @@ export function singles(o: { commit: string; out: string; hosts: GstackHost[]; w
   console.log('skills.json: ' + catalog.skills.length + ' skills x ' + o.hosts.length + ' host(s)');
 }
 
+/** gstack-arm.ts locks: each arm rendered at the pin on each host, written as locks/<host>/<id>.lock.json. */
+export function armLocks(o: { commit: string; out: string; hosts: GstackHost[]; work?: string; arms: Array<{ id: string; spec: string }> }): void {
+  const pin = checkPin({ repo: 'garrytan/gstack', commit: o.commit });
+  const rt = loadRuntime();
+  const work = o.work ?? join(o.out, '.locks-work');
+  for (const host of o.hosts) {
+    const out = join(work, host);
+    buildHost({ pin, rt, host, home: rt.home, out, runtime: true, arms: o.arms.map((a) => ({ ...a, keep: false })), log: join(work, host + '.log') });
+    const locks = o.arms.map((a) => {
+      const res = readArm(out, a.id, a.spec, host);
+      if ('refusal' in res) throw new Error(host + ': gstack refused ' + a.spec + ' (' + (refusalCode(res.refusal) ?? 'exit ' + res.exit) + '): ' + res.refusal.trim().split('\n')[0]);
+      if (armSha(res.lock) !== specSha256(a.spec)) throw new Error(host + ': gstack hashed ' + a.spec + ' as ' + armSha(res.lock));
+      return { a, files: res.lock.files.length, raw: readFileSync(join(out, 'arms', a.id, 'loadout.lock.json')) };
+    });
+    mkdirSync(join(o.out, 'locks', host), { recursive: true });
+    for (const l of locks) {
+      writeFileSync(join(o.out, 'locks', host, l.a.id + '.lock.json'), l.raw);
+      console.log(host + ': locks/' + host + '/' + l.a.id + '.lock.json, ' + l.files + ' files');
+    }
+  }
+}
+
 export { GSTACK_HOSTS, type Lock };
