@@ -115,6 +115,7 @@ export function check(root: string, base: string | null, targets = TARGETS): { o
     refuseSymlink(root, t.output);
     const path = join(root, t.output);
     const have = existsSync(path) ? readFileSync(path, 'utf8') : null;
+    if (have === null && lstatSync(join(root, t.dir), { throwIfNoEntry: false }) === undefined) { lines.push(`check: ${t.output} and ${t.dir}/ are both absent (the public copy publishes neither); nothing to fold`); continue; }
     if (have === t.render(readFragmentsDir(root, t.dir))) { lines.push(`check: ${t.output} matches ${t.dir}/`); continue; }
     if (baseCommit && have !== null && git(root, ['show', `${baseCommit}:${t.output}`]) === have) {
       lines.push(`check: ${t.output} pending (unchanged since ${baseCommit.slice(0, 12)}; internal-task's housekeeping fold writes it from ${t.dir}/)`);

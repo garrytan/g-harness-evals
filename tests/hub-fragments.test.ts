@@ -148,6 +148,28 @@ test('--check passes a folded tree and a pending fold, and fails a hand edit', (
   expect(readFileSync(join(dir, 'TODOS.md'), 'utf8')).toContain('## From B (2026-11-02)\n\n- [ ] b\n');
 });
 
+test('--check passes a checkout that has neither TODOS.md nor todos.d/, as the public copy, and still fails one that has only one of them', () => {
+  const dir = repo({});
+  rmSync(join(dir, 'todos.d'), { recursive: true });
+  const none = cli(dir, '--check');
+  expect([none.status, none.stdout.trim()]).toEqual([0, 'check: TODOS.md and todos.d/ are both absent (the public copy publishes neither); nothing to fold']);
+  writeFileSync(join(dir, 'TODOS.md'), '# Open work\n');
+  expect(cli(dir, '--check').status).toBe(1);
+  rmSync(join(dir, 'TODOS.md'));
+  mkdirSync(join(dir, 'todos.d'));
+  writeFileSync(join(dir, 'todos.d', '_preamble.md'), PREAMBLE);
+  expect(cli(dir, '--check').status).toBe(1);
+});
+
+test('--check refuses a dangling todos.d symlink even when TODOS.md is absent', () => {
+  const dir = repo({});
+  rmSync(join(dir, 'todos.d'), { recursive: true });
+  symlinkSync(join(HOME, 'missing-dir'), join(dir, 'todos.d'));
+  const r = cli(dir, '--check');
+  expect(r.status).toBe(1);
+  expect(r.stderr).toContain('todos.d: a symlink');
+});
+
 test('--check passes a branch that folded at its fork point after the base moved on', () => {
   const dir = repo({ '_preamble.md': PREAMBLE, '01-a.md': item('From A (2026-11-01)', '- [ ] a') });
   git(dir, 'init', '-q', '-b', 'main');
