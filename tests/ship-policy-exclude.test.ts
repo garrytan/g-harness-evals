@@ -134,3 +134,26 @@ test("the Claude Code 2.1.322 rerun's analysis.json files are left out of review
   ];
   expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
 });
+
+// Value: protects=the audit.json exclusion hides only the gstack skill ablation run's results/audit.json, so the
+// analysis.md and README.md beside it, an audit.json elsewhere in that run, the frontier-harness run's results/audit.json
+// and every other run's audit.json still reach /ship's readers; fails_when=the pattern is dropped, widened to other runs
+// (docs/benchmarks/*/...) or to results*/**/audit.json, or loses its results/ anchor; why_new=#432's audit.json is about
+// 1.04 MB of a 2,059,997 byte review diff, over the 2 MB review ceiling, and nothing rebuilds it (accepted for this one
+// file by the Captain); seam=a throwaway git repository and git's own glob pathspecs; no_claim=audit.ts's output.
+test("the gstack skill ablation run's results/audit.json is left out of review, and the files beside it and other runs' audit.json are still reviewed", () => {
+  // The run's own paths are built, never written whole: a code file naming a results path in full keeps that file in
+  // /ship's review diff (named-by-code). The frontier-harness path is written whole because it must stay reviewed anyway.
+  const run = 'docs/benchmarks/' + '2026-11-10-gstack-skill-ablation';
+  const kept = [
+    `${run}/results/analysis.md`,
+    `${run}/results/README.md`,
+    `${run}/results/stand-in/audit.json`,
+    `${run}/results-x/audit.json`,
+    `${run}/audit.json`,
+    'docs/benchmarks/2026-11-07-frontier-harness/results/audit.json',
+    'docs/benchmarks/run-x/results/audit.json',
+  ];
+  const dropped = [`${run}/results/audit.json`];
+  expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+});
