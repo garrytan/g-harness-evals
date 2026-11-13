@@ -456,12 +456,12 @@ SOFTWARE.
 
 ## gstack-evals: pinned Lane B files
 
-- **What:** byte copies of Lane B runner, config and task-list files from gstack-evals, checked by sha256 (scripts/gstack-laneb/pin.json).
+- **What:** byte copies of Lane B runner, config and task-list files from gstack-evals, checked by sha256 ([scripts/gstack-laneb/pin.json](scripts/gstack-laneb/pin.json)).
 - **Version:** tag `laneb-quick-2-runner`, commit `443d582c8d909090e80feb0be1e1d9468c8a47ce`.
 - **Upstream:** https://github.com/garrytan/gstack-evals/tree/laneb-quick-2-runner
 - **Licence:** MIT.
 - **Copyright:** Copyright (c) 2026 Garry Tan
-- **Paths:** `scripts/gstack-laneb/pinned/`, which carries its own LICENSE, copied below.
+- **Paths:** `scripts/gstack-laneb/pinned/`, which carries its own [LICENSE](scripts/gstack-laneb/pinned/LICENSE), copied below.
 
 ~~~text
 MIT License

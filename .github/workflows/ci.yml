@@ -7,7 +7,7 @@
 # (internal-task) that builds the gbrain sidecar image from the pull request's own checkout
 # and runs tests/gbrain-image.test.ts against it, about 15 minutes, still keyless,
 # run only when a file the image or its tests depend on changed (the `changes` job).
-# The public-export job exports this tree as the public repository would get it and checks it keyless (about 30
+# The public-export job exports this tree as the public repository would get it and checks it keyless (36 to over 50
 # minutes, in parallel). A docs-only change (scripts/ci/docs-only.ts, run from the base commit before anything from the
 # head is installed: every changed path is on its list of human-facing pages, none of them pinned) skips the checks
 # job's typecheck and tests and runs the docs checks instead (the two tests that read the README and every Markdown page,
@@ -153,7 +153,10 @@ jobs:
   public-export:
     if: github.repository == 'garrytan/harness-evals'
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    # Over 41 runs on 2026-11-12 and 13 the export tree step took 12 to 23 minutes, the keyless step 19 to 25 and the rest
+    # up to 9. A 50 minute limit cancelled 5 of them, 2 after every step had passed; 70 is 13 minutes above the slowest
+    # steps added up.
+    timeout-minutes: 70
     steps:
       # The job holds a full-history checkout, the export stage, the public clone and docker builds at once, and the
       # runner's free disk ran out on a results PR with 526 MB of receipts (#333). Remove preinstalled toolchains this
