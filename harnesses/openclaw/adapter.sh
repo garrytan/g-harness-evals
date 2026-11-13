@@ -673,6 +673,8 @@ model_error_pattern='"status":\s*(401|402|403|404|429|5[0-9]{2})|metering proxy|
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
   set +e
+  # OpenClaw appends its stderr to stderr.log itself, not through the tee above, which bash never waits for: the model-error
+  # grep below then sees every line OpenClaw printed, where through the tee a loaded machine could run it first.
   timeout -k 60 "$HE_TIME_BUDGET_S" openclaw agent exec \
     --message-file "$HE_WORKSPACE_DIR/instruction.md" \
     --cwd "$HE_WORKSPACE_DIR" \
@@ -680,7 +682,7 @@ if [ "$entry" = "run" ]; then
     --state-dir "$OPENCLAW_STATE_DIR/exec" \
     --model "$provider/$HE_MODEL_NAME" \
     --timeout "$HE_TIME_BUDGET_S" \
-    --json > "$HE_LOG_DIR/openclaw-exec.json"
+    --json > "$HE_LOG_DIR/openclaw-exec.json" 2>> "$HE_LOG_DIR/stderr.log"
   code=$?
   set -e
   # openclaw agent exec: 0 completed, 1 model or result error, 2 its own timeout.
@@ -729,13 +731,14 @@ serve_turn() {
   node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).prompt)' "$req" > "$prompt"
   set +e
   # OpenClaw's own deadline is the budget; the outer timeout is a backstop for its retry loop. Both
-  # fire well inside the runner's 60 s grace.
+  # fire well inside the runner's 60 s grace. OpenClaw appends its stderr to the turn's stderr log itself, not through a tee
+  # that bash never waits for, so the model-error grep below sees every line it printed.
   timeout -k 5 "$((budget + 15))" openclaw agent --local \
     --session-key "agent:main:$key" \
     --message-file "$prompt" \
     --model "$provider/$HE_MODEL_NAME" \
     --timeout "$budget" \
-    --json > "$envelope" 2> >(tee -a "$err" >&2)
+    --json > "$envelope" 2>> "$err"
   code=$?
   set -e
   node -e '

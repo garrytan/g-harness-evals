@@ -240,7 +240,10 @@ mkfifo "$fifo"
 exec 3<>"$fifo"
 turn_cmd=$(printf 'hermes chat --query-file %q --provider anthropic --model %q' "$HE_WORKSPACE_DIR/instruction.md" "$HE_MODEL_NAME")
 set +e
-timeout -k 60 "$HE_TIME_BUDGET_S" script -qefc "$turn_cmd" /dev/null <&3 3<&- &
+# The session's terminal capture and stderr go straight into stdout.log and stderr.log, not through the tees above, which bash
+# never waits for: model_error_seen then reads every line the session printed, where through a tee a loaded machine could run
+# it before an HTTP 402 or 429 line had landed.
+{ timeout -k 60 "$HE_TIME_BUDGET_S" script -qefc "$turn_cmd" /dev/null <&3 3<&- & } >> "$HE_LOG_DIR/stdout.log" 2>> "$HE_LOG_DIR/stderr.log"
 turn_pid=$!
 chat_watch "$turn_pid" "$HERMES_HOME/state.db"
 wait "$turn_pid"

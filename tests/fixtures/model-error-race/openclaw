@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Test stand-in for the openclaw CLI (tests/model-error-log-race.test.ts): an agent turn whose provider error reaches stderr
+# and nothing else. It prints OpenClaw's embedded-run error line on stderr with the raw status from $HOME/stub-error-status
+# (HOME is the trial's state dir): a 402 carries the metering proxy's refusal text, a 429 the rate-limit text. The JSON
+# envelope on stdout says only that the request failed, so no file OpenClaw writes itself names the error. Then it exits 1.
+# Every other command goes to the stand-in in ../openai-branch/stub/.
+set -euo pipefail
+if [ "${1:-}" != agent ]; then exec "$(dirname "$0")/../openai-branch/stub/openclaw" "$@"; fi
+case "$(cat "$HOME/stub-error-status")" in
+  402) echo "[agent/embedded] embedded run agent end: runId=stub isError=true model=particle-1 provider=particle error=LLM request failed rawError=402 metering proxy: the reservation would pass this lease's cap" >&2 ;;
+  429) echo "[agent/embedded] embedded run agent end: runId=stub isError=true model=particle-1 provider=particle error=LLM request failed rawError=429 Rate limit exceeded: the serving fleet is at capacity" >&2 ;;
+esac
+printf '{"ok":false,"status":"error","final":"","payloads":[],"error":{"message":"LLM request failed.","kind":"exception"}}\n'
+exit 1

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Test stand-in for the hermes CLI (tests/model-error-log-race.test.ts): a chat turn whose provider error reaches stderr and
+# nothing else. It prints the HTTP 402 or 429 line Hermes prints for the status in $HOME/stub-error-status (HOME is the trial's
+# state dir, because the adapter passes the CLI no test variable), writes nothing on stdout (a stream-json turn that ended
+# before its result event, so the error is in no file Hermes writes itself), and exits 1. Every other command goes to the
+# stand-in in ../openai-branch/stub/.
+set -euo pipefail
+if [ "${1:-}" != chat ]; then exec "$(dirname "$0")/../openai-branch/stub/hermes" "$@"; fi
+case "$(cat "$HOME/stub-error-status")" in
+  402) echo "Billing or credits exhausted: HTTP 402: Your credit balance is empty. Add credits to continue." >&2 ;;
+  429) echo "Final error: HTTP 429: Rate limit exceeded: the serving fleet is at capacity" >&2 ;;
+esac
+exit 1

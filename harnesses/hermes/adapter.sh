@@ -774,14 +774,15 @@ serve_turn() {
   python3 -c 'import json,sys; sys.stdout.write(json.load(open(sys.argv[1]))["prompt"])' "$req" > "$prompt"
   set +e
   # --run-budget is Hermes's own soft budget; the outer timeout is the hard one and fires inside
-  # the runner's 60 s grace.
+  # the runner's 60 s grace. Hermes appends its stderr to the turn's stderr log itself, not through a tee that bash never waits
+  # for, so the model-error grep below sees every line it printed.
   timeout -k 5 "$((budget + 10))" hermes chat \
     --query-file "$prompt" \
     --continue "$key" --create-if-missing \
     --oneshot --quiet --format stream-json \
     --provider "$provider" \
     --model "$HE_MODEL_NAME" \
-    --run-budget "$budget" > "$events" 2> >(tee -a "$err" >&2)
+    --run-budget "$budget" > "$events" 2>> "$err"
   code=$?
   set -e
   python3 - "$events" "$HE_LOG_DIR/turns/$name.reply.txt" "$HE_LOG_DIR/turns/$name.status.json" <<'PY'
