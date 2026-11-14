@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { classify, loadAllow, refProblem, type GateRule, type RulesFile } from '../scripts/public-safety/check.ts';
-import { identityProblems, maskAcceptedIdentity, parseCommit } from '../scripts/public-safety/lib/git.ts';
+import { blobId, identityProblems, maskAcceptedIdentity, parseCommit } from '../scripts/public-safety/lib/git.ts';
 import { isPublicRemote } from '../scripts/public-safety/lib/hook.ts';
 import { Boundary, escapeControls, WITHHELD } from '../scripts/public-safety/lib/output.ts';
 import { exactHit, parsePack, prefilter16, prefilterCandidates, prefilterKey, shingleHit } from '../scripts/public-safety/lib/pack.ts';
@@ -241,7 +241,13 @@ test('classes refuse by default: unclassified and denied paths, formats a class 
   }
   const text = JSON.stringify(classes);
   expect(text.includes('/home/')).toBe(false);
-  expect(loadAllow()).toEqual([]);
+  const codes = JSON.parse(readFileSync(join(GATE, 'rules.json'), 'utf8')).codes;
+  const allow = loadAllow();
+  expect(allow.map((e) => e.code + ' ' + e.path)).toEqual(['PS-GITLEAKS tests/dsh-adapter.test.ts']);
+  for (const e of allow) {
+    expect(codes[e.code].allow).toBe(true);
+    expect(blobId(readFileSync(join(ROOT, e.path)))).toBe(e.blob);
+  }
 });
 
 test('a timed-out tool is killed with its whole process group and maps to PS-TOOL-TIMEOUT', () => {
