@@ -4,7 +4,10 @@
 // --upstream openrouter=<this>/openrouter, so every harness call goes container -> proxy ->
 // here and nothing leaves the machine. It answers Anthropic /v1/messages, OpenAI /v1/responses and /v1/chat/completions,
 // streamed or not, with one short text reply that ends the turn (its one bash block is mini-swe-agent's submit command,
-// so that agent ends too), and GET /v1/models. The proxy's Particle upstream is <this>/particle: there
+// so that agent ends too), and GET /v1/models. A Responses request that declares a function tool and carries no tool output
+// yet gets one call of that tool instead (its required arguments filled with placeholders), so the harness sends a second
+// turn; a Responses request that chains on previous_response_id gets the HTTP 400 OpenAI's zero-data-retention
+// organizations answer (org faq, 2026-11-14), so zdr-check.ts can tell from the captures how each harness continues a turn. The proxy's Particle upstream is <this>/particle: there
 // /particle/v1/chat/completions answers the way Particle does (docs.particle.ai/reasoning): the model echoed as
 // particle-ai/<id>, reasoning_content before the content, and reasoning tokens inside completion_tokens, repeated in
 // completion_tokens_details. The proxy's OpenRouter upstream is <this>/openrouter: there /openrouter/v1/chat/completions
@@ -14,7 +17,7 @@
 // that drops the reasoning fails here as it would upstream. Each request appends one line to
 // --log: path, model, stream, the tool names and effort fields the request declared, whether a credential header came
 // in and whether it equals the canary (--canary-env names the variable holding the fake provider key the proxy was
-// given), the body's sha256, and on the OpenRouter route which reasoning fields each replayed assistant message carried. With --bodies it also writes each body to that file, for the canary and token scans.
+// given), whether it chained on previous_response_id and its store field, the body's sha256, and on the OpenRouter route which reasoning fields each replayed assistant message carried. With --bodies it also writes each body to that file, for the canary and token scans.
 //
 //   bun scripts/frontier-harbor/fake-upstream.ts --listen 127.0.0.1:8799 --log <requests.jsonl> [--bodies <bodies.jsonl>]
 //       [--canary-env FAKE_UPSTREAM_CANARY]
@@ -36,7 +39,41 @@ export function requestFacts(path: string, body: Record<string, any>) {
     path, model: body.model ?? null, stream: body.stream === true, tools,
     effort: { output_config: body.output_config?.effort ?? null, thinking: body.thinking?.type ?? null, reasoning: body.reasoning?.effort ?? null, reasoning_effort: body.reasoning_effort ?? null },
     max_tokens: body.max_tokens ?? body.max_output_tokens ?? body.max_completion_tokens ?? null,
+    previous_response_id: chained(body), store: body.store ?? null,
   };
+}
+
+export const ZDR_ERROR = 'Previous response cannot be used for this organization due to Zero Data Retention.';
+export const chained = (body: Record<string, any>) => typeof body.previous_response_id === 'string' && body.previous_response_id !== '';
+const inputItems = (body: Record<string, any>): Array<Record<string, any>> => (Array.isArray(body.input) ? body.input.filter((i: unknown) => i && typeof i === 'object') : []);
+export const toolOutputSent = (body: Record<string, any>) => inputItems(body).some((i) => i.type === 'function_call_output' || i.type === 'custom_tool_call_output');
+
+/** The first function or custom tool a Responses request declares, in tools[] or in an additional_tools input item, and
+ *  inside a namespace (Codex 0.165.0 declares all its tools in namespaces, led by the custom JavaScript tool functions.exec). */
+export function firstTool(body: Record<string, any>): { kind: 'function' | 'custom'; name: string; namespace?: string; parameters?: any } | null {
+  const find = (list: unknown, namespace?: string): ReturnType<typeof firstTool> => {
+    for (const t of Array.isArray(list) ? list : []) {
+      if (t?.type === 'namespace') { const hit = find(t.tools, t.name); if (hit) return hit; continue; }
+      if ((t?.type === 'function' || t?.type === 'custom') && typeof t.name === 'string') return { kind: t.type, name: t.name, ...(namespace ? { namespace } : {}), parameters: t.parameters };
+    }
+    return null;
+  };
+  for (const list of [body.tools, ...inputItems(body).filter((i) => i.type === 'additional_tools').map((i) => i.tools)]) {
+    const hit = find(list);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** Placeholder values for a tool's required arguments, by JSON schema type: a shell command reads ["true"] or "true". */
+export function placeholderArgs(schema: any): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Array.isArray(schema?.required) ? schema.required : []) {
+    const t = schema?.properties?.[k]?.type;
+    const type = Array.isArray(t) ? t[0] : t;
+    out[k] = type === 'array' ? ['true'] : type === 'number' || type === 'integer' ? 1 : type === 'boolean' ? false : type === 'object' ? {} : 'true';
+  }
+  return out;
 }
 
 export function reply(path: string, body: Record<string, any>, n: number): Response {
@@ -57,22 +94,39 @@ export function reply(path: string, body: Record<string, any>, n: number): Respo
     ]);
   }
   if (path.endsWith('/v1/responses')) {
+    if (chained(body)) return Response.json({ error: { message: ZDR_ERROR, type: 'invalid_request_error', param: 'previous_response_id', code: null } }, { status: 400 });
     const id = 'resp_fake_' + n;
-    const item = { type: 'message', id: 'msg_fake_' + n, status: 'completed', role: 'assistant', content: [{ type: 'output_text', text: TEXT, annotations: [] }] };
+    const tool = toolOutputSent(body) ? null : firstTool(body);
+    const ns = tool?.namespace ? { namespace: tool.namespace } : {};
+    const item: Record<string, any> = tool?.kind === 'custom'
+      ? { type: 'custom_tool_call', id: 'ctc_fake_' + n, call_id: 'call_fake_' + n, ...ns, name: tool.name, input: 'true', status: 'completed' }
+      : tool
+        ? { type: 'function_call', id: 'fc_fake_' + n, call_id: 'call_fake_' + n, ...ns, name: tool.name, arguments: JSON.stringify(placeholderArgs(tool.parameters)), status: 'completed' }
+        : { type: 'message', id: 'msg_fake_' + n, status: 'completed', role: 'assistant', content: [{ type: 'output_text', text: TEXT, annotations: [] }] };
     const response = { id, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', model, output: [item], usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
     if (!stream) return Response.json(response);
     const pending = { ...response, status: 'in_progress', output: [], usage: null };
-    return sse([
-      ['response.created', { type: 'response.created', sequence_number: 0, response: pending }],
-      ['response.in_progress', { type: 'response.in_progress', sequence_number: 1, response: pending }],
-      ['response.output_item.added', { type: 'response.output_item.added', sequence_number: 2, output_index: 0, item: { ...item, status: 'in_progress', content: [] } }],
-      ['response.content_part.added', { type: 'response.content_part.added', sequence_number: 3, item_id: item.id, output_index: 0, content_index: 0, part: { type: 'output_text', text: '', annotations: [] } }],
-      ['response.output_text.delta', { type: 'response.output_text.delta', sequence_number: 4, item_id: item.id, output_index: 0, content_index: 0, delta: TEXT }],
-      ['response.output_text.done', { type: 'response.output_text.done', sequence_number: 5, item_id: item.id, output_index: 0, content_index: 0, text: TEXT }],
-      ['response.content_part.done', { type: 'response.content_part.done', sequence_number: 6, item_id: item.id, output_index: 0, content_index: 0, part: item.content[0] }],
-      ['response.output_item.done', { type: 'response.output_item.done', sequence_number: 7, output_index: 0, item }],
-      ['response.completed', { type: 'response.completed', sequence_number: 8, response }],
-    ]);
+    const events: Array<[string, Record<string, unknown>]> = tool?.kind === 'custom'
+      ? [
+        ['response.output_item.added', { output_index: 0, item: { ...item, status: 'in_progress', input: '' } }],
+        ['response.custom_tool_call_input.delta', { item_id: item.id, output_index: 0, delta: item.input }],
+        ['response.custom_tool_call_input.done', { item_id: item.id, output_index: 0, input: item.input }],
+      ]
+      : tool
+      ? [
+        ['response.output_item.added', { output_index: 0, item: { ...item, status: 'in_progress', arguments: '' } }],
+        ['response.function_call_arguments.delta', { item_id: item.id, output_index: 0, delta: item.arguments }],
+        ['response.function_call_arguments.done', { item_id: item.id, output_index: 0, arguments: item.arguments }],
+      ]
+      : [
+        ['response.output_item.added', { output_index: 0, item: { ...item, status: 'in_progress', content: [] } }],
+        ['response.content_part.added', { item_id: item.id, output_index: 0, content_index: 0, part: { type: 'output_text', text: '', annotations: [] } }],
+        ['response.output_text.delta', { item_id: item.id, output_index: 0, content_index: 0, delta: TEXT }],
+        ['response.output_text.done', { item_id: item.id, output_index: 0, content_index: 0, text: TEXT }],
+        ['response.content_part.done', { item_id: item.id, output_index: 0, content_index: 0, part: item.content[0] }],
+      ];
+    const all: Array<[string, Record<string, unknown>]> = [['response.created', { response: pending }], ['response.in_progress', { response: pending }], ...events, ['response.output_item.done', { output_index: 0, item }], ['response.completed', { response }]];
+    return sse(all.map(([e, d], i) => [e, { type: e, sequence_number: i, ...d }]));
   }
   if (path.startsWith('/particle/') && path.endsWith('/v1/chat/completions')) {
     const id = 'chatcmpl_fake_' + n;

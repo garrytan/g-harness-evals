@@ -215,6 +215,15 @@ The browser tools count as web fetch: they load any URL the model names.
 - **Checked against real captures:** every tool in the committed anatomy captures of Claude Code, Codex, OpenClaw, QM and Harness Zero passes. The multi-user Hermes captures fail on `web_search`, `web_extract`, the browser tools and `execute_code`, whose description offers `web_search` (`tests/frontier-harbor-web-tools.test.ts`).
 - **Not seen by it:** a tool a harness keeps behind its own tool search and never lists in a request (Claude Code's ToolSearch, OpenClaw's tool_search). The config switches above remove those from the catalog too. The Capy shard path (vm-run.sh by hand) does not run the check; run it on the smoke yourself first.
 
+## Zero data retention
+
+Since 2026-11-14 the OpenAI organization behind the shared key enforces zero data retention. A Responses request that chains on `previous_response_id` gets HTTP 400 ("Previous response cannot be used for this organization due to Zero Data Retention"), so a harness that chains would lose every OpenAI trial at its second turn.
+
+- **The probe:** in the install check, `fake-upstream.ts` answers a Responses request that declares a function tool with one call of that tool (its required arguments filled with placeholders), or a custom tool with one call whose input is `true`, so the harness runs it and sends a second turn. It finds tools inside namespaces too: pinned Codex 0.165.0 declares all of its tools that way, led by the custom JavaScript tool `functions.exec`. It refuses a chained request with the same 400.
+- **The check:** `bun scripts/frontier-harbor/zdr-check.ts --smoke <install check out dir> --prereg <prereg> --cells a,b`. For each OpenAI cell it reads the install check trial of the same harness and model. A cell passes when no request chained and one Responses request carried the tool's output (`function_call_output`); Chat Completions only passes too, since there is nothing to chain. Anything else fails (exit 4, HE-FRONTIER-013). It writes `zdr.json`, counts only.
+- **In the install check:** every OpenAI cell of Codex, Hermes, OpenClaw, Pi and dsh, in `install-check.json` under `zdr`. mini-swe-agent declares no tools, so the probe can't drive it to a second turn; no counted cell runs it.
+- **The gate:** `scripts/ubicloud/run-shard.sh --zdr-gate <install check results dir>` runs the check for the shard's OpenAI cells before any VM, and refuses the shard when it fails, when no gate is given, or when the install check ran at a commit whose `pin.json`, `frontier_settings.py`, `agents.py` or `harnesses/<harness>/` differ from the shard's.
+
 ## DeepSeek Harness (dsh)
 
 **dsh 0.2.2-rc.1 runs through `FrontierDsh`, an installed-agent class of our own, with the headless profile our multi-user adapter writes. Only the permission preset and the window differ.**

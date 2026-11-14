@@ -72,7 +72,7 @@ The list goes to `instruction-files.json` and `ready`. Any hit is exit 2 (HE-CUR
 
 - **Keyless check:** `bash scripts/cursor/install-check.sh [--out <dir>]`. It runs the key-list selfcheck, the pin check, the image build and version, and one offline trial: a canary key, no egress host, the CLI denied at its first CONNECT to `api2.cursor.sh`, the canary not found afterwards.
 - **Keyless rehearsal of a shard:** `scripts/run-shard.sh ... --cursor-offline`.
-- **Counted shard:** needs `CURSOR_API_KEY` in the launcher's shell, Cursor cells only, `"network": "internal"`.
+- **Counted shard:** needs `CURSOR_API_KEY` in the launcher's shell, Cursor cells only, `"network": "internal"`. The Ubicloud lane (`scripts/ubicloud/run-shard.sh`) refuses a keyed Cursor shard and sends the key to no VM, because no lease can cap Cursor's spend; only `--cursor-offline` runs there.
 
 ## Terms
 

@@ -11,7 +11,21 @@
 #       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [--sealed-root <local dir> --opening-receipt <local file>]
 #       [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--install-check] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
 #       [--replicate-seconds 1200] [--replicate-to <dir>] [--skill-root <local dir>]
-#       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [-- <extra arguments for scripts/run-shard.sh>]
+#       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [--zdr-gate <install check results directory>]
+#       [-- <extra arguments for scripts/run-shard.sh>]
+#
+# --timeout-hours counts from this script's start, not from the launch on the VM: the sync, the bootstrap and the
+# --pre-smoke run under what is left of it (and of the VM's TTL, below), and a step still running at the deadline is cut
+# and the lane ends with exit 3 before any smoke or trial. A stalled download in the bootstrap used to hold the controller,
+# and the VM, until the reaper took it.
+#
+# --zdr-gate (frontier-harbor shards with an openai: cell; refused without it): the OpenAI organization behind the shared
+# key enforces zero data retention, so a Responses request chained on previous_response_id gets HTTP 400. Pass the results
+# directory of a keyless install check (--workload frontier-harbor --install-check, whose fake upstream makes each harness
+# send a tool turn and refuses a chained one). Before any VM, scripts/frontier-harbor/zdr-check.ts must pass every OpenAI
+# cell of the shard from that check's captures (HE-FRONTIER-013), and the check's commit must hold the same harness pins
+# and settings as --commit (scripts/frontier-harbor/pin.json, frontier_settings.py, agents.py and harnesses/<harness>/).
+# A harness-workload shard has no such gate: its smoke calls the real API, so a chained request fails there.
 #
 # Mid-run replication (CREW R16: no paid run may depend on one controller machine's local state). Every
 # --replicate-seconds (default 1200, or UBI_REPLICATE_SECONDS; 0 turns it off) while the shard runs, the VM's ~/shard/results
@@ -96,21 +110,21 @@
 #      --resume uploads them again to its fresh VM. The diagnostics of tar and the remote unpack (of the root, the receipt
 #      and a sealed --resume's results) go to <dest>/sealed-upload.log only (removed by scripts/sealed/cleanup.ts), since they
 #      can name a sealed path; a failed upload prints a fixed line naming that log. On the VM, scripts/run-shard.sh runs from its own copy of ~/sealed/root.
-#   5. ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY, OPENROUTER_API_KEY and CURSOR_API_KEY (each one that is set
-#      here; the run needs the first, --embedded the second, a Particle cell the third, an OpenRouter cell the fourth,
-#      which preflight requires, and a Cursor cell the fifth) are written to ~/.ubirun-env on the
+#   5. ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY and OPENROUTER_API_KEY (each one that is set here; the run
+#      needs the first, --embedded the second, a Particle cell the third, an OpenRouter cell the fourth, which preflight
+#      requires) are written to ~/.ubirun-env on the
 #      VM with umask 077 over the multiplexed SSH connection, exactly as ubi-runner.sh run --pass writes them. The
 #      launcher reads the file into the shell and deletes it before vm-shard.sh starts, so no file on the VM holds a key
 #      while the run is live; the keys live in that process's environment (the runner's own child processes inherit it)
 #      and only the metering proxy uses them, as on a Capy shard; no container or image receives them. Nothing goes through cloud-init user data, images or logs.
-#      CURSOR_API_KEY is the one exception (harnesses/cursor/README.md): vm-shard.sh takes it out of its exported
-#      environment and hands it to scripts/run-shard.sh alone, which gives it to the runner's run step, which passes it by
-#      name to the Cursor containers only. A shard whose cells run harness cursor needs CURSOR_API_KEY here and is refused
-#      with exit 2 before any VM exists without it; it needs no ANTHROPIC_API_KEY when every model-calling cell is a
-#      Cursor cell, and it may not mix Cursor cells with proxied ones. After every pull (mid-run and at teardown) the
-#      results are scanned here for the key's literal value; a hit writes <dest>/CURSOR-KEY-FOUND and stops every mirror
-#      to --replicate-to, and nothing prints the value. Pass --pre-smoke scripts/cursor/install-check.sh to run the keyless
-#      install check and offline one-trial smoke on the VM before any key reaches it.
+#      CURSOR_API_KEY goes to no VM. Cursor's calls go to Cursor's servers, not through the metering proxy, so no lease
+#      can see or cap them, and a shard whose cells run harness cursor is refused with exit 2 before any VM exists unless
+#      it is the keyless rehearsal (-- --cursor-offline, harness workload) or the frontier Harbor --install-check
+#      (harnesses/cursor/README.md). A Cursor shard may not mix Cursor cells with proxied ones, and it gets no key at all:
+#      it needs none. After every pull (mid-run and at teardown) the results are still scanned here for the literal value
+#      of a CURSOR_API_KEY set in this shell; a hit writes <dest>/CURSOR-KEY-FOUND and stops every mirror to
+#      --replicate-to, and nothing prints the value. Pass --pre-smoke scripts/cursor/install-check.sh to run the keyless
+#      install check on the VM first.
 #   6. vm-shard.sh runs detached on the VM (setsid, nohup): checkout --detach, bun install, the smoke (a copy of the
 #      preregistration with only this shard's harness cells on one dev task, one repetition, under its own lease and
 #      ledger; it builds the images; a sealed lane's smoke is a public dev run, without the sealed flags and with the public
@@ -145,16 +159,17 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 
-# cursor_check: a shard with Cursor cells runs only Cursor cells and needs CURSOR_API_KEY here (presence only, never printed).
+# cursor_check: a shard with Cursor cells runs only Cursor cells, and only keyless (step 5).
 cursor_check() {
   case " $shard_harnesses " in *" cursor "*) ;; *) return 0 ;; esac
   [ "$shard_harnesses" = cursor ] || { echo "run-shard (ubicloud): cells $cells mix harness cursor with $shard_harnesses; Cursor cells call Cursor's backend and the others the metering proxy, so they run as separate shards" >&2; exit 2; }
-  [ -n "${CURSOR_API_KEY:+x}" ] || { echo "run-shard (ubicloud): cells $cells run harness cursor and CURSOR_API_KEY is not set in this shell; it goes to the VM over SSH like the other keys and reaches only the Cursor containers there. Nothing was created. fix: launch from the machine that holds the key" >&2; exit 2; }
+  [ "$workload" = harness ] && [[ " ${extra[*]-} " == *" --cursor-offline "* ]] || { echo "run-shard (ubicloud): cells $cells run harness cursor with a key, which is refused: Cursor's calls go to Cursor's servers, not through the metering proxy, so no lease can cap their spend. Nothing was created. fix: pass -- --cursor-offline for the keyless rehearsal" >&2; exit 2; }
 }
 shard_harnesses=""
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
 smoke_first=0 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
-workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke="" install_check=0 skill_root=""
+workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke="" install_check=0 skill_root="" zdr_gate=""
+t_start=$(date +%s)
 rep_s=${UBI_REPLICATE_SECONDS:-1200} replicate_to=${UBI_REPLICATE_TO:-}
 extra=()
 while [ $# -gt 0 ]; do
@@ -188,6 +203,7 @@ while [ $# -gt 0 ]; do
     --pre-smoke) pre_smoke=$2; shift 2 ;;
     --replicate-seconds) rep_s=$2; shift 2 ;;
     --replicate-to) replicate_to=$2; shift 2 ;;
+    --zdr-gate) zdr_gate=$2; shift 2 ;;
     -h|--help) sed -n '2,/^set -euo pipefail/{/^set /!p}' "$0"; exit 0 ;;
     --) shift; extra=("$@"); break ;;
     *) echo "run-shard (ubicloud): unknown argument $1 (see --help)" >&2; exit 2 ;;
@@ -222,7 +238,7 @@ if [ "$attach" -eq 0 ]; then
   shard_harnesses=$({ git -C "$root" show "$commit:$prereg" 2>/dev/null || cat "$prereg" 2>/dev/null; } | python3 -c 'import json,sys; p=json.load(sys.stdin); want=set(sys.argv[1].split(",")); print(" ".join(sorted({c["harness"] for c in p.get("cells", []) if c.get("id") in want and c.get("harness") != "scripted"})))' "$cells" 2>/dev/null) || shard_harnesses=""
   [ "$install_check" -eq 1 ] || cursor_check
   [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
-  [ "$workload" != frontier-harbor ] || [ "$install_check" -eq 1 ] || [ -n "${OPENAI_API_KEY:-}" ] || { echo "run-shard (ubicloud): --workload frontier-harbor needs OPENAI_API_KEY in this shell for its OpenAI cells" >&2; exit 2; }
+  [ "$workload" != frontier-harbor ] || [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || [ -n "${OPENAI_API_KEY:-}" ] || { echo "run-shard (ubicloud): --workload frontier-harbor needs OPENAI_API_KEY in this shell for its OpenAI cells" >&2; exit 2; }
   [ "$embedded" -eq 0 ] || [ -n "${OPENAI_API_KEY:-}" ] || { echo "run-shard (ubicloud): --embedded needs OPENAI_API_KEY in this shell" >&2; exit 2; }
   if [ -n "$sealed_root" ] || [ -n "$opening_receipt" ]; then
     [ -n "$sealed_root" ] && [ -n "$opening_receipt" ] || { echo "run-shard (ubicloud): --sealed-root and --opening-receipt go together; give both or neither" >&2; exit 2; }
@@ -303,6 +319,27 @@ PY
 jq1() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); v=d.get(sys.argv[2]); print('' if v is None else v)" "$dest/shard-vm.json" "$1" 2>/dev/null || true; }
 vm_owner() { local o; o=$(jq1 owner); echo "${o:-$UBI_OWNER}"; }
 vssh() { bash "$runner" ssh "$vm" "$@"; }
+# cap_deadline: a VM whose name carries a TTL (-t<hours>) is reaped once its epoch plus that many hours plus ten minutes
+# has passed, so the shard is stopped half an hour before the TTL ends, whatever --timeout-hours says (an --attach after a
+# long sleep included): the stop, the copy back and the destroy then happen while the VM still exists.
+cap_deadline() {
+  [[ "$vm" =~ -([0-9]{10})-.+-t([0-9]{1,3})$ ]] || return 0
+  local ttl_stop=$(( 10#${BASH_REMATCH[1]} + 10#${BASH_REMATCH[2]} * 3600 - 1800 ))
+  [ "$ttl_stop" -lt "$deadline" ] || return 0
+  deadline=$ttl_stop
+  log "$vm's TTL ends at $(date -u -d @$(( ttl_stop + 1800 )) +%Y-%m-%dT%H:%M:%SZ); the shard is stopped by $(date -u -d @"$ttl_stop" +%Y-%m-%dT%H:%M:%SZ) so its results come back first"
+}
+# prestart <step> <command...>: a step before the shard starts (the sync, the bootstrap, --pre-smoke), run under what is
+# left before the deadline; one still running then is cut, and one due after it never starts (exit 124 either way).
+prestart() {
+  local step=$1 left rc=0
+  shift
+  left=$(( deadline - $(now) ))
+  if [ "$left" -le 0 ]; then log "timeout after $timeout_h h before the shard started: $step did not start; no smoke and no trial ran"; return 124; fi
+  timeout -k 10 "$left" "$@" || rc=$?
+  [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] || log "timeout after $timeout_h h before the shard started: $step was cut at the deadline; no smoke and no trial ran"
+  return "$rc"
+}
 remote_home=/home/ubi
 repo_dir=$remote_home/work/harness-evals
 now() { date +%s; }
@@ -594,6 +631,24 @@ else
   shard_harnesses=$(printf '%s' "$prereg_text" | python3 -c 'import json,sys; p=json.load(sys.stdin); want=set(sys.argv[1].split(",")); print(" ".join(sorted({c["harness"] for c in p.get("cells", []) if c.get("id") in want and c.get("harness") != "scripted"})))' "$cells") || { echo "run-shard (ubicloud): the preregistration's cells could not be read" >&2; exit 2; }
   [ "$install_check" -eq 1 ] || cursor_check
   [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
+  # The zero-data-retention gate (--zdr-gate, above): every OpenAI cell of a frontier-harbor shard, before any VM.
+  if [ "$workload" = frontier-harbor ] && [ "$install_check" -eq 0 ]; then
+    openai_cells=$(printf '%s' "$prereg_text" | python3 -c 'import json,sys; p=json.load(sys.stdin); want=set(sys.argv[1].split(",")); print(",".join(c["id"] for c in p.get("cells", []) if c.get("id") in want and str(c.get("model", "")).startswith("openai:")))' "$cells") || { echo "run-shard (ubicloud): the preregistration's cells could not be read" >&2; exit 2; }
+    if [ -n "$openai_cells" ]; then
+      [ -n "$zdr_gate" ] || { echo "run-shard (ubicloud): HE-FRONTIER-013 refused: cells $openai_cells call OpenAI, whose organization enforces zero data retention, and no --zdr-gate was given. Nothing was created. fix: pass --zdr-gate <the results directory of a keyless install check> (docs/errors.md)" >&2; exit 2; }
+      gate_commit=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("repo_commit") or "")' "$zdr_gate/install-check.json" 2>/dev/null) || gate_commit=""
+      [ -n "$gate_commit" ] && git -C "$root" cat-file -e "$gate_commit^{commit}" 2>/dev/null || { echo "run-shard (ubicloud): HE-FRONTIER-013 refused: $zdr_gate/install-check.json names no commit this repository holds. Nothing was created" >&2; exit 2; }
+      pins=(scripts/frontier-harbor/pin.json scripts/frontier-harbor/frontier_settings.py scripts/frontier-harbor/agents.py)
+      for h in $shard_harnesses; do pins+=("harnesses/$h"); done
+      git -C "$root" diff --quiet "$gate_commit" "$commit" -- "${pins[@]}" || { echo "run-shard (ubicloud): HE-FRONTIER-013 refused: the install check in $zdr_gate ran at $gate_commit, whose harness pins or settings (${pins[*]}) differ from $commit. Nothing was created. fix: rerun the install check at a commit that matches" >&2; exit 2; }
+      zdr_prereg=$(mktemp)
+      printf '%s' "$prereg_text" > "$zdr_prereg"
+      zdr_rc=0
+      bun "$root/scripts/frontier-harbor/zdr-check.ts" --smoke "$zdr_gate" --prereg "$zdr_prereg" --cells "$openai_cells" --out "$dest/zdr.json" >&2 || zdr_rc=$?
+      rm -f "$zdr_prereg"
+      [ "$zdr_rc" -eq 0 ] || { echo "run-shard (ubicloud): HE-FRONTIER-013 refused: the zero-data-retention check exited $zdr_rc (above; $dest/zdr.json). Nothing was created" >&2; exit 2; }
+    fi
+  fi
   [ "$resume" -eq 0 ] || [ -f "$dest/results/$record_file" ] || { echo "run-shard (ubicloud): --resume needs an earlier attempt's $dest/results/$record_file" >&2; exit 2; }
   read_key='import json,sys; print(json.load(sys.stdin).get("shard_resume", ""))'
   if [ -n "$scratch_prereg" ]; then shard_resume=$(python3 -c "$read_key" < "$scratch_prereg"); else shard_resume=$(git -C "$root" show "$commit:$prereg" | python3 -c "$read_key"); fi
@@ -648,9 +703,11 @@ else
   jset "name=\"$name\"" "vm=\"$vm\"" "size=\"$size\"" "location=\"$location\"" "owner=\"$(bash "$runner" owner)\"" "commit=\"$commit\"" "run_id=\"$run_id\"" "cells=\"$cells\"" "lease_usd=$lease" "prereg=\"$prereg\"" "scratch_prereg=$([ -n "$scratch_prereg" ] && echo true || echo false)" "sealed=$([ "$sealed" -eq 1 ] && echo true || echo false)" "workload=\"$workload\"" "install_check=$([ "$install_check" -eq 1 ] && echo true || echo false)" "created_at=\"$(date -u -d @$t_create +%Y-%m-%dT%H:%M:%SZ)\"" "created_epoch=$t_create" "ready_at=\"$(date -u -d @$t_ready +%Y-%m-%dT%H:%M:%SZ)\"" "dest=\"$dest\"" "cleanup=\"pending\"" "cleanup_reason=null"
   map_event created
   log "VM $vm ready in $(( t_ready - t_create ))s; $dest/shard-vm.json records it (run-shard.sh --attach --dest $dest rejoins it)"
+  deadline=$(( t_start + timeout_h * 3600 ))
+  cap_deadline
 
   t_sync0=$(now)
-  bash "$runner" sync "$vm" "$scratch/harness-evals" work/harness-evals 2> >(stamp | tee -a "$dest/lane.log" >&2) || { log "sync failed"; exit 3; }
+  prestart sync bash "$runner" sync "$vm" "$scratch/harness-evals" work/harness-evals 2> >(stamp | tee -a "$dest/lane.log" >&2) || { log "sync failed"; exit 3; }
   rm -rf "$scratch"
   vssh 'mkdir -p ~/shard/bin'
   for f in bootstrap.sh vm-shard.sh smoke-lease.ts; do vssh "cat > ~/shard/bin/$f" < "$here/$f"; done
@@ -658,7 +715,7 @@ else
   t_sync1=$(now)
   t_boot0=$(now)
   log "bootstrap (Docker, Bun at ci.yml's pin, Node, python3, jq)"
-  if ! vssh "cd $repo_dir && bash -l ~/shard/bin/bootstrap.sh" 2>&1 | stamp | tee -a "$dest/lane.log" >&2; then log "bootstrap failed"; exit 3; fi
+  if ! prestart bootstrap bash "$runner" ssh "$vm" "cd $repo_dir && bash -l ~/shard/bin/bootstrap.sh" 2>&1 | stamp | tee -a "$dest/lane.log" >&2; then log "bootstrap failed"; exit 3; fi
   t_boot1=$(now)
   log "bootstrap done in $(( t_boot1 - t_boot0 ))s"
 
@@ -666,7 +723,7 @@ else
   if [ -n "$pre_smoke" ]; then
     log "pre-smoke: bash $pre_smoke (keyless, before the keys, the smoke and the shard)"
     pre_rc=0
-    vssh "cd $repo_dir && bash -l $(printf %q "$pre_smoke")" < /dev/null 2>&1 | stamp | tee -a "$dest/lane.log" >&2 || pre_rc=$?
+    prestart pre-smoke bash "$runner" ssh "$vm" "cd $repo_dir && bash -l $(printf %q "$pre_smoke")" < /dev/null 2>&1 | stamp | tee -a "$dest/lane.log" >&2 || pre_rc=$?
     if [ "$pre_rc" -ne 0 ]; then rc=4; log "pre-smoke $pre_smoke failed (exit $pre_rc); no smoke and no trial ran"; exit 4; fi
     log "pre-smoke $pre_smoke passed"
   fi
@@ -700,7 +757,8 @@ else
   # for Particle cells, OPENROUTER_API_KEY for OpenRouter cells); the custody identity (a file in the project-user drive, never in the environment) never
   # reaches the VM, which gets the opened plaintext and never decrypts.
   # The frontier Harbor install check is keyless: the file is written empty.
-  { [ "$install_check" -eq 1 ] || for k in ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY CURSOR_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
+  # A Cursor shard (only ever the keyless rehearsal, step 5) gets no key either, and CURSOR_API_KEY goes to no VM.
+  { [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || for k in ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 
   if [ "$resume" -eq 1 ]; then
     log "resume: uploading $dest/results (without harness state and workspaces) to the VM"
@@ -740,17 +798,11 @@ else
   log "vm-shard.sh running detached on $vm; tail -f $dest/run-shard.log (and run.stdout.log, run.log, vm-shard.out)"
 fi
 
-# 7. poll: append new bytes of the VM's logs, until ~/shard/exit exists
-deadline=$(( $(now) + timeout_h * 3600 ))
-# A VM whose name carries a TTL (-t<hours>) is reaped once its epoch plus that many hours plus ten minutes has passed, so
-# the shard is stopped half an hour before the TTL ends, whatever --timeout-hours says (an --attach after a long sleep
-# included): the stop, the copy back and the destroy then happen while the VM still exists.
-if [[ "$vm" =~ -([0-9]{10})-.+-t([0-9]{1,3})$ ]]; then
-  ttl_stop=$(( 10#${BASH_REMATCH[1]} + 10#${BASH_REMATCH[2]} * 3600 - 1800 ))
-  if [ "$ttl_stop" -lt "$deadline" ]; then
-    deadline=$ttl_stop
-    log "$vm's TTL ends at $(date -u -d @$(( ttl_stop + 1800 )) +%Y-%m-%dT%H:%M:%SZ); the shard is stopped by $(date -u -d @"$ttl_stop" +%Y-%m-%dT%H:%M:%SZ) so its results come back first"
-  fi
+# 7. poll: append new bytes of the VM's logs, until ~/shard/exit exists or the deadline passes (set when the VM was
+# created, from this script's start; an --attach counts --timeout-hours from now)
+if [ "$attach" -eq 1 ]; then
+  deadline=$(( $(now) + timeout_h * 3600 ))
+  cap_deadline
 fi
 fails=0 polls=0 last_count=-1 last_rep=$(now)
 while :; do

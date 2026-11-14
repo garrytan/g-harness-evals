@@ -54,6 +54,24 @@ PY
   return $rc
 }
 
+# fetch_script <url> <file>: an install script into <file>, each try bounded by --connect-timeout 20 and --max-time 120
+# and retried with the same backoff. The NodeSource and Docker steps piped curl straight into bash with no deadline, so a
+# stalled download held the bootstrap, and the VM with it, until the reaper took it.
+fetch_script() {
+  local i wait=$base_s
+  for ((i = 1; i <= tries; i++)); do
+    rm -f "$2"
+    if curl -fsSL --connect-timeout 20 --max-time 120 "$1" -o "$2" 2>/dev/null && [ -s "$2" ]; then return 0; fi
+    [ "$i" -lt "$tries" ] || break
+    log "download of $1, try $i of $tries, failed; next try in ${wait}s"
+    sleep "$wait"; wait=$(( wait * 2 > max_s ? max_s : wait * 2 ))
+  done
+  echo "bootstrap: $1 could not be downloaded after $tries tries" >&2
+  return 1
+}
+# Each install script and package step runs under this many seconds (the scripts fetch keys and run apt themselves).
+step_s=900
+
 install_bun() {
   local i wait=$base_s
   for ((i = 1; i <= tries; i++)); do
@@ -85,13 +103,19 @@ export PATH="$HOME/.bun/bin:$PATH"
 log "bun $bun_version, python3 $(python3 --version | cut -d' ' -f2), jq $(jq --version) ($(( $(date +%s) - t0 ))s)"
 
 if ! command -v node >/dev/null; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - >/dev/null 2>&1
-  sudo apt-get install -y -qq --no-install-recommends nodejs >/dev/null
+  setup=$(mktemp)
+  fetch_script https://deb.nodesource.com/setup_22.x "$setup" || exit 2
+  sudo -E timeout "$step_s" bash "$setup" >/dev/null 2>&1 || { echo "bootstrap: the NodeSource setup script failed or ran past ${step_s}s" >&2; exit 2; }
+  rm -f "$setup"
+  sudo timeout "$step_s" apt-get install -y -qq --no-install-recommends nodejs >/dev/null || { echo "bootstrap: apt-get install nodejs failed or ran past ${step_s}s" >&2; exit 2; }
 fi
 log "node $(node --version) ($(( $(date +%s) - t0 ))s)"
 
 if ! command -v docker >/dev/null; then
-  curl -fsSL https://get.docker.com | sudo sh >/dev/null
+  setup=$(mktemp)
+  fetch_script https://get.docker.com "$setup" || exit 2
+  sudo timeout "$step_s" sh "$setup" >/dev/null || { echo "bootstrap: the Docker install script failed or ran past ${step_s}s" >&2; exit 2; }
+  rm -f "$setup"
 fi
 sudo systemctl enable --now docker >/dev/null 2>&1
 sudo usermod -aG docker "$USER"

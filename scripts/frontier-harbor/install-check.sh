@@ -15,6 +15,11 @@
 #      finish its trial. On the OpenRouter route the fake answers with one tool call and refuses a tool-call turn replayed
 #      without its reasoning, as DeepSeek does, so an OpenRouter cell passes only when its harness sent the reasoning
 #      back on every replayed tool-call turn (the cell's reasoning_replay, from to-trials.ts).
+#   1b. zero data retention: zdr-check.ts reads the agents' captures. The fake upstream answers a Responses request that
+#      declares a function or custom tool (in a namespace too, as Codex does) with one call of it and refuses one chained
+#      on previous_response_id with OpenAI's zero-data-retention 400, so every OpenAI cell of Codex, Hermes, OpenClaw, Pi and dsh must have sent a tool-output
+#      turn with no chained request (zdr.json). mini-swe-agent is left out: it declares no tools, so the fake's text reply
+#      ends its trial at the first request and nothing shows how it continues; no counted cell runs it.
 #   2. oracle and nop behind the blocklist on three pinned tasks, or with --baselines all on every pinned task (the 52 and
 #      the kept sample): oracle passes every one, nop fails every one. The run's baseline gate uses --baselines all once
 #      before its first paid trial.
@@ -68,6 +73,12 @@ set +e
 agents_rc=$?
 set -e
 say "agents: vm-run.sh exited $agents_rc"
+zdr_cells=$(python3 -c 'import json,sys; print(",".join(c["id"] for c in json.load(open(sys.argv[1]))["cells"] if c["model"].startswith("openai:") and c["harness"] != "mini-swe-agent"))' "$here/install-check-prereg.json")
+set +e
+(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/zdr-check.ts --smoke "$out" --prereg "$here/install-check-prereg.json" --cells "$zdr_cells" --out "$out/zdr.json") >> "$out/install-check.log" 2>&1
+zdr_rc=$?
+set -e
+say "zdr: zdr-check.ts exited $zdr_rc (cells $zdr_cells)"
 [ -x "$venv/bin/harbor" ] || { say "Harbor is not installed (vm-run.sh failed before installing it)"; exit 3; }
 
 gw=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
@@ -193,6 +204,7 @@ report = {
 gstack_path = f"{out}/gstack/gstack-check.json"
 report["gstack"] = json.load(open(gstack_path)) if os.path.exists(gstack_path) else {"pass": False, "note": "gstack-check.sh wrote no gstack-check.json"}
 report["gstack"]["gstack_check_exit"] = gstack_rc
+report["zdr"] = json.load(open(f"{out}/zdr.json")) if os.path.exists(f"{out}/zdr.json") else {"pass": False, "note": "zdr-check.ts wrote no zdr.json"}
 if gstack_rc != 0:
     report["gstack"]["pass"] = False
 reasons = []
@@ -201,13 +213,14 @@ if agents_rc != 0:
 reasons += [f"agents: cell {c} did not run" for c, a in agents.items() if not a.get("ran")]
 reasons += [f"agents: cell {c} has effort flag {a['effort_flag']}" for c, a in agents.items() if a.get("ran") and a.get("effort_flag") is not None]
 reasons += [f"{k}: failed" for k in ("oracle", "nop", "egress", "canary") if not report[k]["pass"]]
+reasons += [f"zdr: cell {c['cell']} {c['status']}: {c.get('note', '')}" for c in report["zdr"].get("cells", []) if c["status"] != "pass"] or ([] if report["zdr"]["pass"] else ["zdr: " + report["zdr"].get("note", "failed")])
 if gstack_rc != 0:
     reasons.append(f"gstack: gstack-check.sh exited {gstack_rc}")
 if not report["gstack"]["pass"]:
     reasons += ["gstack: " + r for r in report["gstack"].get("reasons") or ([] if gstack_rc != 0 else [report["gstack"].get("note") or "failed"])]
 report["reasons"] = reasons
-report["pass"] = not reasons and all(report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary", "gstack"))
+report["pass"] = not reasons and all(report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary", "gstack", "zdr"))
 json.dump(report, open(f"{out}/install-check.json", "w"), indent=2)
-print(json.dumps({k: report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary", "gstack")} | {"pass": report["pass"]}))
+print(json.dumps({k: report[k]["pass"] for k in ("agents", "oracle", "nop", "egress", "canary", "gstack", "zdr")} | {"pass": report["pass"]}))
 sys.exit(0 if report["pass"] else 1)
 PY
