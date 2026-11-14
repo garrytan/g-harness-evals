@@ -134,3 +134,47 @@ test("the Claude Code 2.1.322 rerun's analysis.json files are left out of review
   ];
   expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
 });
+
+// Value: protects=the nested results exclusions hide trial folders and <shard>.manifest.json files at any depth under a
+// results folder, plus four generated file groups in the skill-resolver run only, so report.md, analysis.md, shards.json,
+// that run's small trial id lists and other check files, allowlists, notes, trials folders outside results* and every
+// other run's checks, summaries and tool output still reach
+// /ship's readers; fails_when=a pattern is dropped, widened past its results* anchor, or the run-specific ones are widened
+// to every run; why_new=#449's merged results keep 6,936 trial files one level deeper (results/merged/trials/**) than the
+// existing results*/trials/** pattern reaches, and with its shard manifests its reader diff measured 44,030,099 bytes
+// against gstack's 2,000,000 byte ceiling; seam=a throwaway git repository and git's own glob pathspecs; no_claim=gstack's
+// rule that keeps any file named exactly manifest.json in review (with internal-task).
+test('nested results trials and shard manifests, and the skill-resolver run\'s generated files, are left out of review; reports, notes and other runs are still reviewed', () => {
+  // Stand-in paths only, as above: a real results path named here would keep that file in /ship's review diff.
+  const kept = [
+    'docs/benchmarks/run-x/report.md',
+    'docs/benchmarks/run-x/results/merged/report.md',
+    'docs/benchmarks/run-x/results/merged/shards.json',
+    'docs/benchmarks/run-x/results/analysis/analysis.md',
+    'docs/benchmarks/run-x/results/notes.md',
+    'docs/benchmarks/run-x/prereg/trials/stand-in.json',
+    'docs/benchmarks/run-x/results/merged/stand-in.shard.json',
+    'docs/benchmarks/run-x/results/checks/stand-in.json',
+    'docs/benchmarks/run-x/results/merged/summary.md',
+    'docs/benchmarks/run-x/results/tools/stand-in.txt',
+    'docs/benchmarks/2026-11-08-skill-resolver/report.md',
+    'docs/benchmarks/2026-11-08-skill-resolver/results/checks/stand-in.txt',
+    'docs/benchmarks/2026-11-08-skill-resolver/results/tools/stand-in.ts',
+    'docs/benchmarks/2026-11-08-skill-resolver/results/analysis/analysis.md',
+    'docs/benchmarks/2026-11-08-skill-resolver/results/checks/stand-in.json',
+    'docs/benchmarks/2026-11-08-skill-resolver/results/tools/stand-in-trials.txt',
+    'publication/allowlists.json',
+  ];
+  const dropped = [
+    'docs/benchmarks/run-x/results/merged/trials/t1/trial.json',
+    'docs/benchmarks/run-x/results-b/merged/deep/trials/t1/turns.txt',
+    'docs/benchmarks/run-x/results/merged/stand-in.manifest.json',
+    'docs/benchmarks/run-x/results/shards/s1/stand-in.manifest.json',
+    'docs/benchmarks/2026-11-08-skill-resolver/results/analysis/analysis.json',
+    'docs/benchmarks/2026-11-08-skill-resolver/results-x/deep/analysis.json',
+    'docs/benchmarks/2026-11-08-skill-resolver/results/checks/sett-stand-in.json',
+    'docs/benchmarks/2026-11-08-skill-resolver/results/merged/summary.md',
+    'docs/benchmarks/2026-11-08-skill-resolver/results/tools/openclaw-phase-b-stand-in.txt',
+  ];
+  expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+});
