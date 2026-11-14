@@ -1,0 +1,191 @@
+{
+  "run": "2026-11-08-skill-resolver",
+  "about": "The skill-resolver run's public cells: the preregistered analyze.ts command on the merged trial records, the headline with the 7 failed-read trials counted back in, the 42-task and without-OpenClaw sensitivity lines, and the exploratory set P overlap-bin table. Set R is private and not rebuilt here.",
+  "requires": [
+    "tasks/skill-resolver/T/tasks"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/skill-resolver/analyze.ts",
+        "--results",
+        "{run}/results/merged",
+        "--labels",
+        "P={run}/results/sets/labels.jsonl",
+        "--cross-family",
+        "P={run}/results/sets/labels-astra.jsonl",
+        "--duplicate-groups",
+        "{run}/prereg.json",
+        "--judge-check",
+        "{run}/results/judge-check/judge-check.json",
+        "--reachable",
+        "{run}/reachable.json",
+        "--set-t",
+        "tasks/skill-resolver/T/tasks",
+        "--out",
+        "{run}/results/analysis"
+      ],
+      "outputs": [
+        "results/analysis/analysis.json",
+        "results/analysis/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "{run}/results/tools/analyze-sensitivity.ts",
+        "--results",
+        "{run}/results/merged",
+        "--labels",
+        "P={run}/results/sets/labels.jsonl",
+        "--cross-family",
+        "P={run}/results/sets/labels-astra.jsonl",
+        "--duplicate-groups",
+        "{run}/prereg.json",
+        "--judge-check",
+        "{run}/results/judge-check/judge-check.json",
+        "--reachable",
+        "{run}/reachable.json",
+        "--set-t",
+        "tasks/skill-resolver/T/tasks",
+        "--uncontaminate",
+        "{run}/results/tools/contaminated-7-trials.txt",
+        "--out",
+        "{run}/results/analysis-7-counted-in"
+      ],
+      "outputs": [
+        "results/analysis-7-counted-in/analysis.json",
+        "results/analysis-7-counted-in/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "{run}/results/tools/analyze-sensitivity.ts",
+        "--results",
+        "{run}/results/merged",
+        "--labels",
+        "P={run}/results/sets/labels.jsonl",
+        "--cross-family",
+        "P={run}/results/sets/labels-astra.jsonl",
+        "--duplicate-groups",
+        "{run}/prereg.json",
+        "--judge-check",
+        "{run}/results/judge-check/judge-check.json",
+        "--reachable",
+        "{run}/reachable.json",
+        "--set-t",
+        "tasks/skill-resolver/T/tasks",
+        "--drop-trials",
+        "{run}/results/tools/rerun-18-trials.txt",
+        "--out",
+        "{run}/results/sensitivity-sett-42-tasks"
+      ],
+      "outputs": [
+        "results/sensitivity-sett-42-tasks/analysis.json",
+        "results/sensitivity-sett-42-tasks/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "{run}/results/tools/analyze-sensitivity.ts",
+        "--results",
+        "{run}/results/merged",
+        "--labels",
+        "P={run}/results/sets/labels.jsonl",
+        "--cross-family",
+        "P={run}/results/sets/labels-astra.jsonl",
+        "--duplicate-groups",
+        "{run}/prereg.json",
+        "--judge-check",
+        "{run}/results/judge-check/judge-check.json",
+        "--reachable",
+        "{run}/reachable.json",
+        "--set-t",
+        "tasks/skill-resolver/T/tasks",
+        "--drop-trials",
+        "{run}/results/tools/openclaw-phase-b-trials.txt",
+        "--out",
+        "{run}/results/sensitivity-without-openclaw-phase-b"
+      ],
+      "outputs": [
+        "results/sensitivity-without-openclaw-phase-b/analysis.json",
+        "results/sensitivity-without-openclaw-phase-b/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "{run}/results/tools/analyze-sensitivity.ts",
+        "--results",
+        "{run}/results/merged",
+        "--labels",
+        "P={run}/results/sets/labels.jsonl",
+        "--cross-family",
+        "P={run}/results/sets/labels-astra.jsonl",
+        "--duplicate-groups",
+        "{run}/prereg.json",
+        "--judge-check",
+        "{run}/results/judge-check/judge-check.json",
+        "--reachable",
+        "{run}/reachable.json",
+        "--set-t",
+        "tasks/skill-resolver/T/tasks",
+        "--uncontaminate",
+        "{run}/results/tools/contaminated-7-trials.txt",
+        "--drop-trials",
+        "{run}/results/tools/openclaw-phase-b-trials.txt",
+        "--out",
+        "{run}/results/sensitivity-without-openclaw-phase-b-7-counted-in"
+      ],
+      "outputs": [
+        "results/sensitivity-without-openclaw-phase-b-7-counted-in/analysis.json",
+        "results/sensitivity-without-openclaw-phase-b-7-counted-in/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/skill-resolver/analyze.ts",
+        "--results",
+        "{run}/results/merged",
+        "--labels",
+        "P={run}/results/sets/labels.jsonl",
+        "--cross-family",
+        "P={run}/results/sets/labels-astra.jsonl",
+        "--duplicate-groups",
+        "{run}/prereg.json",
+        "--judge-check",
+        "{run}/results/judge-check/judge-check.json",
+        "--reachable",
+        "{run}/reachable.json",
+        "--set-t",
+        "tasks/skill-resolver/T/tasks",
+        "--requests",
+        "P={run}/results/sets/setp.jsonl",
+        "--out",
+        "{run}/results/exploratory-setp-overlap-bins"
+      ],
+      "outputs": [
+        "results/exploratory-setp-overlap-bins/analysis.json",
+        "results/exploratory-setp-overlap-bins/analysis.md"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "results/checks/ (the set T clean-arm audit, the gstack-path evidence and the OpenClaw tool_call count)",
+      "reason": "Their scripts in results/tools/ read set T agent traces (OpenClaw sqlite transcripts, QM database dumps, turn logs) that were never committed."
+    },
+    {
+      "what": "results/merged/summary.json and summary.md",
+      "reason": "summarize-run.ts reads per-trial files that were not committed; the copies are its output on the full merged root, with local path prefixes removed."
+    },
+    {
+      "what": "The judge check in results/judge-check/judge-check.json",
+      "reason": "It is the uncounted pilot's paid grading run, not an analysis of these trials."
+    }
+  ]
+}

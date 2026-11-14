@@ -79,6 +79,7 @@ Sonnet, Haiku or luna runs: appendix-grade, not evidence about real use.
 
 Run folders with no row in docs/scoreboard/reports.json yet. A new folder lands here until someone adds its row.
 
+- [2026-11-08-skill-resolver](benchmarks/2026-11-08-skill-resolver/)
 - [2026-11-09-fable-5-2-coding](benchmarks/2026-11-09-fable-5-2-coding/)
 - [2026-11-09-failure-mining](benchmarks/2026-11-09-failure-mining/)
 - [2026-11-10-harness-zero-h2h-recall-rerun](benchmarks/2026-11-10-harness-zero-h2h-recall-rerun/)
