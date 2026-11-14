@@ -46,7 +46,7 @@ Every report opens with takeaways, then a TL;DR block, before any other heading.
 
 ## Feeding the scoreboard
 
-A report whose run compares harnesses on one task set adds an entry under docs/scoreboard/entries/ (see [scoreboard.md](scoreboard.md) and scripts/scoreboard/schema.ts). The entry names the results file and the path to each number and holds no numbers itself. Write the run's analysis file with:
+A report whose run compares harnesses on one task set adds an entry under docs/scoreboard/entries/ (see [scoreboard.md](scoreboard.md) and scripts/scoreboard/schema.ts). The entry names the results file and the path to each number and holds no numbers itself. It also names its use case (`use_case`: `codegen`, `personal-brain` or `company-brain`), the heading the page files it under, and may list the harness and model pairs that can't run with the reason (`cant_run`). Write the run's analysis file with:
 
 - per cell: passes, scored trials, the task-mean pass rate and its 95% range, cost per solved task and its 95% range, cost per trial, median wall time;
 - per comparison: the two cells, delta, 95% range, Holm-adjusted p, tested, and a verdict field using the glossary's call words;

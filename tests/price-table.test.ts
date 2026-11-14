@@ -29,8 +29,10 @@ const fixture = JSON.parse(readFileSync(new URL('./fixtures/price-table/identity
  */
 const FLOAT_NOISE_ROWS = ['anthropic:claude-sonnet-4-6', 'anthropic:claude-haiku-5-5', 'anthropic:claude-3-5-sonnet-20241022', 'anthropic:claude-3-5-haiku-20241022'];
 
-/** Rows a later dated table added, each reviewed in its own test below; every other row is held to the fixture. prices-2026-11-07: gpt-6-astra (internal-task); prices-2026-11-09: claude-fable-5-2. */
-const ADDED_AFTER_FIXTURE = ['openai:gpt-6-astra', 'anthropic:claude-fable-5-2'];
+/** Rows a later dated table added, each reviewed in its own test below; every other row is held to the fixture. prices-2026-11-07: gpt-6-astra (internal-task);
+ *  prices-2026-11-08: OpenRouter's DeepSeek endpoint for deepseek/deepseek-v4.1-flash-1017 (tests/price-table-2026-11-08.test.ts); prices-2026-11-09: claude-fable-5-2;
+ *  prices-2026-11-10 holds both. */
+const ADDED_AFTER_FIXTURE = ['openai:gpt-6-astra', 'anthropic:claude-fable-5-2', 'openrouter:deepseek/deepseek-v4.1-flash-1017'];
 
 /** Same shape and keys; every number within `relTol` of its counterpart (0 means bit-identical). */
 function close(actual: unknown, expected: unknown, relTol: number, path = ''): string[] {
@@ -91,7 +93,7 @@ describe('the price table file', () => {
       expect(String(row.source_url)).toStartWith('https://');
       expect(String(row.source_date)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(String(row.source_date) <= table.date).toBe(true);
-      expect(['row', 'ledger', 'file-header', 'supplied']).toContain(String(row.source_basis));
+      expect(['row', 'ledger', 'file-header', 'supplied', 'fetched']).toContain(String(row.source_basis));
     }
   });
 

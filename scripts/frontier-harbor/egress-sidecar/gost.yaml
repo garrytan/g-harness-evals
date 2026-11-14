@@ -1,7 +1,9 @@
-# Adapted from Harbor 0.24.0's egress sidecar gost.yaml (Apache-2.0). Changed for the frontier Harbor path (internal-task):
+# Adapted from Harbor 0.24.0's egress sidecar gost.yaml (Apache-2.0). Changed for the frontier Harbor path (HARN-50):
 # a second transparent service on :12346 whose bypass is the blocklist (whitelist false: a matched host is refused,
 # everything else passes). Harbor's allowlist service on :12345 is unchanged. addr, so_mark and file.path must stay in
-# sync with bin/network-policy.
+# sync with bin/network-policy. Both handlers set readTimeout to 900s: gost 3.2.7's red handler otherwise defaults it to
+# 15s and cuts any connection whose reply has not started by then, so a slow model reply was cut and resent while the
+# proxy still paid for it (found by GEVA-2 on Harbor 0.25.0's sidecar, the same gost build).
 services:
   - name: transparent-egress
     addr: ":12345"
@@ -14,6 +16,7 @@ services:
         sniffing: true
         sniffing.timeout: 5s
         sniffing.fallback: true
+        readTimeout: 900s
     listener:
       type: red
   - name: transparent-blocklist
@@ -27,6 +30,7 @@ services:
         sniffing: true
         sniffing.timeout: 5s
         sniffing.fallback: true
+        readTimeout: 900s
     listener:
       type: red
 

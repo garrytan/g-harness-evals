@@ -37,13 +37,17 @@
 # The chain, every piece on this machine:
 #   the harness in a task container (only the per-trial dummy token and the proxy URL) -> the egress sidecar of its
 #   trial (gost, blocklist) -> our metering proxy (runner/proxy/metering-proxy.ts on the docker bridge gateway :8790,
-#   lease mode, one slot per trial, the only process holding ANTHROPIC_API_KEY and OPENAI_API_KEY) -> the provider.
+#   lease mode, one slot per trial, the only process holding ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY and
+#   OPENROUTER_API_KEY) -> the provider.
 #   The proxy refuses requests that declare a hosted web tool (--refuse-hosted-tools), caps output at the largest model
 #   max output in pin.json (128,000; Claude Code sends max_tokens 128000) and writes every forwarded body, hash-chained,
 #   to <run>/jobs/<job>/<trial>/proxy-capture/proxy-requests.ndjson (--capture-bodies), on the host, outside the task
 #   container, for the contamination audit.
 #   broker.ts (127.0.0.1:8791, the only other holder of the proxy's control token) binds each trial's slot when its
-#   agent class asks at setup and hands the class only the token and its route: /<trial>/anthropic or /<trial>/openai.
+#   agent class asks at setup and hands the class only the token and its route: /<trial>/anthropic, /<trial>/openai or
+#   /<trial>/particle (Particle-1 on Hermes, OpenClaw, Pi and DeepSeek Harness; Chat Completions only) or /<trial>/openrouter
+#   (DeepSeek V4.1 Flash 1017 on Pi, Hermes, OpenClaw and DeepSeek Harness; Chat Completions only, every request pinned to
+#   DeepSeek's endpoint by the proxy).
 #   Harbor runs with a scrubbed environment (PATH, HOME, TZ, PYTHONPATH, DOCKER_HOST only): no key reaches it, and the
 #   classes in agents.py read nothing from its environment.
 # Every shard, counted or not, must be a shard of the preregistration with a lease no more than its planned one and no
@@ -52,9 +56,21 @@
 # Order: the shard checked, Harbor installed from the pinned wheel (sha256 checked), the preregistration attested, tasks
 # materialized, proxy and broker up, one Harbor job per cell and attempt (plan.ts jobs: retries off, the preregistered
 # concurrency, default 4), then the drain: every slot unbound and every trial's meter finalized before to-trials.ts
-# writes the records. umask 077. Harbor, proxy and agent output goes to files under --out; stdout and
+# writes the records. While Harbor runs, to-trials.ts journal appends each finished trial's record to
+# <out>/trials.journal.jsonl every 60 s, so a mid-run mirror of <out> holds them before finish() runs (CREW R16).
+# umask 077. Harbor, proxy and agent output goes to files under --out; stdout and
 # <out>/run-shard.log get counts only, never a task id or task text.
-# Exit: 0, or Harbor's last non-zero exit code; 2 usage or plan refusal; 3 setup failure; 6 the meter did not drain.
+# Cursor cells (harness cursor, scripts/frontier-harbor/README.md "Cursor"): the Cursor CLI calls Cursor's servers with
+# CURSOR_API_KEY, so a Cursor cell binds no slot, and a shard of Cursor cells only starts no proxy, broker or lease. A
+# counted shard with Cursor cells runs only Cursor cells and needs CURSOR_API_KEY in this shell (exit 2 otherwise, before
+# anything is installed). The value is copied into an unexported shell variable, unset from the environment like every
+# other key, checked by the key-list selfcheck, and written to a 0600 file under ~/.frontier-harbor (outside --out) that
+# plan.ts names to the Cursor jobs as cursor_key_file; agents.py uploads it into each Cursor task container, where the
+# turn reads and deletes it. The file is removed on exit, and after the records are written bun scripts/cursor/key-scan.ts
+# scans --out for the value (exit 5 on a hit, HE-CURSOR-003). With --fake-upstream no key file is written, so each Cursor
+# cell stops at agent setup with HE-CURSOR-002 before any command runs in its container (the keyless install check).
+# Exit: 0, or Harbor's last non-zero exit code; 2 usage or plan refusal; 3 setup failure; 5 the Cursor key scan found the
+# value; 6 the meter did not drain.
 set -euo pipefail
 umask 077
 here=$(cd "$(dirname "$0")" && pwd)
@@ -82,12 +98,16 @@ done
 [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$lease" ] && [ -n "$out" ] && [ -n "$tb21" ] || { echo "vm-run (frontier): --prereg, --name, --lease-usd, --out and --tb21 are required" >&2; exit 2; }
 [ "$fake" -eq 0 ] || [ -n "$uncounted" ] || [ "$canary" -eq 1 ] || { echo "vm-run (frontier): --fake-upstream is for an --uncounted check or a --canary-spec only" >&2; exit 2; }
 [ "$canary" -eq 0 ] || [ -z "$uncounted" ] || { echo "vm-run (frontier): a --canary-spec run is uncounted already; --uncounted does not apply" >&2; exit 2; }
-# Only the metering proxy holds provider keys: they stay shell variables (not exported) and are exported again inside
-# the proxy's subshell alone.
-export -n ANTHROPIC_API_KEY OPENAI_API_KEY 2>/dev/null || true
-unset UBICLOUD_API_KEY VOYAGE_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY GOOGLE_API_KEY
+# Only the metering proxy holds provider keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY, OPENROUTER_API_KEY):
+# they stay shell variables (not exported) and are exported again inside the proxy's subshell alone.
+export -n ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY 2>/dev/null || true
+# CURSOR_API_KEY: kept only as this unexported shell variable (a Cursor shard), never passed in any environment but the
+# key scan's; a fake-upstream run drops it.
+cursor_key=${CURSOR_API_KEY-}
+[ "$fake" -eq 0 ] || cursor_key=""
+unset UBICLOUD_API_KEY VOYAGE_API_KEY GEMINI_API_KEY GOOGLE_API_KEY CURSOR_API_KEY
 if [ "$fake" -eq 0 ]; then
-  [ -n "${ANTHROPIC_API_KEY:+x}" ] || [ -n "${OPENAI_API_KEY:+x}" ] || { echo "vm-run (frontier): neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is set; the proxy needs the key of each provider the shard uses (or pass --fake-upstream)" >&2; exit 2; }
+  [ -n "${ANTHROPIC_API_KEY:+x}" ] || [ -n "${OPENAI_API_KEY:+x}" ] || [ -n "${PARTICLE_API_KEY:+x}" ] || [ -n "${OPENROUTER_API_KEY:+x}" ] || [ -n "${cursor_key:+x}" ] || { echo "vm-run (frontier): none of ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY and OPENROUTER_API_KEY is set; the proxy needs the key of each provider the shard uses (or pass --fake-upstream). A shard of Cursor cells needs CURSOR_API_KEY instead: no CURSOR_API_KEY is set either" >&2; exit 2; }
 fi
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
 mkdir -p "$out/run"
@@ -105,8 +125,9 @@ run_scrubbed() {
   for v in $(compgen -e); do [[ $keep == *" $v "* ]] || unset "$v" 2>/dev/null || true; done
   exec "$@"
 }
-pids=() harbor_pid="" harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc=""
+pids=() harbor_pid="" journal_pid="" harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc="" metered=1 cursor_key_dir=""
 cleanup() {
+  [ -z "$cursor_key_dir" ] || rm -rf "$cursor_key_dir"
   [ -z "$harbor_pid" ] || kill "$harbor_pid" 2>/dev/null || true
   for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done
   for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done
@@ -147,13 +168,29 @@ const ids = [...shared, ...new Set(cells.flatMap((c) => c.task_ids).filter((t) =
 const r = Bun.spawnSync(["python3", "-c", "import sys,json; sys.path.insert(0, sys.argv[1]); import frontier_settings as f; print(\",\".join(sorted({m for a in json.loads(sys.argv[2]) for m in f.slot_models(*a)})))", process.argv[3], JSON.stringify(cells.map((c) => [c.harness, c.model]))]);
 if (r.exitCode !== 0) { console.error(r.stderr.toString()); process.exit(2); }
 console.log(p.prereg.run_id, ids.join(","), r.stdout.toString().trim());' "$prereg" "$name" "$here" 2>>"$out/run.log")"
-[ -n "${models:-}" ] || { say "could not read the shard's tasks and models (run.log)"; exit 2; }
+[ -n "${ids:-}" ] || { say "could not read the shard's tasks and models (run.log)"; exit 2; }
+# Cursor cells: no slot models (frontier_settings.py slot_models), so a shard of Cursor cells only has none and runs no proxy.
+harnesses=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); s=next(x for x in p["shards"] if x["name"] == sys.argv[2]); print(" ".join(sorted({c["harness"] for c in p["cells"] if c["id"] in s["cells"]})))' "$prereg" "$name")
+[ -n "${models:-}" ] || metered=0
+case " $harnesses " in
+  *" cursor "*)
+    if [ "$fake" -eq 0 ]; then
+      [ "$harnesses" = cursor ] || { say "the shard mixes Cursor cells with $harnesses: Cursor cells call Cursor's servers and the others the metering proxy, so a counted run shards them apart; nothing ran"; exit 2; }
+      [ -n "${cursor_key:+x}" ] || { say "HE-CURSOR-002 no CURSOR_API_KEY: the shard has Cursor cells and CURSOR_API_KEY is not set in this shell; nothing was installed or run, and nothing contacted Cursor"; exit 2; }
+      (cd "$repo" && "${safe_env[@]}" bun scripts/cursor/key-scan.ts selfcheck 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "the key-list selfcheck failed (run.log): a keyless list that misses CURSOR_API_KEY could carry it into a keyless step; nothing ran"; exit 2; }
+    else
+      say "cursor: --fake-upstream, so no key file is written: each Cursor cell stops at agent setup with HE-CURSOR-002, before any command runs in its container"
+    fi ;;
+  *) cursor_key="" ;;
+esac
 providers=$(printf '%s' "$models" | tr ',' '\n' | cut -d: -f1 | sort -u | tr '\n' ' ')
 if [ "$fake" -eq 0 ]; then
   for p in $providers; do
     case $p in
       anthropic) [ -n "${ANTHROPIC_API_KEY:+x}" ] || { say "the shard uses anthropic models and ANTHROPIC_API_KEY is not set"; exit 2; } ;;
       openai) [ -n "${OPENAI_API_KEY:+x}" ] || { say "the shard uses openai models and OPENAI_API_KEY is not set"; exit 2; } ;;
+      particle) [ -n "${PARTICLE_API_KEY:+x}" ] || { say "the shard uses particle models and PARTICLE_API_KEY is not set"; exit 2; } ;;
+      openrouter) [ -n "${OPENROUTER_API_KEY:+x}" ] || { say "the shard uses openrouter models and OPENROUTER_API_KEY is not set"; exit 2; } ;;
     esac
   done
 fi
@@ -206,31 +243,35 @@ attest=(--prereg "$prereg" --out "$out")
 gw=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
 control_token=$(openssl rand -hex 32)
 lease_run="$run_id:$name${stage:+:$stage}"
-upstream=()
-if [ "$fake" -eq 1 ]; then
-  canary="fake-provider-key-canary-$(openssl rand -hex 16)"
-  printf '%s' "$canary" > "$out/canary.txt"
-  (export FAKE_UPSTREAM_CANARY=$canary; cd "$repo"; KEEP=FAKE_UPSTREAM_CANARY run_scrubbed setsid bun scripts/frontier-harbor/fake-upstream.ts --listen 127.0.0.1:8799 --log "$out/fake-upstream.jsonl" --bodies "$out/fake-upstream-bodies.jsonl" --canary-env FAKE_UPSTREAM_CANARY) >> "$out/fake-upstream.log" 2>&1 & pids+=($!)
-  upstream=(--upstream anthropic=http://127.0.0.1:8799 --upstream openai=http://127.0.0.1:8799)
+if [ "$metered" -eq 1 ]; then
+  upstream=()
+  if [ "$fake" -eq 1 ]; then
+    canary="fake-provider-key-canary-$(openssl rand -hex 16)"
+    printf '%s' "$canary" > "$out/canary.txt"
+    (export FAKE_UPSTREAM_CANARY=$canary; cd "$repo"; KEEP=FAKE_UPSTREAM_CANARY run_scrubbed setsid bun scripts/frontier-harbor/fake-upstream.ts --listen 127.0.0.1:8799 --log "$out/fake-upstream.jsonl" --bodies "$out/fake-upstream-bodies.jsonl" --canary-env FAKE_UPSTREAM_CANARY) >> "$out/fake-upstream.log" 2>&1 & pids+=($!)
+    upstream=(--upstream anthropic=http://127.0.0.1:8799 --upstream openai=http://127.0.0.1:8799 --upstream particle=http://127.0.0.1:8799/particle --upstream openrouter=http://127.0.0.1:8799/openrouter)
+  fi
+  (
+    cd "$repo"
+    if [ "$fake" -eq 1 ]; then export ANTHROPIC_API_KEY=$canary OPENAI_API_KEY=$canary PARTICLE_API_KEY=$canary OPENROUTER_API_KEY=$canary; else export ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY 2>/dev/null || true; fi
+    export SHOOTOUT_PROXY_CONTROL_TOKEN=$control_token
+    KEEP="ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY SHOOTOUT_PROXY_CONTROL_TOKEN" run_scrubbed setsid bun runner/proxy/metering-proxy.ts --listen "$gw:8790" \
+      --budget-ledger "$out/ledger.sqlite" --lease-usd "$lease" --run-id "$lease_run" --new-run --usage-log "$out/proxy-usage.ndjson" \
+      --allow-models "$models" --refuse-hosted-tools --capture-bodies "$run/jobs" --max-output-tokens "$(python3 -c 'import json,sys; print(max(m["max_output_tokens"] for m in json.load(open(sys.argv[1]))["models"].values()))' "$here/pin.json")" ${upstream[@]+"${upstream[@]}"}
+  ) >> "$out/proxy.log" 2>&1 & pids+=($!)
+  (export SHOOTOUT_PROXY_CONTROL_TOKEN=$control_token; cd "$repo"; KEEP=SHOOTOUT_PROXY_CONTROL_TOKEN run_scrubbed setsid bun scripts/frontier-harbor/broker.ts --listen 127.0.0.1:8791 \
+    --proxy "http://$gw:8790" --gateway "http://$gw:8790" --models "$models" --log "$run/binds.jsonl" --capture) >> "$out/broker.log" 2>&1 & pids+=($!)
+  up=0
+  for _ in $(seq 60); do
+    if [ "$(curl -fsS "$gw:8790/__proxy/status" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("run_id"))' 2>/dev/null)" = "$lease_run" ] && curl -fsS 127.0.0.1:8791/binds >/dev/null 2>&1; then up=1; break; fi
+    sleep 0.5
+  done
+  [ "$up" -eq 1 ] || { say "the metering proxy (run $lease_run) or the broker did not come up; see proxy.log and broker.log"; exit 3; }
+  for p in "${pids[@]}"; do kill -0 "$p" 2>/dev/null || { say "a proxy, broker or fake upstream process exited at start; see its log"; exit 3; }; done
+  say "proxy up on $gw:8790 (lease $lease_run, models $models), broker on 127.0.0.1:8791"
+else
+  say "no metered cell on this shard (Cursor cells only): no metering proxy, broker or lease runs; Cursor's usage export is the cost source"
 fi
-(
-  cd "$repo"
-  if [ "$fake" -eq 1 ]; then export ANTHROPIC_API_KEY=$canary OPENAI_API_KEY=$canary; else export ANTHROPIC_API_KEY OPENAI_API_KEY 2>/dev/null || true; fi
-  export SHOOTOUT_PROXY_CONTROL_TOKEN=$control_token
-  KEEP="ANTHROPIC_API_KEY OPENAI_API_KEY SHOOTOUT_PROXY_CONTROL_TOKEN" run_scrubbed setsid bun runner/proxy/metering-proxy.ts --listen "$gw:8790" \
-    --budget-ledger "$out/ledger.sqlite" --lease-usd "$lease" --run-id "$lease_run" --new-run --usage-log "$out/proxy-usage.ndjson" \
-    --allow-models "$models" --refuse-hosted-tools --capture-bodies "$run/jobs" --max-output-tokens "$(python3 -c 'import json,sys; print(max(m["max_output_tokens"] for m in json.load(open(sys.argv[1]))["models"].values()))' "$here/pin.json")" ${upstream[@]+"${upstream[@]}"}
-) >> "$out/proxy.log" 2>&1 & pids+=($!)
-(export SHOOTOUT_PROXY_CONTROL_TOKEN=$control_token; cd "$repo"; KEEP=SHOOTOUT_PROXY_CONTROL_TOKEN run_scrubbed setsid bun scripts/frontier-harbor/broker.ts --listen 127.0.0.1:8791 \
-  --proxy "http://$gw:8790" --gateway "http://$gw:8790" --models "$models" --log "$run/binds.jsonl" --capture) >> "$out/broker.log" 2>&1 & pids+=($!)
-up=0
-for _ in $(seq 60); do
-  if [ "$(curl -fsS "$gw:8790/__proxy/status" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("run_id"))' 2>/dev/null)" = "$lease_run" ] && curl -fsS 127.0.0.1:8791/binds >/dev/null 2>&1; then up=1; break; fi
-  sleep 0.5
-done
-[ "$up" -eq 1 ] || { say "the metering proxy (run $lease_run) or the broker did not come up; see proxy.log and broker.log"; exit 3; }
-for p in "${pids[@]}"; do kill -0 "$p" 2>/dev/null || { say "a proxy, broker or fake upstream process exited at start; see its log"; exit 3; }; done
-say "proxy up on $gw:8790 (lease $lease_run, models $models), broker on 127.0.0.1:8791"
 
 # 6. the drain and the records. Idempotent: the normal path and on_signal both call it once. Every slot is unbound, then
 # each trial's meter finalized ($1 rounds of up to $2 ms) so no request is still settling when the records are written.
@@ -239,7 +280,8 @@ finish() {
   [ "$finished" -eq 0 ] || return 0
   finished=1
   local rounds=$1 wait_ms=$2 undrained=0 ok=true resp n k
-  curl -fsS -X POST 127.0.0.1:8791/unbind-all >> "$out/run.log" 2>&1 || ok=false
+  [ -z "$journal_pid" ] || { kill "$journal_pid" 2>/dev/null || true; wait "$journal_pid" 2>/dev/null || true; }
+  [ "$metered" -eq 0 ] || curl -fsS -X POST 127.0.0.1:8791/unbind-all >> "$out/run.log" 2>&1 || ok=false
   for k in $(python3 -c 'import json,sys; [print(json.loads(l)["trial"]) for l in open(sys.argv[1]) if l.strip()]' "$run/binds.jsonl" 2>/dev/null); do
     n=unknown
     for _ in $(seq "$rounds"); do
@@ -262,10 +304,24 @@ PY
 }
 
 # 7. the Harbor jobs, one per cell and attempt, in plan.ts order
-jobs=$(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts jobs --prereg "$prereg" --name "$name" --run "$run" --broker-url http://127.0.0.1:8791 ${plan_arg[@]+"${plan_arg[@]}"} ${done_args[@]+"${done_args[@]}"} 2>>"$out/run.log") || { say "plan.ts jobs refused (run.log)"; exit 3; }
+# the Cursor key file: 0600, outside --out, named to the Cursor jobs only; cleanup() removes it on every exit
+cursor_args=()
+if [ -n "${cursor_key:+x}" ]; then
+  mkdir -p "$HOME/.frontier-harbor"
+  cursor_key_dir=$(mktemp -d "$HOME/.frontier-harbor/cursor-key.XXXXXX")
+  printf '%s' "$cursor_key" > "$cursor_key_dir/key"
+  cursor_args=(--cursor-key-file "$cursor_key_dir/key")
+  say "cursor: CURSOR_API_KEY is set; it goes to the Cursor task containers only, through a 0600 key file outside $out"
+fi
+jobs=$(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts jobs --prereg "$prereg" --name "$name" --run "$run" --broker-url http://127.0.0.1:8791 ${plan_arg[@]+"${plan_arg[@]}"} ${done_args[@]+"${done_args[@]}"} ${cursor_args[@]+"${cursor_args[@]}"} 2>>"$out/run.log") || { say "plan.ts jobs refused (run.log)"; exit 3; }
 say "harbor: $(printf '%s\n' "$jobs" | grep -c .) job(s); logs in $run/harbor.log and $run/jobs"
 harbor_env=("${safe_env[@]}" "PYTHONPATH=$here")
 [ -z "${DOCKER_HOST:-}" ] || harbor_env+=("DOCKER_HOST=$DOCKER_HOST")
+# the journal: while Harbor runs, every 60 s, one row per newly finished trial in <out>/trials.journal.jsonl (outside run/,
+# so the mid-run mirror carries it; to-trials.ts recover rebuilds those records from the mirror alone). finish() stops it.
+(cd "$repo" && exec "${safe_env[@]}" bun scripts/frontier-harbor/to-trials.ts journal --prereg "$prereg" --out "$out" --shard "$name" --lease-run-id "$run_id:$name" --every 60) >> "$out/run.log" 2>&1 &
+journal_pid=$!
+pids+=("$journal_pid")
 set +e
 last=0
 harbor_started=1
@@ -282,4 +338,15 @@ rc=$last
 set -e
 finish 8 120000
 [ "$rc" -ne 0 ] || [ "$accounting_incomplete" -eq 0 ] || rc=6
+# the Cursor key scan (HE-CURSOR-003): the literal value (whole, first 16, last 12 characters, gzip decoded) in any file
+# under --out; key-scan.ts reads it from its own environment, deletes it there and prints a count, never the value
+if [ -n "${cursor_key:+x}" ]; then
+  rm -rf "$cursor_key_dir"
+  cursor_key_dir=""
+  set +e
+  (export CURSOR_API_KEY=$cursor_key; cd "$repo"; KEEP=CURSOR_API_KEY run_scrubbed bun scripts/cursor/key-scan.ts "$out") 2>&1 | tee -a "$out/run-shard.log"
+  scan_rc=${PIPESTATUS[0]}
+  set -e
+  [ "$scan_rc" -eq 0 ] || { say "HE-CURSOR-003 the key scan of $out exited $scan_rc (1: the CURSOR_API_KEY value is in a file there); keep $out off every copy, mirror, publication and drive until it is cleaned"; rc=5; }
+fi
 exit "$rc"

@@ -10,8 +10,18 @@
 #   scripts/run-shard.sh --prereg docs/benchmarks/<run>/prereg.json --name <shard> --cells a,b --lease-usd <n>
 #                        [--out results/<run-id>] [--embedded] [--gbrain-image <tag>] [--skip-build] [--resume]
 #                        [--amendment <commit>] [--max-output-tokens <n>] [--sealed-root <dir> --opening-receipt <file>]
-#                        [--clean-arm-preflight] [--skill-root <dir>]
+#                        [--clean-arm-preflight] [--cursor-offline] [--skill-root <dir>]
 #
+# Cursor shards (harness cursor, harnesses/cursor/README.md): a shard whose cells run the Cursor CLI runs only Cursor cells
+# (scripted cells aside) and needs CURSOR_API_KEY in this shell; without it the shard stops with exit 2 before any build.
+# First it runs bun scripts/cursor/key-scan.ts selfcheck (CURSOR_API_KEY in the public export's KEY_NAMES and in every
+# keyless list; exit 2 on a miss). The key is taken out of this shell's exported environment at once, so the builds, plan
+# and preflight never see it, and given to the runner's run step alone (as an environment assignment, never an argument),
+# which hands it to the Cursor containers only. After the run, bun scripts/cursor/key-scan.ts scans <out> for the key's
+# literal value and prints a verdict only; a hit is exit 5 and a line naming <out>, and nothing under <out> may be
+# copied, published or put on a drive until it is cleaned. --cursor-offline is the keyless rehearsal (runner/run.ts run
+# --cursor-offline): no key needed, a canary stands in for it, no egress host is admitted, and <out>/cursor-offline.json
+# must say ok (exit 4 otherwise).
 # --skill-root (internal-task) is required when any of the shard's cells has a skill_arm: the directory holding the frozen skill
 # kit (kit/), the musl build of the pinned resolver (gbrain-linux-x64-musl) and the inputs the cells read under .skill-resolver/
 # (inputs/). After the harness images, scripts/skill-resolver/shard-kit.ts checks all of it against the preregistration's
@@ -39,7 +49,9 @@
 # (HE-PROXY-003). preflight itself is scoped to this shard's cells (--cells), so a shard builds only its own images.
 #
 # The embedded image build and preflight's embedded probe need OPENAI_API_KEY in this shell for the metering proxy only;
-# the run needs ANTHROPIC_API_KEY the same way. No key reaches a container or an image.
+# the run needs ANTHROPIC_API_KEY the same way, and a Particle or OpenRouter cell PARTICLE_API_KEY or OPENROUTER_API_KEY.
+# No key reaches a container or an image, except that a Cursor shard's containers get CURSOR_API_KEY (above); no image
+# ever does.
 #
 # When the preregistration names a top-level gbrain_commit (a full sha), the gbrain image is built at that commit
 # (build-gbrain-image.sh --gbrain <sha>) in place of gbrain/pin.json's, which stays the earlier run's pin; preflight and run
@@ -67,7 +79,7 @@
 set -euo pipefail
 
 prereg="" name="" cells="" lease="" out="" embedded=0 gbrain_image="harness-eval/gbrain:dev" skip_build=0 resume=0 amendment="" max_output_tokens=128000
-sealed_root="" opening_receipt="" clean_arm=0 skill_root=""
+sealed_root="" opening_receipt="" clean_arm=0 cursor_offline=0 skill_root=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --prereg) prereg="$2"; shift 2 ;;
@@ -84,6 +96,7 @@ while [ $# -gt 0 ]; do
     --sealed-root) sealed_root="$2"; shift 2 ;;
     --opening-receipt) opening_receipt="$2"; shift 2 ;;
     --clean-arm-preflight) clean_arm=1; shift ;;
+    --cursor-offline) cursor_offline=1; shift ;;
     --skill-root) skill_root="$2"; shift 2 ;;
     *) echo "run-shard: unknown argument $1" >&2; exit 2 ;;
   esac
@@ -138,6 +151,23 @@ print(" ".join(sorted({c['harness'] for c in p['cells'] if c['id'] in want and c
 PY
 )
 log() { printf '%s run-shard[%s]: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$name" "$*" | tee -a "$out/run-shard.log" >&2; }
+# Cursor: the key list check, the key's presence, and the key out of the exported environment until the run step.
+cursor=0
+case " $harnesses " in *" cursor "*) cursor=1 ;; esac
+if [ "$cursor" -eq 1 ]; then
+  [ "$harnesses" = cursor ] || { log "refused: harness cursor calls Cursor's backend through its egress allowlist and the other harnesses here ($harnesses) call the metering proxy; one runner invocation does one or the other. fix: shard the Cursor cells on their own"; exit 2; }
+  env -u CURSOR_API_KEY bun scripts/cursor/key-scan.ts selfcheck 2>&1 | tee -a "$out/run-shard.log" >&2; [ "${PIPESTATUS[0]}" -eq 0 ] || { log "refused: the key-list selfcheck failed (above); a list that misses CURSOR_API_KEY could carry it into a keyless step"; exit 2; }
+  if [ "$cursor_offline" -eq 1 ]; then
+    unset CURSOR_API_KEY
+    log "cursor: --cursor-offline, the keyless rehearsal: a canary stands in for CURSOR_API_KEY and the egress allowlist admits no host"
+  else
+    [ -n "${CURSOR_API_KEY:+x}" ] || { log "refused: cells $cells run the Cursor CLI and CURSOR_API_KEY is not set in this shell; nothing was built or run. fix: run this from the machine that holds the key, or pass --cursor-offline for the keyless rehearsal"; exit 2; }
+    export -n CURSOR_API_KEY
+    log "cursor: CURSOR_API_KEY is set; it goes to the runner's run step only, which passes it by name to the Cursor containers"
+  fi
+elif [ "$cursor_offline" -eq 1 ]; then
+  log "refused: --cursor-offline rehearses Cursor cells, and this shard has none"; exit 2
+fi
 # The last lines of a failed step's log, or for a sealed shard only its path: a sealed step's log can name sealed tasks.
 show_tail() { if [ -n "$sealed_root" ]; then log "log: $1 (custody only; a sealed shard never prints its logs)"; else tail -"$2" "$1" >&2; fi; }
 log "commit $commit, cells $cells, harnesses $harnesses, lease $lease, max_output_tokens $max_output_tokens, out $out"
@@ -290,10 +320,22 @@ prune_pid=$!
 
 run_args=(run --manifest "$out/manifest.json" --cells "$cells" --lease-usd "$lease" --max-output-tokens "$max_output_tokens" --gbrain-image "$gbrain_image" ${sealed[@]+"${sealed[@]}"})
 [ "$resume" -eq 1 ] || [ -f "$out/trials.jsonl" ] && run_args+=(--resume)
+[ "$cursor_offline" -eq 0 ] || run_args+=(--cursor-offline)
 log "run ${run_args[*]}"
 set +e
-bun runner/run.ts "${run_args[@]}" >> "$out/run.stdout.log" 2>&1
+if [ "$cursor" -eq 1 ] && [ "$cursor_offline" -eq 0 ]; then
+  CURSOR_API_KEY=$CURSOR_API_KEY bun runner/run.ts "${run_args[@]}" >> "$out/run.stdout.log" 2>&1
+else
+  bun runner/run.ts "${run_args[@]}" >> "$out/run.stdout.log" 2>&1
+fi
 rc=$?
+if [ "$cursor" -eq 1 ] && [ "$cursor_offline" -eq 0 ]; then
+  CURSOR_API_KEY=$CURSOR_API_KEY bun scripts/cursor/key-scan.ts "$out" 2>&1 | tee -a "$out/run-shard.log" >&2
+  scan_rc=${PIPESTATUS[0]}
+  if [ "$scan_rc" -ne 0 ]; then log "HE-CURSOR-003 the key scan of $out exited $scan_rc (1: the CURSOR_API_KEY value is in a file there); keep $out off every copy, publication and drive until it is cleaned"; rc=5; fi
+elif [ "$cursor_offline" -eq 1 ] && [ "$rc" -eq 0 ]; then
+  python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("ok") else 1)' "$out/cursor-offline.json" 2>/dev/null || { log "cursor offline rehearsal: $out/cursor-offline.json is missing or not ok"; rc=4; }
+fi
 set -e
 python3 - "$out" "$rc" <<'PY'
 import json, sys, datetime

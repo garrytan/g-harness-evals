@@ -1,0 +1,25 @@
+# Route rows for an OpenRouter cell (HE_MODEL_BASE_URL ends in /openrouter, the route DeepSeek's own model runs through):
+# a custom Chat Completions provider on the metering proxy at <base>/v1 with OpenRouter's reasoning format, so pi-ai sends
+# reasoning: {effort} and replays the reasoning_details OpenRouter streams on every later request of the session.
+- id: agent-default-model
+  config:
+    provider: he-openrouter
+    model: @MODEL@
+- id: llm-pi-ai
+  config:
+    providers:
+      he-openrouter:
+        displayName: harness-evals metering proxy (openrouter)
+        apiKeyEnv: HE_MODEL_API_KEY
+        api: openai-completions
+        baseURL: @BASE_URL_V1@
+        reasoning: high
+        compat:
+          thinkingFormat: openrouter
+          supportsDeveloperRole: false
+          supportsStore: false
+        models:
+          - id: @MODEL@
+            maxTokens: 128000
+            reasoningEfforts:
+              high: high

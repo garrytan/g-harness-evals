@@ -1,4 +1,4 @@
-// Which gstack skills an arm's skill tree lists, by host (internal-task).
+// Which gstack skills an arm's skill tree lists, by host (HARN-62).
 //
 // A lock is gstack's loadout.lock.json for one render (gstack-modules render), or the none arm's lock gstack-arm.ts
 // writes (no files). A canonical skill is the gstack source directory of a skill (the module id skill:<dir>). Each host

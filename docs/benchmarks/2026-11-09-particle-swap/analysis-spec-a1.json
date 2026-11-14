@@ -1,0 +1,254 @@
+{
+  "run_id": "particle-swap-a1-2026-11",
+  "seed": 7,
+  "draws": 10000,
+  "alpha": 0.05,
+  "saturated_at": 0.95,
+  "min_paired_tasks": 10,
+  "drift_threshold": 0.1,
+  "primary_pairs": {
+    "opus": 0,
+    "sol": 0,
+    "particle": 0,
+    "deepseek": 0
+  },
+  "models": [
+    {
+      "id": "opus",
+      "label": "Opus 5.5",
+      "home": "opus-hermes"
+    },
+    {
+      "id": "sol",
+      "label": "GPT-6.1 Sol",
+      "home": "sol-hermes"
+    },
+    {
+      "id": "particle",
+      "label": "particle-1",
+      "home": "particle-hermes"
+    },
+    {
+      "id": "deepseek",
+      "label": "DeepSeek-V4.1-Flash-1017",
+      "home": "deepseek-hermes"
+    }
+  ],
+  "cells": [
+    {
+      "id": "opus-hermes",
+      "model": "opus",
+      "harness": "hermes",
+      "label": "Hermes",
+      "attempts": 3
+    },
+    {
+      "id": "opus-openclaw",
+      "model": "opus",
+      "harness": "openclaw",
+      "label": "OpenClaw",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "opus-pi",
+      "model": "opus",
+      "harness": "pi",
+      "label": "Pi",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "sol-hermes",
+      "model": "sol",
+      "harness": "hermes",
+      "label": "Hermes",
+      "attempts": 3
+    },
+    {
+      "id": "sol-openclaw",
+      "model": "sol",
+      "harness": "openclaw",
+      "label": "OpenClaw",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "sol-pi",
+      "model": "sol",
+      "harness": "pi",
+      "label": "Pi",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "particle-hermes",
+      "model": "particle",
+      "harness": "hermes",
+      "label": "Hermes",
+      "attempts": 3
+    },
+    {
+      "id": "particle-openclaw",
+      "model": "particle",
+      "harness": "openclaw",
+      "label": "OpenClaw",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "particle-pi",
+      "model": "particle",
+      "harness": "pi",
+      "label": "Pi",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "deepseek-hermes",
+      "model": "deepseek",
+      "harness": "hermes",
+      "label": "Hermes",
+      "attempts": 3
+    },
+    {
+      "id": "deepseek-openclaw",
+      "model": "deepseek",
+      "harness": "openclaw",
+      "label": "OpenClaw",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "deepseek-pi",
+      "model": "deepseek",
+      "harness": "pi",
+      "label": "Pi",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "deepseek-dsh",
+      "model": "deepseek",
+      "harness": "dsh",
+      "label": "DeepSeek Harness",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "opus-dsh",
+      "model": "opus",
+      "harness": "dsh",
+      "label": "DeepSeek Harness",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "sol-dsh",
+      "model": "sol",
+      "harness": "dsh",
+      "label": "DeepSeek Harness",
+      "attempts": 3,
+      "descriptive": true
+    },
+    {
+      "id": "particle-dsh",
+      "model": "particle",
+      "harness": "dsh",
+      "label": "DeepSeek Harness",
+      "attempts": 3,
+      "descriptive": true
+    }
+  ],
+  "model_swap": {
+    "particle": "particle",
+    "frontier": [
+      {
+        "id": "opus",
+        "label": "Opus 5.5"
+      },
+      {
+        "id": "sol",
+        "label": "GPT-6.1 Sol"
+      }
+    ],
+    "use_cases": [
+      {
+        "id": "codegen",
+        "cells": [
+          "opus-hermes",
+          "opus-openclaw",
+          "opus-pi",
+          "sol-hermes",
+          "sol-openclaw",
+          "sol-pi",
+          "particle-hermes",
+          "particle-openclaw",
+          "particle-pi",
+          "opus-dsh",
+          "sol-dsh",
+          "particle-dsh"
+        ]
+      }
+    ],
+    "cluster": "task",
+    "min_clusters": 10,
+    "require_clusters": false,
+    "family": [
+      "codegen/opus",
+      "codegen/sol",
+      "personal-brain/opus",
+      "personal-brain/sol",
+      "company-brain/opus",
+      "company-brain/sol"
+    ]
+  },
+  "low_cost_swap": {
+    "a": "deepseek",
+    "b": "particle",
+    "label_a": "DeepSeek-V4.1-Flash-1017",
+    "label_b": "particle-1",
+    "exclude_harnesses": [
+      "dsh"
+    ],
+    "use_cases": [
+      {
+        "id": "codegen",
+        "cells": [
+          "deepseek-hermes",
+          "deepseek-openclaw",
+          "deepseek-pi",
+          "deepseek-dsh",
+          "particle-hermes",
+          "particle-openclaw",
+          "particle-pi",
+          "particle-dsh",
+          "opus-hermes",
+          "opus-openclaw",
+          "opus-pi",
+          "sol-hermes",
+          "sol-openclaw",
+          "sol-pi"
+        ]
+      }
+    ],
+    "family": [
+      "codegen",
+      "personal-brain",
+      "company-brain"
+    ],
+    "margin": 0.1,
+    "cost_basis": {
+      "prices": "runner/pricing/prices-2026-11-08.json",
+      "rows": {
+        "deepseek": "openrouter:deepseek/deepseek-v4.1-flash-1017",
+        "particle": "particle:particle-1"
+      }
+    },
+    "frontier": [
+      "opus",
+      "sol"
+    ],
+    "min_clusters": 10
+  }
+}

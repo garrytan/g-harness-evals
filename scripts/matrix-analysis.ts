@@ -66,7 +66,17 @@
 //         "h3_min_informative_tasks": 8, "smallest_difference": 0.1, "cells": [{ "id": "<cell id>", "label": "..." }],
 //         "primary": [{ "id": "...", "a": "<cell id>", "b": "<cell id>" }], "secondary": [...same shape...],
 //         "drops": [{ "id": "...", "frontier": "<cell id>", "cheap": "<cell id>" }],
-//         "drop_differences": [{ "id": "...", "a": "<drop id>", "b": "<drop id>" }] }
+//         "drop_differences": [{ "id": "...", "a": "<drop id>", "b": "<drop id>" }],
+//         "model_swap": { "particle": "particle:particle-1", "frontier": [{ "id": "anthropic:claude-opus-5-5", "label": "Opus 5.5" }],
+//                         "use_cases": [{ "id": "company-brain", "cells": ["<cell id>", ...] }], "cluster": "account-attribute",
+//                         "facts_index": "tasks/multiuser/v0.3/dev-facts.json", "clusters": { "<task>": "<cluster>" },
+//                         "family": ["company-brain/anthropic:claude-opus-5-5", ...], "min_clusters": 10, "require_clusters": true } }
+// model_swap (optional) adds the particle-1 against frontier contrast of scripts/model-swap.ts, which describes the rule. Models
+// are the manifest cells' model ids. The CLI reads each paired task's spec.json and task.toml from the manifest's task_dir for its
+// cluster key and its hidden-fact leak predicates; a task loadTask cannot read is refused.
+// "low_cost_swap" (optional; the shape scripts/frontier-harbor/analyze.ts shows, plus "cluster" and "facts_index" as model_swap
+// has them, model ids again the manifest's) adds the two-sided low-cost contrast of scripts/model-swap.ts after the model_swap
+// section. The CLI reads its tasks' cluster keys from its own cells' task_dir the same way.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
@@ -77,6 +87,7 @@ import { beyondRecords, costSplit, earlierAttempts, UNALLOCATED_TOLERANCE, type 
 import { readJsonFile, readJsonLines } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
 import { trialDirFor } from '../runner/trial/run.ts';
+import { analyzeLowCostSwap, analyzeModelSwap, checkLowCostSwapSpec, checkModelSwapSpec, loadSwapTaskInfo, ModelSwapError, renderLowCostSwap, renderModelSwap, trialLeaks, type LowCostSwapSpec, type ModelSwapSpec, type SwapTaskInfo } from './model-swap.ts';
 import { NO_ROOM, noRoomReason, pairHeadroom, runCanTellApart } from '../runner/stats/headroom.ts';
 import { headroomGated } from './headroom.ts';
 import { TERMINATIONS, validateRecords } from './validate-records.ts';
@@ -98,9 +109,11 @@ export interface MatrixSpec {
   secondary?: SpecComparison[];
   drops?: SpecDrop[];
   drop_differences?: SpecComparison[];
+  model_swap?: ModelSwapSpec;
+  low_cost_swap?: LowCostSwapSpec;
 }
 
-export interface MatrixManifest { run_id: string; cells: Array<{ id: string; harness?: string; model?: string }>; trials: Array<{ id: string; cell: string; task?: string }>; sealed?: unknown }
+export interface MatrixManifest { run_id: string; cells: Array<{ id: string; harness?: string; model?: string }>; trials: Array<{ id: string; cell: string; task?: string; task_dir?: string }>; sealed?: unknown }
 
 export interface MatrixInput {
   manifest: MatrixManifest;
@@ -111,6 +124,10 @@ export interface MatrixInput {
   usageRows: UsageRow[] | null;
   /** Cut-off lines skipped in the usage logs and the event logs read so far (loadResults). */
   truncated?: { usage_logs: number; event_logs: number };
+  /** The model-swap contrast's task info (cluster key and leak predicates), keyed by task id; swapTaskInfo reads it. */
+  task_info?: Record<string, SwapTaskInfo>;
+  /** The low-cost swap's task info, read the same way from its own cells (only the cluster key is used). */
+  low_cost_task_info?: Record<string, SwapTaskInfo>;
 }
 
 export { TERMINATIONS };
@@ -162,6 +179,9 @@ export function checkSpec(spec: MatrixSpec, manifest: MatrixManifest): string[] 
   for (const c of spec.drop_differences ?? []) pair('drop difference', c, drops);
   if (spec.draws !== undefined && (!Number.isSafeInteger(spec.draws) || spec.draws < 1000)) problems.push('draws must be an integer of at least 1000');
   if (spec.alpha !== undefined && !(spec.alpha > 0 && spec.alpha < 1)) problems.push('alpha must be between 0 and 1');
+  const swapCells = new Map([...cells].map((id) => { const m = manifest.cells.find((c) => c.id === id); return [id, m ? { id, harness: m.harness ?? '', model: m.model ?? '' } : undefined]; }));
+  if (spec.model_swap) problems.push(...checkModelSwapSpec(spec.model_swap, swapCells, 'matrix'));
+  if (spec.low_cost_swap) problems.push(...checkLowCostSwapSpec(spec.low_cost_swap, swapCells, 'matrix'));
   return problems;
 }
 
@@ -399,6 +419,28 @@ export function analyzeMatrix(input: MatrixInput, spec: MatrixSpec) {
   });
 
   const unstarted = Object.fromEntries(cells.filter((c) => c.trials.unstarted.length).map((c) => [c.id, c.trials.unstarted]));
+  const swap = spec.model_swap;
+  const swapCells = new Set(swap?.use_cases.flatMap((u) => u.cells) ?? []);
+  const swapTrials = input.records.filter((t) => swapCells.has(t.cell));
+  const noInfo = [...new Set(swapTrials.map((t) => t.task))].filter((task) => !input.task_info?.[task]).sort();
+  if (swap && noInfo.length) throw new SpecError(`model_swap needs each task's info (swapTaskInfo reads it from the manifest's task_dir); none for ${noInfo.length} task(s): ${noInfo.slice(0, 5).join(', ')}`);
+  const swapOrRefuse = <T,>(f: () => T): T => { try { return f(); } catch (e) { if (e instanceof ModelSwapError) throw new SpecError(e.message); throw e; } };
+  const modelSwap = swap ? swapOrRefuse(() => analyzeModelSwap({
+    cells: [...swapCells].map((id) => { const m = input.manifest.cells.find((c) => c.id === id)!; return { id, harness: m.harness!, model: m.model! }; }),
+    trials: swapTrials.map((t) => ({ cell: t.cell, task: t.task, value: trialValue(t), usd: t.usage?.usd ?? 0, leak: trialLeaks(t, input.task_info![t.task]!.leak_predicates) })),
+    keys: Object.fromEntries(Object.entries(input.task_info ?? {}).map(([task, i]) => [task, i.key])),
+    leaks: true,
+  }, swap, { seed, draws, alpha })) : null;
+  const low = spec.low_cost_swap;
+  const lowCells = new Set(low?.use_cases.flatMap((u) => u.cells) ?? []);
+  const lowTrials = input.records.filter((t) => lowCells.has(t.cell));
+  const lowNoInfo = low?.cluster === 'account-attribute' ? [...new Set(lowTrials.map((t) => t.task))].filter((task) => !input.low_cost_task_info?.[task]).sort() : [];
+  if (lowNoInfo.length) throw new SpecError(`low_cost_swap needs each task's cluster key (swapTaskInfo reads it from the manifest's task_dir); none for ${lowNoInfo.length} task(s): ${lowNoInfo.slice(0, 5).join(', ')}`);
+  const lowCostSwap = low ? swapOrRefuse(() => analyzeLowCostSwap({
+    cells: [...lowCells].map((id) => { const m = input.manifest.cells.find((c) => c.id === id)!; return { id, harness: m.harness!, model: m.model! }; }),
+    trials: lowTrials.map((t) => ({ cell: t.cell, task: t.task, value: trialValue(t), usage: t.usage })),
+    keys: Object.fromEntries(Object.entries(input.low_cost_task_info ?? {}).map(([task, i]) => [task, i.key])),
+  }, low, { seed, draws, alpha })) : null;
   return {
     schema: 'matrix-analysis/v1', run_id: spec.run_id,
     complete: input.manifest.trials.every((t) => recorded.has(t.id)) && !input.records.some((t) => t.cap_stop),
@@ -416,7 +458,16 @@ export function analyzeMatrix(input: MatrixInput, spec: MatrixSpec) {
     cost_split: { status: split && !split.refusals.length ? 'reconciled' : split ? 'refused' : 'unavailable', note: splitNote, usd_total: split?.usd_total ?? null, earlier_attempts: earlier, refused_cells: split?.refused_cells ?? null, unallocated_share: split?.unallocated_share ?? null },
     cells_not_in_spec: [...new Set(input.records.map((t) => t.cell))].filter((c) => !specCells.has(c)).sort(),
     truncated_log_lines: { usage_logs: input.truncated?.usage_logs ?? 0, event_logs: input.truncated?.event_logs ?? 0 },
+    model_swap: modelSwap,
+    ...(lowCostSwap ? { low_cost_swap: lowCostSwap } : {}),
   };
+}
+
+/** The model-swap task info of a run: each paired cell's tasks, read from the manifest's task_dir under the repository root. */
+export function swapTaskInfo(manifest: MatrixManifest, swap: ModelSwapSpec | LowCostSwapSpec, root = join(import.meta.dir, '..')): Record<string, SwapTaskInfo> {
+  const cells = new Set(swap.use_cases.flatMap((u) => u.cells));
+  const dirs = new Map(manifest.trials.filter((t) => cells.has(t.cell) && t.task && t.task_dir).map((t) => [t.task!, t.task_dir!]));
+  return loadSwapTaskInfo(root, dirs, swap.cluster === 'account-attribute' ? swap.facts_index! : null);
 }
 
 export type MatrixAnalysis = ReturnType<typeof analyzeMatrix>;
@@ -472,6 +523,8 @@ export function renderMarkdown(a: MatrixAnalysis): string {
     out.push('', '## Unstarted trials', '');
     for (const [cell, ids] of Object.entries(a.unstarted)) out.push(`- ${cell} (${ids.length}): ${ids.join(', ')}`);
   }
+  if (a.model_swap) out.push(...renderModelSwap(a.model_swap));
+  if (a.low_cost_swap) out.push(...renderLowCostSwap(a.low_cost_swap));
   return out.join('\n') + '\n';
 }
 
@@ -548,7 +601,11 @@ if (import.meta.main) {
   try {
     const manifest = readJsonFile<MatrixManifest>(join(results, 'manifest.json'));
     if (manifest.sealed) { console.error(`matrix-analysis: ${results} was planned with a sealed root; this script prints task ids and does not run on sealed results`); process.exit(2); }
-    analysis = analyzeMatrix(loadResults(results, manifest), readJsonFile<MatrixSpec>(specPath));
+    const spec = readJsonFile<MatrixSpec>(specPath);
+    const input = loadResults(results, manifest);
+    if (spec.model_swap) input.task_info = swapTaskInfo(manifest, spec.model_swap);
+    if (spec.low_cost_swap) input.low_cost_task_info = swapTaskInfo(manifest, spec.low_cost_swap);
+    analysis = analyzeMatrix(input, spec);
   } catch (e) {
     if (e instanceof SpecError) { console.error(`matrix-analysis: refused: ${e.message}`); process.exit(2); }
     if (e instanceof RunnerError) { console.error(`matrix-analysis: ${e.message}`); process.exit(2); }

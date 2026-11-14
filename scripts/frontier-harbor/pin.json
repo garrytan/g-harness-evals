@@ -1,6 +1,6 @@
 {
  "schema": "frontier-harbor-pin/1",
- "note": "What the frontier Harbor path runs (internal-task plan, Implementation steps 1 and 2). materialize.ts checks every task against these digests; agents.py reads harnesses and models; vm-run.sh installs Harbor from the wheel below and refuses another hash; egress.py applies the blocklist. A change here is a reviewed pin change, made before the preregistration it serves.",
+ "note": "What the frontier Harbor path runs (HARN-50 plan, Implementation steps 1 and 2). materialize.ts checks every task against these digests; agents.py reads harnesses and models; vm-run.sh installs Harbor from the wheel below and refuses another hash; egress.py applies the blocklist. A change here is a reviewed pin change, made before the preregistration it serves.",
  "harbor": {
   "version": "0.24.0",
   "source": "PyPI",
@@ -32,8 +32,8 @@
    "board": "Harness Leaderboard (Joel Niklaus, Hugging Face Space joelniklaus/harness-leaderboard), board v0.1.1",
    "space_commit": "b684fc09f34badf8454e19b59d1d7ba3b2f76d06",
    "index": "index/public.json generated 2026-11-07T13:08:58Z",
-   "trials": "the public bucket trials-*.jsonl of the -full- runs on DeepSeek-V4.1-Flash high, read 2026-11-07 by internal-task (~/.capy/work/hl/analyze.py on its machine)",
-   "derived_file": "handoffs/internal-task/data/difficulty_ds_high.json in the Harness Evals Captain drive",
+   "trials": "the public bucket trials-*.jsonl of the -full- runs on DeepSeek-V4.1-Flash high, read 2026-11-07 by HARN-50 (~/.capy/work/hl/analyze.py on its machine)",
+   "derived_file": "handoffs/HARN-50/data/difficulty_ds_high.json in the Harness Evals Captain drive",
    "derived_file_sha256": "ca4a485fc7b83b92ee40fee88b7eeab9f6276b595e2a282c16dc401f20e02cee",
    "licence": "the Space is Apache-2.0 (its README); the bucket states no licence of its own, so only the derived per-task rates of the selected tasks are kept here, never the leaderboard trial files",
    "attribution": "Task list derived from the Harness Leaderboard by Joel Niklaus (Apache-2.0)."
@@ -357,7 +357,7 @@
   }
  },
  "kept_selection": {
-  "rule": "the Terminal-Bench 2.1 tasks whose pooled pass rate on the same board data as task_selection (DeepSeek-V4.1-Flash high, five harnesses, 15 trials per task) is at or above the threshold, sorted by sha256('<seed>\\0<id>') as lowercase hex, ties by id; the first 8. 35 of the 87 scored TB2.1 tasks qualify. A kept-stage cell runs these 8 at 1 attempt, reported separately from the 52 (internal-task plan, Big decisions 2).",
+  "rule": "the Terminal-Bench 2.1 tasks whose pooled pass rate on the same board data as task_selection (DeepSeek-V4.1-Flash high, five harnesses, 15 trials per task) is at or above the threshold, sorted by sha256('<seed>\\0<id>') as lowercase hex, ties by id; the first 8. 35 of the 87 scored TB2.1 tasks qualify. A kept-stage cell runs these 8 at 1 attempt, reported separately from the 52 (HARN-50 plan, Big decisions 2).",
   "threshold": 0.95,
   "seed": "harn50-frontier-2026-11-07",
   "count": 8,
@@ -549,7 +549,7 @@
    "npm_integrity": "sha512-jSpQPa2Jw5rG0J2GC07j9+qHtVYIuoHjgccU88JeS+p7188sBCnvIJeuaiNPHj1zsWkuHcBv443QiEUh7qrxwA==",
    "install": "agents.py FrontierOpenClaw: Harbor OpenClaw.install with Node 24 through nvm (nvm install 24, the newest 24.x at install time, recorded in harness_settings.json install_checks.node) instead of Harbor's Node 22, because openclaw 2026.10.6 declares engines node >=24.22.1 <25 and its preinstall refuses Node 22; then npm install -g openclaw@2026.10.6",
    "harbor_class": "harbor.agents.installed.openclaw:OpenClaw",
-   "housekeeping_default": "anthropic/claude-haiku-5-5 (OpenClaw shipped utility model on an Anthropic provider; harnesses/openclaw/config/openclaw.json leaves utilityModel unset, internal-task 2026-11-01)",
+   "housekeeping_default": "anthropic/claude-haiku-5-5 (OpenClaw shipped utility model on an Anthropic provider; harnesses/openclaw/config/openclaw.json leaves utilityModel unset, HARN-1 2026-11-01)",
    "licence": "MIT",
    "node_major": 24
   },
@@ -578,6 +578,38 @@
    "licence": "MIT",
    "litellm": "litellm[mcp]==1.108.2",
    "litellm_note": "agents.py pins LiteLLM: Harbor installs the newest litellm unpinned, and litellm 1.108.2 (newest on 2026-11-07) imports mcp on its Anthropic path while declaring it only in its mcp and proxy extras; the mcp extra is installed with it"
+  },
+  "dsh": {
+   "kind": "wrapped",
+   "pin": "harnesses/dsh/pin.json",
+   "adapter": "harnesses/dsh/adapter.sh",
+   "config": "harnesses/dsh/config/route.<route>.patch.yml and base.patch.yml, the multi-user adapter's headless profile patch layer, rendered by frontier_settings.py dsh_profile_patch",
+   "version": "0.2.2-rc.1",
+   "package": "@deepseek-ai/dsh",
+   "npm_integrity": "sha512-ijR9UEVYkG15Q/Q79JzvzLBzQOQfc63VLr9n6flpwHPhr5IKn2UxthnSoto/P9l7qGd7pPvI1Ra6TW7LH3oKpg==",
+   "lockfile": {"package_json": "harnesses/dsh/package.json", "package_json_sha256": "9f82986c5bb7dd4c4010ca01e0076b0eb0321ca84a3d4d8f4b782b9367dddc74", "package_lock": "harnesses/dsh/package-lock.json", "package_lock_sha256": "f856e882097d6b7f91fe0e73e775f3d477e36ed88ab4c3cc445e710e56d976f7"},
+   "install": "agents.py FrontierDsh at agent setup, before the agent runs: Node 24 through nvm (newest 24.x, recorded in install_checks.node; the package's engines field asks for node >= 24.9.0), then npm ci --strict-allow-scripts of our package.json and package-lock.json (sha256 checked against lockfile above) into /tmp/frontier-dsh/install, so dsh and every plugin its profile names come from the lock, version and integrity fixed; dsh --version must equal version and dsh --profile headless --dump-config must compose the profile before the agent runs. No dsh plugin add and no package manager when the agent runs",
+   "harbor_class": "none: Harbor 0.24.0 ships no dsh or DeepSeek Harness agent (harbor.models.agent.name AgentName lists 47 agents, none of them dsh; DeepSeek appears only as a model provider of deerflow, eve and mcode), so agents.py FrontierDsh is a BaseInstalledAgent of its own in the style of Harbor's Pi class",
+   "node_major": 24,
+   "permission_mode": "danger-full-access",
+   "approval_policy": "never",
+   "licence": "MIT"
+  },
+  "cursor": {
+   "kind": "clean-room",
+   "pin": "harnesses/cursor/pin.json",
+   "adapter": "harnesses/cursor/adapter.sh (read for its flags and checks; the Harbor cell does not run it)",
+   "config": "harnesses/cursor/config/cli-config.json",
+   "version": "2026.11.05-86047df",
+   "sources": "every Cursor-specific value (package URL and sha256 values, launcher sha256, version, flags, turn model, init model name, config, instruction-file names, hook events, API hosts) is read from harnesses/cursor/pin.json, cli-config.json and cli-help.txt, whose only sources are Cursor's public docs, the CLI's own --help and --version output, and what the CLI did at run time with no key (harnesses/cursor/README.md, \"Clean-room rebuild (2026-11-09)\"). Nothing comes from the CLI's JavaScript or from Harbor's harbor.agents.installed.cursor_cli",
+   "install": "agents.py FrontierCursor, as root in the task container: the steps harnesses/cursor/Dockerfile runs (curl the pinned linux-x64 package from downloads.cursor.com, sha256sum -c, tar --strip-components=1 into /opt/frontier-cursor/cursor-agent, sha256sum -c on its cursor-agent launcher, /opt/frontier-cursor/bin/agent linked to it), then agent --version must print 2026.11.05-86047df",
+   "harbor_class": "agents:FrontierCursor on harbor.agents.installed.base:BaseInstalledAgent. Harbor 0.24.0 also ships harbor.agents.installed.cursor_cli:CursorCli; it is not subclassed or run (scripts/frontier-harbor/README.md, \"Cursor\")",
+   "models": [
+    "anthropic:claude-opus-5-5"
+   ],
+   "transport": "cursor-backend: every model call goes from the CLI to Cursor's servers with CURSOR_API_KEY (agent --help, --api-key: 'can also use CURSOR_API_KEY env var'; default endpoint https://api2.cursor.sh). No metering-proxy slot, no broker bind, no lease spend; cost comes from the account's usage export, attributed by trial time window, reported per cell, unreconciled and left out of the rankings (plan item E1)",
+   "plan_tier": "Premium (harnesses/cursor/pin.json plan_tier)",
+   "licence": "proprietary (Cursor). Cursor's terms 1.5(vii): a published benchmark result ships with everything needed to replicate it (harnesses/cursor/README.md, \"Terms\" and \"Harbor codegen cell\")"
   }
  },
  "models": {
@@ -610,12 +642,30 @@
    "context_window": 1050000,
    "max_output_tokens": 128000,
    "source": "developers.openai.com/api/docs/models/gpt-6-astra, read 2026-11-07 (1,050,000 context window, 128,000 max output tokens)"
+  },
+  "particle:particle-1": {
+   "provider": "particle",
+   "context_window": 1048576,
+   "max_output_tokens": 128000,
+   "source": "docs.particle.ai/models, read 2026-11-08 (1,048,576-token context window, prompt and completion combined; default output cap 32,000 when no limit is sent; explicit limits above 131,072 are clamped). max_output_tokens is the 128,000 cap every other model here runs under, below Particle's ceiling",
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's Particle route); Particle serves Responses over WebSocket only, which no harness here uses",
+   "harnesses": ["hermes", "openclaw", "pi", "dsh"]
+  },
+  "openrouter:deepseek/deepseek-v4.1-flash-1017": {
+   "provider": "openrouter",
+   "context_window": 1048576,
+   "max_output_tokens": 128000,
+   "source": "openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash-1017/endpoints, read 2026-11-09: DeepSeek's own endpoint (provider DeepSeek, tag deepseek) has context_length 1,048,576 and max_completion_tokens 393,216. max_output_tokens is the 128,000 cap every other model here runs under, below that ceiling",
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route), the one API the proxy forwards to OpenRouter. The proxy pins every request to DeepSeek's endpoint: it adds provider {only: [deepseek], allow_fallbacks: false, max_price at the price row} and refuses a models list, route, plugins or a variant suffix (HE-PROXY-008); a 2xx answer from another provider is infra_error (HE-PROXY-009)",
+   "harnesses": ["pi", "hermes", "openclaw", "dsh"]
   }
  },
  "effort": {
   "level": "high",
   "anthropic": "adaptive thinking plus output_config.effort = high, set through each harness own setting",
-  "openai": "reasoning effort high (Responses reasoning.effort or chat reasoning_effort), set through each harness own setting"
+  "openai": "reasoning effort high (Responses reasoning.effort or chat reasoning_effort), set through each harness own setting",
+  "particle": "reasoning_effort high on Chat Completions, set through each harness own setting (docs.particle.ai/reasoning: medium and high both select Particle-1's high effort, which is also its default when no effort is sent)",
+  "openrouter": "OpenRouter's reasoning {effort: high} on Chat Completions, set through each harness own setting (DeepSeek V4.1 Flash 1017 offers none, low, high and max; Pi 1.5.0's catalog thinkingLevelMap); Hermes also sends top-level reasoning_effort high"
  },
  "egress": {
   "how": "Harbor 0.24.0 docker environments know three network modes (public, no-network, allowlist) and no blocklist. egress.py subclasses Harbor DockerEnvironment: its egress sidecar (a copy of Harbor harbor-docker-egress-control-sidecar, gost 3 transparent proxy plus nftables, Apache-2.0) gains a blocklist service, the sidecar runs for every trial, and the public mode (every TB2.1 phase, allow_internet = true) redirects all TCP from the task containers through gost, which sniffs the TLS SNI or the HTTP Host of each connection and refuses a host on the list. Non-TCP egress other than DNS is rejected, as in Harbor allowlist mode. A trial whose sidecar cannot start (no nftables inet) fails instead of running unblocked.",
@@ -630,7 +680,10 @@
    "api.openai.com",
    "generativelanguage.googleapis.com",
    "aiplatform.googleapis.com",
-   "*-aiplatform.googleapis.com"
+   "*-aiplatform.googleapis.com",
+   "cursor.sh",
+   "*.cursor.sh",
+   "downloads.cursor.com"
   ],
   "why": {
    "tbench.ai": "Terminal-Bench site and leaderboard",
@@ -640,7 +693,48 @@
    "api.anthropic.com": "direct provider host: every model call must go through the metering proxy",
    "api.openai.com": "direct provider host",
    "generativelanguage.googleapis.com": "direct provider host (Gemini API; approved delta 2026-11-07)",
-   "aiplatform.googleapis.com": "direct provider host (Vertex AI; approved delta), with its regional *-aiplatform.googleapis.com hosts"
+   "aiplatform.googleapis.com": "direct provider host (Vertex AI; approved delta), with its regional *-aiplatform.googleapis.com hosts",
+   "cursor.sh": "Cursor's API hosts, with every *.cursor.sh host (https://cursor.com/docs/enterprise/network-configuration): reachable from Cursor cells only (cursor_cells below), so no other cell can reach Cursor's backend",
+   "downloads.cursor.com": "Cursor's package host (network-configuration page: client updates); a Cursor cell installs the pinned CLI package from it, no other cell needs it"
+  },
+  "cursor_cells": {
+   "how": "egress.py CursorBlocklistDockerEnvironment, the environment plan.ts names for a cell of harness cursor and no other: the same sidecar built from egress-sidecar/Dockerfile.cursor, which installs blocklist-cursor.txt (this blocklist) in place of blocklist.txt. gost has no exceptions to a wildcard, so this list leaves out cursor.sh, *.cursor.sh and downloads.cursor.com and names Cursor's hosts for other purposes one by one",
+   "blocklist": [
+    "tbench.ai",
+    "*.tbench.ai",
+    "harborframework.com",
+    "*.harborframework.com",
+    "joelniklaus-harness-leaderboard.hf.space",
+    "datasets-server.huggingface.co",
+    "api.anthropic.com",
+    "api.openai.com",
+    "generativelanguage.googleapis.com",
+    "aiplatform.googleapis.com",
+    "*-aiplatform.googleapis.com",
+    "api3.cursor.sh",
+    "api4.cursor.sh",
+    "*.gcpp.cursor.sh",
+    "repo42.cursor.sh"
+   ],
+   "allowed": {
+    "api2.cursor.sh": "the CLI's default endpoint (agent --help: -e/--endpoint, default \"https://api2.cursor.sh\", harnesses/cursor/cli-help.txt); the one host the CLI tried at run time with no key (harnesses/cursor/README.md: the install check's egress.ndjson, 4 denials of api2.cursor.sh:443 over 2 turns); network-configuration page: most API requests",
+    "api5.cursor.sh": "network-configuration page: agent requests",
+    "agent.api5.cursor.sh": "network-configuration page: agent requests",
+    "agentn.api5.cursor.sh": "network-configuration page: agent requests",
+    "agent.us.api5.cursor.sh": "network-configuration page: agent requests",
+    "agentn.us.api5.cursor.sh": "network-configuration page: agent requests",
+    "agent.global.api5.cursor.sh": "network-configuration page: agent requests",
+    "agentn.global.api5.cursor.sh": "network-configuration page: agent requests",
+    "downloads.cursor.com": "the pinned package URL (harnesses/cursor/pin.json integrity.package_url); network-configuration page: client updates. Needed at install, inside the same trial; --disable-auto-update keeps the CLI from updating itself"
+   },
+   "allowed_sources_note": "these are harnesses/cursor/pin.json model_cursor.egress_hosts plus downloads.cursor.com. cli-config.observed.json (what the CLI wrote at run time with no key) names no host. The Harbor sidecar logs no host decision, so the hosts a keyed Harbor trial really reaches are not recorded per trial",
+   "blocked": {
+    "api3.cursor.sh": "network-configuration page: Tab",
+    "api4.cursor.sh": "network-configuration page: Tab",
+    "*.gcpp.cursor.sh": "network-configuration page: Tab",
+    "repo42.cursor.sh": "network-configuration page: codebase search"
+   },
+   "limits": "A cursor.sh host the network-configuration page does not name is not refused in a Cursor cell (the multi-user CONNECT allowlist refuses it). Every other host is as for every cell"
   },
   "limits": "A blocklist by host name cannot block one path of a shared host without TLS interception, which would change every task image trust store. So github.com (harbor-framework/terminal-bench-2-1, laude-institute/terminal-bench, laude-institute/terminal-bench-2), raw.githubusercontent.com, codeload.github.com and huggingface.co (datasets zai-org/terminal-bench-2-verified, openguardrails/terminal-bench-2.1-deepseek-v4-flash-trajectories, the leaderboard bucket) stay reachable, because tasks use those hosts for legitimate downloads. Fetches from them are caught by the audit of captured requests (plan step 5), where a confirmed answer-key receipt scores a fail. A client that hides its SNI (ECH) or connects by IP literal with no SNI and no Host header is not matched; DNS is not filtered."
  },
@@ -656,8 +750,10 @@
   "pi": "MIT",
   "hermes": "MIT",
   "openclaw": "MIT",
+  "dsh": "MIT (LICENSE at deepseek-ai/deepseek-harness 66491b05, tag dsh-v0.2.2-rc.1; harnesses/dsh/pin.json license)",
   "codex": "Apache-2.0",
   "claude_code": "proprietary (Anthropic)",
+  "cursor": "proprietary (Cursor; terms 1.5(vii) on published benchmarks, harnesses/cursor/README.md \"Terms\")",
   "gost": "MIT (go-gost/gost, in the Harbor sidecar image)"
  }
 }

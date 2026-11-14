@@ -127,11 +127,24 @@ import { requestSections, responseExtras, sectionRoute, type RequestSections } f
 import { effortFields } from './effort.ts';
 import { hostedWebTools } from './hosted-tools.ts';
 import { BodyCapture, CAPTURE_FILE, DEFAULT_CAPTURE_MAX_BYTES } from './capture.ts';
+import { canonicalLookup } from '../pricing/model-pricing.ts';
 
 export { effortCounts, effortFields, REASONING_EFFORTS, THINKING_TYPES } from './effort.ts';
 
-export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com', voyage: 'https://api.voyageai.com', particle: 'https://api.particle.ai' };
-export type ProviderName = 'anthropic' | 'openai' | 'voyage' | 'particle';
+export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com', voyage: 'https://api.voyageai.com', particle: 'https://api.particle.ai', openrouter: 'https://openrouter.ai/api' };
+export type ProviderName = 'anthropic' | 'openai' | 'voyage' | 'particle' | 'openrouter';
+
+/**
+ * The OpenRouter models a lease proxy forwards, each pinned to one endpoint: `only` is the provider slug the proxy sends in
+ * `provider.only`, `served` the name OpenRouter reports in the response's `provider` field when that endpoint answered.
+ * The proxy also sends `allow_fallbacks: false` and `max_price` at the model's price-table row (`openrouter:<id>`, the
+ * endpoint's peak rates), and refuses a request naming any other model, a variant suffix, a `models` list, `route` or
+ * `plugins` (HE-PROXY-008). A 2xx answer that names another provider, or none, is marked `served_elsewhere`
+ * (HE-PROXY-009), which makes the trial infra_error (runner/trial/trial.ts trialTermination).
+ */
+export const OPENROUTER_MODELS: Record<string, { only: string; served: string }> = {
+  'deepseek/deepseek-v4.1-flash-1017': { only: 'deepseek', served: 'DeepSeek' },
+};
 type Send = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 /** Anthropic's token counter. Providers do not bill it. Only a lease proxy started with --free-count-tokens (the Lane B
@@ -151,8 +164,10 @@ const ROUTES: Record<ProviderName, Array<{ method: string; path: RegExp }>> = {
   voyage: [{ method: 'POST', path: /^\/v1\/embeddings$/ }, { method: 'POST', path: /^\/v1\/rerank$/ }],
   // Particle serves OpenAI Chat Completions over HTTP and nothing else a harness needs: no Responses over HTTP, no embeddings.
   particle: [{ method: 'POST', path: /^\/v1\/chat\/completions$/ }],
+  // OpenRouter: Chat Completions only, the one API every harness on the route speaks (OPENROUTER_MODELS pins the endpoint).
+  openrouter: [{ method: 'POST', path: /^\/v1\/chat\/completions$/ }],
 };
-const KEY_ENV: Record<ProviderName, string> = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', voyage: 'VOYAGE_API_KEY', particle: 'PARTICLE_API_KEY' };
+const KEY_ENV: Record<ProviderName, string> = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', voyage: 'VOYAGE_API_KEY', particle: 'PARTICLE_API_KEY', openrouter: 'OPENROUTER_API_KEY' };
 const CREDENTIAL_HEADERS = ['authorization', 'x-api-key', 'api-key', 'openai-organization', 'openai-project', 'cookie', 'proxy-authorization'];
 export const DEFAULT_MAX_OUTPUT_TOKENS = 32_768;
 /** A provider call may run this long (Bun's own 300-second fetch timeout is off; long reasoning calls exceed it). */
@@ -232,8 +247,13 @@ export interface UsageLine {
   /** What the request asked for (runner/proxy/effort.ts): OpenAI `reasoning.effort` (or chat-completions `reasoning_effort`), Anthropic `output_config.effort`,
    *  `thinking.type` and `thinking.budget_tokens`, each only when its value is a known one; `unrecognized_effort_fields` names the request paths set to anything else. */
   reasoning_effort?: string; output_config_effort?: string; thinking_type?: string; thinking_budget_tokens?: number; unrecognized_effort_fields?: string[];
-  /** Particle only: the model id the response echoed (particle-ai/particle-1 for a request naming particle-1). Recorded, never checked or priced. */
+  /** Particle and OpenRouter: the model id the response echoed (particle-ai/particle-1 for a request naming particle-1). Recorded, never checked or priced. */
   served_model?: string;
+  /** OpenRouter only: the provider the response names (`provider`, DeepSeek on the pinned endpoint), the generation id (`id`,
+   *  gen-...) and OpenRouter's own usage.cost in USD, recorded beside actual_usd (the price-table row) for reconciliation. */
+  served_provider?: string; generation_id?: string; openrouter_cost_usd?: number;
+  /** OpenRouter only: a 2xx answer that names a provider other than the pinned endpoint's, or none (HE-PROXY-009). The trial is infra_error. */
+  served_elsewhere?: boolean;
   /** Usage-line schema v1 (internal-task), on every forwarded line beside cache_write_tokens: its 1-hour part and reasoning tokens, 0 when absent. */
   cache_write_1h_tokens?: number; reasoning_tokens?: number;
   /** With --log-sections, on forwarded chat lines: the request's sections and the tools the response called, or why they could not be read. */
@@ -331,6 +351,45 @@ function echoedModel(text: string, streamed: boolean): string | undefined {
   return last;
 }
 
+/** Why a lease proxy refuses an OpenRouter request before pricing it (HE-PROXY-008), or null: a `models` list, `route` or
+ *  `plugins` would let OpenRouter pick another model, endpoint or tool; an `openrouter:` server tool or `web_search_options`
+ *  runs a tool on OpenRouter's servers, with or without --refuse-hosted-tools; a variant suffix (`:online`, `:nitro`, `:floor`, any
+ *  `:<tag>`) selects another endpoint set or adds a tool; and only OPENROUTER_MODELS ids are forwarded. */
+export function openrouterRefusal(body: Record<string, unknown> | undefined, model: string | null): string | null {
+  const routing = ['models', 'route', 'plugins'].filter((k) => body?.[k] !== undefined);
+  if (routing.length) return `the request sets ${routing.join(', ')}, which would let OpenRouter choose another model, endpoint or tool`;
+  const tools = Array.isArray(body?.tools) ? body.tools : [];
+  const server = tools.findIndex((t) => typeof (t as { type?: unknown } | null)?.type === 'string' && (t as { type: string }).type.startsWith('openrouter:'));
+  if (server >= 0) return `tools[${server}] is an OpenRouter server tool, which OpenRouter runs on its own servers`;
+  if (body?.web_search_options !== undefined && body.web_search_options !== null) return 'the request sets web_search_options, which has OpenRouter run a web search on its own servers';
+  if (model?.includes(':')) return `the model ${model} carries the variant suffix ${model.slice(model.indexOf(':'))}, which selects other endpoints or adds a tool`;
+  if (!model || !Object.hasOwn(OPENROUTER_MODELS, model)) return `the model ${model ?? '(none)'} is not on the proxy's OpenRouter allowlist (${Object.keys(OPENROUTER_MODELS).join(', ')})`;
+  return null;
+}
+
+/** What a usage line records from a Particle or OpenRouter answer, read from the body or the stream's chunks. Particle: the
+ *  echoed model, and on a non-2xx answer its error code and type. OpenRouter: the echoed model, the provider that answered and
+ *  the generation id, the same error fields, and `served_elsewhere` on a 2xx answer that names a provider other than the
+ *  pinned endpoint's, or names none and still reported usage (OPENROUTER_MODELS). Nothing else from the body is kept. */
+function responseFacts(prov: ProviderName, model: string | null, text: string, streamed: boolean, ok: boolean): Partial<UsageLine> {
+  if (prov !== 'particle' && prov !== 'openrouter') return {};
+  const served = echoedModel(text, streamed);
+  const error = ok ? {} : upstreamError(jsonOrNull(text));
+  if (prov === 'particle') return { ...(served ? { served_model: served } : {}), ...error };
+  const objects = streamed ? text.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => jsonOrNull(l.slice(5).trim())) : [jsonOrNull(text)];
+  const token = (v: unknown, pattern: RegExp) => (typeof v === 'string' && pattern.test(v) ? v : undefined);
+  let provider: string | undefined, generation: string | undefined, usage = false;
+  for (const o of objects) {
+    if (!o || typeof o !== 'object' || Array.isArray(o)) continue;
+    const r = o as Record<string, unknown>;
+    provider = token(r.provider, /^[A-Za-z0-9 ._()-]{1,100}$/) ?? provider;
+    generation = token(r.id, /^[A-Za-z0-9._:-]{1,200}$/) ?? generation;
+    usage ||= !!r.usage && typeof r.usage === 'object';
+  }
+  const elsewhere = ok && provider !== OPENROUTER_MODELS[model ?? '']?.served && (provider !== undefined || usage);
+  return { ...(served ? { served_model: served } : {}), ...(provider ? { served_provider: provider } : {}), ...(generation ? { generation_id: generation } : {}), ...(elsewhere ? { served_elsewhere: true } : {}), ...error };
+}
+
 /** Particle only: `error.code` and `error.type` of a non-2xx JSON answer, each kept only when it is a short token, so no message text reaches the usage line. */
 function upstreamError(body: unknown): Pick<UsageLine, 'error_code' | 'error_type'> {
   const e = (body as { error?: unknown } | null)?.error;
@@ -366,7 +425,7 @@ const json = (status: number, kind: string, message: string) =>
 /** The output-token fields a provider honors on a route; the first is the one the proxy injects when the request states none of them. */
 function outputFields(provider: ProviderName, route: string): string[] {
   if (provider === 'anthropic') return ['max_tokens'];
-  if ((provider === 'openai' || provider === 'particle') && route === '/v1/chat/completions') return ['max_completion_tokens', 'max_tokens'];
+  if ((provider === 'openai' || provider === 'particle' || provider === 'openrouter') && route === '/v1/chat/completions') return ['max_completion_tokens', 'max_tokens'];
   if (provider === 'openai' && route === '/v1/responses') return ['max_output_tokens'];
   return [];
 }
@@ -445,7 +504,7 @@ export class MeteringProxy {
         const url = new URL(req.url);
         if (url.pathname === '/__proxy/status' && req.method === 'GET') return Response.json(this.status());
         if (url.pathname.startsWith('/__proxy/') && req.method === 'POST') return this.control(url.pathname, req);
-        const m = url.pathname.match(/^\/(?:([^/]+)\/)?(anthropic|openai|voyage|particle)(\/.*)$/);
+        const m = url.pathname.match(/^\/(?:([^/]+)\/)?(anthropic|openai|voyage|particle|openrouter)(\/.*)$/);
         if (!m) return json(404, 'invalid_request', `no provider route ${url.pathname}`);
         const [, slot = 'default', prov, rest] = m as unknown as [string, string | undefined, ProviderName, string];
         const binding = this.bindings.get(slot);
@@ -483,7 +542,7 @@ export class MeteringProxy {
     let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; capture?: unknown; timeout_ms?: number; max_requests?: unknown; collect_requests?: unknown };
     try { body = await req.json() as typeof body; } catch { return json(400, 'invalid_request', 'control body is not JSON'); }
     if (path === '/__proxy/bind' && body.slot && body.key) {
-      if (body.models !== undefined && (!Array.isArray(body.models) || body.models.some(m => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+$/.test(m)))) return json(400, 'invalid_request', 'bind models must be a list of provider:model ids');
+      if (body.models !== undefined && (!Array.isArray(body.models) || body.models.some(m => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(m)))) return json(400, 'invalid_request', 'bind models must be a list of provider:model ids');
       let ablation: AblationBinding | null = null;
       if (body.ablation !== undefined) {
         if (!this.options.policy?.ablationLog) return json(400, 'invalid_request', 'bind ablation needs a lease proxy started with --ablation-log');
@@ -626,6 +685,10 @@ export class MeteringProxy {
       this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status: 400, ...effortFields(body) });
       return json(400, 'invalid_request', reason);
     }
+    const pinned = prov === 'openrouter' ? openrouterRefusal(body, model) : null;
+    if (pinned) return refuse(400, 'invalid_request', `HE-PROXY-008 ${pinned}; the metering proxy forwards an OpenRouter request only for an allowlisted model on its pinned endpoint (docs/errors.md). fix: name the bare model id and drop OpenRouter routing fields`, model);
+    const pinnedRow = prov === 'openrouter' ? canonicalLookup(`openrouter:${model}`) : undefined;
+    if (prov === 'openrouter' && !pinnedRow) return refuse(402, 'budget', `unpriced request refused: no price-table row for openrouter:${model}`, model);
     // The layer filter edits the parsed body before the output cap is injected and the request is priced and reserved.
     let receipt: Omit<AblationReceipt, 'at' | 'key'> | null = null;
     if (ablation && body) {
@@ -638,7 +701,9 @@ export class MeteringProxy {
       try { request = { sections: requestSections(body, Buffer.byteLength(receipt ? JSON.stringify(body) : raw!), prov, route) }; }
       catch (e) { request = { error: `request sections: ${(e as Error).message.slice(0, 200)}` }; }
     }
-    if (streamed && (prov === 'openai' || prov === 'particle') && route === '/v1/chat/completions') body!.stream_options = { ...(body!.stream_options ?? {}), include_usage: true };
+    if (streamed && (prov === 'openai' || prov === 'particle' || prov === 'openrouter') && route === '/v1/chat/completions') body!.stream_options = { ...(body!.stream_options ?? {}), include_usage: true };
+    // OpenRouter: one endpoint, no fallback, and no endpoint dearer than the price-table row the request is metered at.
+    if (pinnedRow && body && model) body.provider = { only: [OPENROUTER_MODELS[model]!.only], allow_fallbacks: false, max_price: { prompt: pinnedRow.input, completion: pinnedRow.output } };
     const fields = body ? outputFields(prov, route) : [];
     const cap = p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
     if (fields.length && body) {
@@ -683,15 +748,17 @@ export class MeteringProxy {
     const knobs = { ...effortFields(body), ...routeFields };
     /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation.
      *  `response`: the parsed body, or a stream's text, which the usage-line schema v1 fields are read from once the request is charged. */
-    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, response: unknown, cached?: number, reason?: string, unfinished = false, served?: string, upstream: Pick<UsageLine, 'error_code' | 'error_type'> = {}) => {
+    const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, response: unknown, cached?: number, reason?: string, unfinished = false, facts: Partial<UsageLine> = {}) => {
       const charged = !!bounded && (!cost || unfinished);
       if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost);
       const usd = !cost ? reserved : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
       this.charge(key, prov, bounded?.model ?? null, usd, charged);
-      this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(reason ? { reason } : {}), status, reserved_usd: reserved, actual_usd: usd,
+      const elsewhere = facts.served_elsewhere ? `HE-PROXY-009 OpenRouter answered from ${facts.served_provider ?? 'an unnamed provider'}, not the pinned ${OPENROUTER_MODELS[model ?? '']?.served ?? 'endpoint'}; the trial is infra_error (docs/errors.md)` : undefined;
+      const why = [elsewhere, reason].filter(Boolean).join('; ');
+      this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(why ? { reason: why } : {}), status, reserved_usd: reserved, actual_usd: usd,
         input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged,
         ...(charged ? { usage_unknown: true as const, reported_usd: cost?.usd ?? 0 } : {}), streamed: isStream, ...knobs,
-        ...(served ? { served_model: served } : {}), ...upstream, ...lineExtrasFor(prov, route, response, request) });
+        ...facts, ...(cost?.reported_usd !== undefined ? { openrouter_cost_usd: cost.reported_usd } : {}), ...lineExtrasFor(prov, route, response, request) });
     };
     // The upstream never answered, or its non-streamed body broke off: usage is unknown, so the reservation is charged.
     const failed = (message: string) => {
@@ -725,14 +792,14 @@ export class MeteringProxy {
           const cost = bounded && u ? usageCost(bounded, { usage: u }) : null;
           const unbilled = bounded && !cost && !error ? unbilledAnswer(prov, res.status, jsonOrNull(text), text) : null;
           if (unbilled) {
-            settle(NOTHING_USED, res.status, true, text, undefined, unbilledReason(res.status, unbilled.type), false, prov === 'particle' ? echoedModel(text, true) : undefined, prov === 'particle' ? upstreamError(jsonOrNull(text)) : {});
+            settle(NOTHING_USED, res.status, true, text, undefined, unbilledReason(res.status, unbilled.type), false, responseFacts(prov, model, text, true, res.ok));
             return;
           }
           const unfinished = error ? `the stream failed before its final usage: ${error.message.slice(0, 200)}` : sseIncomplete(text);
           const over = !!unfinished && !!cost && cost.usd > reserved;
           const reason = !bounded || (cost && !unfinished) ? undefined
             : `${unfinished ?? 'the stream carried no usage'}${over ? '; charged its partial usage, which cost more than the reservation' : ''}`;
-          settle(cost, res.status, true, text, cachedTokens(u), reason, !!unfinished, prov === 'particle' ? echoedModel(text, true) : undefined, prov === 'particle' && !res.ok ? upstreamError(jsonOrNull(text)) : {});
+          settle(cost, res.status, true, text, cachedTokens(u), reason, !!unfinished, responseFacts(prov, model, text, true, res.ok));
         },
       ).finally(done);
       return new Response(client, { status: res.status, headers: out });
@@ -751,7 +818,7 @@ export class MeteringProxy {
       cost = NOTHING_USED;
       reason = unbilledReason(res.status, unbilled.type);
     } else if (!cost && bounded) reason = 'the response carried no usage';
-    settle(cost, res.status, false, parsedBody, cachedTokens(parsedBody?.usage), reason, false, prov === 'particle' ? echoedModel(text, false) : undefined, prov === 'particle' && !res.ok ? upstreamError(parsedBody) : {});
+    settle(cost, res.status, false, parsedBody, cachedTokens(parsedBody?.usage), reason, false, responseFacts(prov, model, text, false, res.ok));
     return new Response(text, { status: res.status, headers: out });
   }
 }

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Adapted from Harbor 0.24.0's egress sidecar entrypoint.sh (Apache-2.0). Changed for the frontier Harbor path (internal-task):
+# Adapted from Harbor 0.24.0's egress sidecar entrypoint.sh (Apache-2.0). Changed for the frontier Harbor path (HARN-50):
 # the public mode applies the blocklist (network-policy allow-all routes every controlled TCP connection through the
 # blocklist service) instead of removing the nftables rules, and the blocklist is printed once at start.
 set -eu

@@ -34,6 +34,26 @@
     "observed_keyless": "2026-10-31, images harness-eval/qm:dev and qm-sandbox:dev built at the pin, the checkout's adapter mounted in the task container, one run turn through compose.yaml straight against tests/fixtures/particle/fake-particle.ts (the proxy's Particle route was not on main yet): exit 0, reply ok, two POST <base>/v1/chat/completions naming particle-1 (stream true, include_usage true, reasoning_effort medium, max_completion_tokens 128000; one side call with no tools, one agent turn with 13 tools), and an Anthropic trap URL on the fake was never called (tests/particle-branch.test.ts)",
     "error_mapping": "qm-api.mjs maps a failed turn whose reason names the provider or model to exit 3, unchanged; Pi words every provider error that way, so on a Particle cell any provider 400 is exit 3, wider than plan decision 12. The runner applies decision 12 from the metering proxy record once that follow-up lands, and overrides this"
   },
+  "model_openai": {
+    "provider": "openai, QM's built-in OpenAI provider (MODEL_PROVIDER=openai); no custom provider is registered",
+    "model": "<HE_MODEL_NAME> as core's PI_MODEL (compose.yaml), a model in QM's own registry: gpt-6.1-sol is src/model/model-registry.ts's row cloned from pi-ai's gpt-5.5 (context 1,050,000, maxTokens 128,000)",
+    "api": "openai-responses",
+    "route": "POST <HE_MODEL_BASE_URL>/v1/responses, streamed",
+    "base_url_env": "OPENAI_BASE_URL (set from HE_MODEL_BASE_URL + /v1 by compose.openai.yaml); QM puts it in place of the base URL of every openai model, the cell model and the housekeeping model alike (resolveModel, src/model/pi-models.ts; src/model/provider-endpoints.ts)",
+    "api_key_env": "OPENAI_API_KEY (set from HE_MODEL_API_KEY by compose.openai.yaml)",
+    "config_path": "compose.openai.yaml",
+    "selected_when": "the cell model's provider is openai (openai:<model>, so HE_MODEL_BASE_URL ends in /openai): runner/trial/docker.ts and harnesses/run-trial.sh merge compose.<provider>.yaml over compose.yaml when it exists. prepare.sh and adapter.sh have no OpenAI branch and print or register nothing more, so the per-trial token reaches core only as an environment variable, as on an Anthropic cell, and no request file holds it. An Anthropic or Particle cell loads no extra file (tests/qm-openai-branch.test.ts golden environments)",
+    "core_environment": "MODEL_PROVIDER openai (core then requires OPENAI_API_KEY, src/deployment/secret-schema.ts) and empty ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL",
+    "reasoning_effort": "medium",
+    "reasoning_setting": "QM's default effort auto is medium for a non-Anthropic model (applyTurnEffort and defaultInteractiveThinkingLevel, src/agent/agent-run.ts and src/model/pi-models.ts), and pi-ai's openai-responses sends it as reasoning {effort: medium, summary: auto}; the proxy recorded reasoning_effort medium on all 1,318 requests of the qm-c4-told-live-2026-11 Sol cells (1,063 gpt-6.1-sol, 255 gpt-5.6-luna)",
+    "max_output_tokens": 128000,
+    "max_output_tokens_note": "the registry row's maxTokens 128000, which pi-ai sends as max_output_tokens (simple-options.js lowers it only when the context window is nearly full); the cap the OpenClaw Sol cells state and every shard's proxy runs at (--max-output-tokens 128000)",
+    "auxiliary_models": "gpt-5.6-luna, harness housekeeping, shipped default: auxiliaryModelFor gives the registry's auxiliary model for provider openai (src/model/pi-models.ts, model-registry.ts auxiliary true), so session titles and the other utility calls name gpt-5.6-luna through the same OPENAI_BASE_URL and token. It needs no Anthropic credential, so it is kept, metered and listed as openai:gpt-5.6-luna in the cell's utility_models; it is never an arm. The descriptive title model claude-sonnet-5-5 is used only by a user's regenerate-title request, which no trial sends",
+    "fallback": "QM's fallback model is an org setting at this pin (getPurposeRuntime fallback, src/wiring.ts), unset here, so a provider error is not retried on another model",
+    "embeddings": "none: QM's memory embedder is an org setting (embeddingModelId), unset here",
+    "observed": "counted at main@b6786d67 in qm-c4-told-live-2026-11 (cells qm-pi-sol-*-mu-v03-dev, docs/benchmarks/2026-11-03-qm-c4-told-live)",
+    "observed_keyless": "2026-11-08, images harness-eval/qm:dev and qm-sandbox:dev built at 90e4ced7, the checkout's adapter mounted in the task container, one run turn through compose.yaml and compose.openai.yaml against tests/fixtures/openai-branch/fake-openai.ts: exit 0, reply ok, two streamed POST <base>/v1/responses with the dummy token, both with reasoning {effort: medium, summary: auto} and max_output_tokens 128000: one side call naming gpt-5.6-luna with no tools and one agent turn naming gpt-6.1-sol with 14 tools; core named no Anthropic model (tests/qm-openai-branch.test.ts)"
+  },
   "state_paths": [
     "postgres database qm (sessions, memory, runs)",
     "/data on the core service (bound to /harness-state/qm)",

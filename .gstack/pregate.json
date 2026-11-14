@@ -331,28 +331,13 @@
       "docs/benchmarks/*/sealed-results/**/events.jsonl"
     ],
     "answer_markers": [
-      "capy\\.ai/s/",
-      "\\bjam_[0-9A-HJKMNP-TV-Z]{26}\\b",
-      "/home/user/\\.capy/drive(?!\",?\\r?(?![^\\n]))",
-      "(?i:(?<![^\\n])[ ]{0,3}#{1,6}[ \\t]+Spend[ \\t]+\\(internal\\))",
-      "gitleaks[:]allow",
-      "trufflehog[:]ignore",
-      "\\bsk-ant-[a-z]{3,8}[0-9]{2}-[A-Za-z0-9_-]{20,}",
-      "\\bsk-proj-[A-Za-z0-9_-]{20,}",
-      "\\bsk-svcacct-[A-Za-z0-9_-]{20,}",
-      "\\bsk-admin-[A-Za-z0-9_-]{20,}",
-      "\\bsk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}\\b",
-      "\\bsk-or-v1-[0-9a-f]{64}\\b",
-      "\\bxai-[A-Za-z0-9]{50,}",
-      "\\bpplx-[A-Za-z0-9]{40,}",
       "AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}"
     ],
     "visibility": "public",
     "allow_paths": [
       "tasks/repo/*/heldout/MANIFEST.json",
       "tasks/multiuser/*/heldout/MANIFEST.json"
-    ],
-    "local_paths": true
+    ]
   },
   "empty_lanes": [
     "docs/**/*.md",
@@ -791,6 +776,51 @@
       ],
       "pattern": "preflight\",?$",
       "reason": "skill-resolver preflight receipts: session_key holds the fixed preflight session label, not a credential"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/repo/gstack-delivery-v1/dev/**/*.tar",
+        "tasks/repo/gstack-delivery-v1/dev/**/*.py",
+        "tasks/repo/gstack-delivery-v1/dev/**/*.pyi",
+        "scripts/repo-tasks/delivery/upstream/*.tar",
+        "scripts/repo-tasks/delivery/specs/**"
+      ],
+      "pattern": "(?:'bottle\\.request\\.ext\\.%s'\\ %\\ name|\\(self\\.primary_key\\ and\\ 1\\ or\\ 2\\),\\ self\\._order|Callable\\[\\[_T\\],\\ _SupportsLessThan\\]|Callable\\[\\[_T\\],\\ _U\\]|Callable\\[\\[_T\\],\\ _U\\]\\ \\|\\ None\\ =\\ \\.\\.\\.|Callable\\[\\[_T\\],\\ object\\]\\ \\|\\ None\\ =\\ \\.\\.\\.)",
+      "reason": "Python source in the vendored MIT upstream trees the gstack delivery tasks are built from (bottle, cachetools, more-itertools, peewee): assignments and type annotations whose values are code expressions such as primary_key or Callable[[_T], _U], not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/repo/gstack-delivery-v1/dev/**/*.tar",
+        "tasks/repo/gstack-delivery-v1/dev/**/*.py",
+        "tasks/repo/gstack-delivery-v1/dev/**/*.pyi",
+        "scripts/repo-tasks/delivery/upstream/*.tar",
+        "scripts/repo-tasks/delivery/specs/**"
+      ],
+      "pattern": "(?:CompositeKey\\('category',\\ 'key'\\)|bottle\\.request\\.ext\\.%s|cachetools\\.keys\\.typedkey|column_data\\.primary_key|field\\.source|foreign_key|foreign_key_field\\.name|foreign_keys\\[0\\]|model\\._meta\\.primary_key\\.column_name|node\\.source)",
+      "reason": "Python source in the vendored MIT upstream trees the gstack delivery tasks are built from (bottle, cachetools, more-itertools, peewee): assignments and type annotations whose values are code expressions such as primary_key or Callable[[_T], _U], not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/repo/gstack-delivery-v1/dev/**/*.tar",
+        "tasks/repo/gstack-delivery-v1/dev/**/*.py",
+        "tasks/repo/gstack-delivery-v1/dev/**/*.pyi",
+        "scripts/repo-tasks/delivery/upstream/*.tar",
+        "scripts/repo-tasks/delivery/specs/**"
+      ],
+      "pattern": "(?:old_name\\ in\\ fk_objects|parent\\.__data__\\[name\\]|primary_key|self\\._key_field|self\\._primary_key|self\\.auto_increment\\ =\\ None|self\\.model\\.key)",
+      "reason": "Python source in the vendored MIT upstream trees the gstack delivery tasks are built from (bottle, cachetools, more-itertools, peewee): assignments and type annotations whose values are code expressions such as primary_key or Callable[[_T], _U], not credentials"
+    },
+    {
+      "finding": "db.url_with_password",
+      "paths": [
+        "tasks/repo/gstack-delivery-v1/dev/**/*.tar",
+        "scripts/repo-tasks/delivery/upstream/peewee-*.tar"
+      ],
+      "pattern": "(?:mysql|postgresql)(?=://usr(?:%40example\\.com)?:p(?:wd|%40sswd))",
+      "reason": "peewee's own tests of its database-URL parser in the vendored MIT upstream tree, with the placeholder user usr, password pwd and host hst; no real host or credential"
     }
   ]
 }

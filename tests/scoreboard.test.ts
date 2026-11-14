@@ -5,7 +5,8 @@ import {
   benchmarkFolders, buildAll, buildTable, callFor, callPhrase, costCallFor, getPath, loadEntries, modelLines, perTaskCosts, rankingStart, rankRows, ratioOf, readResults, renderPage, renderRankingBlock, renderReadme, renderReportsIndex, usd, withoutUnindexed,
   RANKING_END, type Comparison, type PairRatio, type Row,
 } from '../scripts/scoreboard/build.ts';
-import { validateEntry, validateReports, type ReportRow } from '../scripts/scoreboard/schema.ts';
+import { NO_RESULTS } from '../scripts/scoreboard/build.ts';
+import { USE_CASES, validateEntry, validateReports, type ReportRow } from '../scripts/scoreboard/schema.ts';
 import type { TrialRecord } from '../runner/contracts.ts';
 
 const root = join(import.meta.dir, '..');
@@ -350,6 +351,72 @@ const waterfall = () => tables.find((x) => x.entry.run_id === 'waterfall-frontie
       const shortOpenClaw = s === 'OpenClaw' && section.includes(lines.OpenAI!) && section.includes(lines.OpenClaw!.replace(` ${lines.OpenAI!.replace(/^Disclosure: /, '')}`, ''));
       expect(section.includes(lines[s]!) || shortOpenClaw).toBe(true);
     }
+  });
+});
+
+describe('use cases', () => {
+  const { page, tables } = buildAll(root);
+  const lines = () => readJson('docs/scoreboard/disclosures.json').lines as Record<string, string>;
+  const headings = (text: string) => text.split('\n').filter((l) => /^#{2,4} /.test(l));
+
+  test('the page has one heading per use case, in order, and each task set sits under its own use case', () => {
+    const h = headings(page);
+    const at = USE_CASES.map(([, title]) => h.indexOf(`## ${title}`));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    for (const t of tables.filter((x) => x.entry.role === 'main')) {
+      const i = h.findIndex((l) => l.startsWith(`### ${t.entry.task_set.label} (${t.entry.run_id},`));
+      const owner = USE_CASES.map(([id, title]) => ({ id, at: h.indexOf(`## ${title}`) })).filter((u) => u.at < i).pop()!;
+      expect(owner.id).toBe(t.entry.use_case);
+    }
+  });
+
+  test('the existing entries are company brain, and a use case with no entries says so in one line', () => {
+    expect(tables.map((t) => [t.entry.run_id, t.entry.use_case]).filter(([id]) => id === 'matrix-mu-2026-11' || id === 'waterfall-frontier-2026-11')).toEqual([
+      ['matrix-mu-2026-11', 'company-brain'], ['waterfall-frontier-2026-11', 'company-brain'],
+    ]);
+    const company = tables.filter((t) => t.entry.use_case === 'company-brain');
+    const only = renderPage(company, lines());
+    expect(only).toContain(`## Codegen\n\n${NO_RESULTS}\n\n## Personal brain\n\n${NO_RESULTS}\n\n## Company brain\n\n### `);
+    expect(only.split(NO_RESULTS).length - 1).toBe(2);
+  });
+
+  test('a moved entry moves its section, and its other runs follow it', () => {
+    const moved = tables.map((t) => ({ ...t, entry: { ...t.entry, use_case: 'personal-brain' as const } }));
+    const out = renderPage(moved, lines());
+    expect(out.indexOf('### 20 public v0.3 multi-user dev tasks')).toBeGreaterThan(out.indexOf('## Personal brain'));
+    expect(out.indexOf('### 20 public v0.3 multi-user dev tasks')).toBeLessThan(out.indexOf('## Company brain'));
+    expect(out.indexOf('#### Same tasks, other runs')).toBeLessThan(out.indexOf('## Company brain'));
+    expect(out).toContain(`## Company brain\n\n${NO_RESULTS}`);
+  });
+
+  test('an other entry on a main entry\'s task set must share its use case', () => {
+    const split = tables.map((t) => (t.entry.role === 'other' ? { ...t, entry: { ...t.entry, use_case: 'codegen' as const } } : t));
+    expect(() => renderPage(split, lines())).toThrow(/waterfall-frontier-2026-11: use case codegen differs from matrix-mu-2026-11's company-brain/);
+  });
+
+  test('use_case is required and must be one of the three', () => {
+    const e = readJson('docs/scoreboard/entries/matrix-mu-2026-11.json');
+    delete e.use_case;
+    expect(() => validateEntry(e, 'fixture')).toThrow(/use_case must be one of codegen, personal-brain, company-brain/);
+    e.use_case = 'coding';
+    expect(() => validateEntry(e, 'fixture')).toThrow(/use_case must be one of/);
+  });
+
+  test("can't-run pairs render as one line under the section, and a bad list is refused", () => {
+    expect(page).toContain("**Can't run:** Claude Code with GPT-6.1 Sol (the CLI speaks only Anthropic's Messages API); Codex with Opus 5.5 (Codex speaks only OpenAI's Responses API, which Anthropic does not serve).\n\n**Caveats:**");
+    const t = tables.find((x) => x.entry.run_id === 'matrix-mu-2026-11')!;
+    const none = { ...t, entry: { ...t.entry, cant_run: undefined } };
+    expect(renderPage([none], lines())).not.toMatch(/^\*\*Can't run[:,]/m);
+    const e = readJson('docs/scoreboard/entries/matrix-mu-2026-11.json');
+    e.cant_run = [{ harness: 'Codex', model: 'Opus 5.5' }];
+    expect(() => validateEntry(e, 'fixture')).toThrow(/cant_run must be a list of \{ harness, model, reason \} strings/);
+  });
+
+  test("a can't-run pair naming a disclosed subject needs its disclosure", () => {
+    const e = loadEntries(root).find((x) => x.run_id === 'matrix-mu-2026-11')!;
+    e.cant_run = [...(e.cant_run ?? []), { harness: 'Codex', model: 'particle-1', reason: 'Particle speaks only OpenAI Chat Completions' }];
+    expect(() => buildTable(e, readJson)).toThrow(/disclosures must list Particle/);
   });
 });
 

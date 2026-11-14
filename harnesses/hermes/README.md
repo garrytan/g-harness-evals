@@ -40,6 +40,19 @@ On a Particle-1 cell (cell model `particle:particle-1`, the cheap row of interna
 
 Keyless proof (2026-10-31, `tests/particle-branch.test.ts`): the image ran straight against a fake Particle endpoint (`tests/fixtures/particle/fake-particle.ts`), because the proxy's Particle route was not on main yet. `run` and `serve` completed. Every model request named `particle-1`, and the agent turn sent effort medium and `max_completion_tokens` 128,000. There was no embeddings call and no Anthropic call. Particle's 400, 402 and 429 error bodies from the fake exited 2, 3 and 3. The same test checks that an OpenAI cell's turn arguments, environment, response and ready file equal main's at `3a9b403be`. No paid Particle call has been made.
 
+## OpenRouter cells (internal-task)
+
+On an OpenRouter cell (cell model `openrouter:deepseek/deepseek-v4.1-flash-1017`, DeepSeek V4.1 Flash 1017) the runner's URL ends in `/<slot>/openrouter`. The metering proxy forwards only Chat Completions there and pins every request to DeepSeek's own endpoint on OpenRouter. An Anthropic, OpenAI or Particle URL keeps its own branch above.
+
+- **Provider.** `--provider custom:openrouter-proxy`: the `custom_providers` entry in `config/config.openrouter.yaml`, on the `chat_completions` transport, as on a Particle cell.
+- **Credentials.** `OPENAI_API_KEY` and `OPENAI_BASE_URL`, as on a Particle cell, and no Anthropic variables.
+- **Reasoning effort: high.** The entry's `extra_body` sends OpenRouter's `reasoning: {effort: high}`, and `agent.reasoning_effort: high` makes Hermes's own `reasoning_effort` say high too. Left unset, Hermes would send medium beside it. DeepSeek offers none, low, high and max, not medium.
+- **Reasoning pass-back.** DeepSeek's thinking mode refuses a tool-call turn that comes back without its reasoning. Hermes sends it back as `reasoning_content` for any model id naming deepseek, and OpenRouter accepts that field.
+- **Output cap.** `extra_body` adds `max_completion_tokens: 128000` to the agent turn. The title call sends none, and the proxy fills its cap.
+- **gstack chat mode.** The overlay stops an OpenRouter cell before any model request, as it does a Particle cell. OpenRouter cells run the oneshot image.
+
+Keyless proof (2026-11-08, `tests/openrouter-branch.test.ts`): with the stand-in CLIs, `run` and `serve` hand Hermes this provider, model, template and environment. With `HE_TEST_HERMES_BIN` set, the test runs the real Hermes at the pinned commit (its uv environment on the host, not the image) against `tests/fixtures/openrouter/fake-openrouter.ts`, which refuses a tool-call turn sent back without its reasoning, as DeepSeek does. The turn exited 0. Both agent requests sent effort high and `max_completion_tokens` 128,000, and the second carried the first turn's `reasoning_content`. Not yet run in the image, and no paid OpenRouter call has been made.
+
 ## Instruction routes (internal-task)
 
 `HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction.md](../routes/instruction.md), gbrain's per-turn brain-first rule). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
@@ -125,6 +138,10 @@ Findings:
 - The 36 refused requests per trial in the proxy's usage log are Hermes's model-discovery probes, 12 per turn, refused 403 at $0 (the M0 finding).
 
 ## Changelog
+
+### 2026-11-08: OpenRouter cells (internal-task)
+
+The adapter gives an OpenRouter cell `config/config.openrouter.yaml` and `--provider custom:openrouter-proxy` with `OPENAI_API_KEY` and `OPENAI_BASE_URL` (Chat Completions, effort high through both `extra_body` and `agent.reasoning_effort`, an output cap of 128,000), the gstack overlay's chat mode stops such a cell, and `pin.json` gains `model_openrouter`. Why: DeepSeek V4.1 Flash 1017 through the metering proxy's new OpenRouter route.
 
 ### 2026-11-01: H10 routes and the Tirith pin (internal-task)
 

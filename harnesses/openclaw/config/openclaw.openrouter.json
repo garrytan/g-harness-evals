@@ -1,0 +1,61 @@
+// OpenClaw config for one headless trial on an OpenRouter cell (DeepSeek V4.1 Flash 1017). JSON5.
+// OpenClaw's generic openai-completions provider (Chat Completions) over the
+// metering proxy at HE_MODEL_BASE_URL/v1, where the proxy serves POST
+// /v1/chat/completions for OpenRouter and pins every request to DeepSeek's own
+// endpoint. The provider id is openrouter-proxy, not OpenClaw's bundled
+// openrouter provider, so no live catalog discovery or openrouter.ai-only request
+// shaping runs against the proxy. The model is fixed to the cell model, and the
+// two secrets and the model name come from the adapter's environment by ${VAR}
+// substitution so this file never holds a key. compat.thinkingFormat openrouter
+// sends the effort as OpenRouter's reasoning {effort} and, on replay, keeps an
+// earlier turn's reasoning on the assistant message as reasoning (OpenRouter's
+// field; reasoning_content is its alias), which DeepSeek thinking mode needs on
+// tool-call turns. thinkingDefault high is the effort; DeepSeek offers none, low,
+// high and max. maxTokens 128000 is the cap the OpenAI and Particle cells state
+// and every shard's proxy runs. DeepSeek reports usage in the stream, which
+// OpenClaw does not ask a custom endpoint for unless told. utilityModel maps the
+// housekeeping model to the cell model, and memory.search.provider none keeps the
+// memory indexer on keyword search, so no /v1/embeddings call is made (the proxy's
+// OpenRouter route has none). Copied to /harness-state/openclaw/openclaw.json by
+// adapter.sh when HE_MODEL_BASE_URL ends in /openrouter.
+{
+  models: {
+    mode: "merge",
+    providers: {
+      "openrouter-proxy": {
+        baseUrl: "${HE_MODEL_BASE_URL}/v1",
+        apiKey: "${HE_MODEL_API_KEY}",
+        api: "openai-completions",
+        models: [
+          {
+            id: "${HE_MODEL_NAME}",
+            name: "${HE_MODEL_NAME}",
+            reasoning: true,
+            input: ["text"],
+            contextWindow: 1048576,
+            maxTokens: 128000,
+            compat: {
+              maxTokensField: "max_completion_tokens",
+              supportsUsageInStreaming: true,
+              thinkingFormat: "openrouter",
+            },
+          },
+        ],
+      },
+    },
+  },
+  agents: {
+    defaults: {
+      model: { primary: "openrouter-proxy/${HE_MODEL_NAME}" },
+      utilityModel: "openrouter-proxy/${HE_MODEL_NAME}",
+      thinkingDefault: "high",
+      workspace: "/workspace",
+      // As in openclaw.json: agent --local (serve) would otherwise seed the
+      // first-run bootstrap ritual into /workspace and the first prompt.
+      skipBootstrap: true,
+    },
+  },
+  memory: {
+    search: { provider: "none" },
+  },
+}

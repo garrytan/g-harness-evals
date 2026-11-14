@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The trial slot broker of the frontier Harbor path (internal-task). vm-run.sh runs it on 127.0.0.1 beside the metering proxy;
+// The trial slot broker of the frontier Harbor path (HARN-50). vm-run.sh runs it on 127.0.0.1 beside the metering proxy;
 // it is the only process besides the proxy that holds the proxy's control token (SHOOTOUT_PROXY_CONTROL_TOKEN, from its
 // environment). At agent setup each class in agents.py posts its trial here:
 //
@@ -32,7 +32,7 @@ export const captureDir = (cell: string, attempt: number, trial: string, job?: s
 export const jobOk = (job: string, cell: string, attempt: number) => job === cell + '__a' + attempt || (job.startsWith(cell + '__a' + attempt + '__') && SLOT.test(job.slice((cell + '__a' + attempt + '__').length)));
 
 const SLOT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const MODEL = /^(anthropic|openai):[A-Za-z0-9._-]+$/;
+const MODEL = /^(anthropic|openai|particle):[A-Za-z0-9._-]+$|^openrouter:[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
 export function readBinds(log: string): BindLine[] {
   return existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as BindLine) : [];

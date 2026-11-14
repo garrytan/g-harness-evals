@@ -14,7 +14,9 @@
 # ~/terminal-bench-2-1. With --install-check the lane is the keyless install check and nothing else:
 # scripts/frontier-harbor/install-check.sh ~/shard/results with every key unset (fake upstream, no spend), its output in
 # ~/shard/results/run.stdout.log and its exit code the shard's. Otherwise the smoke is that same keyless install check
-# into ~/shard/smoke (--no-smoke skips it; exit 4 when it fails), then scripts/frontier-harbor/vm-run.sh for the shard
+# into ~/shard/smoke (--no-smoke skips it; exit 4 when it fails), then the web-tools check on the smoke's captured
+# requests (scripts/frontier-harbor/web-tools-check.ts; exit 4 when a cell offers a web tool or has no captured tool list,
+# so a counted shard needs the smoke), then scripts/frontier-harbor/vm-run.sh for the shard
 # under its lease with --out ~/shard/results and the arguments after -- passed through (--stage <name>, --done <file>),
 # its output in ~/shard/results/run.stdout.log.
 # Sealed flags are refused.
@@ -51,7 +53,8 @@
 # Phase timestamps go to ~/shard/phases.json (epoch seconds), the smoke's results to ~/shard/smoke/results and the shard's
 # to ~/shard/results. The model keys are in this process's environment only (read from ~/.ubirun-env by the launcher,
 # which deletes the file before this script starts); nothing here prints them, and run-shard.sh hands them only to the
-# metering proxy. Exit codes: run-shard.sh's for the shard; 3 for a checkout or install failure; 4 when the smoke did not
+# metering proxy (CURSOR_API_KEY, the one exception, to the runner's run step and the Cursor containers).
+# Exit codes: run-shard.sh's for the shard; 3 for a checkout or install failure; 4 when the smoke did not
 # end with every trial completed.
 set -uo pipefail
 export PATH="$HOME/.bun/bin:$PATH"
@@ -89,6 +92,11 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$commit" ] && [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$cells" ] && [ -n "$lease" ] || { echo "vm-shard: --commit, --prereg, --name, --cells and --lease-usd are required" >&2; exit 2; }
 [ "$install_check" -eq 0 ] || [ "$workload" = frontier-harbor ] || { echo "vm-shard: --install-check applies only to --workload frontier-harbor" >&2; exit 2; }
+# CURSOR_API_KEY (a Cursor shard) stays a shell variable here, out of the exported environment, so the checkout, the
+# install and every other step run without it; only scripts/run-shard.sh and, for --workload frontier-harbor,
+# scripts/frontier-harbor/vm-run.sh get it, through with_cursor_key.
+export -n CURSOR_API_KEY 2>/dev/null || true
+with_cursor_key() { if [ -n "${CURSOR_API_KEY:+x}" ]; then CURSOR_API_KEY=$CURSOR_API_KEY "$@"; else "$@"; fi; }
 
 shard=$HOME/shard
 mkdir -p "$shard"
@@ -115,7 +123,7 @@ if [ "$workload" = gstack-laneb ]; then
   if [ "$smoke" -eq 1 ]; then
     phase smoke_start
     log "smoke: scripts/gstack-laneb/smoke.sh (keyless, fake upstream)"
-    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY bash scripts/gstack-laneb/smoke.sh --laneb-root "$HOME/laneb" --out "$shard/smoke"
+    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY -u OPENROUTER_API_KEY bash scripts/gstack-laneb/smoke.sh --laneb-root "$HOME/laneb" --out "$shard/smoke"
     rc=$?
     phase smoke_end
     [ "$rc" -eq 0 ] || { log "smoke failed (exit $rc); the counted run does not start"; finish 4; }
@@ -147,7 +155,7 @@ if [ "$workload" = frontier-harbor ]; then
     git clone --quiet --filter=blob:none "$tb_repo" "$tb21" > "$shard/tb21-clone.log" 2>&1 && git -C "$tb21" checkout --quiet "$tb_commit" || { log "cloning terminal-bench-2-1 at $tb_commit failed"; finish 3; }
   fi
   log "terminal-bench-2-1 at $(git -C "$tb21" rev-parse HEAD)"
-  keyless=(env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY -u UBICLOUD_API_KEY)
+  keyless=(env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY -u OPENROUTER_API_KEY -u UBICLOUD_API_KEY -u CURSOR_API_KEY)
   if [ "$install_check" -eq 1 ]; then
     mkdir -p "$shard/results"
     phase run_start
@@ -168,12 +176,19 @@ if [ "$workload" = frontier-harbor ]; then
     phase smoke_end
     [ "$rc" -eq 0 ] || { tail -5 "$shard/smoke/results/run.stdout.log"; log "smoke failed (exit $rc); the counted run does not start"; finish 4; }
   fi
+  # The web-tools check (Captain ruling 2026-11-09): the tools each harness offered the model in the smoke's captured
+  # requests, for every cell of the shard; a web search or web fetch tool, or a cell with no captured tool list (no
+  # smoke), fails the shard before any counted trial. The list per cell goes to ~/shard/smoke/results/web-tools.json.
+  mkdir -p "$shard/smoke/results"
+  env -i "PATH=$PATH" "HOME=$HOME" "TZ=UTC" bun scripts/frontier-harbor/web-tools-check.ts --smoke "$shard/smoke/results" --prereg "$prereg" --name "$name" > "$shard/smoke/web-tools.log" 2>&1; web_tools_ok=$?
+  while IFS= read -r l; do log "$l"; done < "$shard/smoke/web-tools.log"
+  [ "$web_tools_ok" -eq 0 ] || { log "web-tools check failed (exit $web_tools_ok); the counted run does not start"; finish 4; }
   phase run_start
   log "run: scripts/frontier-harbor/vm-run.sh --prereg $prereg --name $name --lease-usd $lease ${extra[*]-}"
   # The controller's SIGTERM reaches the whole process group; vm-run.sh traps it, drains its meter and writes its records.
   trap 'log "signal received; waiting for vm-run.sh to write its records"' TERM HUP
   mkdir -p "$shard/results"
-  bash scripts/frontier-harbor/vm-run.sh --prereg "$prereg" --name "$name" --lease-usd "$lease" --out "$shard/results" --tb21 "$tb21" ${extra[@]+"${extra[@]}"} >> "$shard/results/run.stdout.log" 2>&1 &
+  with_cursor_key bash scripts/frontier-harbor/vm-run.sh --prereg "$prereg" --name "$name" --lease-usd "$lease" --out "$shard/results" --tb21 "$tb21" ${extra[@]+"${extra[@]}"} >> "$shard/results/run.stdout.log" 2>&1 &
   child=$!
   while :; do wait "$child"; rc=$?; kill -0 "$child" 2>/dev/null || break; done
   trap - TERM HUP
@@ -241,7 +256,7 @@ PY
     # try keeps its log; any other smoke failure ends the shard at once.
     smoke_tries=${HE_SMOKE_TRIES:-4} wait_s=${HE_RETRY_BASE_S:-30}
     for ((try = 1; ; try++)); do
-      env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY bun harnesses/qm/gstack/s1e-probe.ts --dry-run --work "$shard/smoke/work" --out "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
+      env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY -u OPENROUTER_API_KEY bun harnesses/qm/gstack/s1e-probe.ts --dry-run --work "$shard/smoke/work" --out "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
       rc=$?
       [ "$rc" -ne 0 ] && [ "$try" -lt "$smoke_tries" ] && grep -q 's1e: image build .* failed' "$shard/smoke/results/run.stdout.log" || break
       cp "$shard/smoke/results/run.stdout.log" "$shard/smoke/results/run.stdout.try$try.log"
@@ -374,7 +389,7 @@ PY
     phase smoke_start
     smoke_args=(--prereg "$smoke_prereg" --name "smoke-$name" --cells "$smoke_cells" --lease-usd "$smoke_lease" --out "$shard/smoke/results" ${smoke_image[@]+"${smoke_image[@]}"} ${extra[@]+"${extra[@]}"})
     log "smoke: run-shard.sh ${smoke_args[*]}"
-    scripts/run-shard.sh "${smoke_args[@]}"
+    with_cursor_key scripts/run-shard.sh "${smoke_args[@]}"
     rc=$?
     phase smoke_end
     python3 - "$shard/smoke/results/trials.jsonl" <<'PY'
@@ -412,7 +427,7 @@ args=(--prereg "$prereg" --name "$name" --cells "$cells" --lease-usd "$lease" --
 [ -n "$amendment" ] && args+=(--amendment "$amendment")
 phase run_start
 log "run: scripts/run-shard.sh ${args[*]}"
-scripts/run-shard.sh "${args[@]}"
+with_cursor_key scripts/run-shard.sh "${args[@]}"
 rc=$?
 phase run_end
 log "run-shard.sh exited $rc"

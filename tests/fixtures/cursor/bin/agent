@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# A stand-in for the Cursor CLI (agent) at the pinned version, for tests/cursor-adapter.test.ts. It prints the documented
+# stream-json records of agent -p --output-format stream-json (https://cursor.com/docs/cli/reference/output-format: a
+# system init record, tool_call records, a result record), runs the postToolUse hook from $HOME/.cursor/hooks.json for
+# each tool call as the hooks docs describe, keeps one chat id per --resume and never calls a model. STUB_LOG gets one JSON line per call: the
+# arguments, HOME, and whether CURSOR_API_KEY was set (never its value). Markers in the prompt choose the outcome:
+#   [stub:unreachable]  "Failed to reach the Cursor API" on stderr, exit 1, no records (the egress allowlist denied it)
+#   [stub:crash]        an init record, then exit 1 with no result
+#   [stub:other-model]  an init record naming Claude Sonnet 5.5
+#   [stub:leak]         the CURSOR_API_KEY value in a tool_call record on stdout and on stderr (the redaction test)
+#   [stub:tool NAME]    a tool_call started record for a function named NAME, and the postToolUse hook with tool_name NAME
+#   [stub:nohook]       a readToolCall started record, and no hook run (hooks that did not fire)
+#   [stub:sleep N]      sleeps N seconds before the result
+# STUB_AGENT_VERSION sets --version.
+set -euo pipefail
+if [ "${1:-}" = --version ]; then echo "${STUB_AGENT_VERSION:-2026.11.05-86047df}"; exit 0; fi
+chat='' prompt=''
+args=("$@")
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --resume) chat=$2; shift ;;
+    --) shift; prompt=${1:-}; break ;;
+  esac
+  shift
+done
+node -e 'const [log, home, key, ...a] = process.argv.slice(1); if (log) require("fs").appendFileSync(log, JSON.stringify({ args: a, home, key_set: key === "1" }) + "\n")' "${STUB_LOG:-}" "$HOME" "$([ -n "${CURSOR_API_KEY:+x}" ] && echo 1 || echo 0)" "${args[@]}"
+[ -n "$chat" ] || chat=$(node -e 'console.log(require("crypto").randomUUID())')
+case "$prompt" in *'[stub:unreachable]'*) echo "✗ Failed to reach the Cursor API. Check that your proxy (http://host.docker.internal:1/) is reachable." >&2; exit 1 ;; esac
+model='Claude Opus 5.5'
+case "$prompt" in *'[stub:other-model]'*) model='Claude Sonnet 5.5' ;; esac
+printf '{"type":"system","subtype":"init","apiKeySource":"env","cwd":"%s","session_id":"%s","model":"%s","permissionMode":"default"}\n' "$PWD" "$chat" "$model"
+case "$prompt" in *'[stub:crash]'*) echo "Error: stub crash" >&2; exit 1 ;; esac
+case "$prompt" in *'[stub:leak]'*) printf '{"type":"tool_call","subtype":"started","tool_call":{"function":{"name":"Shell","arguments":"env","output":"CURSOR_API_KEY=%s"}}}\n' "${CURSOR_API_KEY:-}"; echo "leaked ${CURSOR_API_KEY:-}" >&2 ;; esac
+if [[ "$prompt" =~ \[stub:tool\ ([A-Za-z:_]+)\] ]]; then
+  name=${BASH_REMATCH[1]}
+  printf '{"type":"tool_call","subtype":"started","call_id":"c1","tool_call":{"function":{"name":"%s","arguments":"{}"}}}\n' "$name"
+  cmd=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).hooks.postToolUse[0].command)' "$HOME/.cursor/hooks.json")
+  printf '{"hook_event_name":"postToolUse","tool_name":"%s","tool_input":{},"tool_output":"{}"}' "$name" | (cd "$HOME/.cursor" && sh -c "$cmd") > /dev/null
+fi
+case "$prompt" in *'[stub:nohook]'*) echo '{"type":"tool_call","subtype":"started","call_id":"c2","tool_call":{"readToolCall":{"args":{"path":"instruction.md"}}}}' ;; esac
+if [[ "$prompt" =~ \[stub:sleep\ ([0-9]+)\] ]]; then sleep "${BASH_REMATCH[1]}"; fi
+printf '{"type":"result","subtype":"success","is_error":false,"duration_ms":10,"result":"stub reply","session_id":"%s","request_id":"req-1"}\n' "$chat"

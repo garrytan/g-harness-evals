@@ -1,0 +1,26 @@
+# Route rows for a Particle cell (HE_MODEL_BASE_URL ends in /particle): a custom Chat Completions provider on the metering
+# proxy at <base>/v1. Particle reads max_completion_tokens and reasoning_effort, and the system prompt goes as the system
+# role and no store field is sent, the request shape its Chat Completions endpoint documents.
+- id: agent-default-model
+  config:
+    provider: he-particle
+    model: @MODEL@
+- id: llm-pi-ai
+  config:
+    providers:
+      he-particle:
+        displayName: harness-evals metering proxy (particle)
+        apiKeyEnv: HE_MODEL_API_KEY
+        api: openai-completions
+        baseURL: @BASE_URL_V1@
+        reasoning: high
+        compat:
+          supportsDeveloperRole: false
+          supportsStore: false
+          supportsReasoningEffort: true
+          maxTokensField: max_completion_tokens
+        models:
+          - id: @MODEL@
+            maxTokens: 128000
+            reasoningEfforts:
+              high: high

@@ -55,7 +55,21 @@
 // Spec: { "run_id": "...", "seed": 7, "draws": 10000, "alpha": 0.05, "saturated_at": 0.95, "min_paired_tasks": 10,
 //         "primary_pairs": { "<model id>": 3 }, "drift_threshold": 0.1,
 //         "models": [{ "id": "opus", "label": "Opus 5.5", "home": "<cell id>" }],
-//         "cells": [{ "id": "<cell id>", "model": "opus", "harness": "hermes", "attempts": 2, "descriptive": false }] }
+//         "cells": [{ "id": "<cell id>", "model": "opus", "harness": "hermes", "attempts": 2, "descriptive": false }],
+//         "model_swap": { "particle": "particle", "frontier": [{ "id": "opus", "label": "Opus 5.5" }, { "id": "sol", "label": "GPT-6.1 Sol" }],
+//                         "use_cases": [{ "id": "codegen", "cells": ["<cell id>", ...] }], "clusters": { "<task>": "<cluster>" },
+//                         "family": ["codegen/opus", "codegen/sol", ...], "min_clusters": 10, "require_clusters": false },
+//         "low_cost_swap": { "a": "deepseek", "b": "particle", "label_a": "DeepSeek-V4.1-Flash-1017", "label_b": "particle-1",
+//                            "exclude_harnesses": ["dsh"], "use_cases": [{ "id": "codegen", "cells": ["<cell id>", ...] }],
+//                            "family": ["codegen", "personal-brain", "company-brain"], "margin": 0.10,
+//                            "cost_basis": { "prices": "runner/pricing/prices-2026-11-08.json",
+//                                            "rows": { "deepseek": "openrouter:deepseek/deepseek-v4.1-flash-1017", "particle": "particle:particle-1" } },
+//                            "frontier": ["opus", "sol"], "clusters": { "<task>": "<cluster>" }, "min_clusters": 10, "require_clusters": false } }
+// model_swap (optional) adds the particle-1 against frontier contrast of scripts/model-swap.ts, which describes the rule, with
+// the spec's model ids, this script's scoring (lookups as fails included) and the task as the cluster unless clusters says otherwise.
+// low_cost_swap (optional) adds the two-sided a against b contrast of the same file (amendment gate G1), scored the same way, its
+// use cases' cells drawn from this spec's cells (a, b and the frontier models listed), and its cost from the trials' token counts.
+// Its section follows the model_swap one; without the block, the analysis and its Markdown are what they were.
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -65,6 +79,7 @@ import { readJsonFile, readJsonLines } from '../../runner/heldout/sealed.ts';
 import { clusteredPairedDelta, holmAdjusted, nonInferiorityP, powerNote, type PairedDelta } from '../../runner/stats/paired.ts';
 import { bootstrapLowerBound, costPerSolve, harnessFlip, pairedCostRatio, passAtK, passHatK, rerunFlip, taskBootstrapMean, type MeanInterval } from '../../runner/stats/frontier.ts';
 import { TERMINATIONS, trialValue, type MatrixManifest } from '../matrix-analysis.ts';
+import { analyzeLowCostSwap, analyzeModelSwap, checkLowCostSwapSpec, checkModelSwapSpec, ModelSwapError, renderLowCostSwap, renderModelSwap, type LowCostSwapSpec, type ModelSwapSpec } from '../model-swap.ts';
 import { NO_ROOM, noRoomReason, pairHeadroom, runCanTellApart } from '../../runner/stats/headroom.ts';
 import { headroomGated } from '../headroom.ts';
 import { validateRecords } from '../validate-records.ts';
@@ -85,6 +100,8 @@ export interface FrontierSpec {
   drift_threshold?: number;
   models: FrontierModel[];
   cells: FrontierCell[];
+  model_swap?: ModelSwapSpec;
+  low_cost_swap?: LowCostSwapSpec;
 }
 export interface FrontierInput { records: TrialRecord[]; manifest: MatrixManifest | null; lookup_fails?: string[]; cost_with_replaced?: boolean }
 
@@ -152,6 +169,8 @@ export function checkSpec(spec: FrontierSpec, manifest: MatrixManifest | null): 
   if (spec.alpha !== undefined && !(spec.alpha > 0 && spec.alpha < 0.5)) problems.push('alpha must be between 0 and 0.5');
   if (spec.saturated_at !== undefined && !(spec.saturated_at > 0 && spec.saturated_at <= 1)) problems.push('saturated_at must be in (0, 1]');
   if (spec.min_paired_tasks !== undefined && (!Number.isSafeInteger(spec.min_paired_tasks) || spec.min_paired_tasks < 2)) problems.push('min_paired_tasks must be an integer of at least 2');
+  if (spec.model_swap) problems.push(...checkModelSwapSpec(spec.model_swap, new Map([...cells.values()].map((c) => [c.id, c])), 'harbor'));
+  if (spec.low_cost_swap) problems.push(...checkLowCostSwapSpec(spec.low_cost_swap, new Map([...cells.values()].map((c) => [c.id, c])), 'harbor'));
   return problems;
 }
 
@@ -375,6 +394,20 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
     };
   });
 
+  const swap = spec.model_swap;
+  const swapCells = new Set(swap?.use_cases.flatMap((u) => u.cells) ?? []);
+  const swapOrRefuse = <T,>(f: () => T): T => { try { return f(); } catch (e) { if (e instanceof ModelSwapError) throw new SpecError(e.message); throw e; } };
+  const modelSwap = swap ? swapOrRefuse(() => analyzeModelSwap({
+    cells: spec.cells.filter((c) => swapCells.has(c.id)),
+    trials: input.records.filter((t) => swapCells.has(t.cell)).map((t) => ({ cell: t.cell, task: t.task, value: value(t), usd: t.usage?.usd ?? 0 })),
+    leaks: false,
+  }, swap, { seed, draws, alpha })) : null;
+  const low = spec.low_cost_swap;
+  const lowCells = new Set(low?.use_cases.flatMap((u) => u.cells) ?? []);
+  const lowCostSwap = low ? swapOrRefuse(() => analyzeLowCostSwap({
+    cells: spec.cells.filter((c) => lowCells.has(c.id)),
+    trials: input.records.filter((t) => lowCells.has(t.cell)).map((t) => ({ cell: t.cell, task: t.task, value: value(t), usage: t.usage })),
+  }, low, { seed, draws, alpha })) : null;
   const gstackOf = (t: TrialRecord) => (t as TrialRecord & { gstack?: GstackTrial }).gstack ?? null;
   const armGroups = new Map<string, { arm: string; model: string; cells: string[]; rows: TrialRecord[] }>();
   for (const c of spec.cells) for (const t of data.get(c.id)!.rows) {
@@ -422,7 +455,10 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
     complete: planned === null ? null : unstarted === 0,
     lookup_fails: lookups.size,
     tasks: taskLists,
-    models, cells: withVerdicts, pairs, ...(gstack.length ? { gstack } : {}),
+    models, cells: withVerdicts, pairs,
+    ...(modelSwap ? { model_swap: modelSwap } : {}),
+    ...(lowCostSwap ? { low_cost_swap: lowCostSwap } : {}),
+    ...(gstack.length ? { gstack } : {}),
   };
 }
 
@@ -499,6 +535,8 @@ export function renderMarkdown(a: FrontierAnalysis): string {
     out.push('', '## Tasks dropped from pairs');
     for (const p of dropped) out.push(`- ${p.id}: ${p.dropped.map((d) => `${d.task} (${d.reason})`).join('; ')}`);
   }
+  if (a.model_swap) out.push(...renderModelSwap(a.model_swap));
+  if (a.low_cost_swap) out.push(...renderLowCostSwap(a.low_cost_swap));
   return out.join('\n') + '\n';
 }
 

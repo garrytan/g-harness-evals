@@ -1,0 +1,78 @@
+{
+  "name": "cursor",
+  "repo": "https://cursor.com/docs/cli/installation",
+  "version": "2026.11.05-86047df",
+  "sources": "every Cursor-specific item below comes from Cursor's public docs (URLs and read dates in harnesses/cursor/README.md, \"Clean-room rebuild (2026-11-09)\"), the CLI's own --help and --version output in the pinned image (harnesses/cursor/cli-help.txt), or what the CLI wrote and connected to at run time with no key (harnesses/cursor/cli-config.observed.json, egress.ndjson of the keyless install check). Nothing comes from the CLI's JavaScript",
+  "integrity": {
+    "install_script": "https://cursor.com/install",
+    "install_script_sha256": "f32ab18113f616745c119cd9fa0ffd0d743bc4ea4ee4aeaa98ac907934d0b568",
+    "install_script_fetched": "2026-11-09 (UTC); the script is regenerated per release, so it is recorded, not run: at this sha256 it downloads the package below, extracts it to ~/.local/share/cursor-agent/versions/2026.11.05-86047df and links agent and cursor-agent to its cursor-agent launcher",
+    "package_url": "https://downloads.cursor.com/lab/2026.11.05-86047df/linux/x64/agent-cli-package.tar.gz",
+    "package_sha256": "170b77786cbf4c93064d64fff12b71a178b968730561c64afc2e8e752535442e",
+    "package_bytes": 176081904,
+    "launcher_sha256": "2ccc9a8e167797641448b5e5c936f006ba137a2555f117f38c5eb76a5238a233",
+    "checked": "at image build: sha256sum -c on the package (Dockerfile CURSOR_AGENT_SHA256) and on its cursor-agent launcher (CURSOR_LAUNCHER_SHA256), and agent --version must print 2026.11.05-86047df; the adapter compares agent --version with this file's version before anything else and exits 2 on a difference. linux/x64 only: no other platform's package is pinned"
+  },
+  "install": "the steps of the install script at the sha256 above, without running it: curl the package, sha256sum -c, tar --strip-components=1 into /opt/harness/cursor-agent, and /opt/harness/bin/agent and /opt/harness/bin/cursor-agent as symlinks to its cursor-agent launcher, on node:24-bookworm-slim. The image's node runs only the adapter's helpers",
+  "entry": "/opt/harness/adapter.sh run | serve",
+  "plan_tier": "Premium (the plan that adds third-party models at API list price, https://cursor.com/docs/models-and-pricing)",
+  "model_cursor": {
+    "transport": "cursor-backend: every model call goes from the CLI to Cursor's backend with CURSOR_API_KEY (agent --help, --api-key: 'can also use CURSOR_API_KEY env var'); the CLI's default endpoint is https://api2.cursor.sh (agent --help, -e/--endpoint). There is no metering-proxy route, no proxy slot and no ledger reservation for a Cursor cell (an approved exception to methodology item 3; cost comes from Cursor's usage export, harnesses/cursor/README.md)",
+    "proxy_routes": [],
+    "cell_model": "anthropic:claude-opus-5-5",
+    "model_id": "claude-opus-5-5",
+    "model_id_source": "https://cursor.com/docs/models-and-pricing, row Claude Opus 5.5, whose fast variant is named claude-opus-5-5-fast; the CLI's own model list (agent models, --list-models) needs the key and was not read",
+    "turn_model": "claude-opus-5-5[effort=high,fast=false]",
+    "turn_model_note": "the bracket override syntax and its effort and fast keys are agent --help's own example ('claude-opus-4-8[context=1m,effort=high,fast=false]'): effort high as the brief for new harnesses asks, fast mode off so the priced model is the standard one; not run against the backend",
+    "init_model_name": "Claude Opus 5.5",
+    "init_model_name_source": "the stream-json system init record's model field is the model's display name (https://cursor.com/docs/cli/reference/output-format, \"model\": \"<model display name>\"); Claude Opus 5.5 is the display name on https://cursor.com/docs/models-and-pricing. The adapter requires an exact, case-insensitive match, so a different display name fails the turn (exit 2) until a dated amendment records the one the first keyed smoke printed",
+    "key_env": "CURSOR_API_KEY",
+    "egress_hosts": [
+      "api2.cursor.sh",
+      "api5.cursor.sh",
+      "agent.api5.cursor.sh",
+      "agentn.api5.cursor.sh",
+      "agent.us.api5.cursor.sh",
+      "agentn.us.api5.cursor.sh",
+      "agent.global.api5.cursor.sh",
+      "agentn.global.api5.cursor.sh"
+    ],
+    "egress_hosts_source": "api2.cursor.sh: the CLI's default endpoint (agent --help) and 'used for most API requests'; api5.cursor.sh and its six agent subdomains: 'used for Cursor's agent requests' and the network access layer (https://cursor.com/docs/enterprise/network-configuration). Every other host is denied and logged, including the hosts that page lists for Tab (api3, api4, *.gcpp.cursor.sh), codebase search (repo42.cursor.sh) and client updates (downloads.cursor.com). Which allowed hosts the CLI uses is first observed in the keyed smoke's egress.ndjson",
+    "other_routes": "none: anthropic:<other model>, openai:*, particle:* and openrouter:* cells are refused (HE-CURSOR-001); the harness is evaluated on Opus 5.5 only"
+  },
+  "turn_command": "agent -p --output-format stream-json --force --trust --approve-mcps --workspace /workspace --model 'claude-opus-5-5[effort=high,fast=false]' --disable-auto-update [--resume <chat id>] -- <prompt>",
+  "turn_command_sources": "-p, --output-format stream-json, --force, --trust, --approve-mcps, --workspace, --model, --resume: agent --help (harnesses/cursor/cli-help.txt) and https://cursor.com/docs/cli/reference/parameters. --disable-auto-update is not in agent --help at this version; it is documented in the CLI changelog (https://cursor.com/docs/cli/changelog, January 2026: '--disable-auto-update turns background updates off'), and the keyless install check shows this build accepts it (the CLI runs to its first connection instead of refusing the option)",
+  "serve_turn_command": "the turn_command with --resume <chat id> once the conversation has one, under setsid with the adapter's own wall clock (budget, then SIGTERM to the session and SIGKILL 5 s later); stdout and stderr go through redact.cjs (the literal CURSOR_API_KEY value replaced) into <log>/turns/turn-NNNN.cursor.jsonl and .stderr.log",
+  "state_paths": "/harness-state is HOME and holds everything the CLI writes. Seen in the keyless run: .cursor/cli-config.json (harnesses/cursor/cli-config.observed.json) and .cache/cursor-compile-cache/. The adapter adds .cursor/mcp.json, .cursor/hooks.json, cursor-chats.json and tmp/",
+  "config_dir": "the CLI's global config is ~/.cursor/cli-config.json unless CURSOR_CONFIG_DIR or XDG_CONFIG_HOME says otherwise (https://cursor.com/docs/cli/reference/configuration); the adapter unsets both so HOME decides",
+  "mcp_config_path": "/harness-state/.cursor/mcp.json (mode 0600; the user-level file is ~/.cursor/mcp.json and remote servers take url and headers, https://cursor.com/docs/mcp): {mcpServers: {world: {url: HE_WORLD_MCP_URL, headers: {Authorization: Bearer HE_WORLD_MCP_TOKEN}}}}; --approve-mcps approves it without a prompt (agent --help); tools/list probed with curl before ready",
+  "config": "config/cli-config.json copied to $HOME/.cursor/cli-config.json at the start of a trial. Required fields version, editor.vimMode, permissions.allow and permissions.deny (https://cursor.com/docs/cli/reference/configuration); permissions.allow Mcp(world:*) and Mcp(gbrain:*), permissions.deny WebFetch(*) (https://cursor.com/docs/cli/reference/permissions: Mcp(server:tool), WebFetch(domainOrPattern), deny rules take precedence over allow rules); notifications false and hints false (configuration page, optional fields); autoAcceptWebSearch false (the CLI changelog, v2026.07.13: off by default, 'set autoAcceptWebSearch in cli-config.json'); sandbox.mode disabled (the key is on the configuration page; disabled is one of agent --help's --sandbox choices and the value the CLI wrote into a fresh HOME in the keyless run)",
+  "web_tools": {
+    "web_fetch": "denied by permissions.deny WebFetch(*). agent --help says --force allows commands 'unless explicitly denied', and the permissions page says deny rules take precedence; not verified against the backend",
+    "web_search": "no documented switch turns it off. autoAcceptWebSearch false keeps the CLI's default, but no public source says what --force does with a web search, so web search may run. Cursor's agent security page lists 'web search providers' among the hosts its tools contact; whether a search leaves the container or runs on Cursor's backend is not documented. The egress allowlist denies every non-Cursor host the container itself tries",
+    "removed": "the first build's --exclude-tools flag and its tool names, and its claim about --force and web search, came from the CLI's JavaScript and are gone (Cursor terms 1.5(i), Captain ruling)",
+    "audit": "the adapter writes $HOME/.cursor/hooks.json with postToolUse and postToolUseFailure command hooks (https://cursor.com/docs/hooks: they fire for every tool, with tool_name; matcher values include Shell, Read, Write, Grep, Delete, Task and MCP:<tool>). The hook (tool-audit-hook.cjs) appends the tool_name and failure_type of each call, nothing else, to <log>/tool-hooks.ndjson. scripts/cursor/web-tool-audit.ts lists per trial every tool_name outside those documented values, every trial whose stream-json shows tool calls while its hook log has none, and every egress denial; it exits 1 when any trial has one, and a reader confirms from the logs whether a flagged call was a web call (plan item F1)",
+    "status": "counted Cursor trials may run under F1 with the audit above. If the first keyed smoke shows the hooks do not fire in -p mode (tool calls in the stream, none in tool-hooks.ndjson), no documented event shows a web call and the Cursor cell cannot run counted trials"
+  },
+  "topology": "in-container, network internal only, egress to egress_hosts through the runner's CONNECT allowlist (HTTP_PROXY, HTTPS_PROXY and NODE_USE_ENV_PROXY=1, https://cursor.com/docs/cli/reference/configuration, 'Proxy configuration')",
+  "multi_user_mode": "CLI, one chat per conversation in one HOME; no daemon",
+  "serve": {
+    "session_key": "dm:<member> | channel:<id>; :t<thread_ts> appended when TurnRequest.thread_ts is set",
+    "session_id": "the session_id of the stream's result or init record on the first turn for a key (https://cursor.com/docs/cli/reference/output-format), kept in /harness-state/cursor-chats.json; --resume <chat id> on every later turn of that key (agent --help: 'Select a session to resume')",
+    "reply_source": "stream-json terminal result record (type result, subtype success, is_error false, result), https://cursor.com/docs/cli/reference/output-format",
+    "usage_source": "none: the documented stream-json records carry no token counts, so per-turn tokens are recorded as unavailable (null) and cost comes only from the account's usage export",
+    "exit_mapping": "turn outlived its budget -> 124; SIGTERM during a turn -> 2; a result record that is a success with agent exit 0 and an init record whose model is init_model_name -> 0; an init model that is not -> 2; no result record and stderr saying 'Failed to reach the Cursor API' (seen in the keyless install check when the allowlist denies the CLI's connection) -> 3; anything else, any other backend error included -> 2"
+  },
+  "instruction_files": "before ready the adapter lists every name the docs say Cursor loads on its own: AGENTS.md (any directory) and CLAUDE.md (https://cursor.com/docs/rules, https://cursor.com/docs/cli/using), .cursor/ (rules, skills, hooks, mcp.json, cli.json), .agents/ (https://cursor.com/docs/skills), .claude/ and .codex/ (skills, https://cursor.com/docs/skills; agents, https://cursor.com/docs/subagents; .claude/settings.json hooks, https://cursor.com/docs/reference/third-party-hooks) and .cursorignore (https://cursor.com/docs/agent/security). It looks under /workspace and under $HOME, before the adapter writes $HOME/.cursor, records them in $HE_LOG_DIR/instruction-files.json and in ready, and exits 2 (HE-CURSOR-004) when any is found. Account-level User Rules and Memories live on Cursor's servers and are not visible here; the dedicated account must have none",
+  "key_handling": "CURSOR_API_KEY reaches the container by name only (docker run -e CURSOR_API_KEY, the value from the runner's environment); the adapter checks it is set and never prints it; the CLI's stdout and stderr pass through redact.cjs; the runner scans each Cursor trial directory for the value (full, first 16, last 12 characters) after the trial and stops the run on a hit (HE-CURSOR-003). The docs do not say whether the agent's shell tool sees the CLI's environment, so the redaction and the scans assume it may",
+  "deviations": [
+    "--force: no approval prompt can fire in a headless turn; the container is the sandbox, as for the other harnesses",
+    "permissions.deny WebFetch(*): web fetch is denied; web search has no documented switch and is audited instead (web_tools)",
+    "--disable-auto-update: the pinned build stays the build that runs; the egress allowlist also denies downloads.cursor.com",
+    "--model with effort=high and fast=false",
+    "egress limited to egress_hosts: Tab, codebase search (repo42.cursor.sh) and client update hosts are denied",
+    "postToolUse and postToolUseFailure hooks that log tool names only (they return an empty object and change no call)"
+  ],
+  "credentials": "none on disk at build: no HOME in the image is kept. The trial's HOME is its state directory; every file the CLI writes there stays in the trial and is covered by the key scan",
+  "cost": "not metered: Cursor's usage export (dashboard CSV) attributed per trial by scripts/cursor/usage-export.ts, reported as a per-cell total and labelled unreconciled. Cursor's docs do not list the export's columns, so the script reads the header at run time and needs a column file declared from the first real export; a column the file does not declare fails the script"
+}

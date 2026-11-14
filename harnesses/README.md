@@ -10,6 +10,9 @@ One directory per harness, each a self-contained Docker image that implements th
 | [claude-code](claude-code/) | npm `@anthropic-ai/claude-code@2.1.312` | in-container | `harness-eval/claude-code:dev` | keyless only (fake endpoint through the real proxy) | keyless only: 2 turns, world-MCP call logged, session carried; see README |
 | [codex](codex/) | npm `@openai/codex@0.165.0` | in-container | `harness-eval/codex:dev` | keyless only (fake endpoint through the real proxy) | keyless only: 2 turns, world-MCP call logged, thread carried; see README |
 | [harness-zero](harness-zero/) | `zero.ts` sha256 in `pin.json`, Bun 1.4.3 | in-container, internal network only | `harness-eval/harness-zero:dev` | keyless only (fake endpoints through the real proxy) | keyless only: 3 turns with the `--fake-upstream` smoke, world-MCP call logged, session carried; see README |
+| [pi](pi/) | npm `@earendil-works/pi-coding-agent@1.5.0` | in-container | `harness-eval/pi:dev` | keyless only (fake endpoints, one turn per route: Anthropic, OpenAI, Particle, OpenRouter) | keyless only: 6 turns through the real proxy, world-MCP call logged, session per conversation carried; see README |
+| [dsh](dsh/) | npm `@deepseek-ai/dsh@0.2.2-rc.1` (developer preview) | in-container | `harness-eval/dsh:dev` | keyless only (fake endpoint; Particle through the real proxy) | keyless only: 3 turns on the OpenRouter route, world-MCP calls logged, session carried; see README |
+| [cursor](cursor/) | Cursor Agent CLI `2026.11.05-86047df`, package sha256 in `pin.json` | in-container, internal network only, egress allowlist to Cursor's API (no metering proxy) | `harness-eval/cursor:dev` | keyless only (offline: canary key, egress denied) | keyless only: stand-in CLI, 3 turns, chat resumed per conversation; see README |
 | [_fake](_fake/) | none | in-container | `harness-eval/fake:dev` | protocol fixture for the conformance test | protocol fixture for the serve conformance tests |
 
 ## Build
@@ -22,6 +25,9 @@ docker build -f harnesses/qm/Dockerfile.sandbox -t harness-eval/qm-sandbox:dev h
 docker build -t harness-eval/claude-code:dev harnesses/claude-code
 docker build -t harness-eval/codex:dev harnesses/codex
 docker build -t harness-eval/harness-zero:dev harnesses/harness-zero
+docker build -t harness-eval/pi:dev harnesses/pi
+docker build -t harness-eval/dsh:dev harnesses/dsh
+docker build -t harness-eval/cursor:dev harnesses/cursor
 docker build -t harness-eval/fake:dev harnesses/_fake
 ```
 
@@ -95,6 +101,14 @@ bun harnesses/serve-smoke.ts --harness hermes --trial-id hermes-serve-1 \
 The slot `hermes-serve-1` is bound with `$cred` first, as under "Run one trial"; the `_fake` harness makes no model call and needs no proxy. `--fake-upstream` answers model requests from a fake endpoint in the same process instead of a proxy, for harnesses that send non-streamed requests (Harness Zero): `bun harnesses/serve-smoke.ts --harness harness-zero --trial-id zero-smoke-1 --fake-upstream` needs no key.
 
 ## Changelog
+
+### 2026-11-11: dsh and Cursor
+
+A build line for `cursor`, and the entry for the `dsh` and `cursor` rows, which the table gained on 2026-11-09 without one: `dsh`, DeepSeek Harness 0.2.2-rc.1 (a developer preview), and `cursor`, the Cursor Agent CLI `2026.11.05-86047df` on Opus 5.5 only, with no metering proxy. Why: both are multi-user harnesses of their own ([dsh/README.md](dsh/README.md), [cursor/README.md](cursor/README.md)), and the build list had no line for Cursor's image.
+
+### 2026-11-08: Pi
+
+One row and one build line: `pi`, Pi 1.5.0 (the release Harbor's stock Pi agent ran in frontier-harness-2026-11), proven keyless against fake endpoints and, for serve, through the real metering proxy. The world's tools come from a pass-through Pi extension. Why: Pi ran only under Harbor's single-turn adapter, and the multi-user cells need it as a harness of its own ([pi/README.md](pi/README.md)).
 
 ### 2026-11-04: plain names for internal roles
 

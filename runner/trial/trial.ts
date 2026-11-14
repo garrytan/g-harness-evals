@@ -40,6 +40,7 @@ import { wireOfModel } from '../proxy/ablate.ts';
 import { loadTask, type TaskSpec } from './task.ts';
 import { flushIngestAfterFence, runTurns } from './turns.ts';
 import { cellRoute } from './routes.ts';
+import { CURSOR_KEY_ENV, cursorEgressEnv } from './cursor.ts';
 import { skillArmImage } from './set-t.ts';
 import { TrialWorld, worldAt } from './world.ts';
 
@@ -115,6 +116,9 @@ export interface TrialOptions {
   seedWorkspace?: string;
   /** The run's internal network, which executeRun creates when a cell has network "internal". */
   network?: InternalNetwork;
+  /** A Cursor cell (runner/trial/cursor.ts): the egress allowlist's URL, set as the container's HTTPS_PROXY, and the key,
+   *  which goes to the container's docker run alone, by name. */
+  cursor?: { proxyUrl: string; key: string };
 }
 
 export interface TrialContext {
@@ -179,12 +183,15 @@ export const PARTICLE_MODEL_ERROR_CODES: readonly string[] = ['invalid_value', '
  *  400 keeps the exit classification, except that an exit 3 (QM's mapping) becomes harness_error when the trial logged no
  *  429, 5xx or failed request that could have caused it. Proxy refusals leave the exit classification as it is, and so
  *  does an exam_fault. Only lines from this attempt count (at or after `since`): the usage log is append-only across a
- *  --resume, and the trial key does not change. */
-export function trialTermination(o: { cellModel: string; fromExits: Termination; since: string; lines: ReadonlyArray<{ at?: string; provider: string; outcome: string; status?: number; error_code?: string }>; capStop?: boolean; modelMismatch?: boolean; infra?: boolean }): { termination: Termination; note?: string } {
+ *  --resume, and the trial key does not change. On any cell, an OpenRouter answer the proxy marked served_elsewhere (another
+ *  provider than the pinned endpoint answered, HE-PROXY-009) makes the trial infra_error: the cell's model did not run. */
+export function trialTermination(o: { cellModel: string; fromExits: Termination; since: string; lines: ReadonlyArray<{ at?: string; provider: string; outcome: string; status?: number; error_code?: string; served_elsewhere?: boolean; served_provider?: string }>; capStop?: boolean; modelMismatch?: boolean; infra?: boolean }): { termination: Termination; note?: string } {
   if (o.capStop || o.modelMismatch) return { termination: 'model_error' };
   if (o.infra) return { termination: 'infra_error' };
-  if (!o.cellModel.toLowerCase().startsWith('particle:') || o.fromExits === 'exam_fault') return { termination: o.fromExits };
   const lines = o.lines.filter((l) => l.at === undefined || l.at >= o.since);
+  const elsewhere = lines.filter((l) => l.served_elsewhere === true);
+  if (elsewhere.length) return { termination: 'infra_error', note: `HE-PROXY-009 ${elsewhere.length} OpenRouter answer(s) came from ${[...new Set(elsewhere.map((l) => l.served_provider ?? 'an unnamed provider'))].join(', ')}, not the pinned endpoint; the trial is infra_error and leaves the scored rows` };
+  if (!o.cellModel.toLowerCase().startsWith('particle:') || o.fromExits === 'exam_fault') return { termination: o.fromExits };
   const answers = lines.filter((l) => l.provider === 'particle' && l.outcome === 'forwarded' && (l.status === 400 || l.status === 402));
   const named = (l: { status?: number; error_code?: string }) => `HTTP ${l.status} ${l.error_code ?? '(no error.code)'}`;
   const refused = answers.find((l) => l.status === 402 || PARTICLE_MODEL_ERROR_CODES.includes(l.error_code ?? ''));
@@ -294,6 +301,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     // The adapter copies the bundle view into /workspace before the first turn (docs/adapters.md); unset, nothing changes.
     ...(installViewPath && installKind ? { HE_GBRAIN_INSTALL: installKind, HE_GBRAIN_SPLIT: cell.split, HE_GBRAIN_INSTALL_DIR: docker ? '/he-gbrain-install' : resolve(installViewPath) } : {}),
     ...(docker ? {} : { HE_WORKSPACE_DIR: resolve(dirs.workspace) }),
+    ...(opts.cursor ? cursorEgressEnv(opts.cursor.proxyUrl) : {}),
     ...(opts.harnessEnv ?? {}),
   };
 
@@ -333,7 +341,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         const compose = join(harnessDir, 'compose.yaml');
         harness = existsSync(compose)
           ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: token, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) }, ...(providerWiring ? { coreEnv: providerWiring.coreEnv } : {}), modelProvider: provider })
-          : await startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot, ...(installViewPath ? { readOnlyMounts: { [installViewPath]: '/he-gbrain-install' } } : {}), ...(network ? { network } : {}), ...(opts.captureDns ? { dns: opts.captureDns } : {}) });
+          : await startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot, ...(installViewPath ? { readOnlyMounts: { [installViewPath]: '/he-gbrain-install' } } : {}), ...(network ? { network } : {}), ...(opts.captureDns ? { dns: opts.captureDns } : {}), ...(opts.cursor ? { secretEnv: { [CURSOR_KEY_ENV]: opts.cursor.key } } : {}) });
       }
       await harness.waitReady(opts.readyTimeoutS * 1000);
       log(`harness ready (${harness.kind})`);

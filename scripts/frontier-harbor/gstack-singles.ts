@@ -1,4 +1,4 @@
-// gstack-arm.ts singles (internal-task): every single-skill removal per host at one gstack pin, rendered keylessly in the
+// gstack-arm.ts singles (HARN-62): every single-skill removal per host at one gstack pin, rendered keylessly in the
 // gstack arm builder, with each skill's listing cost. Writes <out>/skills.json and <out>/locks/<host>/{full,none}.lock.json
 // (with --all-locks, every single-removal lock too, as locks/<host>/minus-<skill>.lock.json).
 //
@@ -45,7 +45,7 @@ export function frontmatter(text: string): { name: string | null; description: s
 
 /** Hosts that leave a rendered skill out of the model's skill listing when its frontmatter sets
  *  disable-model-invocation: true. Claude Code does (land-and-deploy and modernize at the pin); Codex and Hermes list
- *  them (the internal-task install check's first requests). */
+ *  them (the HARN-62 install check's first requests). */
 export const HIDES_DISABLED: Record<GstackHost, boolean> = { claude: true, codex: false, hermes: false };
 
 /** The rendered skills of a lock that the host does not list, read from the SKILL.md files under the render's root. */

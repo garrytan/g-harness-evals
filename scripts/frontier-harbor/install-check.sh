@@ -7,18 +7,28 @@
 #
 # It checks, and writes <out>/install-check.json (the committed copy is scripts/frontier-harbor/install-check.json):
 #   1. agents: vm-run.sh on install-check-prereg.json (each agent class, Claude Code on Opus 5.5 and Fable 5.1, Codex on GPT-6.1 Sol and GPT-6
-#      Astra, Hermes, OpenClaw, Pi and mini-swe-agent on Opus 5.5 and GPT-6.1 Sol), one task each, uncounted, fake
+#      Astra, Hermes, OpenClaw, Pi and mini-swe-agent on Opus 5.5 and GPT-6.1 Sol, Hermes, OpenClaw and Pi on Particle-1
+#      through the proxy's Particle route, Pi, Hermes and OpenClaw on DeepSeek V4.1 Flash 1017 through the proxy's
+#      OpenRouter route, and DeepSeek Harness (dsh) on Opus 5.5, GPT-6.1 Sol, Particle-1 and DeepSeek-V4.1-Flash-1017),
+#      one task each, uncounted, fake
 #      upstream: every class must install its pinned version, bind its slot, reach the fake model through the proxy and
-#      finish its trial.
+#      finish its trial. On the OpenRouter route the fake answers with one tool call and refuses a tool-call turn replayed
+#      without its reasoning, as DeepSeek does, so an OpenRouter cell passes only when its harness sent the reasoning
+#      back on every replayed tool-call turn (the cell's reasoning_replay, from to-trials.ts).
 #   2. oracle and nop behind the blocklist on three pinned tasks, or with --baselines all on every pinned task (the 52 and
 #      the kept sample): oracle passes every one, nop fails every one. The run's baseline gate uses --baselines all once
 #      before its first paid trial.
 #   3. egress: the egress-probe task's verifier, inside a task container behind the blocklist sidecar, must be refused
 #      every blocklisted host (TLS by SNI, HTTP by Host), reach github.com, pypi.org, raw.githubusercontent.com,
-#      huggingface.co and the host gateway (where the proxy listens), and records whether a docker socket is present.
+#      huggingface.co and the host gateway (where the proxy listens), get a reply the gateway holds back for 30 seconds
+#      (gost's 15-second default read timeout would cut it), and records whether a docker socket is present.
 #   4. canary: the fake provider key the proxy held appears in no file of the agent run (Harbor jobs, agent logs,
 #      captured request bodies), the fake upstream saw it on every forwarded request, and no per-trial token reached it.
 #   5. QM: whether QM's Pi loop can run inside a task container (yes or no, with the reason).
+# The Cursor cell (cursor-opus) is keyless here too: vm-run.sh writes no Cursor key file under --fake-upstream, so the
+# check passes when the trial stopped at agent setup with HE-CURSOR-002, recorded cursor_api_key absent, and ran no agent
+# command in its task container (no container_logs_entries check, no cursor_version); nothing contacts Cursor. The keyed
+# one-trial smoke is a separate, paid step (scripts/frontier-harbor/README.md "Cursor").
 #   6. gstack: gstack-check.sh (the gstack arms of Claude Code, Codex and Hermes, gstack-skill-start's network, and with
 #      --baselines all the install facts of every pinned task image), its gstack-check.json under "gstack".
 # The agents check needs vm-run.sh to exit 0 and the gstack check needs gstack-check.sh to exit 0, whatever the reports
@@ -38,7 +48,7 @@ mkdir -p "$out"
 out=$(cd "$out" && pwd)
 rm -f "$out/install-check.json"
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
-unset ANTHROPIC_API_KEY OPENAI_API_KEY UBICLOUD_API_KEY VOYAGE_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY GOOGLE_API_KEY
+unset ANTHROPIC_API_KEY OPENAI_API_KEY UBICLOUD_API_KEY VOYAGE_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY GOOGLE_API_KEY CURSOR_API_KEY
 venv=${FRONTIER_HARBOR_VENV:-$HOME/.frontier-harbor/venv}
 say() { printf '%s install-check: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$out/install-check.log"; }
 safe_env=(env -i "PATH=$PATH" "HOME=$HOME" "TZ=UTC")
@@ -91,8 +101,8 @@ done
 mkdir -p "$out/probe/tasks"
 rm -rf "$out/probe/tasks/egress-probe"
 cp -r "$here/egress-probe" "$out/probe/tasks/egress-probe"
-sed -i "s#@PROXY_STATUS_URL@#http://$gw:18790/__proxy/status#" "$out/probe/tasks/egress-probe/task.toml"
-("${safe_env[@]}" setsid bun -e 'Bun.serve({ hostname: process.argv[1], port: 18790, fetch: () => Response.json({ ok: true }) })' "$gw") >> "$out/probe/status-server.log" 2>&1 &
+sed -i -e "s#@PROXY_STATUS_URL@#http://$gw:18790/__proxy/status#" -e "s#@PROXY_SLOW_URL@#http://$gw:18790/__probe/slow#" "$out/probe/tasks/egress-probe/task.toml"
+("${safe_env[@]}" setsid bun -e 'Bun.serve({ hostname: process.argv[1], port: 18790, idleTimeout: 120, fetch: async (r) => { if (new URL(r.url).pathname === "/__probe/slow") await Bun.sleep(30000); return Response.json({ ok: true }); } })' "$gw") >> "$out/probe/status-server.log" 2>&1 &
 status_pid=$!
 job "$out/probe/probe.json" egress-probe "$out/probe/jobs" nop 1 "$out/probe/tasks/egress-probe"
 (cd "$out/probe" && "${harbor_env[@]}" "$venv/bin/harbor" run -y -c "$out/probe/probe.json") >> "$out/probe/harbor.log" 2>&1 || say "harbor egress-probe exited non-zero (see probe/harbor.log)"
@@ -118,6 +128,9 @@ def jl(p):
 def marker(name):
     p = os.path.expanduser("~/.frontier-harbor/venv/" + name)
     return open(p).read() if os.path.exists(p) else None
+def replayed(a):
+    r = a.get("reasoning_replay")
+    return not str(a.get("model") or "").startswith("openrouter:") or bool(r and r["replaying"] >= 1 and r["with_reasoning"] == r["replaying"])
 def rewards(jobs, job):
     res = {}
     for r in glob.glob(f"{jobs}/{job}/*/result.json"):
@@ -137,7 +150,13 @@ for t in trials:
                          "requests_refused": (t.get("usage") or {}).get("refused", 0), "efforts_requested": fr["efforts_requested"], "efforts_sent": fr["efforts_sent"],
                          "efforts_agent_loop": fr.get("efforts_agent_loop"), "effort_flag": fr.get("effort_flag"),
                          "install_checks": settings.get("install_checks"), "harness_version": settings.get("harness_version"),
+                         "reasoning_replay": fr.get("reasoning_replay"),
                          "ran": fr["infra_class"] is None and (t.get("usage") or {}).get("requests", 0) > 0}
+    if t["harness"] == "cursor":
+        checks = settings.get("install_checks") or {}
+        stopped = (t.get("error") or "").startswith("HE-CURSOR-002") and checks.get("cursor_api_key") == "absent" and "container_logs_entries" not in checks and "cursor_version" not in checks
+        agents[t["cell"]].update({"expected": "HE-CURSOR-002 at agent setup, no agent command in the task container, nothing sent to Cursor",
+                                  "keyless_stop": stopped, "ran": stopped, "error": t.get("error")})
 planned = [c["id"] for c in json.load(open(os.path.join(os.path.dirname(pin_path), "install-check-prereg.json")))["cells"]]
 for c in planned:
     agents.setdefault(c, {"ran": False, "termination": None, "note": "no trial record"})
@@ -161,7 +180,7 @@ report = {
                "dependencies": pin["harbor"]["dependencies"]["file"], "dependencies_sha256": pin["harbor"]["dependencies"]["sha256"], "installed_from_hashed_lock": marker(".lock-sha256") == pin["harbor"]["dependencies"]["sha256"],
                "python": subprocess.run([os.path.expanduser("~/.frontier-harbor/venv/bin/python"), "--version"], capture_output=True, text=True).stdout.strip() or None},
     "terminal_bench_2_1": pin["terminal_bench"]["commit"],
-    "agents": {"vm_run_exit": agents_rc, "cells": agents, "pass": agents_rc == 0 and all(a.get("ran") and a.get("effort_flag") is None for a in agents.values())},
+    "agents": {"vm_run_exit": agents_rc, "cells": agents, "pass": agents_rc == 0 and all(a.get("ran") and (a.get("effort_flag") is None or a.get("harness") == "cursor") and replayed(a) for a in agents.values())},
     "oracle": {"tasks": oracle, "planned": len(baseline_ids), "pass": sorted(oracle) == sorted(baseline_ids) and all(v["reward"] == 1 for v in oracle.values())},
     "nop": {"tasks": nop, "planned": len(baseline_ids), "pass": sorted(nop) == sorted(baseline_ids) and all(v["reward"] == 0 for v in nop.values())},
     "egress": {"probe": probe, "pass": bool(probe and probe.get("pass"))},

@@ -19,6 +19,9 @@ export interface EntryCell {
   overrides?: Partial<Record<CellField | OptionalCellField, Source>>;
 }
 
+export const USE_CASES = [['codegen', 'Codegen'], ['personal-brain', 'Personal brain'], ['company-brain', 'Company brain']] as const;
+export type UseCase = (typeof USE_CASES)[number][0];
+export interface CantRun { harness: string; model: string; reason: string }
 // Where a main entry's paired cost ratios come from: the run's committed trial records (one JSON object per line), the
 // optional list of trial ids scored as fails whatever their grade, extra spend fields added to each record's usage.usd,
 // and the bootstrap seed and draw count, read from the run's own analysis file so the entry holds no numbers.
@@ -38,6 +41,8 @@ export interface Entry {
   results_pr: string;
   claim_check: { pr: string; reader: string } | null;
   task_set: { id: string; label: string; split: 'dev' | 'held-out'; public: boolean };
+  use_case: UseCase;
+  cant_run?: CantRun[];
   tasks?: Source;
   same_everywhere?: Source[];
   mdd?: Source;
@@ -66,6 +71,8 @@ export function validateEntry(e: unknown, where: string): Entry {
   if (x?.schema !== 'harness-evals/scoreboard-entry@1') errors.push(`${where}: schema must be harness-evals/scoreboard-entry@1`);
   for (const k of ['run_id', 'report', 'results_pr', 'lead_note'] as const) if (typeof x?.[k] !== 'string' || !x[k]) errors.push(`${where}: ${k} is required`);
   if (x?.role !== 'main' && x?.role !== 'other') errors.push(`${where}: role must be main or other`);
+  if (!USE_CASES.some(([id]) => id === x?.use_case)) errors.push(`${where}: use_case must be one of ${USE_CASES.map(([id]) => id).join(', ')}`);
+  if (x?.cant_run !== undefined && (!Array.isArray(x.cant_run) || x.cant_run.some((c) => ['harness', 'model', 'reason'].some((k) => typeof (c as unknown as Record<string, unknown>)?.[k] !== 'string' || !(c as unknown as Record<string, string>)[k])))) errors.push(`${where}: cant_run must be a list of { harness, model, reason } strings`);
   if (x?.role === 'main') for (const k of ['tasks', 'same_everywhere', 'mdd', 'paired_cost'] as const) if (!x[k]) errors.push(`${where}: a main entry needs ${k}`);
   const pc = x?.paired_cost;
   if (pc) {

@@ -106,7 +106,7 @@ export const ANTHROPIC_CACHE_WRITE_5M_MULT = 1.25;
 export const ANTHROPIC_CACHE_WRITE_1H_MULT = 2;
 
 /** The dated price table this module reads, in runner/pricing/. */
-export const PRICE_TABLE_FILE = 'prices-2026-11-09.json';
+export const PRICE_TABLE_FILE = 'prices-2026-11-10.json';
 const PRICE_TABLE_BYTES = readFileSync(new URL(`./${PRICE_TABLE_FILE}`, import.meta.url));
 
 /** The price table's repository path and the sha256 of its bytes, for a run or bundle to record. */
@@ -199,7 +199,10 @@ export const ANTHROPIC_CACHE_READ_MULT_OVERRIDES: Record<string, number> = Objec
  * splitProviderModelId yields provider `openrouter`, model
  * `anthropic/claude-...`, and `openrouter:anthropic/claude-...` is not a
  * canonical key. OpenRouter markup ≠ native pricing, so we never reprice it as
- * the inner vendor.
+ * the inner vendor. A nested id prices only when the table has a row under
+ * that exact `openrouter:` key (`openrouter:deepseek/deepseek-v4.1-flash-1017`,
+ * the DeepSeek endpoint's own rates, which the metering proxy pins requests
+ * to).
  */
 export function canonicalLookup(
   modelId: string | null | undefined,

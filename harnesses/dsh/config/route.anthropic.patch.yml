@@ -1,0 +1,22 @@
+# Route rows for an Anthropic cell (HE_MODEL_BASE_URL ends in /anthropic): a custom Anthropic Messages provider on the
+# metering proxy. The Anthropic SDK appends /v1/messages to the base URL.
+- id: agent-default-model
+  config:
+    provider: he-anthropic
+    model: @MODEL@
+- id: llm-pi-ai
+  config:
+    providers:
+      he-anthropic:
+        displayName: harness-evals metering proxy (anthropic)
+        apiKeyEnv: HE_MODEL_API_KEY
+        api: anthropic-messages
+        baseURL: @BASE_URL@
+        reasoning: high
+        compat:
+          forceAdaptiveThinking: true
+        models:
+          - id: @MODEL@
+            maxTokens: 128000
+            reasoningEfforts:
+              high: high

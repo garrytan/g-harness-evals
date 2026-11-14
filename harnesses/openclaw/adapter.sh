@@ -89,11 +89,14 @@ mkdir -p "$OPENCLAW_STATE_DIR/exec"
 # bundled openai provider on its shipped Responses API at HE_MODEL_BASE_URL/v1, the utility model mapped to the cell model and
 # reasoning effort medium (pin.json model_openai). internal-task: a Particle cell (URL ending in /particle) gets config/openclaw.particle.json,
 # OpenClaw's generic openai-completions provider at HE_MODEL_BASE_URL/v1 with the same mapping, an output cap of 128000 and the
-# memory indexer on keyword search (pin.json model_particle). Any other URL keeps the Anthropic config and turn arguments unchanged.
+# memory indexer on keyword search (pin.json model_particle). An OpenRouter cell (URL ending in /openrouter) gets
+# config/openclaw.openrouter.json, the same generic provider under the id openrouter-proxy with OpenRouter's reasoning format
+# (pin.json model_openrouter). Any other URL keeps the Anthropic config and turn arguments unchanged.
 provider=anthropic config_template=$harness_dir/config/openclaw.json
 case "${HE_MODEL_BASE_URL%/}" in
   */openai) provider=openai config_template=$harness_dir/config/openclaw.openai.json ;;
   */particle) provider=particle config_template=$harness_dir/config/openclaw.particle.json ;;
+  */openrouter) provider=openrouter-proxy config_template=$harness_dir/config/openclaw.openrouter.json ;;
 esac
 [ -e "$OPENCLAW_CONFIG_PATH" ] || cp "$config_template" "$OPENCLAW_CONFIG_PATH"
 

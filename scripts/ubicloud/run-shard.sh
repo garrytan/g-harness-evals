@@ -96,12 +96,21 @@
 #      --resume uploads them again to its fresh VM. The diagnostics of tar and the remote unpack (of the root, the receipt
 #      and a sealed --resume's results) go to <dest>/sealed-upload.log only (removed by scripts/sealed/cleanup.ts), since they
 #      can name a sealed path; a failed upload prints a fixed line naming that log. On the VM, scripts/run-shard.sh runs from its own copy of ~/sealed/root.
-#   5. ANTHROPIC_API_KEY, OPENAI_API_KEY and PARTICLE_API_KEY (each one that is set here; the run needs the first,
-#      --embedded the second, a Particle cell the third, which preflight requires) are written to ~/.ubirun-env on the
+#   5. ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY, OPENROUTER_API_KEY and CURSOR_API_KEY (each one that is set
+#      here; the run needs the first, --embedded the second, a Particle cell the third, an OpenRouter cell the fourth,
+#      which preflight requires, and a Cursor cell the fifth) are written to ~/.ubirun-env on the
 #      VM with umask 077 over the multiplexed SSH connection, exactly as ubi-runner.sh run --pass writes them. The
 #      launcher reads the file into the shell and deletes it before vm-shard.sh starts, so no file on the VM holds a key
 #      while the run is live; the keys live in that process's environment (the runner's own child processes inherit it)
 #      and only the metering proxy uses them, as on a Capy shard; no container or image receives them. Nothing goes through cloud-init user data, images or logs.
+#      CURSOR_API_KEY is the one exception (harnesses/cursor/README.md): vm-shard.sh takes it out of its exported
+#      environment and hands it to scripts/run-shard.sh alone, which gives it to the runner's run step, which passes it by
+#      name to the Cursor containers only. A shard whose cells run harness cursor needs CURSOR_API_KEY here and is refused
+#      with exit 2 before any VM exists without it; it needs no ANTHROPIC_API_KEY when every model-calling cell is a
+#      Cursor cell, and it may not mix Cursor cells with proxied ones. After every pull (mid-run and at teardown) the
+#      results are scanned here for the key's literal value; a hit writes <dest>/CURSOR-KEY-FOUND and stops every mirror
+#      to --replicate-to, and nothing prints the value. Pass --pre-smoke scripts/cursor/install-check.sh to run the keyless
+#      install check and offline one-trial smoke on the VM before any key reaches it.
 #   6. vm-shard.sh runs detached on the VM (setsid, nohup): checkout --detach, bun install, the smoke (a copy of the
 #      preregistration with only this shard's harness cells on one dev task, one repetition, under its own lease and
 #      ledger; it builds the images; a sealed lane's smoke is a public dev run, without the sealed flags and with the public
@@ -136,6 +145,13 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 
+# cursor_check: a shard with Cursor cells runs only Cursor cells and needs CURSOR_API_KEY here (presence only, never printed).
+cursor_check() {
+  case " $shard_harnesses " in *" cursor "*) ;; *) return 0 ;; esac
+  [ "$shard_harnesses" = cursor ] || { echo "run-shard (ubicloud): cells $cells mix harness cursor with $shard_harnesses; Cursor cells call Cursor's backend and the others the metering proxy, so they run as separate shards" >&2; exit 2; }
+  [ -n "${CURSOR_API_KEY:+x}" ] || { echo "run-shard (ubicloud): cells $cells run harness cursor and CURSOR_API_KEY is not set in this shell; it goes to the VM over SSH like the other keys and reaches only the Cursor containers there. Nothing was created. fix: launch from the machine that holds the key" >&2; exit 2; }
+}
+shard_harnesses=""
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
 smoke_first=0 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
 workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke="" install_check=0 skill_root=""
@@ -202,7 +218,10 @@ esac
 case $workload in qm-driver) records=turns.jsonl record_file=run.json ;; *) records=trials.jsonl record_file=shard.json ;; esac
 if [ "$attach" -eq 0 ]; then
   [ -n "$commit" ] && [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$cells" ] && [ -n "$lease" ] || { echo "run-shard (ubicloud): --commit, --prereg, --name, --cells, --lease-usd and --dest are required" >&2; exit 2; }
-  [ "$install_check" -eq 1 ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
+  # Cursor shards (step 5): the harnesses of the shard's cells, read from the preregistration when it is readable here now.
+  shard_harnesses=$({ git -C "$root" show "$commit:$prereg" 2>/dev/null || cat "$prereg" 2>/dev/null; } | python3 -c 'import json,sys; p=json.load(sys.stdin); want=set(sys.argv[1].split(",")); print(" ".join(sorted({c["harness"] for c in p.get("cells", []) if c.get("id") in want and c.get("harness") != "scripted"})))' "$cells" 2>/dev/null) || shard_harnesses=""
+  [ "$install_check" -eq 1 ] || cursor_check
+  [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
   [ "$workload" != frontier-harbor ] || [ "$install_check" -eq 1 ] || [ -n "${OPENAI_API_KEY:-}" ] || { echo "run-shard (ubicloud): --workload frontier-harbor needs OPENAI_API_KEY in this shell for its OpenAI cells" >&2; exit 2; }
   [ "$embedded" -eq 0 ] || [ -n "${OPENAI_API_KEY:-}" ] || { echo "run-shard (ubicloud): --embedded needs OPENAI_API_KEY in this shell" >&2; exit 2; }
   if [ -n "$sealed_root" ] || [ -n "$opening_receipt" ]; then
@@ -338,13 +357,44 @@ pull_results() {
 # mirror: <dest> to <replicate-to>/<shard> (without per-trial state/ and workspace/, and without the qm-driver smoke's gstack
 # checkout smoke/work/gstack-edition, whose own tests hold key-shaped text), staged locally and scanned for key-shaped text
 # first, then swapped in whole; a failure or a hit keeps the previous mirror and is logged. A
-# frontier-harbor shard's mirror also leaves out every proxy-capture/ directory and results/run/ (Harbor's job tree, the
-# only mid-run copy of the trial results, which vm-run.sh writes as records at finish()): a full run's request bodies do
+# frontier-harbor shard's mirror also leaves out every proxy-capture/ directory and results/run/ (Harbor's job tree, which
+# vm-run.sh writes as records at finish(); mid-run, each finished trial's record reaches the mirror through
+# results/trials.journal.jsonl, which vm-run.sh's to-trials.ts journal appends): a full run's request bodies do
 # not fit a 2 GB Capy drive (internal-task stage 0). The pull
 # into <dest> still brings them back, and so does the teardown pull.
 key_shapes='sk-''ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}|sk-''(proj|svcacct|admin)-[A-Za-z0-9_-]{16,}'
+# cursor_scan <dir>: how many files under <dir> hold the literal CURSOR_API_KEY value (whole, first 16, last 12
+# characters; gzip decoded; an unreadable file counts; regular files only, like find -type f, so a FIFO such as the
+# Cursor adapter's never blocks the read), 0 when this shell has no key. Never prints the value or a path.
+cursor_scan() {
+  [ -n "${CURSOR_API_KEY:+x}" ] && [ -d "$1" ] || { echo 0; return 0; }
+  python3 - "$1" <<'PY'
+import gzip, os, sys
+v = os.environ['CURSOR_API_KEY'].encode()
+ns = [v] + ([v[:16]] if len(v) > 16 else []) + ([v[-12:]] if len(v) > 12 else [])
+n = 0
+for d, _, files in os.walk(sys.argv[1]):
+    for f in files:
+        p = os.path.join(d, f)
+        if os.path.islink(p) or not os.path.isfile(p): continue
+        try: b = open(p, 'rb').read()
+        except OSError: n += 1; continue
+        if p.endswith('.gz'):
+            try: b += gzip.decompress(b)
+            except Exception: pass
+        if any(x in b for x in ns): n += 1
+print(n)
+PY
+}
+# cursor_guard: after a pull, a hit in <dest> writes <dest>/CURSOR-KEY-FOUND, which stops every later mirror.
+cursor_guard() {
+  local n
+  n=$(cursor_scan "$dest/results"); [ "$n" = 0 ] || { log "HE-CURSOR-003 the CURSOR_API_KEY value is in $n file(s) under $dest/results; mirroring stops, and nothing there may be copied or published until it is cleaned (bun scripts/cursor/key-scan.ts $dest/results --list names them)"; echo "$n" > "$dest/CURSOR-KEY-FOUND"; }
+  n=$(cursor_scan "$dest/smoke"); [ "$n" = 0 ] || { log "HE-CURSOR-003 the CURSOR_API_KEY value is in $n file(s) under $dest/smoke; mirroring stops"; echo "$n" >> "$dest/CURSOR-KEY-FOUND"; }
+}
 mirror() {
   [ -n "$replicate_to" ] || return 0
+  if [ -e "$dest/CURSOR-KEY-FOUND" ]; then log "WARNING: replicate: $dest/CURSOR-KEY-FOUND exists (the Cursor key scan hit); no mirror to $replicate_to"; return 1; fi
   local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits skip=()
   [ "$workload" != frontier-harbor ] || skip=(--exclude=proxy-capture --exclude=./results/run)
   rm -rf "$stage" && mkdir -p "$stage" &&
@@ -373,7 +423,7 @@ replicate() {
   [ "$workload" != frontier-harbor ] || skip=(--skip-unreadable)
   pull_results ${skip[@]+"${skip[@]}"} || rc=$?
   case $rc in
-    0) log "replicate: $(lines "$dest/results/$records") records$([ ${#skip[@]} -eq 0 ] || printf ', %s finished trial(s)' "$(find "$dest/results/run/jobs" -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l)") in $dest/results" ;;
+    0) cursor_guard; log "replicate: $(lines "$dest/results/$records") records$([ ${#skip[@]} -eq 0 ] || printf ', %s finished trial(s)' "$(find "$dest/results/run/jobs" -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l)") in $dest/results" ;;
     2) log "WARNING: replicate: the pull from $vm came back but could not be merged into $dest/results, so the previous mirror stays and the staged copy is deleted; retried in ${rep_s}s"; return ;;
     *) log "WARNING: replicate: the pull from $vm failed or brought back no results/; $dest/results keeps the last good copy; retried in ${rep_s}s" ;;
   esac
@@ -425,6 +475,7 @@ teardown() {
       results_pulled=0; log "WARNING: the pull of shard/results from $vm failed or brought back no results/"
     fi
     bash "$runner" pull "$vm" "shard/smoke" "$dest" 2>/dev/null || log "WARNING: no shard/smoke on the VM to pull"
+    cursor_guard
     for f in vm-shard.out phases.json exit bun-install.log prereg.json; do bash "$runner" pull "$vm" "shard/$f" "$dest" 2>/dev/null || true; done
     t_pull1=$(now)
     for f in run-shard.log run.stdout.log run.log vm-shard.out; do [ -f "$dest/results/$f" ] && cp "$dest/results/$f" "$dest/$f"; done
@@ -538,6 +589,11 @@ else
     echo "run-shard (ubicloud): $prereg is neither a path in the repository at $commit nor a readable file" >&2; exit 2
   fi
   if [ -n "$scratch_prereg" ]; then run_id=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['run_id'])" "$scratch_prereg"); else run_id=$(git -C "$root" show "$commit:$prereg" | python3 -c "import json,sys; print(json.load(sys.stdin)['run_id'])"); fi
+  # the Cursor check again, now that the preregistration is resolved at the commit (it may have needed the fetch above)
+  if [ -n "$scratch_prereg" ]; then prereg_text=$(cat "$scratch_prereg"); else prereg_text=$(git -C "$root" show "$commit:$prereg"); fi
+  shard_harnesses=$(printf '%s' "$prereg_text" | python3 -c 'import json,sys; p=json.load(sys.stdin); want=set(sys.argv[1].split(",")); print(" ".join(sorted({c["harness"] for c in p.get("cells", []) if c.get("id") in want and c.get("harness") != "scripted"})))' "$cells") || { echo "run-shard (ubicloud): the preregistration's cells could not be read" >&2; exit 2; }
+  [ "$install_check" -eq 1 ] || cursor_check
+  [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
   [ "$resume" -eq 0 ] || [ -f "$dest/results/$record_file" ] || { echo "run-shard (ubicloud): --resume needs an earlier attempt's $dest/results/$record_file" >&2; exit 2; }
   read_key='import json,sys; print(json.load(sys.stdin).get("shard_resume", ""))'
   if [ -n "$scratch_prereg" ]; then shard_resume=$(python3 -c "$read_key" < "$scratch_prereg"); else shard_resume=$(git -C "$root" show "$commit:$prereg" | python3 -c "$read_key"); fi
@@ -641,10 +697,10 @@ else
   fi
 
   # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the model keys go (PARTICLE_API_KEY
-  # for Particle cells); the custody identity (a file in the project-user drive, never in the environment) never
+  # for Particle cells, OPENROUTER_API_KEY for OpenRouter cells); the custody identity (a file in the project-user drive, never in the environment) never
   # reaches the VM, which gets the opened plaintext and never decrypts.
   # The frontier Harbor install check is keyless: the file is written empty.
-  { [ "$install_check" -eq 1 ] || for k in ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
+  { [ "$install_check" -eq 1 ] || for k in ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY CURSOR_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 
   if [ "$resume" -eq 1 ]; then
     log "resume: uploading $dest/results (without harness state and workspaces) to the VM"

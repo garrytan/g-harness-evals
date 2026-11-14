@@ -11,6 +11,10 @@
 // A manifest with an ablation cell starts the proxy with the run-level receipt log, results/<run>/ablation.ndjson.
 // The one proxy logs sections for every request or none, so the model-calling cells of one invocation agree on
 // log_sections (HE-PROXY-005); run-summary.json records log_sections: true when it is on.
+//
+// Cursor cells (runner/trial/cursor.ts) call Cursor's backend, not the proxy: an invocation of only Cursor cells starts
+// no proxy, starts the egress allowlist on the internal network's gateway instead, and scans each trial directory for
+// the key after the trial (HE-CURSOR-003 stops the run). Cursor and proxied cells run in separate invocations (--cells).
 
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -32,6 +36,7 @@ import { readCatalogNames } from '../../scripts/skill-resolver/got-skill.ts';
 import { REQUEST_CAP, type SlotLimits } from '../proxy/metering-proxy.ts';
 import { checkoutProvenance } from './provenance.ts';
 import { routeTextsFor } from './routes.ts';
+import { type EgressAllowlist, cursorTransport, isCursorCell, keyValueFound, startEgressAllowlist } from './cursor.ts';
 
 export interface RunOptions {
   harnessMode: HarnessMode;
@@ -64,6 +69,8 @@ export interface RunOptions {
   capture?: CaptureConfig;
   repoRoot?: string;
   log?: (line: string) => void;
+  /** Cursor cells: the key their containers get (CURSOR_API_KEY, or the --cursor-offline canary, with no egress host). */
+  cursor?: { key: string; offline: boolean };
 }
 
 export interface RunResult {
@@ -119,7 +126,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     const gap = captureDnsGapLine(opts.capture, harnesses, opts.harnessMode, opts.repoRoot);
     if (gap) log(gap);
   }
-  const needsProxy = pending.some((t) => modeFor(cells.get(t.cell)!) !== 'scripted');
+  const needsProxy = pending.some((t) => modeFor(cells.get(t.cell)!) !== 'scripted' && !isCursorCell(cells.get(t.cell)!));
   const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!) && cells.get(t.cell)!.slice !== SKILL_REQUESTS_SLICE);
   const preambles = new Map<string, string>();
   const preambleFor = (cell: Cell): string => {
@@ -147,19 +154,34 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     if (compose.length) throw new RunnerError('HE-NET-001', `cells ${ids(compose)} have network "internal" but run a compose stack (harnesses/<name>/compose.yaml), which the runner does not move onto the internal network. fix: drop network from those cells`);
     if (internal.some(isBridgeOnly)) throw new RunnerError('HE-NET-001', `cells ${ids(internal.filter(isBridgeOnly))} have network "internal" but run a single-shot slice through harnesses/run-trial.sh, which uses the default bridge. fix: drop network from those cells`);
   }
-  const proxied = pendingCells.filter((c) => modeFor(c) !== 'scripted');
+  const cursorCells = pendingCells.filter(isCursorCell);
+  if (cursorCells.length) {
+    const ids = (list: Cell[]) => list.map((c) => c.id).join(', ');
+    const others = pendingCells.filter((c) => !isCursorCell(c) && modeFor(c) !== 'scripted');
+    if (others.length) throw new RunnerError('HE-CURSOR-002', `cells ${ids(cursorCells)} run the Cursor CLI, which calls Cursor's backend through the egress allowlist, and cells ${ids(others)} call models through the metering proxy; fix: run each group in its own invocation with --cells`);
+    if (!opts.cursor?.key) throw new RunnerError('HE-CURSOR-002', `cells ${ids(cursorCells)} run the Cursor CLI and this run has no CURSOR_API_KEY; fix: set it in the runner's environment, or pass --cursor-offline for the keyless rehearsal`);
+    if (!docker || cursorCells.some((c) => c.network !== 'internal')) throw new RunnerError('HE-CURSOR-002', `cells ${ids(cursorCells)} run the Cursor CLI, which runs in docker mode on the internal network only; fix: add "network": "internal" and run with --harness-mode docker`);
+  }
+  const proxied = pendingCells.filter((c) => modeFor(c) !== 'scripted' && !isCursorCell(c));
   const sectioned = proxied.filter((c) => c.log_sections === true);
   if (sectioned.length && sectioned.length < proxied.length) throw new RunnerError('HE-PROXY-005', `cells ${sectioned.map((c) => c.id).join(', ')} set log_sections and cells ${proxied.filter((c) => c.log_sections !== true).map((c) => c.id).join(', ')} do not; the run's one metering proxy logs sections for every request or for none. fix: run each group in its own invocation with --cells`);
   const logSections = sectioned.length > 0;
   const records: TrialRecord[] = [];
   let proxy: RunProxy | null = null;
   let network: InternalNetwork | null = null;
+  let egress: EgressAllowlist | null = null;
+  const offline: Array<{ trial: string; denied_hosts: string[]; denied: number; key_found: boolean }> = [];
   let capStop = false;
   let exit: 0 | 3 = 0;
   try {
     if (internal.length) {
       network = await ensureInternalNetwork(internalNetworkName(manifest.run_id));
       log(`internal network ${network.name} (gateway ${network.gateway}) for cells ${internal.map((c) => c.id).join(', ')}`);
+    }
+    if (cursorCells.length && network) {
+      const hosts = cursorTransport(opts.repoRoot).egress_hosts;
+      egress = await startEgressAllowlist({ host: network.gateway, allow: opts.cursor!.offline ? [] : hosts, logPath: join(runDir, 'egress.ndjson') });
+      log(`cursor egress allowlist on ${network.gateway}:${egress.port} (${opts.cursor!.offline ? `--cursor-offline: no host admitted, a canary stands in for the key` : `CONNECT to ${hosts.join(', ')} on 443 only`}), every decision in ${join(runDir, 'egress.ndjson')}; no metering proxy for cells ${cursorCells.map((c) => c.id).join(', ')}`);
     }
     if (needsProxy) {
       // A cell with embeddings on sends the sidecar's query embeddings through the same proxy, so the embedding model
@@ -180,9 +202,11 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       const trial: Trial = opts.sealedRoot && isSealedCell(cell, opts.sealedSet) ? { ...planned, task_dir: sealedPath(cell, planned.task_dir), script: sealedPath(cell, planned.script) } : planned;
       const trialDir = trialDirFor(runDir, trial);
       log(`trial ${trial.id} starting (${cell.harness}, ${cell.model})`);
+      const cursorTrial = isCursorCell(cell) && egress ? { proxyUrl: egress.proxyUrl, key: opts.cursor!.key } : undefined;
+      egress?.setTrial(cursorTrial ? trial.id : null);
       const serveOpts = (): TrialContext['opts'] => ({
           harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage ?? (cell.gbrain ? gbrainSetWorld([cell], join(opts.repoRoot ?? '.', 'tasks'))?.image : undefined), preamble: preambleFor(cell), worldPath: setWorldPath(cell, join(opts.repoRoot ?? '.', 'tasks')) ?? opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
-          turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, captureDns: opts.capture?.dns ?? undefined, repoRoot: opts.repoRoot, ...(network ? { network } : {}) });
+          turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, captureDns: opts.capture?.dns ?? undefined, repoRoot: opts.repoRoot, ...(network ? { network } : {}), ...(cursorTrial ? { cursor: cursorTrial } : {}) });
       const record = cell.slice === SET_T_SLICE
         ? await runSetTTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() })
         : cell.slice === SKILL_REQUESTS_SLICE
@@ -195,6 +219,15 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       if (provenance) record.provenance_sha256 = provenance.digest;
       appendRecord(runDir, record);
       records.push(record);
+      if (cursorTrial) {
+        egress!.setTrial(null);
+        const denials = egress!.denials(trial.id);
+        const deniedHosts = [...new Set(denials.map((d) => `${d.host}:${d.port}`))].sort();
+        const found = keyValueFound([trialDir], cursorTrial.key);
+        log(`cursor trial ${trial.id}: egress ${denials.length} denied${deniedHosts.length ? ` (${deniedHosts.join(', ')})` : ''}; key scan of ${trialDir}: ${found ? 'FOUND' : 'clean'}`);
+        if (opts.cursor!.offline) offline.push({ trial: trial.id, denied_hosts: deniedHosts, denied: denials.length, key_found: found });
+        if (found) throw new RunnerError('HE-CURSOR-003', `the ${opts.cursor!.offline ? 'offline canary' : 'CURSOR_API_KEY'} value is in a file under ${trialDir} after trial ${trial.id}; the run stops before another trial. fix: find the file without printing the value (bun scripts/cursor/key-scan.ts ${trialDir} names it), keep that trial directory out of every copy, publication and drive, and fix the path that wrote it before resuming`);
+      }
       log(`trial ${trial.id}: termination=${record.termination} grade=${record.grade} consent_violation=${record.consent_violation} wall_ms=${record.wall_ms}${record.usage ? ` usd=${record.usage.usd.toFixed(4)}` : ''}${record.cap_stop ? ' cap_stop' : ''}`);
       if (record.cap_stop) {
         capStop = true;
@@ -204,6 +237,13 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     }
   } finally {
     if (proxy) await proxy.stop();
+    if (egress) await egress.stop();
+    if (offline.length) {
+      const hosts = cursorTransport(opts.repoRoot).egress_hosts;
+      const ok = offline.every((t) => !t.key_found && t.denied_hosts.some((h) => hosts.includes(h.replace(/:443$/, ''))));
+      writeAtomic(join(runDir, 'cursor-offline.json'), JSON.stringify({ ok, egress_hosts: hosts, rule: 'every trial reached the allowlist with a CONNECT to a pinned egress host on 443 (denied, since an offline run admits none) and left no copy of the canary in its directory', trials: offline }, null, 1) + '\n');
+      log(`cursor offline rehearsal: ${ok ? 'ok' : 'FAILED'} (${offline.length} trials; cursor-offline.json)`);
+    }
     if (network) log(await removeInternalNetwork(network.name) ? `internal network ${network.name} removed` : `internal network ${network.name} not removed (a container is still attached); fix: docker network rm ${network.name}`);
   }
   const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, complete: readRecords(runDir).length === manifest.trials.length && !capStop, ...(logSections ? { log_sections: true } : {}), ...(opts.capture ? { capture: captureSummary(opts.capture) } : {}) };

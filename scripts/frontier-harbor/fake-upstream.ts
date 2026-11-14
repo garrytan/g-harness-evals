@@ -1,19 +1,29 @@
 #!/usr/bin/env bun
 // A keyless fake model upstream for the frontier Harbor path's install check and smoke (internal-task). The metering proxy is
-// started with --upstream anthropic=<this> --upstream openai=<this>, so every harness call goes container -> proxy ->
+// started with --upstream anthropic=<this> --upstream openai=<this> --upstream particle=<this>/particle
+// --upstream openrouter=<this>/openrouter, so every harness call goes container -> proxy ->
 // here and nothing leaves the machine. It answers Anthropic /v1/messages, OpenAI /v1/responses and /v1/chat/completions,
 // streamed or not, with one short text reply that ends the turn (its one bash block is mini-swe-agent's submit command,
-// so that agent ends too), and GET /v1/models. Each request appends one line to
+// so that agent ends too), and GET /v1/models. The proxy's Particle upstream is <this>/particle: there
+// /particle/v1/chat/completions answers the way Particle does (docs.particle.ai/reasoning): the model echoed as
+// particle-ai/<id>, reasoning_content before the content, and reasoning tokens inside completion_tokens, repeated in
+// completion_tokens_details. The proxy's OpenRouter upstream is <this>/openrouter: there /openrouter/v1/chat/completions
+// answers the way OpenRouter's DeepSeek endpoint does, from the multi-user path's fake (tests/fixtures/openrouter/
+// fake-openrouter.ts): provider DeepSeek, a gen- id, reasoning and reasoning_details beside the content, one call of the
+// first declared tool and then "ok", and DeepSeek's 400 for a tool-call turn replayed without its reasoning, so a harness
+// that drops the reasoning fails here as it would upstream. Each request appends one line to
 // --log: path, model, stream, the tool names and effort fields the request declared, whether a credential header came
 // in and whether it equals the canary (--canary-env names the variable holding the fake provider key the proxy was
-// given), and the body's sha256. With --bodies it also writes each body to that file, for the canary and token scans.
+// given), the body's sha256, and on the OpenRouter route which reasoning fields each replayed assistant message carried. With --bodies it also writes each body to that file, for the canary and token scans.
 //
 //   bun scripts/frontier-harbor/fake-upstream.ts --listen 127.0.0.1:8799 --log <requests.jsonl> [--bodies <bodies.jsonl>]
 //       [--canary-env FAKE_UPSTREAM_CANARY]
 import { appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { chatBody, chatStream, DEEPSEEK_REPLAY_ERROR, errorBody, replayedAssistants } from '../../tests/fixtures/openrouter/fake-openrouter.ts';
 
 const TEXT = 'Fake upstream reply: this is a keyless install check, so I am stopping here.\n\n```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```';
+const REASONING = 'The install check wants a short answer.';
 
 export function sse(events: Array<[string | null, unknown]>): Response {
   const body = events.map(([e, d]) => (e ? 'event: ' + e + '\n' : '') + 'data: ' + (typeof d === 'string' ? d : JSON.stringify(d)) + '\n\n').join('');
@@ -64,6 +74,18 @@ export function reply(path: string, body: Record<string, any>, n: number): Respo
       ['response.completed', { type: 'response.completed', sequence_number: 8, response }],
     ]);
   }
+  if (path.startsWith('/particle/') && path.endsWith('/v1/chat/completions')) {
+    const id = 'chatcmpl_fake_' + n;
+    const echoed = 'particle-ai/' + model;
+    const usage = { prompt_tokens: 10, completion_tokens: 9, total_tokens: 19, prompt_tokens_details: { cached_tokens: 0 }, completion_tokens_details: { reasoning_tokens: 4 } };
+    if (!stream) return Response.json({ id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: echoed, choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: TEXT, reasoning_content: REASONING } }], usage });
+    const chunk = (delta: unknown, finish: string | null) => ({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: echoed, choices: [{ index: 0, delta, finish_reason: finish }] });
+    return sse([[null, chunk({ role: 'assistant', content: '' }, null)], [null, chunk({ reasoning_content: REASONING }, null)], [null, chunk({ content: TEXT }, null)], [null, chunk({}, 'stop')], [null, { id, object: 'chat.completion.chunk', model: echoed, choices: [], usage }], [null, '[DONE]']]);
+  }
+  if (path.startsWith('/openrouter/') && path.endsWith('/v1/chat/completions')) {
+    if (replayedAssistants(body).some((a) => a.tool_calls > 0 && !a.reasoning && !a.reasoning_content && !a.reasoning_details)) return Response.json(errorBody(400, DEEPSEEK_REPLAY_ERROR), { status: 400 });
+    return stream ? new Response(chatStream(body), { headers: { 'content-type': 'text/event-stream' } }) : Response.json(chatBody(body));
+  }
   if (path.endsWith('/v1/chat/completions')) {
     const id = 'chatcmpl_fake_' + n;
     const usage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
@@ -89,7 +111,7 @@ if (import.meta.main) {
     try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
     n += 1;
     const cred = req.headers.get('x-api-key') ?? (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
-    appendFileSync(log, JSON.stringify({ at: new Date().toISOString(), n, method: req.method, ...requestFacts(path, body), credential_present: !!cred, credential_is_canary: canary ? cred === canary : null, body_sha256: createHash('sha256').update(raw).digest('hex') }) + '\n');
+    appendFileSync(log, JSON.stringify({ at: new Date().toISOString(), n, method: req.method, ...requestFacts(path, body), credential_present: !!cred, credential_is_canary: canary ? cred === canary : null, body_sha256: createHash('sha256').update(raw).digest('hex'), ...(path.startsWith('/openrouter/') ? { replayed: replayedAssistants(body) } : {}) }) + '\n');
     if (bodies && raw) appendFileSync(bodies, JSON.stringify({ n, path, body: raw }) + '\n');
     return reply(path, body, n);
   } });

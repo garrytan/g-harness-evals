@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The gstack arms of the frontier Harbor path (internal-task): spec parsing, the in-container layout, the builder, the lock
+// The gstack arms of the frontier Harbor path (HARN-62): spec parsing, the in-container layout, the builder, the lock
 // check and the per-cell manifest agents.py installs from.
 //
 //   bun scripts/frontier-harbor/gstack-arm.ts singles --commit <40 hex> --out <run folder> [--hosts claude,codex,hermes]

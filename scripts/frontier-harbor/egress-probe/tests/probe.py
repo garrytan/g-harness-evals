@@ -1,4 +1,4 @@
-import json, os, socket, ssl, urllib.request
+import json, os, socket, ssl, time, urllib.request
 
 BLOCKED = ["tbench.ai", "www.tbench.ai", "harborframework.com", "joelniklaus-harness-leaderboard.hf.space", "datasets-server.huggingface.co",
            "api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com", "aiplatform.googleapis.com", "us-central1-aiplatform.googleapis.com"]
@@ -31,10 +31,17 @@ try:
         out["proxy_status"] = {"ok": r.status == 200, "error": None}
 except Exception as e:
     out["proxy_status"] = {"ok": False, "error": type(e).__name__}
+started = time.monotonic()
+try:
+    with urllib.request.urlopen(os.environ.get("PROBE_SLOW_URL", ""), timeout=90) as r:
+        out["slow_reply"] = {"ok": r.status == 200, "error": None}
+except Exception as e:
+    out["slow_reply"] = {"ok": False, "error": type(e).__name__}
+out["slow_reply"]["seconds"] = round(time.monotonic() - started, 1)
 out["docker_socket_in_task_container"] = os.path.exists("/var/run/docker.sock")
 out["blocked_refused"] = all(not out["https"][h]["ok"] for h in BLOCKED) and not out["http"]["tbench.ai"]["ok"] and not out["http"]["api.openai.com"]["ok"]
 out["open_reachable"] = all(out["https"][h]["ok"] for h in OPEN) and out["http"]["github.com"]["ok"]
-out["pass"] = out["blocked_refused"] and out["open_reachable"] and out["proxy_status"]["ok"]
+out["pass"] = out["blocked_refused"] and out["open_reachable"] and out["proxy_status"]["ok"] and out["slow_reply"]["ok"]
 os.makedirs("/logs/verifier", exist_ok=True)
 json.dump(out, open("/logs/verifier/probe.json", "w"), indent=2)
 open("/logs/verifier/reward.txt", "w").write("1" if out["pass"] else "0")

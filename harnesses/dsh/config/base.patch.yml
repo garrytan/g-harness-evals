@@ -1,0 +1,33 @@
+# harness-evals dsh harness: the fixed rows of the headless profile's patch layer
+# ($DSH_HOME/profiles/headless/cordis.patch.yml), appended by adapter.sh after the route's rows. Every row targets a
+# plugin of the shipped @deepseek-ai/dsh-base / @deepseek-ai/dsh-headless composition by id; pin.json profile_patch
+# says why each one is here.
+#
+# No DeepSeek-hosted route: the cell model is reached only through the route rows above (llm-pi-ai), so the direct
+# DeepSeek adapters and the official-API package metadata are off.
+- id: llm-deepseek
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+# No web search and no web fetch, as on every harness (Claude Code --disallowedTools WebSearch,WebFetch).
+- id: web
+  disabled: true
+- id: web-search-deepseek
+  disabled: true
+- id: web-deepseek-api
+  disabled: true
+- id: web-fetch-http
+  disabled: true
+- id: tool-web
+  disabled: true
+# No auto-loaded instruction files: the composed prompt (preamble and message) is the only instruction the agent gets.
+# Shipped, this plugin reads $DSH_HOME/AGENTS.md, $DSH_AGENTS_HOME/AGENTS.md and AGENTS.md, CLAUDE.md, AGENTS.local.md
+# and CLAUDE.local.md from the project root down to the working directory.
+- id: agent-instructions
+  disabled: true
+# Session telemetry constructs no transport (the shipped mode uploads to DeepSeek's collector after explicit feedback).
+- id: session-telemetry-otel
+  config:
+    mode: DISABLED

@@ -1215,6 +1215,9 @@ export interface RequestPrice {
   cacheWrite1h?: boolean;
   /** Long-prompt rates, used when the input estimate (reservation) or the reported input (settlement) exceeds the threshold. */
   long?: ChatPrice['long'];
+  /** OpenRouter only: the request was priced from its price-table row, so it settles from its tokens at that row and
+   *  OpenRouter's reported usage.cost is returned beside the cost (`reported_usd`), never in place of it. */
+  rowPriced?: boolean;
   /** Conservative input-token estimate (3 bytes per token), including tool schemas and continuation context. */
   inputTokens: number;
   maxOutputTokens: number;
@@ -1277,7 +1280,14 @@ export function priceRequest(url: string, body: unknown, options: PriceOptions =
     if (typeof maxPrice?.prompt !== 'number' || typeof maxPrice.completion !== 'number') {
       throw new BudgetExceededError(`OpenRouter request for ${model} sets no provider.max_price; cannot bound its cost`);
     }
-    return { provider, model, kind: 'chat', input: maxPrice.prompt, output: maxPrice.completion, inputTokens, maxOutputTokens };
+    // A model with its own row (the DeepSeek endpoint the metering proxy pins) is priced from the row. max_price keeps
+    // OpenRouter off any endpoint dearer than the row, so one above it would leave the reservation short.
+    const row = canonicalLookup(`openrouter:${model}`);
+    if (!row) return { provider, model, kind: 'chat', input: maxPrice.prompt, output: maxPrice.completion, inputTokens, maxOutputTokens };
+    if (maxPrice.prompt > row.input || maxPrice.completion > row.output) {
+      throw new BudgetExceededError(`OpenRouter request for ${model} sets provider.max_price (${maxPrice.prompt}, ${maxPrice.completion}) above its price row (${row.input}, ${row.output}); cannot bound its cost`);
+    }
+    return { provider, model, kind: 'chat', input: row.input, output: row.output, cache_read: row.cache_read, rowPriced: true, inputTokens, maxOutputTokens };
   }
   const price = chatPrice(`${provider}:${model}`);
   if (!price) throw new BudgetExceededError(`no chat price for ${provider}:${model}; cannot reserve its cost`);
@@ -1338,7 +1348,7 @@ export function reservationUsd(price: RequestPrice): number {
 }
 
 /** Cost from provider-reported usage, or null when the response carries none. */
-export function usageCost(price: RequestPrice, responseBody: unknown): { usd: number; input_tokens: number; output_tokens: number } | null {
+export function usageCost(price: RequestPrice, responseBody: unknown): { usd: number; input_tokens: number; output_tokens: number; reported_usd?: number } | null {
   if (price.provider === 'gemini') return geminiUsageCost(price, responseBody);
   const usage = (responseBody as { usage?: Record<string, unknown> } | null)?.usage;
   if (!usage || typeof usage !== 'object') return null;
@@ -1348,7 +1358,7 @@ export function usageCost(price: RequestPrice, responseBody: unknown): { usd: nu
   const outputTokens = n('output_tokens') + n('completion_tokens');
   if (inputTokens === 0 && outputTokens === 0) return null;
   const reported = price.provider === 'openrouter' && typeof usage.cost === 'number' ? usage.cost as number : null;
-  if (reported !== null) return { usd: reported, input_tokens: inputTokens, output_tokens: outputTokens };
+  if (reported !== null && !price.rowPriced) return { usd: reported, input_tokens: inputTokens, output_tokens: outputTokens };
   // Cached input: Anthropic reports reads and writes beside input_tokens; OpenAI counts cache reads and writes inside input_tokens.
   const details = (usage.input_tokens_details ?? usage.prompt_tokens_details) as Record<string, unknown> | undefined;
   const detail = (key: string) => (typeof details?.[key] === 'number' ? details[key] as number : 0);
@@ -1360,7 +1370,7 @@ export function usageCost(price: RequestPrice, responseBody: unknown): { usd: nu
   const rates = price.long && inputTokens > price.long.above_input_tokens ? price.long : price;
   const usd = ((inputTokens - cacheRead - cacheWrite) * rates.input + cacheRead * (rates.cache_read ?? rates.input)
     + (cacheWrite - cacheWrite1h) * (rates.cache_write ?? rates.input) + cacheWrite1h * rates.input * ANTHROPIC_CACHE_WRITE_1H_MULT + outputTokens * rates.output) / 1e6;
-  return { usd, input_tokens: inputTokens, output_tokens: outputTokens };
+  return { usd, input_tokens: inputTokens, output_tokens: outputTokens, ...(reported !== null ? { reported_usd: reported } : {}) };
 }
 
 /** The body parsed as JSON, or null. */

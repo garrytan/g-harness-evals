@@ -47,6 +47,9 @@ export interface DockerHarnessOptions {
   readOnlyMounts?: Record<string, string>;
   /** Capture mode: the container's DNS server (docker run --dns). The compose topology ignores it. */
   dns?: string;
+  /** Variables passed by name only (docker run -e NAME), their values in the environment of that one docker run call and
+   *  never in its argument list: the Cursor cell's CURSOR_API_KEY. The compose topology ignores it. */
+  secretEnv?: Record<string, string>;
 }
 
 const uidGid = () => `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
@@ -84,6 +87,7 @@ export function dockerRunArgs(opts: DockerHarnessOptions, name: string): string[
   if (opts.dns) args.push('--dns', opts.dns);
   for (const [host, inside] of Object.entries(opts.readOnlyMounts ?? {})) args.push('-v', `${resolve(host)}:${inside}:ro`);
   for (const [k, v] of Object.entries(opts.env)) args.push('-e', `${k}=${v}`);
+  for (const k of Object.keys(opts.secretEnv ?? {})) args.push('-e', k);
   args.push(opts.image, 'serve');
   return args;
 }
@@ -92,7 +96,7 @@ export function dockerRunArgs(opts: DockerHarnessOptions, name: string): string[
 export async function startDockerHarness(opts: DockerHarnessOptions): Promise<Harness> {
   const name = `he-${opts.trialSlug}`;
   await sh(['docker', 'rm', '-f', name]);
-  const run = await sh(dockerRunArgs(opts, name));
+  const run = await sh(dockerRunArgs(opts, name), opts.secretEnv ? { env: opts.secretEnv } : {});
   if (run.status !== 0) throw new RunnerError('HE-RUN-006', `docker run failed for ${opts.image}: ${(run.stderr || run.stdout).trim().slice(0, 400)}; fix: build the image (harnesses/${opts.harness}/README.md) and check the docker daemon`);
   const exited = async (): Promise<number | null> => {
     const r = await sh(['docker', 'inspect', '-f', '{{.State.Status}} {{.State.ExitCode}}', name]);

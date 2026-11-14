@@ -1,0 +1,109 @@
+{
+  "name": "pi",
+  "repo": "https://github.com/earendil-works/pi",
+  "package": "@earendil-works/pi-coding-agent",
+  "version": "1.5.0",
+  "integrity": {
+    "npm_package": "@earendil-works/pi-coding-agent@1.5.0",
+    "npm_integrity": "sha512-xNDZ5kqowO6Z03FS2gwAkPEGk1ssxVcYKQ6qZId84mFEvwACvvyc2l0vAMOS+c5zvxLRMLBE9r4y44IGYkMJaQ==",
+    "lockfile": "package-lock.json (lockfileVersion 3): Pi and the 122 packages it pulls in, each by version, resolved URL and sha512 integrity; npm ci refuses any other tree",
+    "checked": "at image build: npm ci from the lockfile, then pi --version must print 1.5.0 (Dockerfile PI_VERSION); the adapter compares pi --version with this file's version before anything else and exits 2 on a difference"
+  },
+  "same_as": "the Pi release Harbor's stock Pi agent ran in frontier-harness-2026-11 (scripts/frontier-harbor/pin.json harnesses.pi: @earendil-works/pi-coding-agent 1.5.0, the same npm integrity)",
+  "licence": "MIT",
+  "install": "package.json and package-lock.json copied to /opt/harness, then npm ci --ignore-scripts on node:24-bookworm-slim (Pi needs Node 22.19 or newer and no lifecycle scripts); bin /opt/harness/node_modules/.bin/pi",
+  "entry": "/opt/harness/adapter.sh run | serve",
+  "turn_command": "pi --mode json --provider <provider> --model <HE_MODEL_NAME> --thinking medium --session-dir /harness-state/pi/sessions --session-id <UUIDv5(run:<trial>)> [-e /opt/harness/extension/world-mcp.ts] -- \"$(cat /workspace/instruction.md)\"",
+  "serve_turn_command": "pi --mode json --provider <provider> --model <HE_MODEL_NAME> --thinking medium --session-dir /harness-state/pi/sessions --session-id <UUIDv5(key)> -e /opt/harness/extension/world-mcp.ts -- \"<the TurnRequest prompt>\", stdin /dev/null, under setsid with the adapter's own wall clock (budget, then SIGTERM to the session and SIGKILL 5 s later)",
+  "message_argument": "the message is always the last argument, after --, so a message that starts with '- ' is a message and not an option. Harbor's stock Pi agent passed it without --, and Pi 1.5.0 exited 'Error: Unknown option: -' before any request on the one Terminal-Bench task whose instruction starts that way (frontier-harness-2026-11 report, 'Pi crashes on one instruction'). One argument holds at most 131072 bytes on Linux; a longer prompt is exit 2 with that reason",
+  "model": {
+    "selected_by": "the last segment of HE_MODEL_BASE_URL (<proxy>/<slot>/<provider>, runner/trial/proxy.ts baseUrlFor): anthropic, openai, particle or openrouter, each with its own models.json template in config/ and its own entry below; any other route is exit 2 before any turn",
+    "config_path": "config/models.<provider>.json, written to $PI_CODING_AGENT_DIR/models.json (/harness-state/pi/agent/models.json) with ${HE_MODEL_BASE_URL} (trailing slash dropped) and ${HE_MODEL_NAME} filled in; apiKey is the literal \"$HE_MODEL_API_KEY\", which Pi resolves from its environment per request, so the token is never written to a file",
+    "model_setting": "--provider <provider> --model <HE_MODEL_NAME> on every turn; Pi has no fallback model and no utility or housekeeping model call at this version (no session titles, no summarizer outside compaction, which uses the session's model)",
+    "effort": "--thinking medium on every turn (pin.json effort)"
+  },
+  "model_anthropic": {
+    "provider": "anthropic (Pi's built-in provider; models.json changes its baseUrl and apiKey only, plus one compat flag below)",
+    "model": "the cell's HE_MODEL_NAME (claude-opus-5-5 at the frontier), from Pi's own catalog row (pi-ai dist/providers/data/anthropic.json: contextWindow 1000000, maxTokens 128000, reasoning, forceAdaptiveThinking)",
+    "api": "anthropic-messages: POST <HE_MODEL_BASE_URL>/v1/messages, streamed",
+    "base_url": "HE_MODEL_BASE_URL",
+    "api_key": "x-api-key: HE_MODEL_API_KEY",
+    "max_tokens": 128000,
+    "thinking": "thinking {type: adaptive, display: summarized} with output_config.effort medium on every request",
+    "config_path": "config/models.anthropic.json"
+  },
+  "model_openai": {
+    "provider": "openai (Pi's built-in provider; models.json changes its baseUrl and apiKey only, plus one compat flag below)",
+    "model": "the cell's HE_MODEL_NAME (gpt-6.1-sol at the frontier), from Pi's own catalog row (pi-ai dist/providers/data/openai.json: contextWindow 272000, maxTokens 128000)",
+    "api": "openai-responses: POST <HE_MODEL_BASE_URL>/v1/responses, streamed; Pi declares the tools in an additional_tools input item, not in the top-level tools field (the catalog row's supportsAdditionalTools)",
+    "base_url": "HE_MODEL_BASE_URL + /v1",
+    "api_key": "Authorization: Bearer HE_MODEL_API_KEY",
+    "max_output_tokens": 128000,
+    "reasoning": "reasoning {effort: medium, summary: auto} on every request",
+    "config_path": "config/models.openai.json"
+  },
+  "model_particle": {
+    "provider": "particle (a provider models.json adds: Pi 1.5.0 has no Particle provider)",
+    "model": "the cell's HE_MODEL_NAME (particle-1, the id the request must name), declared in models.json: reasoning true, contextWindow 1048576, maxTokens 128000",
+    "api": "openai-completions: POST <HE_MODEL_BASE_URL>/v1/chat/completions, streamed with stream_options.include_usage",
+    "base_url": "HE_MODEL_BASE_URL + /v1",
+    "api_key": "Authorization: Bearer HE_MODEL_API_KEY",
+    "max_output_tokens": "128000, sent as max_completion_tokens (compat.maxTokensField, the field Particle documents), the cap every shard's proxy runs",
+    "reasoning": "reasoning_effort medium on every request (compat.supportsReasoningEffort; reasoning on)",
+    "usage_in_stream": "compat.supportsUsageInStreaming true",
+    "config_path": "config/models.particle.json"
+  },
+  "model_openrouter": {
+    "provider": "openrouter (Pi's built-in provider; models.json changes its baseUrl and apiKey only, plus the output cap below)",
+    "model": "the cell's HE_MODEL_NAME, the bare OpenRouter id (deepseek/deepseek-v4.1-flash-1017), from Pi's own catalog row (pi-ai dist/providers/data/openrouter.json: thinkingFormat openrouter, contextWindow 1048576)",
+    "api": "openai-completions: POST <HE_MODEL_BASE_URL>/v1/chat/completions, streamed with stream_options.include_usage; Pi recognises OpenRouter by the provider id, not the URL (pi-ai dist/api/openai-completions.js), so its OpenRouter request shaping applies behind the proxy",
+    "base_url": "HE_MODEL_BASE_URL + /v1",
+    "api_key": "Authorization: Bearer HE_MODEL_API_KEY",
+    "max_output_tokens": "128000, sent as max_completion_tokens: modelOverrides maxTokens 128000 replaces the catalog's 943718 so the request fits the proxy's output cap",
+    "reasoning": "reasoning {effort: high} on every request: Pi's catalog row for this model maps medium to null (thinkingLevelMap: DeepSeek has none, low, high and max), and Pi's clampThinkingLevel (pi-ai dist/models.js) raises an unsupported level to the next supported one, so --thinking medium arrives as high (the run's thinking_level is high). Sent as the catalog row's thinkingFormat openrouter",
+    "config_path": "config/models.openrouter.json"
+  },
+  "effort": {
+    "level": "medium",
+    "setting": "--thinking medium on every turn, set explicitly; on the OpenRouter DeepSeek model Pi raises it to high, the next level that model has (model_openrouter.reasoning)",
+    "why": "the level every other multi-user harness runs at (the OpenClaw, Hermes and Codex pins; Claude Code's default), so the multi-user cells compare at one effort. High stays the Harbor frontier setting only (scripts/frontier-harbor/pin.json effort). Medium is also Pi's own default (settings defaultThinkingLevel)",
+    "mid_conversation": "Pi 1.5.0's catalog rows for claude-opus-5-5 and gpt-6.1-sol set compat.supportsMidConvoEffort, and Pi then sends a fixed top-level effort (output_config.effort low on Anthropic, reasoning.effort medium on Responses) with the real level in a mid-conversation item (a system-role message carrying output_config.effort; a configuration_update input item). The metering proxy records only the top-level fields (runner/proxy/effort.ts), so models.json sets compat.supportsMidConvoEffort false for the cell model on both routes: Pi then sends effort medium at the top level of every request, where the proxy records it. With it off, Pi also leaves out the Anthropic thinking block_binding control and its beta header. Declared under deviations"
+  },
+  "state_paths": [
+    "/harness-state/pi",
+    "/harness-state/tmp"
+  ],
+  "scratch": "TMPDIR is /harness-state/tmp, so the bash tool's spill files and jiti's extension cache land under the state directory, not in the image",
+  "mcp_config_path": "none: Pi's MCP support is not used. The world's tools come from extension/world-mcp.ts (world_mcp)",
+  "world_mcp": {
+    "extension": "extension/world-mcp.ts, copied to /opt/harness/extension/ and loaded with -e on every turn",
+    "how": "at load the extension sends initialize, notifications/initialized and tools/list (following nextCursor) to HE_WORLD_MCP_URL over Streamable HTTP (JSON or SSE answers, Mcp-Session-Id kept when the server sends one) with Authorization: Bearer HE_WORLD_MCP_TOKEN, then registers each tool with pi.registerTool: name, description, parameters (the inputSchema object as listed) and annotations as the server gives them. A call is one tools/call with the model's arguments; text and image content come back as Pi content, isError as isError",
+    "pass_through": "no promptSnippet, promptGuidelines, instructions, renaming, prefix, filter or wrapper: Pi's system prompt lists no custom tool unless it sets promptSnippet, so the world's tools reach the model only as tool definitions",
+    "wire_shaping": "what the model receives is Pi's own encoding of those definitions for the API. On Anthropic Messages (pi-ai dist/api/anthropic-messages.js convertTools) each input_schema keeps only type, properties and required, so the world schemas' $schema is dropped and an absent required becomes []; tests/pi-adapter.test.ts names exactly these differences",
+    "failures": "before the tools are registered (server unreachable, HTTP error, no tool list) the extension writes 'world-mcp: HE-ADAPTER-004 <reason>' to stderr and ends Pi with exit 2, so a turn never runs without the world; a tools/call that fails at the transport level throws 'world MCP transport error: ...', which Pi hands the model as an error result and the adapter turns into exit 2; a JSON-RPC error or the tool's own isError result is the model's to handle",
+    "why_an_extension": "the brief for this harness (internal-task): the world's tools as Pi tools with their own names through a Pi extension. Pi 1.5.0 does ship MCP support (docs/mcp.md: mcp.json, tools named mcp__<server>__<tool>, codemode exposure by default, so the model reaches them through the codemode tool's scripts unless exposure is direct); it is not used here, and no mcp.json is written. Declared under deviations"
+  },
+  "topology": "in-container",
+  "multi_user_mode": "CLI, one Pi session per conversation in one session directory; no daemon, no RPC mode",
+  "serve": {
+    "session_key": "dm:<member> | channel:<id>; :t<thread_ts> appended when TurnRequest.thread_ts is set (a task turn with thread = \"new\" opens a new session in the same conversation)",
+    "session_id": "UUIDv5 in the URL namespace (6ba7b811-9dad-11d1-80b4-00c04fd430c8) of 'harness-evals:pi:<key>'; --session-id opens the session with that id in the session directory or creates it",
+    "session_store": "/harness-state/pi/sessions (--session-dir), one JSONL file per session",
+    "shared_between_sessions": "nothing the adapter sets up: Pi has no memory feature at this version; the workspace and the world are shared, as for every harness",
+    "reply_source": "the JSON event stream: the last message_end whose message is the assistant's, its text blocks joined; its stopReason and errorMessage decide the exit",
+    "exit_mapping": "HE_MODEL_BASE_URL not ending in /anthropic, /openai, /particle or /openrouter, HE_HARNESS_CONFIG other than default, HE_SESSION_SCOPE=turn, HE_GBRAIN_INSTALL or HE_GBRAIN_MCP_URL set, or pi --version not this version -> 2 before any turn; world tools/list not answered before ready -> 2; turn outlived its budget -> 124; the extension's HE-ADAPTER-004 (no world tools at the start of the turn) -> 2; a world-MCP tool call that failed at the transport level -> 2 with a null reply; no assistant message -> 2; the last assistant message stopReason error with a provider error (an HTTP status, 'Connection error.' after Pi's retries) -> 3; stopReason error otherwise or aborted -> 2; a non-zero pi exit -> 2; else 0. SIGTERM during a run or serve turn -> 2"
+  },
+  "instruction_files": {
+    "observed": "the system prompt of every request is Pi's own (it begins 'You are a coding assistant running inside pi, a coding agent harness.') with no <project_instructions> section: the adapter writes no AGENTS.md, CLAUDE.md, SYSTEM.md or APPEND_SYSTEM.md, the agent directory is fresh in /harness-state, and the multi-user workspace holds only instruction.md (tests/pi-adapter.test.ts reads the system prompt from the first request of each route at the fake upstream)",
+    "discovery": "left as shipped: Pi would load AGENTS.md or CLAUDE.md from the agent directory, /workspace and its parents if one were there (docs/configuration.md, 'Context files'), as Codex reads AGENTS.md",
+    "skills_and_extensions": "no skill, prompt template, theme or extension is installed; the only extension loaded is extension/world-mcp.ts"
+  },
+  "credentials": "none on disk: no auth.json or models.json in the image (checked at build), models.json in the state directory names $HE_MODEL_API_KEY instead of holding it, and Pi never logs in",
+  "deviations": [
+    "the world's tools come from extension/world-mcp.ts, not Pi's MCP support (world_mcp.why_an_extension): the model sees each tool under its world name as a direct tool, where Pi's mcp.json route would name it mcp__world__<tool> and, by default, reach it only through codemode scripts",
+    "compat.supportsMidConvoEffort false for the cell model on the Anthropic and OpenAI routes (effort.mid_conversation), so the effort level is in the top-level request fields the proxy records",
+    "OpenRouter route: modelOverrides maxTokens 128000 instead of the catalog's 943718 (model_openrouter.max_output_tokens)",
+    "PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1, PI_TELEMETRY=0: no startup network operations (model catalog refresh, package or tool downloads), version check or install telemetry"
+  ],
+  "not_supported": "HE_HARNESS_CONFIG routes and ablations, HE_SESSION_SCOPE=turn, the gbrain arm (HE_GBRAIN_MCP_URL) and the gbrain install ladder (HE_GBRAIN_INSTALL): each is exit 2 before ready, so such a cell never runs as a plain cell"
+}

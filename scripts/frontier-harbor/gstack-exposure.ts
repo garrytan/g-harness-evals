@@ -1,4 +1,4 @@
-// gstack arms of a frontier Harbor run (internal-task): what the model was shown and what it opened, read from the trial's
+// gstack arms of a frontier Harbor run (HARN-62): what the model was shown and what it opened, read from the trial's
 // captured request bodies (<trial>/proxy-capture/proxy-requests.ndjson, runner/proxy/capture.ts). to-trials.ts writes the
 // result as the record's "gstack" field; audit.ts and analyze.ts read it.
 //

@@ -53,6 +53,20 @@ On a Particle-1 cell (cell model `particle:particle-1`, the cheap row of interna
 
 Keyless proof (2026-10-31, `tests/particle-branch.test.ts`): the image ran straight against a fake Particle endpoint (`tests/fixtures/particle/fake-particle.ts`), because the proxy's Particle route was not on main yet. `run` and `serve` each completed a turn on one `POST /v1/chat/completions` naming `particle-1` with effort medium and `max_completion_tokens` 128,000. There was no other request, no embeddings call and no Anthropic call. Particle's 400 and 402 error bodies from the fake exited 2; a 429 was retried until the 120 s budget ran out (exit 124). The same test checks that an OpenAI cell's turn arguments, environment, response and ready file equal main's at `3a9b403be`. No paid Particle call has been made.
 
+## OpenRouter cells (internal-task)
+
+On an OpenRouter cell (cell model `openrouter:deepseek/deepseek-v4.1-flash-1017`, DeepSeek V4.1 Flash 1017) the runner's URL ends in `/<slot>/openrouter`. The metering proxy forwards only Chat Completions there and pins every request to DeepSeek's own endpoint on OpenRouter. An Anthropic, OpenAI or Particle URL keeps its own branch above.
+
+- **Config.** `config/openclaw.openrouter.json` is copied. It defines a provider `openrouter-proxy` at `${HE_MODEL_BASE_URL}/v1` with `${HE_MODEL_API_KEY}`, OpenClaw's generic `openai-completions` provider. It is not OpenClaw's bundled `openrouter` provider, so no catalog lookup or openrouter.ai-only request shaping runs against the proxy.
+- **Turn.** `--model openrouter-proxy/<HE_MODEL_NAME>` in `run` and `serve`.
+- **Housekeeping model.** `agents.defaults.utilityModel` is the cell model.
+- **Reasoning effort: high.** `compat.thinkingFormat: "openrouter"` sends OpenRouter's `reasoning: {effort}`, and `thinkingDefault` is high. DeepSeek offers none, low, high and max, not medium, so high is the setting this harness passes.
+- **Reasoning pass-back.** DeepSeek's thinking mode refuses a tool-call turn that comes back without its reasoning. OpenClaw sends it back as the assistant message's `reasoning` field, which OpenRouter accepts.
+- **Output cap.** `maxTokens: 128000`, sent as `max_completion_tokens`, the cap the OpenAI and Particle cells state.
+- **Usage and memory.** As on a Particle cell: usage in the stream, and memory search by keyword, so no `/v1/embeddings` call.
+
+Keyless proof (2026-11-08, `tests/openrouter-branch.test.ts`): with the stand-in CLIs, `run` and `serve` hand OpenClaw this provider, model and template. With `HE_TEST_OPENCLAW_BIN` set, the test runs the real OpenClaw 2026.10.6 (npm, on the host, not the image) against `tests/fixtures/openrouter/fake-openrouter.ts`, which refuses a tool-call turn sent back without its reasoning, as DeepSeek does. The turn exited 0 after two streamed requests with effort high and `max_completion_tokens` 128,000, and the second request carried the first turn's reasoning. Not yet run in the image, and no paid OpenRouter call has been made.
+
 ## Instruction routes (internal-task)
 
 `HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction.md](../routes/instruction.md), gbrain's per-turn brain-first rule). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
@@ -118,6 +132,10 @@ Findings:
 - A fifth of each turn's input is OpenClaw's own tool catalog and system prompt (about 24,000 to 32,000 tokens per call before the conversation), mostly served from the prompt cache after the first call.
 
 ## Changelog
+
+### 2026-11-08: OpenRouter cells (internal-task)
+
+The adapter gives an OpenRouter cell `config/openclaw.openrouter.json` (the generic `openai-completions` provider under the id `openrouter-proxy`, OpenRouter's reasoning format, effort high, an output cap of 128,000, memory search by keyword) and `pin.json` gains `model_openrouter`. Why: DeepSeek V4.1 Flash 1017 through the metering proxy's new OpenRouter route.
 
 ### 2026-11-01: H10 routes (internal-task)
 

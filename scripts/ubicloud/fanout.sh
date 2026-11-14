@@ -69,7 +69,7 @@
 # shard, VM, reason, cleanup-pending path, recovery), the totals with the kept count, and the merge command; the exit code
 # is 0 only when every shard exited 0 and no VM was kept. An interrupt is forwarded to every
 # shard, each of which copies its results back and destroys its VM before exiting. Needs UBICLOUD_API_KEY, UBI_OWNER,
-# ANTHROPIC_API_KEY (and OPENAI_API_KEY for --embedded, PARTICLE_API_KEY for Particle cells) in the environment, python3 and
+# ANTHROPIC_API_KEY (and OPENAI_API_KEY for --embedded, PARTICLE_API_KEY for Particle cells, OPENROUTER_API_KEY for OpenRouter cells) in the environment, python3 and
 # bash 5.1 or later.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)

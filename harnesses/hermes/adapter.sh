@@ -76,12 +76,14 @@ mkdir -p "$HERMES_HOME"
 # model_openai; `openai` is Hermes's alias for openrouter at this pin, hermes_cli/providers.py). internal-task: a Particle cell (URL
 # ending in /particle) gets config/config.particle.yaml and its custom_providers entry custom:particle, Hermes's custom-endpoint
 # provider on the chat_completions transport at HE_MODEL_BASE_URL/v1 with OPENAI_* and no Anthropic variables (pin.json
-# model_particle). Any other URL keeps the anthropic provider, its config and its variables unchanged; the Anthropic lines stay as
-# the gstack overlay copies them.
+# model_particle). An OpenRouter cell (URL ending in /openrouter) gets config/config.openrouter.yaml and its custom_providers entry
+# custom:openrouter-proxy on the same transport, with OPENAI_* and no Anthropic variables (pin.json model_openrouter). Any other
+# URL keeps the anthropic provider, its config and its variables unchanged; the Anthropic lines stay as the gstack overlay copies them.
 provider=anthropic
 case "${HE_MODEL_BASE_URL%/}" in
   */openai) provider=openai-api; [ -e "$HERMES_HOME/config.yaml" ] || cp "$harness_dir/config/config.openai.yaml" "$HERMES_HOME/config.yaml" ;;
   */particle) provider=custom:particle; [ -e "$HERMES_HOME/config.yaml" ] || cp "$harness_dir/config/config.particle.yaml" "$HERMES_HOME/config.yaml" ;;
+  */openrouter) provider=custom:openrouter-proxy; [ -e "$HERMES_HOME/config.yaml" ] || cp "$harness_dir/config/config.openrouter.yaml" "$HERMES_HOME/config.yaml" ;;
 esac
 [ -e "$HERMES_HOME/config.yaml" ] || cp /opt/harness/config/config.yaml "$HERMES_HOME/config.yaml"
 # internal-task: while config.yaml is still exactly one of the templates, its model.default is set to the cell model, as --model
@@ -100,9 +102,9 @@ done
 # The anthropic provider reads these two variables; nothing is written to .env.
 export ANTHROPIC_API_KEY="$HE_MODEL_API_KEY"
 export ANTHROPIC_BASE_URL="$HE_MODEL_BASE_URL"
-# The openai-api provider reads its own two instead, and the Particle config expands the same two into its custom_providers entry;
-# an OpenAI or Particle cell keeps no Anthropic credential in Hermes's environment.
-if [ "$provider" = openai-api ] || [ "$provider" = custom:particle ]; then
+# The openai-api provider reads its own two instead, and the Particle and OpenRouter configs expand the same two into their
+# custom_providers entries; an OpenAI, Particle or OpenRouter cell keeps no Anthropic credential in Hermes's environment.
+if [ "$provider" = openai-api ] || [ "$provider" = custom:particle ] || [ "$provider" = custom:openrouter-proxy ]; then
   unset ANTHROPIC_API_KEY ANTHROPIC_BASE_URL
   export OPENAI_API_KEY="$HE_MODEL_API_KEY" OPENAI_BASE_URL="${HE_MODEL_BASE_URL%/}/v1"
 fi

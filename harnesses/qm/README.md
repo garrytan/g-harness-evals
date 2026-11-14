@@ -57,6 +57,10 @@ Core runs without QM's Slack worker, which is what fills QM's directory store (m
 
 Keyless proof (2026-10-31, `tests/particle-branch.test.ts`): one `run` turn through the compose stack, straight against a fake Particle endpoint, because the proxy's Particle route was not on main yet. The turn completed. Both requests (one side call, one agent turn) named `particle-1` with effort medium and `max_completion_tokens` 128,000. An Anthropic trap URL on the fake was never called. No paid Particle call has been made.
 
+## No OpenRouter cells (internal-task)
+
+QM cannot run an OpenRouter cell (`openrouter:<id>`, DeepSeek V4.1 Flash 1017 through the metering proxy's OpenRouter route). Its multi-user cells run from the worktree at the last main commit before the pilot amendment, where `pin.json` and the image name `b6786d67`, and `adapter.sh` and `prepare.sh` there know only a `/particle` URL: an `/openrouter` URL would fall through to the Anthropic config. Adding the branch means changing that worktree's files, which the pinned-worktree rule forbids, so `pin.json` declares no `model_openrouter` and `preflight` and `run` refuse such a cell (HE-PIN-005). A QM OpenRouter cell needs a new QM pin whose `serve` entry works, with the branch added and checked keyless there.
+
 ## OpenAI models
 
 **A QM cell can run on an OpenAI model such as GPT-6.1 Sol.**
@@ -65,6 +69,11 @@ Keyless proof (2026-10-31, `tests/particle-branch.test.ts`): one `run` turn thro
 - **Wiring:** QM core gets `OPENAI_BASE_URL` set to the metering proxy's `/openai` route plus `/v1`, and the per-trial dummy token as `OPENAI_API_KEY`. `MODEL_PROVIDER=openai` is set and the Anthropic pair is cleared. No real key reaches the stack.
 - **Housekeeping:** on an OpenAI cell, QM's own housekeeping calls go to `gpt-5.6-luna` (harness housekeeping, shipped default), as they go to `claude-haiku-5-5` on an Anthropic cell. List it in the cell's `utility_models` so the proxy forwards and meters it.
 - **Where it runs:** Sol cells run through the runner and the shard path (`scripts/run-shard.sh`). The single-shot `harnesses/run-trial.sh` now merges `compose.<provider>.yaml` the same way, so hello and smoke runs work too.
+- **QM's own route, no custom provider.** QM has a built-in `openai` provider, so a Sol cell needs no Particle-style registration. `prepare.sh` and `adapter.sh` add nothing for it, and the token reaches core only as `OPENAI_API_KEY`, as on an Anthropic cell. `pin.json` `model_openai` records the transport.
+- **Requests:** Pi calls the Responses API (`POST <base>/v1/responses`, streamed) with `reasoning` effort medium (QM's `auto`) and `max_output_tokens` 128,000 (the registry row's `maxTokens`), the same cap as the OpenClaw Sol cells.
+- **Housekeeping stays at the shipped default.** `gpt-5.6-luna` is QM's auxiliary model for the `openai` provider (`auxiliaryModelFor`, `src/model/pi-models.ts`), and it needs no Anthropic credential, so it is not pinned to the cell model. No deviation is declared.
+
+Keyless proof at `90e4ced7` (2026-11-08, `tests/qm-openai-branch.test.ts`): one `run` turn through `compose.yaml` and `compose.openai.yaml` against a fake Responses endpoint completed with two requests, a side call on `gpt-5.6-luna` and the agent turn on `gpt-6.1-sol`, both at effort medium and `max_output_tokens` 128,000. The same file checks that the Opus and Particle stacks still equal main's (`tests/fixtures/qm-openai/golden/`, from `2a47028c6b`). No paid call was made.
 
 ## Images
 
@@ -261,6 +270,10 @@ Findings:
 - The MCP registration route needs an `org_admin` grant; with Postgres and no `ADMIN_GRANTS`, core boots with no admin at all and the route answers 403, so `config/core.env` names `harness-admin`.
 
 ## Changelog
+
+### 2026-11-08: no OpenRouter cells (internal-task)
+
+The "No OpenRouter cells" section: QM's multi-user worktree at `b6786d67` has no OpenRouter branch, so `pin.json` declares no `model_openrouter` and the runner refuses an OpenRouter cell on QM (HE-PIN-005). Why: the metering proxy gained an OpenRouter route for DeepSeek V4.1 Flash 1017, and OpenClaw and Hermes run it.
 
 ### 2026-11-06: re-pinned to main 90e4ced7 (internal-task pilot amendment)
 

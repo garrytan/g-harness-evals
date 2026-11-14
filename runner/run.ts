@@ -17,6 +17,7 @@
  *       [--adapter <script>] [--image <tag>] [--gbrain-image <tag>] [--resume] [--stop-on-cap] [--cells a,b] [--ledger <file>]
  *       [--lease-usd <n>] [--new-lease] [--max-output-tokens <n>] [--preamble <file>] [--ready-timeout-s <n>]
  *       [--turn-grace-s <n>] [--harness-env K=V ...] [--capture-upstream anthropic|openai=<url> ...] [--capture-dns <ip>]
+ *       [--cursor-offline]
  *   bun runner/run.ts check-sections --manifest results/<run-id>/manifest.json
  *
  * check-sections (internal-task) is the one-trial smoke's check for cells with log_sections: every forwarded chat line of those
@@ -49,6 +50,12 @@
  * gives it dummy provider keys; --capture-dns sets the in-container harness's resolver. Only a run id starting with
  * "anatomy-capture-" may use them (HE-RUN-002): capture runs are never counted runs.
  *
+ * Cursor cells (harness cursor, runner/trial/cursor.ts) run on Cursor's backend with CURSOR_API_KEY and no metering proxy.
+ * main moves CURSOR_API_KEY out of this process's environment before anything else, so no child process inherits it;
+ * run hands it to the Cursor containers alone, and refuses Cursor cells without it (HE-CURSOR-002) unless
+ * --cursor-offline, the keyless rehearsal, stands a canary in for it and admits no egress host. preflight only reports
+ * whether it is set.
+ *
  * Every error prints one line starting with its HE- code (docs/errors.md) and
  * exits non-zero. Exit 3 is the budget stop (HE-BUDGET-001).
  */
@@ -72,6 +79,7 @@ import { sealedGuard } from './heldout/guard.ts';
 import { seededRandom } from './stats/paired.ts';
 import { GOLDEN_WIRES, type AblationSpec, loadBinding, wireOfModel } from './proxy/ablate.ts';
 import { setNames as zeroSetNames } from '../harnesses/harness-zero/zero.ts';
+import { checkCursorCell, isCursorCell, offlineCanary, requireCursorCells, takeCursorKey } from './trial/cursor.ts';
 import { SET_T_DIR, SET_T_SLICE, setTTaskIds, skillArmImage } from './trial/set-t.ts';
 import { REQUEST_HALVES, SKILL_REQUESTS_SLICE, privateSetProblem, requestSetIds } from './trial/skill-requests.ts';
 
@@ -206,23 +214,31 @@ export interface Cell {
 const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap']);
 export const DEFAULT_TASK_SET = 'v0.1';
 
-/** The Particle cells whose harness pin has no model_particle entry, the declaration an adapter makes when it routes
- *  <proxy>/<slot>/particle as Chat Completions. Any other adapter falls back to its Anthropic config on that URL. */
-export function particleCellsWithoutRoute<C extends Pick<Cell, 'harness'>>(cells: C[], root = '.'): C[] {
+/** The cells whose harness pin has no `transport` entry (model_particle, model_openrouter), the declaration an adapter makes
+ *  when it routes <proxy>/<slot>/particle or <proxy>/<slot>/openrouter as Chat Completions. Any other adapter falls back to
+ *  its Anthropic config on that URL. */
+function cellsWithoutTransport<C extends Pick<Cell, 'harness'>>(cells: C[], transport: 'model_particle' | 'model_openrouter', root: string): C[] {
   return cells.filter((c) => {
-    try { return !(JSON.parse(readFileSync(join(root, 'harnesses', c.harness, 'pin.json'), 'utf8')) as { model_particle?: unknown }).model_particle; }
+    try { return !(JSON.parse(readFileSync(join(root, 'harnesses', c.harness, 'pin.json'), 'utf8')) as Record<string, unknown>)[transport]; }
     catch { return true; }
   });
 }
+export const particleCellsWithoutRoute = <C extends Pick<Cell, 'harness'>>(cells: C[], root = '.'): C[] => cellsWithoutTransport(cells, 'model_particle', root);
+export const openrouterCellsWithoutRoute = <C extends Pick<Cell, 'harness'>>(cells: C[], root = '.'): C[] => cellsWithoutTransport(cells, 'model_openrouter', root);
 
 /** A cell that calls Particle needs PARTICLE_API_KEY in this shell for the metering proxy (HE-PROXY-001) and a harness
- *  whose pin declares a Particle transport (HE-PIN-003). preflight and run both check, because a resumed shard skips a
- *  preflight that already passed (scripts/run-shard.sh). */
-function requireParticleCells(cells: Array<Pick<Cell, 'id' | 'harness' | 'model' | 'utility_models'>>): void {
+ *  whose pin declares a Particle transport (HE-PIN-003); a cell that calls OpenRouter needs OPENROUTER_API_KEY and a pin
+ *  that declares model_openrouter (HE-PIN-005). preflight and run both check, because a resumed shard skips a preflight
+ *  that already passed (scripts/run-shard.sh). */
+function requireRoutedCells(cells: Array<Pick<Cell, 'id' | 'harness' | 'model' | 'utility_models'>>): void {
   const particle = cells.filter((c) => cellModels(c).some((id) => id.startsWith('particle:')));
   if (particle.length && !process.env.PARTICLE_API_KEY) throw new RunnerError('HE-PROXY-001', `cells ${particle.map((c) => c.id).join(', ')} call Particle and PARTICLE_API_KEY is not set in this shell; the metering proxy needs it to forward their calls (harness containers never see it)`);
   const noRoute = particleCellsWithoutRoute(particle);
   if (noRoute.length) throw new RunnerError('HE-PIN-003', `cells ${noRoute.map((c) => `${c.id} (${c.harness})`).join(', ')} call Particle, but their harness pin declares no Particle transport (model_particle in harnesses/<name>/pin.json); the proxy routes Particle as Chat Completions only, and an adapter without that branch sends Anthropic Messages to it; fix: run the cell on a harness whose adapter routes <proxy>/<slot>/particle`);
+  const openrouter = cells.filter((c) => cellModels(c).some((id) => id.startsWith('openrouter:')));
+  if (openrouter.length && !process.env.OPENROUTER_API_KEY) throw new RunnerError('HE-PROXY-001', `cells ${openrouter.map((c) => c.id).join(', ')} call OpenRouter and OPENROUTER_API_KEY is not set in this shell; the metering proxy needs it to forward their calls (harness containers never see it)`);
+  const noOpenrouter = openrouterCellsWithoutRoute(openrouter);
+  if (noOpenrouter.length) throw new RunnerError('HE-PIN-005', `cells ${noOpenrouter.map((c) => `${c.id} (${c.harness})`).join(', ')} call OpenRouter, but their harness pin declares no OpenRouter transport (model_openrouter in harnesses/<name>/pin.json); the proxy routes OpenRouter as Chat Completions only, and an adapter without that branch sends Anthropic Messages to it; fix: run the cell on a harness whose adapter routes <proxy>/<slot>/openrouter`);
 }
 
 /** The provider:model ids a cell's harness may call, its model and its utility_models: what the runner binds the
@@ -456,6 +472,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     // harnesses/harness-zero/config; an unknown set would exit 2 before ready in every trial.
     if (c.harness === 'harness-zero' && c.network !== 'internal') throw new RunnerError('HE-NET-001', `cell ${c.id}: harness harness-zero needs network "internal" (harnesses/harness-zero/pin.json). fix: add "network": "internal" to the cell`);
     checkZeroConfig(c);
+    checkCursorCell(c);
     if (!prereg.tasks[c.slice] && !c.tasks && c.slice !== 'multiuser' && c.slice !== SET_T_SLICE && c.slice !== SKILL_REQUESTS_SLICE) throw new RunnerError('HE-PREREG-004', `cell ${c.id} names slice ${c.slice} but tasks.${c.slice} is missing`);
     const scripted = c.harness_mode === 'scripted';
     if (scripted && (c.harness !== 'scripted' || !['oracle', 'mutations'].includes(c.script ?? '')))
@@ -801,6 +818,7 @@ function sealedContextFor(m: Manifest, flag: (name: string) => string | undefine
 }
 
 async function main(argv: string[]): Promise<number> {
+  const cursorKey = takeCursorKey();
   const [cmd, ...rest] = argv;
   const flag = (name: string) => { const i = rest.indexOf(name); return i >= 0 ? rest[i + 1] : undefined; };
   const has = (name: string) => rest.includes(name);
@@ -862,9 +880,11 @@ async function main(argv: string[]): Promise<number> {
     if (sealed) console.log(`SEALED: root and receipt match the manifest's opening (set ${sealed.set}, receipt ${sealed.receipt_sha256.slice(0, 12)}); the world probe reads world ${String(sealed.receipt.world_sha256).slice(0, 12)}`);
     const missing = m.cells.filter(c => c.harness !== 'scripted' && !existsSync(join('harnesses', c.harness, 'pin.json'))).map(c => c.harness);
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
-    for (const c of m.cells) checkZeroConfig(c);
-    for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
-    requireParticleCells(m.cells.filter((c) => c.harness_mode !== 'scripted'));
+    for (const c of m.cells) { checkZeroConfig(c); checkCursorCell(c); }
+    const cursorCells = m.cells.filter(isCursorCell);
+    if (cursorCells.length) console.log(`CURSOR: cells ${cursorCells.map((c) => c.id).join(', ')} call Cursor's backend through the egress allowlist, with no metering proxy; CURSOR_API_KEY is ${cursorKey ? 'set' : 'not set (run refuses them without it, except with --cursor-offline)'}`);
+    if (m.cells.some((c) => c.harness_mode !== 'scripted' && !isCursorCell(c))) for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);
+    requireRoutedCells(m.cells.filter((c) => c.harness_mode !== 'scripted'));
     // A harness image built before an adapter edit silently runs the old adapter; compare the image's adapter with the checkout.
     const dockerCells = m.cells.filter((c) => c.harness !== 'scripted' && (c.harness_mode ?? 'docker') === 'docker' && !existsSync(join('harnesses', c.harness, 'compose.yaml')));
     // internal-task (H10): a harness with harnesses/<name>/provenance.json is compared file by file, and the digests and image ids go
@@ -1093,7 +1113,11 @@ async function main(argv: string[]): Promise<number> {
     const callingCells = manifest.cells.filter((c) => c.harness_mode !== 'scripted' && mode !== 'scripted' && (cells ? cells.includes(c.id) : true));
     const providers = callingCells.flatMap((c) => [c.model, ...(c.utility_models ?? []), c.gbrain?.embeddings ?? 'off']).filter((m) => m.includes(':')).map((m) => m.slice(0, m.indexOf(':')));
     const capture = parseCaptureOptions({ runId: manifest.run_id, upstream: all('--capture-upstream'), dns: has('--capture-dns') ? (flag('--capture-dns') ?? '') : undefined, providers }) ?? undefined;
-    requireParticleCells(callingCells);
+    requireRoutedCells(callingCells);
+    const offline = has('--cursor-offline');
+    const cursorRun = callingCells.some(isCursorCell);
+    if (offline && !cursorRun) throw new RunnerError('HE-RUN-002', '--cursor-offline is the keyless rehearsal of Cursor cells, and none of the cells this invocation runs is one; fix: drop the flag or name Cursor cells with --cells');
+    requireCursorCells(callingCells, offline || !!cursorKey);
     const sealed = sealedContextFor(manifest, flag, dirname(path));
     if (sealed) installSealedGuard(sealed, join(dirname(path), 'sealed-console.log'), 'run');
     // A sealed run's trials default to the sealed image tag, and run repeats preflight's image check (HE-SEALED-005).
@@ -1133,6 +1157,7 @@ async function main(argv: string[]): Promise<number> {
       newLease: has('--new-lease'), maxOutputTokens: flag('--max-output-tokens') ? Number(flag('--max-output-tokens')) : undefined, preamblePath: flag('--preamble'),
       readyTimeoutS: flag('--ready-timeout-s') ? Number(flag('--ready-timeout-s')) : undefined, turnGraceS: flag('--turn-grace-s') ? Number(flag('--turn-grace-s')) : undefined,
       harnessEnv, capture, log: sealed ? sealedProgress() : (line) => console.log(line),
+      ...(cursorRun ? { cursor: { key: offline ? offlineCanary() : cursorKey!, offline } } : {}),
     });
     return result.exit;
   }
