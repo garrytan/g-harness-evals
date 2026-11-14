@@ -302,3 +302,23 @@ env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/s1e-probe.ts --dry-run --in
 - **Preflight before any paid call:** no Capy drive or gstack install on the host (enforced on a paid run); each task image holds its repository, `git` on PATH, and no gstack path or edition file; each edition file fits QM's 16,384-character inline budget; each task's skill has a marker.
 - **QM version:** the dry run runs at the rig's pin, `90e4ced7` since the pilot amendment moved `pin.json` from `b6786d67` ([receipt](receipts/s1e-dry-run-6cf00aee.json)), because `prepare.sh` refuses images of any other commit than `pin.json`.
 - **Task generator and graders:** `edition-fixture.ts` and `edition-grade.ts`, with the frozen analysis in `edition-analysis.ts` (see Edition fixtures, graders and analysis above).
+
+
+## QM /review smoke (internal-task)
+
+**Outcome (2026-11-14, one paid session, $0.28):** gstack's /review ran to completion on QM with Opus 5.5 and returned a findings block, but it ran in a degraded mode. The model opened the review skill, then did the required adversarial pass itself instead of dispatching a reader, although QM offered its subagent tool. No specialists were due: the unit's diff is 34 lines, under the review's 50-line threshold.
+
+- **Driver:** [review-smoke.ts](review-smoke.ts). It runs one review session of one unit repository on QM through Pi, told the internal-task review line, and writes the four exposure signals, the termination, the proxy cost and the wall time to `summary.json`.
+- **Signals:** [review-signals.ts](review-signals.ts) reads them from QM's stored session and the requests QM captured, with [../skill-opens.ts](../skill-opens.ts)'s open rule and gstack-evals' reader names (the map is [reader-map-gstack-699a41cb6808.json](reader-map-gstack-699a41cb6808.json), copied byte for byte).
+- **How gstack gets on.** gstack at `4bee369d` (v1.99.3.0) ships no review skill for QM. Its QM edition holds `gstack-plan` only, and importing the repository as a skill pack hits QM's 5,000-file and 32 MiB caps. So the driver installs gstack's own `review/` folder, byte for byte, as one deployment-layer skill named `review`. The text is unchanged (`~/.claude/skills/gstack` paths, "the Agent tool").
+- **Subagents.** QM offers its `subagents` tool only when the member has the `persistent_subagents` or `responsive_spine` feature, and both are off on a new org. `--subagents on` (the default) turns `persistent_subagents` on for the member through QM's admin API. `--subagents off` leaves QM as shipped.
+- **The unit** is built the way gstack-evals `src/trial/review/unit.ts` builds one and baked into the sandbox image at `/root/workspace`, where QM's shell starts.
+
+```bash
+env -i PATH=$PATH HOME=$HOME bun harnesses/qm/gstack/review-smoke.ts --dry-run            # keyless, $0
+env -i PATH=$PATH HOME=$HOME ANTHROPIC_API_KEY=... bun harnesses/qm/gstack/review-smoke.ts   --ledger <new lease ledger file> --lease-usd 10 --new-run                               # paid, one session
+```
+
+- **Dry run:** a scripted fake model behind the metering proxy in capture mode. It loads the skill, runs one git command, opens a testing reader and an adversarial reader, waits for both and ends. It exits 0 only when the signals come out as scripted, the proxy agrees with its own log and nothing is left behind. With `--subagents off` the fake can open no reader, because QM offers no `subagents` tool.
+- **Other flags:** `--plan` (print the resolved plan and stop before docker), `--skip-build`, `--gstack`, `--source`, `--unit <unit.json>`, `--settle-s` (how long to wait for late reader reports after the turn ends), `--work`, `--out`.
+- **Tests:** `tests/qm-review-smoke.test.ts`, on fixtures from the dry run.

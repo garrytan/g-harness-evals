@@ -1,0 +1,150 @@
+{
+ "sessions": [
+  {
+   "id": "20261114_054815_756f55",
+   "source": "oneshot",
+   "parent_session_id": null,
+   "started_at": 1794635306.6204197,
+   "ended_at": 1794635316.0953453,
+   "end_reason": "cli_close"
+  },
+  {
+   "id": "20261114_054829_e9e1a8",
+   "source": "subagent",
+   "parent_session_id": "20261114_054815_756f55",
+   "started_at": 1794635310.0260358,
+   "ended_at": 1794635315.617916,
+   "end_reason": "agent_close"
+  },
+  {
+   "id": "20261114_054829_e7ab2e",
+   "source": "subagent",
+   "parent_session_id": "20261114_054815_756f55",
+   "started_at": 1794635310.079506,
+   "ended_at": 1794635315.6192255,
+   "end_reason": "agent_close"
+  }
+ ],
+ "messages": [
+  {
+   "id": 1,
+   "session_id": "20261114_054815_756f55",
+   "role": "user",
+   "content": "CANARY-MAIN-TASK: this is a keyless canary. Dispatch the reader(s) with your own subagent tool, wait for every report, then write your final answer quoting them.\n",
+   "tool_call_id": null,
+   "tool_calls": null,
+   "tool_name": null,
+   "finish_reason": null,
+   "display_kind": null,
+   "timestamp": 1794635305.9556317
+  },
+  {
+   "id": 2,
+   "session_id": "20261114_054815_756f55",
+   "role": "assistant",
+   "content": "",
+   "tool_call_id": null,
+   "tool_calls": "[{\"id\": \"toolu_fake_1\", \"call_id\": \"toolu_fake_1\", \"response_item_id\": \"fc_toolu_fake_1\", \"type\": \"function\", \"function\": {\"name\": \"skill_view\", \"arguments\": \"{\\\"name\\\": \\\"gstack-review\\\"}\"}}]",
+   "tool_name": null,
+   "finish_reason": "tool_calls",
+   "display_kind": null,
+   "timestamp": 1794635308.163711
+  },
+  {
+   "id": 3,
+   "session_id": "20261114_054815_756f55",
+   "role": "tool",
+   "content": "{\"success\":true,\"name\":\"gstack-review\",\"description\":\"Use for: review this pr, look over my diff, code review.\\nChecks it for SQL safety, LLM trust boundaries, conditional side effects and bugs that pass CI and break production. Fits \\\"look over my diff\\\", \\\"review my changes\\\", \\\"code review\\\", \\\"check my diff\\\" or \\\"pre-landing review\\\". Proactively suggest before a merge. (gstack)\",\"tags\":[],\"related_skills\":[],\"content\":\"---\\nname: gstack-review\\ndescription: |\\n  Use for: review this pr, look over my diff, code review.\\n  Checks it for SQL safety, LLM trust boundaries, conditional side effects and bugs that pass CI and break production. Fits \\\"look over my diff\\\", \\\"review my changes\\\", \\\"code review\\\", \\\"check my diff\\\" or \\\"pre-landing review\\\". Proactively suggest before a merge. (gstack)\\n---\\n<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->\\n<!-- Regenerate: bun run gen:skill-docs -->\\n\\n## Done means\\n\\nFinish only when each of these exists (contract v1):\\n\\n- `review-report`: a `Pre-Landing Review` with Gate edits filled in (`none: <why>` where the skill's own stop rule leaves one empty).\\n\\n`$GSTACK_BIN/gstack-skill-contract check` reads them from the transcript (docs/skill-routing-and-contracts.md). For an item that truly does not apply, run `$GSTACK_BIN/gstack-skill-contract waive <item> --reason \\\"<why>\\\"` (this session only; it counts as a miss).\\n\\n## Shared preamble (load first)\\n\\nThis skill follows gstack shared preamble `0e93f0d83e7d` (AskUserQuestion format, voice, writing, completeness and completion rules). If your Read of that file, headed by this id, is still in context, do not read it aga ... # Pre-Landing PR Review ... [fixture: trimmed 76879 characters]\",\"path\":\"gstack/gstack-review/SKILL.md\",\"skill_dir\":\"/harness-state/hermes/skills/gstack/gstack-review\",\"org_provenance\":null,\"linked_files\":null,\"usage_hint\":null,\"required_environment_variables\":[],\"required_commands\":[],\"missing_required_environment_variables\":[],\"missing_credential_files\":[],\"missing_required_commands\":[],\"setup_needed\":false,\"setup_skipped\":false,\"readiness_status\":\"available\",\"_source_path\":\"/harness-state/hermes/skills/gstack/gstack-review/SKILL.md\"}",
+   "tool_call_id": "toolu_fake_1",
+   "tool_calls": null,
+   "tool_name": "skill_view",
+   "finish_reason": null,
+   "display_kind": null,
+   "timestamp": 1794635308.6616313
+  },
+  {
+   "id": 4,
+   "session_id": "20261114_054815_756f55",
+   "role": "assistant",
+   "content": "",
+   "tool_call_id": null,
+   "tool_calls": "[{\"id\": \"toolu_fake_2\", \"function\": {",
+   "tool_name": null,
+   "finish_reason": "tool_calls",
+   "display_kind": null,
+   "timestamp": 1794635308.9417396
+  },
+  {
+   "id": 5,
+   "session_id": "20261114_054829_e9e1a8",
+   "role": "user",
+   "content": "CANARY-ADV-TASK: Think like an attacker and a chaos engineer. Find the ways this diff fails in production and report them.",
+   "tool_call_id": null,
+   "tool_calls": null,
+   "tool_name": null,
+   "finish_reason": null,
+   "display_kind": null,
+   "timestamp": 1794635309.9860399
+  },
+  {
+   "id": 6,
+   "session_id": "20261114_054829_e7ab2e",
+   "role": "user",
+   "content": "CANARY-READER-TASK: you are the testing specialist. Read the checklist at review/specialists/testing.md and report what you find in the diff.",
+   "tool_call_id": null,
+   "tool_calls": null,
+   "tool_name": null,
+   "finish_reason": null,
+   "display_kind": null,
+   "timestamp": 1794635310.0101047
+  },
+  {
+   "id": 7,
+   "session_id": "20261114_054829_e9e1a8",
+   "role": "assistant",
+   "content": "CANARY-REPORT-ADV: adversarial reader report, no findings.",
+   "tool_call_id": null,
+   "tool_calls": null,
+   "tool_name": null,
+   "finish_reason": "stop",
+   "display_kind": null,
+   "timestamp": 1794635315.2677019
+  },
+  {
+   "id": 8,
+   "session_id": "20261114_054829_e7ab2e",
+   "role": "assistant",
+   "content": "CANARY-REPORT-7Q: testing reader report, no findings.",
+   "tool_call_id": null,
+   "tool_calls": null,
+   "tool_name": null,
+   "finish_reason": "stop",
+   "display_kind": null,
+   "timestamp": 1794635315.582105
+  },
+  {
+   "id": 9,
+   "session_id": "20261114_054815_756f55",
+   "role": "tool",
+   "content": "{\"results\": [{\"task_index\": 0, \"status\": \"completed\", \"summary\": \"CANARY-REPORT-7Q: testing reader report, no findings.\", \"api_calls\": 1, \"duration_seconds\": 5.62, \"model\": \"claude-opus-5-5\", \"exit_reason\": \"completed\", \"truncated\": false, \"tokens\": {\"input\": 1, \"output\": 1}, \"tool_trace\": [], \"cost_usd\": 2.4e-05, \"cost_status\": \"estimated\", \"live_transcript\": \"/harness-state/hermes/cache/delegation/live/deleg_3385d1a0/task-0.log\"}, {\"task_index\": 1, \"status\": \"completed\", \"summary\": \"CANARY-REPORT-ADV: adversarial reader report, no findings.\", \"api_calls\": 1, \"duration_seconds\": 5.33, \"model\": \"claude-opus-5-5\", \"exit_reason\": \"completed\", \"truncated\": false, \"tokens\": {\"input\": 1, \"output\": 1}, \"tool_trace\": [], \"cost_usd\": 2.4e-05, \"cost_status\": \"estimated\", \"live_transcript\": \"/harness-state/hermes/cache/delegation/live/deleg_3385d1a0/task-1.log\"}], \"total_duration_seconds\": 6.65, \"live_transcripts\": [\"/harness-state/hermes/cache/delegation/live/deleg_3385d1a0/task-0.log\", \"/harness-state/hermes/cache/delegation/live/deleg_3385d1a0/task-1.log\"], \"note\": \"background=true is not available in this session — it cannot receive a detached subagent result after the turn ends (a finite chat using -Q, --oneshot, or non-TTY stdio, `hermes -z`, a cron job, a Kanban worker, or a stateless HTTP endpoint). The subagent(s) ran SYNCHRONOUSLY and the result is included above.\"}",
+   "tool_call_id": "toolu_fake_2",
+   "tool_calls": null,
+   "tool_name": "delegate_task",
+   "finish_reason": null,
+   "display_kind": null,
+   "timestamp": 1794635315.6377017
+  },
+  {
+   "id": 10,
+   "session_id": "20261114_054815_756f55",
+   "role": "assistant",
+   "content": "CANARY-FINAL: the readers returned CANARY-REPORT-7Q and CANARY-REPORT-ADV.\n```json\n[]\n```",
+   "tool_call_id": null,
+   "tool_calls": null,
+   "tool_name": null,
+   "finish_reason": "stop",
+   "display_kind": null,
+   "timestamp": 1794635315.6954072
+  }
+ ]
+}

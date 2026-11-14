@@ -69,6 +69,8 @@ scripts/gsta-135/preflight.sh --pin <sha8> --only openclaw,hermes --hermes-mode 
 
 The 2026-10 discovery run was an uncounted diagnostic: one trial per cell, no preregistration, nothing under `docs/benchmarks/`. `scripts/gsta-135/evidence.ts` reads the harness's own transcript (OpenClaw's exec session store, Hermes's state.db) and reports tool-call events with file, locator and sha256; the wrapper's `gstack-register.log` never counts as evidence.
 
+**Review sessions (internal-task).** `scripts/review-bugs/harness-review.ts` runs one code-review PR-pass on these overlays for the real-bug review eval: the unit repo is the work dir, the plain arm runs `:gstack-none` and the review arm a pinned `:gstack-<pin8>` image, both with the start hook off (gstack ships it off, so the `-hook` images are not as shipped and are refused), and `collect` writes gstack-evals' noloss arm contract v1. At gstack `4bee369d` the rendered `/review` on OpenClaw and Hermes has no Review Army and no adversarial subagent (`hosts/define-host.ts` `CROSS_MODEL_RESOLVERS`). Details, runs and per-harness findings: [scripts/review-bugs/harness-sessions.md](../scripts/review-bugs/harness-sessions.md).
+
 ## Run one trial
 
 Start the metering proxy on the Docker bridge address so containers reach it as `host.docker.internal` and nothing outside the machine can, then bind a slot for the trial with a random token (since 2026-10-28 a lease-mode proxy forwards nothing for an unbound slot, and nothing on a token-bound slot that does not present the token; the runner does this binding itself in a counted run):
@@ -101,6 +103,10 @@ bun harnesses/serve-smoke.ts --harness hermes --trial-id hermes-serve-1 \
 The slot `hermes-serve-1` is bound with `$cred` first, as under "Run one trial"; the `_fake` harness makes no model call and needs no proxy. `--fake-upstream` answers model requests from a fake endpoint in the same process instead of a proxy, for harnesses that send non-streamed requests (Harness Zero): `bun harnesses/serve-smoke.ts --harness harness-zero --trial-id zero-smoke-1 --fake-upstream` needs no key.
 
 ## Changelog
+
+### 2026-11-14: review sessions on the OpenClaw and Hermes overlays
+
+The "Review sessions" paragraph under gstack overlay images. Why: cells C3 and C4 of the real-bug review eval (internal-task) run gstack's /review and a plain review prompt on these overlays.
 
 ### 2026-11-11: dsh and Cursor
 

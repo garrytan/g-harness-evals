@@ -1,0 +1,43 @@
+{
+ "note": "harness-evals #206's CRITICAL findings from its /ship review record (Captain drive handoffs/internal-task/ship/206/findings, p1-merged.jsonl and p2-merged.jsonl). Outside voice = GPT-6.1 Sol through gstack's /ship; red team = gstack's Claude red-team reader. Descriptions are ours.",
+ "repo": "garrytan/harness-evals",
+ "pr": 206,
+ "base_branch": "main",
+ "units": [
+  {
+   "head": "478d5959a45561a09dea642afa0e27e90b16af34",
+   "fix": "67790b484c61b186e2e6938c1a24d8a5eb70a63c",
+   "label": "pass 1 head (the range pass 2 names starts here)",
+   "bugs": [
+    {
+     "file": "scripts/seal-heldout.ts",
+     "line": 196,
+     "finding": "p1 outside-voice#1",
+     "by": "gstack /ship pass 1, outside voice (GPT-6.1 Sol)",
+     "summary": "manifestReadProblem accepts a held-out manifest that carries a sealed block but has lost its custody field. The custody guards then treat that manifest as giving no live-sharer protection while still counting its bundle digest as accounted for, so a pending reseal can be hidden and release or rekey can go ahead against the predecessor set and expose content it shares."
+    },
+    {
+     "file": "scripts/sealed/seal.ts",
+     "line": 328,
+     "finding": "p1 outside-voice#2",
+     "by": "gstack /ship pass 1, outside voice (GPT-6.1 Sol)",
+     "summary": "seal --from-backup checks whether the source backup already belongs to another set only against sealed/backups.json on main, before decrypting, and the custody transaction records no source-backup digest. Two checkouts can therefore seal the same backup under two set names before either registry entry reaches main, and both succeed, giving identical held-out tasks two independent opening budgets."
+    }
+   ]
+  },
+  {
+   "head": "67790b484c61b186e2e6938c1a24d8a5eb70a63c",
+   "fix": "f82d994dc5e0a8d522ad218ff5499028f8a7d702",
+   "label": "fix-round head (pass 2's range end)",
+   "bugs": [
+    {
+     "file": "scripts/sealed/rekey.ts",
+     "line": 143,
+     "finding": "p2 red-team#1",
+     "by": "gstack /ship pass 2, red team (Claude)",
+     "summary": "The new binding that records a seal's source backup in the custody log is enforced only by seal.ts. bindBackups, which rekey and compare-backups share, still binds a backup by sealed/backups.json on main alone, so --declare-backup can bind a backup the custody log already records as another set's seal source, and rekey can then re-encrypt that other set's held-out content to an outside recipient."
+    }
+   ]
+  }
+ ]
+}
