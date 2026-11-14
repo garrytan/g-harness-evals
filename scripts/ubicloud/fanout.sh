@@ -34,7 +34,9 @@
 # keyless --dry-run as the smoke, then the driver under the shard's lease with its "args" passed through; the driver
 # enforces the stage caps). Records are turns.jsonl lines, so the end prints the results directories, not a merge command.
 # --workload frontier-harbor passes the same flag: each shard runs scripts/frontier-harbor/vm-run.sh on its VM after the
-# keyless install check as its smoke; a shard's "args" reach vm-run.sh (--stage <name>, --done <file>). Put
+# keyless install check as its smoke; a shard's "args" reach vm-run.sh (--stage <name>, --done <file>). The task source
+# follows the preregistration: a task_list naming a second source's pin (pin-swe-rebench-07-2026.json) makes vm-shard.sh
+# pass vm-run.sh --tasks-src, which fetches that source's pinned tasks on the VM. Put
 # --install-check in options for the keyless install check alone (prereg scripts/frontier-harbor/install-check-prereg.json,
 # no key needed or sent); its shard "args" then reach install-check.sh (--baselines all runs oracle and nop on every pinned
 # task). Its records are vm-run.sh's trials.jsonl, which merge-shards.ts does not read, so the end prints

@@ -17,7 +17,12 @@
 |---|---|
 | [pin.json](pin.json) | Harbor wheel and its hashed lock, TB2.1 commit, the 52 tasks with digests, the shared order, the kept sample, harness versions, model limits, the blocklist, licences |
 | [harbor-requirements.txt](harbor-requirements.txt) | every package Harbor installs with, by version and sha256 (`uv pip install --require-hashes`) |
-| [materialize.ts](materialize.ts) | copies the pinned tasks into a run root with each image pinned by digest |
+| [materialize.ts](materialize.ts) | copies the pinned tasks into a run root with each image pinned by digest (`tb21`, or `swerebench` for the second source) |
+| [pin-swe-rebench-07-2026.json](pin-swe-rebench-07-2026.json) | the second task source: 111 SWE-rebench July 2026 tasks with digests, base images by digest and size, the Harbor hub dataset version, its blocklist and licences |
+| [swe_rebench_fetch.py](swe_rebench_fetch.py) | fetches the second source's tasks from the Harbor hub by content hash and checks them |
+| [egress_blocklist.py](egress_blocklist.py) | a source's blocklist (pin.json's plus the source's hosts) and the sidecar build context with it |
+| [swe-rebench-oracle-check.sh](swe-rebench-oracle-check.sh) | the one-VM oracle and nop check of the second source behind its blocklist, with the history audit of every image |
+| [swe-rebench-history-audit.sh](swe-rebench-history-audit.sh) | whether the repository inside one task image holds anything past the task's base commit |
 | [plan.ts](plan.ts) | reads a `frontier-harbor/1` preregistration: cells, trial ids, shard leases, Harbor jobs |
 | [frontier_settings.py](frontier_settings.py) | renders each harness's settings and its `harness_settings.json` record (no Harbor import) |
 | [agents.py](agents.py) | the Harbor installed-agent classes |
@@ -316,6 +321,16 @@ Since 2026-11-14 the OpenAI organization behind the shared key enforces zero dat
 - **Hosts per trial:** the Harbor sidecar logs no host decision, so the hosts a keyed trial reached aren't recorded per trial.
 - **Mid-run mirror:** the key scan runs after the records, so a mirror taken mid-run is not scanned. stdout and stderr are redacted at the source.
 - **Context window and max output:** set by Cursor's backend, not visible without a proxy capture. Declared in `harness_settings.json`.
+
+## A second task source: SWE-rebench July 2026
+
+- **What:** the 111 tasks of the Harbor dataset `ibragim-badertdinov/swe-rebench-07-2026@2026-07`: real GitHub issues from July 2026 in Go, Java, Python, Rust and TypeScript, each graded by the repository's own tests.
+- **Pin:** [pin-swe-rebench-07-2026.json](pin-swe-rebench-07-2026.json). The dataset lives in the Harbor hub's package registry, not a git repository, so the pin records the dataset version's content hash and each task's (which equals its `treeDigest`), each Dockerfile's base image by registry digest with its compressed size, the shared order (seed `fable52-diagnosis-2026-11-14`) and the licences (CC BY 4.0 for the dataset; each repository keeps its own).
+- **Choosing it:** a preregistration whose top-level `task_list` names the pin runs these tasks. Cell ranges index its order. Kept cells are refused, and every cell's own `task_list` must name the same source. Harness pins, model limits and the blocklist mechanics still come from pin.json.
+- **On the VM:** `vm-run.sh --tasks-src <dir>` (vm-shard.sh passes `~/swe-rebench-07-2026`) fetches the shard's tasks with `swe_rebench_fetch.py` by content hash, or checks a copy already there, then `materialize.ts swerebench` pins each Dockerfile `FROM` line to its digest, appends the pin's `image_build` steps and sets the verifier env. A changed task, image or step is refused.
+- **Python prefetch:** 44 of the 111 images have no `python3`, so the verifier's log parser runs under `uv run`, and uv tries to download CPython 3.13.5 from github.com, which the blocklist refuses. For those 44, the pin's `python_prefetch` step installs that exact CPython with the task's own uv 0.7.13 at image build time, when the network is open. Every verifier runs with `UV_PYTHON_DOWNLOADS=never`, so a verifier that still tries to download fails loudly. The blocklist stays on for the agent and the verifier.
+- **History scrub:** the images ship with the repository at the base commit, but each keeps `.git/ORIG_HEAD` naming a later upstream commit. The pin's `history_scrub` step (pinned by sha256, run after the prefetch) checks out the base commit detached, removes every remote, ref, tag and stash, `ORIG_HEAD`, `FETCH_HEAD` and the reflog, and runs `git gc --prune=now --aggressive`. The build fails unless HEAD is the base commit and nothing outside its history is reachable. `swe-rebench-history-audit.sh` checks an image: refs, reflog, objects outside the base commit's history, and whether one added line of the reference fix is anywhere in the object store.
+- **Blocklist:** jobs run in `egress:SourceBlocklistDockerEnvironment` with `{ "task_source": "swe-rebench-07-2026" }`. It is the same sidecar with pin.json's list plus GitHub, Hugging Face, swe-rebench.com and the Harbor hub's storage host, each with its reason in the pin. Package registries stay reachable.
 
 ## Known gaps
 

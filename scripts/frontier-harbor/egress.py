@@ -1,4 +1,4 @@
-"""Harbor 0.24.0 docker environment with the frontier blocklist (internal-task plan, Contamination, keys and fairness).
+"""Harbor 0.24.0 docker environment with the frontier blocklist (HARN-50 plan, Contamination, keys and fairness).
 
 Harbor's docker egress control knows public, no-network and allowlist modes and starts its sidecar only for a
 non-public policy. TB2.1 tasks run public. This environment always starts the sidecar, built from egress-sidecar/
@@ -13,6 +13,11 @@ A Cursor cell (harness cursor) runs under CursorBlocklistDockerEnvironment inste
 only): the same sidecar built from egress-sidecar/Dockerfile.cursor, whose blocklist (blocklist-cursor.txt, pin.json
 egress.cursor_cells.blocklist) leaves Cursor's API hosts and its package host reachable. Every other cell's blocklist
 refuses cursor.sh, *.cursor.sh and downloads.cursor.com.
+
+SourceBlocklistDockerEnvironment is the same environment for a second task source (egress_blocklist.py): job config
+{"environment": {"import_path": "egress:SourceBlocklistDockerEnvironment", "kwargs": {"task_source": "<name>"}}}. Its
+sidecar is egress-sidecar/ with blocklist.txt replaced by that source pin's egress.blocklist (pin.json's list plus the
+source's hosts), built from a content-addressed copy under its own image name.
 """
 
 from __future__ import annotations
@@ -22,7 +27,10 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from harbor.environments.docker.docker import DockerEnvironment
+from harbor.environments.docker.utils import default_docker_platform, ensure_docker_image_built
 from harbor.models.task.config import NetworkPolicy
+
+from egress_blocklist import render_sidecar
 
 HERE = Path(__file__).resolve().parent
 SIDECAR = HERE / "egress-sidecar"
@@ -70,3 +78,20 @@ class CursorBlocklistDockerEnvironment(BlocklistDockerEnvironment):
         if sidecar_blocklist("blocklist-cursor.txt") != pinned_cursor_blocklist():
             raise RuntimeError("HE-FRONTIER-004 egress-sidecar/blocklist-cursor.txt differs from pin.json egress.cursor_cells.blocklist")
         super().__init__(*args, **kwargs)
+
+
+class SourceBlocklistDockerEnvironment(BlocklistDockerEnvironment):
+    def __init__(self, *args: Any, task_source: str, **kwargs: Any) -> None:
+        self._source_sidecar, _ = render_sidecar(task_source)
+        self._source_sidecar_name = "frontier-harbor:egress-blocklist-" + task_source
+        super().__init__(*args, **kwargs)
+
+    async def _ensure_egress_control_sidecar_image_built(self) -> None:
+        self._env_vars.egress_control_sidecar_image_name = await ensure_docker_image_built(
+            docker_name=self._source_sidecar_name,
+            docker_build_context=self._source_sidecar,
+            dockerfile_path=self._source_sidecar / "Dockerfile",
+            build_args={},
+            platform=await default_docker_platform(),
+            logger=self.logger,
+        )

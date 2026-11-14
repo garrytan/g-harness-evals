@@ -1,0 +1,52 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "fable-diagnosis-2026-11",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin-swe-rebench-07-2026.json"
+  },
+  "shared_order_seed": "fable52-diagnosis-2026-11-14",
+  "cap_usd": 345,
+  "reserve_usd": 15,
+  "concurrency": 4,
+  "cells": [
+    {
+      "id": "fable52-s07",
+      "model": "anthropic:claude-fable-5-2",
+      "harness": "claude-code",
+      "attempts": 2,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-14-fable-diagnosis/shards.json",
+        "key": "s07",
+        "sha256": "786f313780a82d09fd24948f9082cd4e708af13a2092cff93c23510a72cae914"
+      },
+      "stage": "core",
+      "priority": 1
+    },
+    {
+      "id": "opus55-s07",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "claude-code",
+      "attempts": 2,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-14-fable-diagnosis/shards.json",
+        "key": "s07",
+        "sha256": "786f313780a82d09fd24948f9082cd4e708af13a2092cff93c23510a72cae914"
+      },
+      "stage": "core",
+      "priority": 2
+    }
+  ],
+  "shards": [
+    {
+      "name": "s07",
+      "cells": [
+        "fable52-s07",
+        "opus55-s07"
+      ],
+      "lease_usd": 330
+    }
+  ],
+  "harness_versions": {
+    "claude-code": "2.1.322"
+  }
+}

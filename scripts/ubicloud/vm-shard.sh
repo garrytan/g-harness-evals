@@ -11,7 +11,9 @@
 #               [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--install-check] [-- <extra run-shard.sh arguments>]
 #
 # --workload frontier-harbor (scripts/frontier-harbor/README.md): Terminal-Bench 2.1 is cloned at pin.json's commit into
-# ~/terminal-bench-2-1. With --install-check the lane is the keyless install check and nothing else:
+# ~/terminal-bench-2-1 (the install check uses it whatever the run's source). When the preregistration's task_list names
+# a second task source's pin (schema frontier-harbor-source/1, today pin-swe-rebench-07-2026.json), vm-run.sh gets
+# --tasks-src ~/<source name> in place of --tb21 and fetches that source's pinned tasks there. With --install-check the lane is the keyless install check and nothing else:
 # scripts/frontier-harbor/install-check.sh ~/shard/results with every key unset (fake upstream, no spend), its output in
 # ~/shard/results/run.stdout.log and its exit code the shard's. Otherwise the smoke is that same keyless install check
 # into ~/shard/smoke (--no-smoke skips it; exit 4 when it fails), then the web-tools check on the smoke's captured
@@ -188,7 +190,11 @@ if [ "$workload" = frontier-harbor ]; then
   # The controller's SIGTERM reaches the whole process group; vm-run.sh traps it, drains its meter and writes its records.
   trap 'log "signal received; waiting for vm-run.sh to write its records"' TERM HUP
   mkdir -p "$shard/results"
-  with_cursor_key bash scripts/frontier-harbor/vm-run.sh --prereg "$prereg" --name "$name" --lease-usd "$lease" --out "$shard/results" --tb21 "$tb21" ${extra[@]+"${extra[@]}"} >> "$shard/results/run.stdout.log" 2>&1 &
+  task_source=$(python3 -c 'import json,sys; f=json.load(open(sys.argv[1]))["task_list"]["file"]; d=json.load(open(f)); print(d["source"]["name"] if d.get("schema") == "frontier-harbor-source/1" else "")' "$prereg" 2>/dev/null || true)
+  tasks_arg=(--tb21 "$tb21")
+  [ -z "$task_source" ] || tasks_arg=(--tasks-src "$HOME/$task_source")
+  log "task source: ${task_source:-terminal-bench-2.1}"
+  with_cursor_key bash scripts/frontier-harbor/vm-run.sh --prereg "$prereg" --name "$name" --lease-usd "$lease" --out "$shard/results" "${tasks_arg[@]}" ${extra[@]+"${extra[@]}"} >> "$shard/results/run.stdout.log" 2>&1 &
   child=$!
   while :; do wait "$child"; rc=$?; kill -0 "$child" 2>/dev/null || break; done
   trap - TERM HUP

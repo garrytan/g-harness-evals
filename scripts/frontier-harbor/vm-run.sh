@@ -5,10 +5,18 @@
 # nftables; scripts/frontier-harbor/install-check.sh runs it keyless against a fake upstream.
 #
 #   scripts/frontier-harbor/vm-run.sh --prereg <prereg.json> --name <shard> --lease-usd <n> --out <results dir>
-#       --tb21 <terminal-bench-2-1 checkout at the pinned commit> [--stage <name> | --rerun <list.json> [--rerun-stage <name>] [--no-earlier-rerun]]
+#       --tb21 <terminal-bench-2-1 checkout at the pinned commit> | --tasks-src <dataset dir>
+#       [--stage <name> | --rerun <list.json> [--rerun-stage <name>] [--no-earlier-rerun]]
 #       [--done <trials.jsonl> ...] [--fake-upstream] [--uncounted <reason>]
 #   scripts/frontier-harbor/vm-run.sh --canary-spec <spec.json> --name <shard> --lease-usd <n> --out <results dir> --tb21 <dir>
 #       [--fake-upstream]
+#
+# The task source comes from the preregistration: a task_list naming pin.json runs the Terminal-Bench 2.1 tasks from
+# --tb21; a task_list naming a second source's pin (pin-swe-rebench-07-2026.json) runs that source from --tasks-src, a
+# directory swe_rebench_fetch.py fills with the shard's pinned tasks (each fetched from the Harbor hub by its content hash,
+# or already there because the controller uploaded it, and checked either way) before materialize.ts swerebench copies
+# them with their images pinned. The other source's flag is refused. Trials of a second source run in egress.py
+# SourceBlocklistDockerEnvironment with that source's blocklist (plan.ts jobs).
 #
 # --rerun (amendment 4 of frontier-harness-2026-11) runs the listed trials of the shard once more under their own ids,
 # in a fresh results directory, as the stage rerun1 (jobs <cell>__a<n>__rerun1, lease <run_id>:<shard>:rerun1): plan.ts
@@ -75,7 +83,7 @@ set -euo pipefail
 umask 077
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
-prereg="" name="" lease="" out="" tb21="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0 canary=0
+prereg="" name="" lease="" out="" tb21="" tasks_src="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0 canary=0
 done_files=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -90,12 +98,13 @@ while [ $# -gt 0 ]; do
     --lease-usd) lease=$2; shift 2 ;;
     --out) out=$2; shift 2 ;;
     --tb21) tb21=$2; shift 2 ;;
+    --tasks-src) tasks_src=$2; shift 2 ;;
     --fake-upstream) fake=1; shift ;;
     --uncounted) uncounted=$2; shift 2 ;;
     *) echo "vm-run (frontier): unknown argument $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$prereg" ] && [ -n "$name" ] && [ -n "$lease" ] && [ -n "$out" ] && [ -n "$tb21" ] || { echo "vm-run (frontier): --prereg, --name, --lease-usd, --out and --tb21 are required" >&2; exit 2; }
+[ -n "$prereg" ] && [ -n "$name" ] && [ -n "$lease" ] && [ -n "$out" ] && { [ -n "$tb21" ] || [ -n "$tasks_src" ]; } || { echo "vm-run (frontier): --prereg, --name, --lease-usd, --out and --tb21 (or --tasks-src for a second task source) are required" >&2; exit 2; }
 [ "$fake" -eq 0 ] || [ -n "$uncounted" ] || [ "$canary" -eq 1 ] || { echo "vm-run (frontier): --fake-upstream is for an --uncounted check or a --canary-spec only" >&2; exit 2; }
 [ "$canary" -eq 0 ] || [ -z "$uncounted" ] || { echo "vm-run (frontier): a --canary-spec run is uncounted already; --uncounted does not apply" >&2; exit 2; }
 # Only the metering proxy holds provider keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY, OPENROUTER_API_KEY):
@@ -114,7 +123,8 @@ mkdir -p "$out/run"
 out=$(cd "$out" && pwd)
 run=$out/run
 prereg=$(cd "$(dirname "$prereg")" && pwd)/$(basename "$prereg")
-tb21=$(cd "$tb21" && pwd)
+[ -z "$tb21" ] || tb21=$(cd "$tb21" && pwd)
+[ -z "$tasks_src" ] || { mkdir -p "$tasks_src"; tasks_src=$(cd "$tasks_src" && pwd); }
 venv=${FRONTIER_HARBOR_VENV:-$HOME/.frontier-harbor/venv}
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$out/run.log"; }
 say() { printf '%s vm-run[%s]: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$name" "$*" | tee -a "$out/run-shard.log"; }
@@ -159,7 +169,7 @@ if [ "$canary" -eq 1 ]; then
   (cd "$repo" && "${safe_env[@]}" bun scripts/canary/gstack/spec.ts check --spec "$prereg" 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "the canary spec is not one scripts/canary/gstack/spec.ts renders from its own inputs (run.log); nothing ran"; exit 2; }
 fi
 (cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts check-shard --prereg "$prereg" --name "$name" --lease-usd "$lease" ${plan_arg[@]+"${plan_arg[@]}"} ${done_args[@]+"${done_args[@]}"} 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "the shard, its stage or its lease does not match the preregistration (run.log); nothing ran"; exit 2; }
-read -r run_id ids models <<< "$(cd "$repo" && "${safe_env[@]}" bun -e '
+read -r run_id ids models source source_pin <<< "$(cd "$repo" && "${safe_env[@]}" bun -e '
 const { loadPlan } = await import("./scripts/frontier-harbor/plan.ts");
 const p = loadPlan(process.argv[1]); const s = p.shards.find((x) => x.name === process.argv[2]);
 const cells = p.cells.filter((c) => s.cells.includes(c.id));
@@ -167,8 +177,14 @@ const shared = [...p.order, ...p.kept_order].filter((t) => cells.some((c) => c.t
 const ids = [...shared, ...new Set(cells.flatMap((c) => c.task_ids).filter((t) => !shared.includes(t)))];
 const r = Bun.spawnSync(["python3", "-c", "import sys,json; sys.path.insert(0, sys.argv[1]); import frontier_settings as f; print(\",\".join(sorted({m for a in json.loads(sys.argv[2]) for m in f.slot_models(*a)})))", process.argv[3], JSON.stringify(cells.map((c) => [c.harness, c.model]))]);
 if (r.exitCode !== 0) { console.error(r.stderr.toString()); process.exit(2); }
-console.log(p.prereg.run_id, ids.join(","), r.stdout.toString().trim());' "$prereg" "$name" "$here" 2>>"$out/run.log")"
-[ -n "${ids:-}" ] || { say "could not read the shard's tasks and models (run.log)"; exit 2; }
+console.log(p.prereg.run_id, ids.join(","), r.stdout.toString().trim() || "-", p.source.name, p.source.file ?? "-");' "$prereg" "$name" "$here" 2>>"$out/run.log")"
+[ -n "${ids:-}" ] && [ -n "${source:-}" ] || { say "could not read the shard's tasks, models and task source (run.log)"; exit 2; }
+[ "$models" != "-" ] || models=""
+case $source in
+  terminal-bench-2.1) [ -n "$tb21" ] && [ -z "$tasks_src" ] || { say "the preregistration runs Terminal-Bench 2.1 tasks: give --tb21, not --tasks-src"; exit 2; } ;;
+  swe-rebench-07-2026) [ -n "$tasks_src" ] && [ -z "$tb21" ] || { say "the preregistration runs the $source source ($source_pin): give --tasks-src, not --tb21"; exit 2; } ;;
+  *) say "task source $source has no materializer"; exit 2 ;;
+esac
 # Cursor cells: no slot models (frontier_settings.py slot_models), so a shard of Cursor cells only has none and runs no proxy.
 harnesses=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); s=next(x for x in p["shards"] if x["name"] == sys.argv[2]); print(" ".join(sorted({c["harness"] for c in p["cells"] if c["id"] in s["cells"]})))' "$prereg" "$name")
 [ -n "${models:-}" ] || metered=0
@@ -236,8 +252,13 @@ attest=(--prereg "$prereg" --out "$out")
 [ -z "$uncounted" ] || attest+=(--uncounted "$uncounted")
 (cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/to-trials.ts attest "${attest[@]}" 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "attestation refused (run.log); nothing ran"; exit 3; }
 
-# 4. tasks (a refusal can name a task, so it goes to run.log only)
-(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/materialize.ts tb21 --src "$tb21" --out "$run" --ids "$ids" 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "materialize refused (run.log); nothing ran"; exit 3; }
+# 4. tasks (a refusal can name a task, so it goes to run.log only); a second source's tasks are fetched first, by content hash
+if [ "$source" = terminal-bench-2.1 ]; then
+  (cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/materialize.ts tb21 --src "$tb21" --out "$run" --ids "$ids" 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "materialize refused (run.log); nothing ran"; exit 3; }
+else
+  "${safe_env[@]}" "$venv/bin/python" "$here/swe_rebench_fetch.py" fetch --pin "$repo/$source_pin" --out "$tasks_src" --ids "$ids" 2>>"$out/run.log" | tee -a "$out/run-shard.log" || { say "fetching the $source tasks failed or a task differs from its pin ($tasks_src/fetch.json); nothing ran"; exit 3; }
+  (cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/materialize.ts swerebench --src "$tasks_src" --out "$run" --ids "$ids" 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "materialize refused (run.log); nothing ran"; exit 3; }
+fi
 
 # 5. proxy and broker
 gw=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
