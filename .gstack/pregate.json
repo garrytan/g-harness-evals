@@ -821,6 +821,15 @@
       ],
       "pattern": "(?:mysql|postgresql)(?=://usr(?:%40example\\.com)?:p(?:wd|%40sswd))",
       "reason": "peewee's own tests of its database-URL parser in the vendored MIT upstream tree, with the placeholder user usr, password pwd and host hst; no real host or credential"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check.json",
+        "docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check-first-run.json"
+      ],
+      "pattern": "_mock_session_per_url(?=\\()",
+      "reason": "fable-diagnosis oracle check: blocked_host_lines quotes a task's own test source line (session = _mock_session_per_url({...})), a Python call assigned to a variable named session, not a credential"
     }
   ]
 }
