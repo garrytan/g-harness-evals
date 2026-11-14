@@ -1,0 +1,243 @@
+{
+ "note": "Provider answers the metering proxy settles, for tests/provider-error-settlement.test.ts and tests/ledger-reconciliation.test.ts. Each body is the answer's bytes; source says where it came from: a live recording, a provider docs page, or a shape reconstructed from proxy logs.",
+ "answers": {
+  "anthropic-401-authentication": {
+   "provider": "anthropic",
+   "status": 401,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"},\"request_id\":\"req_011Ch1j8j2FGVjjWScDBg1Zi\"}",
+   "source": "recorded 2026-11-13 from the live API with an invalid key (no model call, nothing billed)"
+  },
+  "anthropic-400-spend-limit": {
+   "provider": "anthropic",
+   "status": 400,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"You have reached your specified API usage limits.\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (400 invalid_request_error, also returned at a spend limit)"
+  },
+  "anthropic-403-permission": {
+   "provider": "anthropic",
+   "status": 403,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"permission_error\",\"message\":\"Your API key does not have permission to use the specified resource.\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (403 permission_error)"
+  },
+  "anthropic-413-request-too-large": {
+   "provider": "anthropic",
+   "status": 413,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"request_too_large\",\"message\":\"Request exceeds the maximum allowed number of bytes.\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (413 request_too_large)"
+  },
+  "anthropic-429-rate-limit": {
+   "provider": "anthropic",
+   "status": 429,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your organization's rate limit.\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (429 rate_limit_error)"
+  },
+  "anthropic-500-api-error": {
+   "provider": "anthropic",
+   "status": 500,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"Internal server error\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (500 api_error)"
+  },
+  "anthropic-503-credential-validation-text": {
+   "provider": "anthropic",
+   "status": 503,
+   "content_type": "text/plain",
+   "body": "credential validation failed",
+   "source": "the 2026-11-13 outage: 47 Opus calls in 15 trials got HTTP 503 with no usage, 09:47 to 13:32 UTC. The proxy log keeps no bodies; Claude Code showed 'API Error: 503 credential validation failed' in 9 trials, which is how the Anthropic SDK renders a plain-text 503 body or a JSON body with a top-level message (next fixture); Anthropic's error envelope renders as the raw JSON instead."
+  },
+  "anthropic-503-credential-validation-message": {
+   "provider": "anthropic",
+   "status": 503,
+   "content_type": "application/json",
+   "body": "{\"message\":\"credential validation failed\"}",
+   "source": "the same outage message as a top-level JSON message, the other body the Anthropic SDK prints as 'API Error: 503 credential validation failed'"
+  },
+  "anthropic-503-credential-validation-envelope": {
+   "provider": "anthropic",
+   "status": 503,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"credential validation failed\"},\"request_id\":\"req_fixture\"}",
+   "source": "the same outage message in Anthropic's error envelope (https://docs.anthropic.com/en/api/errors, Error shapes), in case the edge answered in JSON"
+  },
+  "anthropic-503-empty": {
+   "provider": "anthropic",
+   "status": 503,
+   "content_type": "text/plain",
+   "body": "",
+   "source": "the 2026-11-13 outage: 47 Opus calls in 15 trials got HTTP 503 with no usage, 09:47 to 13:32 UTC. The proxy log keeps no bodies; Claude Code showed '503 status code (no body)' in 3 trials, which is how the Anthropic SDK renders a 503 with an empty body."
+  },
+  "anthropic-503-overloaded": {
+   "provider": "anthropic",
+   "status": 503,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (overloaded_error, here on a 503)"
+  },
+  "anthropic-529-overloaded": {
+   "provider": "anthropic",
+   "status": 529,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (529 overloaded_error)"
+  },
+  "anthropic-529-overloaded-as-stream": {
+   "provider": "anthropic",
+   "status": 529,
+   "content_type": "text/event-stream",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (529 overloaded_error) labelled as a stream by an intermediary"
+  },
+  "anthropic-504-timeout": {
+   "provider": "anthropic",
+   "status": 504,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"timeout_error\",\"message\":\"Request timed out\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (504 timeout_error: the request may have run)"
+  },
+  "anthropic-500-timeout": {
+   "provider": "anthropic",
+   "status": 500,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"timeout_error\",\"message\":\"Request timed out\"},\"request_id\":\"req_fixture\"}",
+   "source": "https://docs.anthropic.com/en/api/errors (timeout_error on a 500)"
+  },
+  "anthropic-503-unknown-message": {
+   "provider": "anthropic",
+   "status": 503,
+   "content_type": "application/json",
+   "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"upstream connect error\"},\"request_id\":\"req_fixture\"}",
+   "source": "an undocumented 503 with no not-billed signal"
+  },
+  "anthropic-503-html": {
+   "provider": "anthropic",
+   "status": 503,
+   "content_type": "text/html",
+   "body": "<html><body>503 Service Unavailable</body></html>",
+   "source": "a gateway page"
+  },
+  "openai-401-invalid-key": {
+   "provider": "openai",
+   "status": 401,
+   "content_type": "text/plain",
+   "body": "{\n  \"error\": {\n    \"message\": \"Incorrect API key provided: sk-inval******ture. You can find your API key at https://platform.openai.com/account/api-keys.\",\n    \"type\": \"invalid_request_error\",\n    \"code\": \"invalid_api_key\",\n    \"param\": null\n  },\n  \"status\": 401\n}\n",
+   "source": "recorded 2026-11-13 from the live API with an invalid key (no model call, nothing billed)"
+  },
+  "openai-403-region": {
+   "provider": "openai",
+   "status": 403,
+   "content_type": "application/json",
+   "body": "{\n  \"error\": {\n    \"message\": \"Country, region, or territory not supported\",\n    \"type\": \"request_forbidden\",\n    \"param\": null,\n    \"code\": \"unsupported_country_region_territory\"\n  }\n}",
+   "source": "https://platform.openai.com/docs/guides/error-codes (403 Country, region, or territory not supported)"
+  },
+  "openai-429-rate-limit": {
+   "provider": "openai",
+   "status": 429,
+   "content_type": "application/json",
+   "body": "{\n  \"error\": {\n    \"message\": \"Rate limit reached for requests\",\n    \"type\": \"requests\",\n    \"param\": null,\n    \"code\": \"rate_limit_exceeded\"\n  }\n}",
+   "source": "https://platform.openai.com/docs/guides/error-codes (429 Rate limit reached for requests)"
+  },
+  "openai-429-quota": {
+   "provider": "openai",
+   "status": 429,
+   "content_type": "application/json",
+   "body": "{\n  \"error\": {\n    \"message\": \"You exceeded your current quota, please check your plan and billing details.\",\n    \"type\": \"insufficient_quota\",\n    \"param\": null,\n    \"code\": \"credit_balance_exhausted\"\n  }\n}",
+   "source": "https://platform.openai.com/docs/guides/error-codes (429 Credit balance exhausted)"
+  },
+  "openai-400-context-length": {
+   "provider": "openai",
+   "status": 400,
+   "content_type": "application/json",
+   "body": "{\n  \"error\": {\n    \"message\": \"Your input exceeds the context window of this model.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"context_length_exceeded\"\n  }\n}",
+   "source": "https://platform.openai.com/docs/guides/error-codes (400 invalid_request_error)"
+  },
+  "openai-500-server-error": {
+   "provider": "openai",
+   "status": 500,
+   "content_type": "application/json",
+   "body": "{\n  \"error\": {\n    \"message\": \"The server had an error while processing your request. Sorry about that!\",\n    \"type\": \"server_error\",\n    \"param\": null,\n    \"code\": null\n  }\n}",
+   "source": "https://platform.openai.com/docs/guides/error-codes (500 The server had an error while processing your request)"
+  },
+  "openai-503-overloaded": {
+   "provider": "openai",
+   "status": 503,
+   "content_type": "application/json",
+   "body": "{\n  \"error\": {\n    \"message\": \"The model is temporarily overloaded. Please try again later.\",\n    \"type\": \"service_unavailable_error\",\n    \"param\": null,\n    \"code\": \"server_is_overloaded\"\n  }\n}",
+   "source": "https://platform.openai.com/docs/guides/error-codes (503 Model temporarily overloaded: service_unavailable_error, server_is_overloaded)"
+  },
+  "openai-503-service-unavailable-no-code": {
+   "provider": "openai",
+   "status": 503,
+   "content_type": "application/json",
+   "body": "{\n  \"error\": {\n    \"message\": \"Service unavailable\",\n    \"type\": \"service_unavailable_error\",\n    \"param\": null,\n    \"code\": null\n  }\n}",
+   "source": "a 503 service_unavailable_error without the server_is_overloaded code: the docs name no other code as unserved, so it may have run"
+  },
+  "openai-503-engine-overloaded": {
+   "provider": "openai",
+   "status": 503,
+   "content_type": "application/json",
+   "body": "{\n  \"error\": {\n    \"message\": \"The engine is currently overloaded, please try again later\",\n    \"type\": \"server_error\",\n    \"param\": null,\n    \"code\": \"service_unavailable\"\n  }\n}",
+   "source": "the older 503 server_error shape the proxy already settled at $0"
+  },
+  "openai-504-gateway": {
+   "provider": "openai",
+   "status": 504,
+   "content_type": "application/json",
+   "body": "{\"error\": {\"status\": 504, \"message\": \"gateway timeout\"}}",
+   "source": "a gateway timeout: the request may have run"
+  },
+  "openai-500-timeout": {
+   "provider": "openai",
+   "status": 500,
+   "content_type": "application/json",
+   "body": "{\n  \"error\": {\n    \"message\": \"Request timed out.\",\n    \"type\": \"timeout_error\",\n    \"param\": null,\n    \"code\": null\n  }\n}",
+   "source": "a timeout on a 500: the request may have run"
+  },
+  "openai-503-no-type": {
+   "provider": "openai",
+   "status": 503,
+   "content_type": "application/json",
+   "body": "{\"error\": {\"message\": \"bad request\"}}",
+   "source": "a 503 with no error type"
+  },
+  "openai-502-html": {
+   "provider": "openai",
+   "status": 502,
+   "content_type": "text/html",
+   "body": "<html><body>502 Bad Gateway</body></html>",
+   "source": "a gateway page"
+  },
+  "anthropic-stream-error-first": {
+   "provider": "anthropic",
+   "status": 200,
+   "content_type": "text/event-stream",
+   "body": "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
+   "source": "https://docs.anthropic.com/en/api/errors (Error events: an error after a 200)"
+  },
+  "anthropic-stream-error-after-start": {
+   "provider": "anthropic",
+   "status": 200,
+   "content_type": "text/event-stream",
+   "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_fixture\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":20000,\"output_tokens\":1}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"fixture reply\"}}\n\nevent: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
+   "source": "https://docs.anthropic.com/en/api/errors (Error events after message_start)"
+  },
+  "openai-stream-error-invalid-request": {
+   "provider": "openai",
+   "status": 200,
+   "content_type": "text/event-stream",
+   "body": "event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_fixture\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-6.1-sol\",\"output\":[],\"usage\":null}}\n\nevent: error\ndata: {\"type\":\"error\",\"sequence_number\":1,\"code\":\"invalid_request\",\"message\":\"fixture error\",\"param\":null}\n\n",
+   "source": "the shape the proxy logged 54 times in the 2026-11 Sol runs as 'stream error invalid_request before final usage' (the bodies were not kept)"
+  },
+  "openai-stream-failed-with-usage": {
+   "provider": "openai",
+   "status": 200,
+   "content_type": "text/event-stream",
+   "body": "event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_fixture\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-6.1-sol\",\"output\":[],\"usage\":null}}\n\nevent: response.failed\ndata: {\"type\":\"response.failed\",\"sequence_number\":1,\"response\":{\"id\":\"resp_fixture\",\"object\":\"response\",\"status\":\"failed\",\"model\":\"gpt-6.1-sol\",\"output\":[],\"error\":{\"code\":\"server_error\",\"message\":\"fixture error\"},\"usage\":{\"input_tokens\":5000,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":40,\"total_tokens\":5040}}}\n\n",
+   "source": "a Responses stream whose response.failed event reports usage"
+  }
+ }
+}

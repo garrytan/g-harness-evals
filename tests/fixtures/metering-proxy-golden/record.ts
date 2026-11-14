@@ -2,6 +2,7 @@
 // The committed golden.json came from origin/harn18/h10-schema at 2f3839d7 (runner/ extracted with git archive), before H10 PR 5;
 // re-recording it from origin/main at 3cf4fde1 (after internal-task's ablation proxy, #188) gives the same file. Re-recorded from origin/main
 // at 205c1432 (after #293's usage-line schema v1 adds cache_write_tokens, cache_write_1h_tokens and reasoning_tokens to forwarded lines).
+// Re-recorded by the change that marks a call whose usage is unknown: the lost-connection line gains usage_unknown and reported_usd; the ledger is unchanged.
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

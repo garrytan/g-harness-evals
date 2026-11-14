@@ -25,10 +25,12 @@
  *     responses from their final usage events (a stream that ended before
  *     them, by truncation, an error event or a lost connection, is charged
  *     the larger of its reservation and the partial usage it reported, and
- *     its usage line says why), settles a 4xx answer without usage at $0 and
- *     a 5xx without usage at $0 only when its body is the provider's own
- *     not-billed error envelope (notBilledError; any other 5xx, a timeout or
- *     a lost connection keeps the reservation), refuses
+ *     its usage line says why), settles an error answer without usage at $0
+ *     when the provider does not bill it (any 4xx, and the 5xx answers
+ *     runner/ledger/budget-ledger.ts unbilledAnswer lists with each
+ *     provider's docs; any other 5xx, a timeout or a lost connection keeps
+ *     the reservation, and its usage line carries usage_unknown with the
+ *     reported_usd the provider's usage did report), refuses
  *     bodies carrying a forbidden marker (the sanitizer's leak tripwire), and
  *     appends one usage line per request (never a body or a key).
  *
@@ -115,7 +117,7 @@
  */
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { BudgetExceededError, BudgetRun, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
+import { BudgetExceededError, BudgetRun, jsonOrNull, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, unbilledAnswer, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
 
 export { sseIncomplete, sseUsage };
 import { findLeaks } from './sanitize.ts';
@@ -236,6 +238,9 @@ export interface UsageLine {
   cache_write_1h_tokens?: number; reasoning_tokens?: number;
   /** With --log-sections, on forwarded chat lines: the request's sections and the tools the response called, or why they could not be read. */
   tools_called?: string[]; sections?: RequestSections; sections_error?: string;
+  /** On a request whose usage is unknown (charged_reservation): the lease holds actual_usd, and reported_usd is what the
+   *  provider's usage did report (a cut stream's partial usage, else 0). Real spend lies between the two. */
+  usage_unknown?: true; reported_usd?: number;
   /** Particle only, on a non-2xx answer: its JSON `error.code` and `error.type` when each is a short token. Nothing else from the body is logged. runner/trial/trial.ts `trialTermination` reads `error_code` (internal-task plan decision 12); `error_type` is for the reader of the log. */
   error_code?: string; error_type?: string;
 }
@@ -243,30 +248,11 @@ export interface UsageLine {
 /** The internal-task fields of a line that reported no usage worth reading (a count_tokens call). */
 const NO_EXTRAS = { cache_write_tokens: 0, cache_write_1h_tokens: 0, reasoning_tokens: 0 };
 
-/** The tail of the reason the proxy writes on a 5xx it settled at $0 (scripts/gsta-135/lease.ts reads it). */
+/** The tail of the reason the proxy writes on a 5xx it settled at $0 (scripts/gsta-135/lease.ts reads it). Which 5xx
+ *  answers qualify, with each provider's docs, is in runner/ledger/budget-ledger.ts `unbilledAnswer`. */
 export const PROVIDER_ERROR_NOT_BILLED = 'a provider error envelope that is not billed, settled at $0';
-
-/**
- * The error type of a 5xx answer that is a provider's own known not-billed error, or null. Anthropic: 500 or 529 with
- * `{"type":"error","error":{"type":"api_error"|"overloaded_error"}}`. OpenAI: 500 or 503 with
- * `{"error":{"type":"server_error"}}`, `code` null, "server_error" or "service_unavailable" (or no `type` and
- * `code` "server_error"). Anything else (a 504, a timeout_error, a gateway's JSON or HTML, an array) is null and keeps
- * its reservation, since the request may have run. Particle documents no not-billed envelope, so every Particle 5xx keeps
- * its reservation.
- */
-function notBilledError(provider: ProviderName, status: number, body: unknown): string | null {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-  const b = body as Record<string, unknown>;
-  const e = b.error;
-  if (!e || typeof e !== 'object' || Array.isArray(e)) return null;
-  const { type, code } = e as Record<string, unknown>;
-  if (provider === 'anthropic') {
-    return (status === 500 || status === 529) && b.type === 'error' && (type === 'api_error' || type === 'overloaded_error') ? type : null;
-  }
-  if (provider !== 'openai' || (status !== 500 && status !== 503)) return null;
-  if (type === 'server_error' && (code === null || code === undefined || code === 'server_error' || code === 'service_unavailable')) return type;
-  return type === undefined && code === 'server_error' ? code : null;
-}
+const NOTHING_USED = { usd: 0, input_tokens: 0, output_tokens: 0 };
+const unbilledReason = (status: number, type?: string) => (type ? `HTTP ${status} ${type}: ${PROVIDER_ERROR_NOT_BILLED}` : undefined);
 
 /** Cache-read tokens a provider reported (Anthropic cache_read_input_tokens, OpenAI prompt/input_tokens_details.cached_tokens), for the usage line. */
 function cachedTokens(usage: unknown): number | undefined {
@@ -344,8 +330,6 @@ function echoedModel(text: string, streamed: boolean): string | undefined {
   }
   return last;
 }
-
-const jsonOrNull = (text: string): unknown => { try { return JSON.parse(text); } catch { return null; } };
 
 /** Particle only: `error.code` and `error.type` of a non-2xx JSON answer, each kept only when it is a short token, so no message text reaches the usage line. */
 function upstreamError(body: unknown): Pick<UsageLine, 'error_code' | 'error_type'> {
@@ -574,8 +558,8 @@ export class MeteringProxy {
       try { cost = streamed ? usageCost(price, { usage: sseUsage(text) }) : usageCost(price, JSON.parse(text)); } catch { cost = null; }
       // A stream that ended before its final usage is charged the larger of its reservation and the partial usage it reported, as the paid-request guard does.
       const unfinished = streamed && cost !== null && sseIncomplete(text) !== null;
-      // A 4xx without usage (a 413, a prompt over the context window) settles at $0, as in lease mode and the paid-request guard.
-      if (!cost && res.status >= 400 && res.status < 500) cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
+      // An error answer the provider does not bill (a 413, a prompt over the context window, an overloaded 529) settles at $0, as in lease mode and the paid-request guard.
+      if (!cost && !error && unbilledAnswer(prov, res.status, jsonOrNull(text), text)) cost = NOTHING_USED;
       const usd = !cost ? reservationUsd(price) : unfinished ? Math.max(reservationUsd(price), cost.usd) : cost.usd;
       this.charge(key, prov, price.model, usd, !cost || unfinished);
     } else this.charge(key, prov, null, 0, false);
@@ -705,7 +689,8 @@ export class MeteringProxy {
       const usd = !cost ? reserved : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
       this.charge(key, prov, bounded?.model ?? null, usd, charged);
       this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(reason ? { reason } : {}), status, reserved_usd: reserved, actual_usd: usd,
-        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged, streamed: isStream, ...knobs,
+        input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged,
+        ...(charged ? { usage_unknown: true as const, reported_usd: cost?.usd ?? 0 } : {}), streamed: isStream, ...knobs,
         ...(served ? { served_model: served } : {}), ...upstream, ...lineExtrasFor(prov, route, response, request) });
     };
     // The upstream never answered, or its non-streamed body broke off: usage is unknown, so the reservation is charged.
@@ -713,7 +698,8 @@ export class MeteringProxy {
       if (entry) p.lease.settle(entry, null);
       this.charge(key, prov, bounded?.model ?? null, reserved, !!bounded);
       this.observe(key, 'failed');
-      this.log({ at, key, provider: prov, route, model, outcome: 'failed', reason: message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded, ...knobs });
+      this.log({ at, key, provider: prov, route, model, outcome: 'failed', reason: message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded,
+        ...(bounded ? { usage_unknown: true as const, reported_usd: 0 } : {}), ...knobs });
       return json(502, 'product_error', `upstream failed: ${message}`);
     };
     if (receipt && p.ablationLog) appendFileSync(p.ablationLog, JSON.stringify({ at, key, ...receipt }) + '\n');
@@ -735,9 +721,14 @@ export class MeteringProxy {
       this.observe(key, res.status);
       void readBody(meterBranch).then(
         ({ text, error }) => {
-          const unfinished = error ? `the stream failed before its final usage: ${error.message.slice(0, 200)}` : sseIncomplete(text);
           const u = sseUsage(text);
           const cost = bounded && u ? usageCost(bounded, { usage: u }) : null;
+          const unbilled = bounded && !cost && !error ? unbilledAnswer(prov, res.status, jsonOrNull(text), text) : null;
+          if (unbilled) {
+            settle(NOTHING_USED, res.status, true, text, undefined, unbilledReason(res.status, unbilled.type), false, prov === 'particle' ? echoedModel(text, true) : undefined, prov === 'particle' ? upstreamError(jsonOrNull(text)) : {});
+            return;
+          }
+          const unfinished = error ? `the stream failed before its final usage: ${error.message.slice(0, 200)}` : sseIncomplete(text);
           const over = !!unfinished && !!cost && cost.usd > reserved;
           const reason = !bounded || (cost && !unfinished) ? undefined
             : `${unfinished ?? 'the stream carried no usage'}${over ? '; charged its partial usage, which cost more than the reservation' : ''}`;
@@ -755,11 +746,10 @@ export class MeteringProxy {
     const parsedBody = parsed ? JSON.parse(text) as { usage?: unknown } : null;
     if (bounded && parsedBody) cost = usageCost(bounded, parsedBody);
     let reason: string | undefined;
-    const notBilled = !cost && bounded ? notBilledError(prov, res.status, parsedBody) : null;
-    if (!cost && bounded && res.status >= 400 && res.status < 500) cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
-    else if (notBilled) {
-      cost = { usd: 0, input_tokens: 0, output_tokens: 0 };
-      reason = `HTTP ${res.status} ${notBilled}: ${PROVIDER_ERROR_NOT_BILLED}`;
+    const unbilled = !cost && bounded ? unbilledAnswer(prov, res.status, parsedBody, text) : null;
+    if (unbilled) {
+      cost = NOTHING_USED;
+      reason = unbilledReason(res.status, unbilled.type);
     } else if (!cost && bounded) reason = 'the response carried no usage';
     settle(cost, res.status, false, parsedBody, cachedTokens(parsedBody?.usage), reason, false, prov === 'particle' ? echoedModel(text, false) : undefined, prov === 'particle' && !res.ok ? upstreamError(parsedBody) : {});
     return new Response(text, { status: res.status, headers: out });
@@ -870,7 +860,7 @@ if (import.meta.main) {
       const s = ledgerStatus({ ledgerPath: one('--budget-ledger'), runId: one('--run-id') });
       if (!s.run) throw new Error(`no lease ${one('--run-id')} in ${s.ledger}`);
       const requests = BudgetRun.runRequests(s.ledger, s.run.run_id);
-      console.log(JSON.stringify({ run_id: s.run.run_id, lease_usd: s.run.budget_usd, committed_usd: s.run.committed_usd, overshoot_usd: s.run.overshoot_usd, requests,
+      console.log(JSON.stringify({ run_id: s.run.run_id, lease_usd: s.run.budget_usd, committed_usd: s.run.committed_usd, measured_usd: s.run.measured_usd, usage_unknown_usd: s.run.usage_unknown_usd, overshoot_usd: s.run.overshoot_usd, requests,
         max_output_tokens: BudgetRun.leaseMaxOutputTokens(s.ledger, s.run.run_id) ?? DEFAULT_MAX_OUTPUT_TOKENS, finished_at: s.run.finished_at }));
     } else {
       const a = parseProxyArgs(argv);

@@ -1,6 +1,6 @@
 // internal-task (H10) PR 5: the metering proxy's route copies (runner/proxy/metering-proxy.ts routeCopies), keyless.
 // The byte-identity check: tests/fixtures/metering-proxy-golden/golden.json is the usage log and ledger the proxy at
-// origin/main (205c1432, without this change; re-recorded after #293's usage-line schema v1) wrote for drive.ts's fixed request sequence (record.ts re-records it
+// origin/main (205c1432, without this change; re-recorded after #293's usage-line schema v1, and when usage-unknown lines gained usage_unknown and reported_usd) wrote for drive.ts's fixed request sequence (record.ts re-records it
 // from a checkout; a deliberate proxy or price change re-records it in the same commit). Today's proxy must write the same
 // bytes, times aside, when no route texts are set and when the slot is bound without routes.
 import { afterAll, describe, expect, test } from 'bun:test';

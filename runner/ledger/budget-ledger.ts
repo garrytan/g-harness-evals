@@ -561,6 +561,8 @@ export function setRunBudget(options: { ledgerPath: string; runId: string; budge
 
 const ENTRY_COLUMNS = 'id, run_id, description, reserved_usd, actual_usd, status, input_tokens, output_tokens, created_at, settled_at, participant';
 const RUN_COLUMNS = 'run_id, runner, budget_usd, estimate_usd, started_at, finished_at';
+/** Provider-reported spend: the settled cost of reconciled entries (ledgerTotals' measured). */
+const MEASURED_SQL = `COALESCE(SUM(CASE WHEN status = 'reconciled' THEN actual_usd ELSE 0 END), 0)`;
 
 /**
  * Read-only snapshot of the ledger at `ledgerPath`. Before migration it reads
@@ -590,7 +592,13 @@ export interface LedgerTotals {
   requests: number;
   /** Settled cost above the reservation, summed over requests (see priceRequest). */
   overshoot_usd: number;
+  /** Committed spend split by what is known: provider-reported cost of reconciled requests, and what is held for requests whose usage is unknown (see RunSummary). */
+  measured_usd: number;
+  usage_unknown_usd: number;
 }
+
+/** A settled entry's cost is provider-reported only when it reconciled; a charged reservation or an open one is held with its usage unknown. */
+const measured = (e: LedgerEntry) => (e.status === 'reconciled' ? e.actual_usd ?? 0 : 0);
 
 export function ledgerTotals(ledger: LedgerSnapshot): LedgerTotals {
   const committedUsd = sum(ledger.entries.map(committed));
@@ -602,10 +610,12 @@ export function ledgerTotals(ledger: LedgerSnapshot): LedgerTotals {
     remaining_usd: ledger.program_cap_usd === null ? null : ledger.program_cap_usd - committedUsd,
     requests: ledger.entries.length,
     overshoot_usd: sum(ledger.entries.map(e => Math.max(0, committed(e) - e.reserved_usd))),
+    measured_usd: sum(ledger.entries.map(measured)),
+    usage_unknown_usd: committedUsd - sum(ledger.entries.map(measured)),
   };
 }
 
-export type LedgerRunStatus = LedgerRun & { committed_usd: number; remaining_usd: number; overshoot_usd: number };
+export type LedgerRunStatus = LedgerRun & { committed_usd: number; remaining_usd: number; overshoot_usd: number; measured_usd: number; usage_unknown_usd: number };
 
 export interface LedgerStatus {
   ledger: string;
@@ -645,15 +655,16 @@ export function ledgerStatus(options: { ledgerPath?: string; runId?: string | nu
     const { db } = connect(paths.ledger);
     const cap = currentCap(db);
     const agg = db.query(`SELECT COALESCE(SUM(COALESCE(actual_usd, reserved_usd)), 0) AS committed_usd, COALESCE(SUM(actual_usd), 0) AS reconciled_usd,
-      COALESCE(SUM(CASE WHEN actual_usd IS NULL THEN reserved_usd ELSE 0 END), 0) AS open_usd, COUNT(*) AS requests FROM entries`).get() as { committed_usd: number; reconciled_usd: number; open_usd: number; requests: number };
+      COALESCE(SUM(CASE WHEN actual_usd IS NULL THEN reserved_usd ELSE 0 END), 0) AS open_usd, COUNT(*) AS requests, ${MEASURED_SQL} AS measured_usd FROM entries`).get() as { committed_usd: number; reconciled_usd: number; open_usd: number; requests: number; measured_usd: number };
     const program = programRow(db);
     totals = { program_cap_usd: cap, committed_usd: agg.committed_usd, reconciled_usd: agg.reconciled_usd, open_reservations_usd: agg.open_usd,
-      remaining_usd: cap - agg.committed_usd, requests: agg.requests, overshoot_usd: program.overshoot_usd };
+      remaining_usd: cap - agg.committed_usd, requests: agg.requests, overshoot_usd: program.overshoot_usd, measured_usd: agg.measured_usd, usage_unknown_usd: agg.committed_usd - agg.measured_usd };
     snapshotRuns = db.query(`SELECT ${RUN_COLUMNS} FROM runs`).all() as LedgerRun[];
     lastCap = db.query('SELECT program_cap_usd, kind, reason, by, at FROM caps ORDER BY seq DESC LIMIT 1').get() as LedgerStatus['last_cap_change'];
     if (options.runId) {
-      const r = db.query(`SELECT ${RUN_COLUMNS}, committed_usd, overshoot_usd FROM runs WHERE run_id = ?`).get(options.runId) as (LedgerRun & { committed_usd: number; overshoot_usd: number }) | null;
-      if (r) run = { ...r, remaining_usd: r.budget_usd - r.committed_usd };
+      const r = db.query(`SELECT ${RUN_COLUMNS}, committed_usd, overshoot_usd, (SELECT ${MEASURED_SQL} FROM entries WHERE entries.run_id = runs.run_id) AS measured_usd
+        FROM runs WHERE run_id = ?`).get(options.runId) as (LedgerRun & { committed_usd: number; overshoot_usd: number; measured_usd: number }) | null;
+      if (r) run = { ...r, remaining_usd: r.budget_usd - r.committed_usd, usage_unknown_usd: r.committed_usd - r.measured_usd };
     }
   } else {
     if (legacy.kind === 'ledger') {
@@ -672,7 +683,8 @@ export function ledgerStatus(options: { ledgerPath?: string; runId?: string | nu
     if (r) {
       const mine = snapshot.entries.filter(e => e.run_id === r.run_id);
       const c = sum(mine.map(committed));
-      run = { ...r, committed_usd: c, remaining_usd: r.budget_usd - c, overshoot_usd: sum(mine.map(e => Math.max(0, committed(e) - e.reserved_usd))) };
+      const m = sum(mine.map(measured));
+      run = { ...r, committed_usd: c, remaining_usd: r.budget_usd - c, overshoot_usd: sum(mine.map(e => Math.max(0, committed(e) - e.reserved_usd))), measured_usd: m, usage_unknown_usd: c - m };
     }
   }
   const size = exists ? statSync(paths.ledger).size + (existsSync(`${paths.ledger}-wal`) ? statSync(`${paths.ledger}-wal`).size : 0) : null;
@@ -775,6 +787,11 @@ export interface RunSummary {
   actual_usd: number;
   /** Requests whose cost was charged at the reservation because usage was unavailable. */
   charged_reservations: number;
+  /** What providers reported for requests settled from their final usage (status reconciled): real spend. An allowance settles
+   *  as one reconciled entry, so reservations charged inside it count here; BudgetAllowance.charged_reservations counts those. */
+  measured_usd: number;
+  /** What the run holds for requests whose usage is unknown: charged reservations and reservations still open. actual_usd is measured_usd plus this. */
+  usage_unknown_usd: number;
   requests: number;
   input_tokens: number;
   output_tokens: number;
@@ -988,12 +1005,13 @@ export class BudgetRun {
     const where = this.participant === null ? 'run_id = ?' : 'run_id = ? AND participant = ?';
     const row = db.query(`SELECT COALESCE(SUM(reserved_usd), 0) AS reserved_usd, COALESCE(SUM(COALESCE(actual_usd, reserved_usd)), 0) AS actual_usd,
       COALESCE(SUM(CASE WHEN status = 'reconciled' THEN 0 ELSE 1 END), 0) AS charged_reservations, COUNT(*) AS requests,
+      ${MEASURED_SQL} AS measured_usd,
       COALESCE(SUM(COALESCE(input_tokens, 0)), 0) AS input_tokens, COALESCE(SUM(COALESCE(output_tokens, 0)), 0) AS output_tokens,
       COALESCE(SUM(MAX(0, COALESCE(actual_usd, reserved_usd) - reserved_usd)), 0) AS overshoot_usd FROM entries WHERE ${where}`)
-      .get(...(this.participant === null ? [this.runId] : [this.runId, this.participant])) as Omit<RunSummary, 'run_id' | 'budget_usd' | 'ledger_path' | 'program_cap_usd' | 'event_loop_lag_ms'>;
+      .get(...(this.participant === null ? [this.runId] : [this.runId, this.participant])) as Omit<RunSummary, 'run_id' | 'budget_usd' | 'ledger_path' | 'program_cap_usd' | 'event_loop_lag_ms' | 'usage_unknown_usd'>;
     const lag = this.lag?.stats() ?? null;
     return {
-      run_id: this.runId, budget_usd: this.budgetUsd, ...row, ledger_path: this.ledgerPath, program_cap_usd: currentCap(db),
+      run_id: this.runId, budget_usd: this.budgetUsd, ...row, usage_unknown_usd: row.actual_usd - row.measured_usd, ledger_path: this.ledgerPath, program_cap_usd: currentCap(db),
       event_loop_lag_ms: lag,
       ...(lag ? {} : { event_loop_lag_unavailable: this.lag ? 'no lag samples were taken (the run closed within one sampling interval)' : 'no lag monitor: the run was not started through startPaidRun' }),
     };
@@ -1345,6 +1363,59 @@ export function usageCost(price: RequestPrice, responseBody: unknown): { usd: nu
   return { usd, input_tokens: inputTokens, output_tokens: outputTokens };
 }
 
+/** The body parsed as JSON, or null. */
+export const jsonOrNull = (text: string): unknown => { try { return JSON.parse(text); } catch { return null; } };
+
+/** Anthropic error types that refuse a request before any model runs, at whatever status they come with. */
+const ANTHROPIC_REFUSED = new Set(['authentication_error', 'permission_error', 'billing_error', 'rate_limit_error', 'overloaded_error']);
+/** The Anthropic outage of 2026-11-13 gave 47 Opus calls a 503 with no usage; Claude Code showed this text in 9 of its 15 trials. */
+const CREDENTIAL_FAILURE = /^\s*credential validation failed\s*$/i;
+/** OpenAI error codes on a 500 or 503 server_error that mean no output was produced. */
+const OPENAI_SERVER_ERROR_CODES: unknown[] = [null, undefined, 'server_error', 'service_unavailable'];
+
+/**
+ * Whether an error answer that carries no usage is one the provider does not bill. Returns `{}` for any 4xx, `{ type }`
+ * for a 5xx listed here (the type names it on the usage line), and null for anything else, which keeps its reservation
+ * because the request may have run. Only the provider's own answers count: a gateway page, an array or an unknown type is null.
+ * Callers pass only a body read to its end; a body that broke off keeps its reservation, since an empty read proves nothing.
+ *
+ * - Any 4xx: the provider refused the request before running a model (Anthropic 400, 401, 402, 403, 404, 409, 413, 429;
+ *   OpenAI 400, 401, 403, 429). Anthropic: https://docs.anthropic.com/en/api/errors. OpenAI:
+ *   https://platform.openai.com/docs/guides/error-codes.
+ * - Anthropic 5xx with its error envelope `{"type":"error","error":{"type","message"}}` (docs above, "Error shapes"):
+ *   `overloaded_error` (529, "the API is temporarily overloaded"), and `authentication_error`, `permission_error`,
+ *   `billing_error` or `rate_limit_error` on any 5xx, since each refuses the request before it runs; `api_error` on a
+ *   500 ("an unexpected error has occurred internal to Anthropic's systems"). `timeout_error` (504, or a 500 when a
+ *   request reaches the server's time limit) may have run and keeps its reservation, as does `api_error` on another status.
+ * - Anthropic 503 whose body is empty, or whose plain-text body, top-level JSON message or error message is "credential
+ *   validation failed". Anthropic's error page lists no 503; these are the answers its edge gave in the 2026-11-13 outage,
+ *   when 47 Opus calls in 15 trials got a 503 with no usage. Claude Code showed "API Error: 503 credential validation
+ *   failed" in 9 of those trials and "503 status code (no body)" in 3, which is how the Anthropic SDK renders those
+ *   bodies; the response bytes were not kept. Any other 503 body keeps its reservation.
+ * - OpenAI 500 `server_error` ("the server had an error while processing your request") and 503
+ *   `service_unavailable_error` with code `server_is_overloaded` ("the requested model is temporarily overloaded"), or the
+ *   older 503 `server_error` with code `service_unavailable` (docs above). A `timeout` code, a `timeout_error`, a 502 or a
+ *   504 may have run.
+ * - Particle documents no not-billed answer, so every Particle 5xx keeps its reservation.
+ */
+export function unbilledAnswer(provider: string, status: number, body: unknown, text: string): { type?: string } | null {
+  if (status >= 400 && status < 500) return {};
+  if (status < 500) return null;
+  const e = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>).error : undefined;
+  const { type, code, message } = e && typeof e === 'object' && !Array.isArray(e) ? e as Record<string, unknown> : {} as Record<string, unknown>;
+  if (provider === 'anthropic') {
+    const said = typeof message === 'string' ? message : (body as { message?: unknown } | null)?.message;
+    if (status === 503 && !text.trim()) return { type: 'empty_body' };
+    if (status === 503 && CREDENTIAL_FAILURE.test(typeof said === 'string' ? said : text)) return { type: 'credential_validation_failed' };
+    if ((body as { type?: unknown } | null)?.type !== 'error' || typeof type !== 'string') return null;
+    return ANTHROPIC_REFUSED.has(type) || (type === 'api_error' && status === 500) ? { type } : null;
+  }
+  if (provider !== 'openai' || (status !== 500 && status !== 503)) return null;
+  if (type === 'server_error' && OPENAI_SERVER_ERROR_CODES.includes(code)) return { type };
+  if (type === 'service_unavailable_error' && status === 503 && code === 'server_is_overloaded') return { type };
+  return type === undefined && code === 'server_error' ? { type: code } : null;
+}
+
 /**
  * Cost from Gemini `usageMetadata`. Prompt tokens include cached-content
  * tokens (billed at the cache price); tool-use prompt tokens bill as input;
@@ -1548,18 +1619,18 @@ export function installPaidRequestGuard(run: BudgetRun, options: { fetchImpl?: t
   const chain = new Map<string, number>();
   const pricing: PriceOptions = { chainContextTokens: id => chain.get(id) };
   const measure = async (price: RequestPrice, response: Response): Promise<MeasuredCost | null> => {
-    // A 4xx answer without usage settles at $0, as the metering proxy does: providers do not bill rejected requests.
-    const rejected = response.status >= 400 && response.status < 500 ? { usd: 0, input_tokens: 0, output_tokens: 0 } : null;
+    const { text, error } = await readBody(response.clone().body);
+    const parsed = jsonOrNull(text);
+    // An error answer the provider does not bill settles at $0 when it carries no usage, as the metering proxy does (unbilledAnswer).
+    const rejected = !error && unbilledAnswer(price.provider, response.status, parsed, text) ? { usd: 0, input_tokens: 0, output_tokens: 0 } : null;
     if ((response.headers.get('content-type') ?? '').includes('event-stream')) {
       // A streamed response is read to its end (the caller still gets the whole stream) and settled from its usage events; one that ended before its final usage is charged the larger of its reservation and the partial usage it reported.
-      const { text, error } = await readBody(response.clone().body);
       const usage = sseUsage(text);
       const cost = usage ? usageCost(price, { usage }) : null;
       if (!cost) return rejected;
       return error || sseIncomplete(text) ? { ...cost, unfinished: true } : cost;
     }
-    let parsed: unknown;
-    try { parsed = await response.clone().json(); } catch { return rejected; }
+    if (error || parsed === null) return rejected;
     const cost = usageCost(price, parsed) ?? rejected;
     const id = (parsed as { id?: unknown } | null)?.id;
     if (cost && price.provider === 'openai' && typeof id === 'string') {

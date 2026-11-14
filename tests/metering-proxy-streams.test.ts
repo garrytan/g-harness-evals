@@ -311,6 +311,7 @@ describe('provider error answers through the proxy', () => {
   test.each([
     ['e-a500', 'anthropic', 500, anthropicError('api_error'), 'api_error'],
     ['e-529', 'anthropic', 529, { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }, 'overloaded_error'],
+    ['e-a503-overloaded', 'anthropic', 503, anthropicError('overloaded_error'), 'overloaded_error'],
     ['e-o500', 'openai', 500, openaiError('server_error', null), 'server_error'],
     ['e-o500-code', 'openai', 500, openaiError('server_error', 'server_error'), 'server_error'],
     ['e-o500-code-only', 'openai', 500, openaiError(undefined, 'server_error'), 'server_error'],
@@ -329,7 +330,7 @@ describe('provider error answers through the proxy', () => {
     ['k-a504-timeout', 'anthropic', 504, anthropicError('timeout_error')],
     ['k-a500-timeout', 'anthropic', 500, anthropicError('timeout_error')],
     ['k-a529-unknown', 'anthropic', 529, anthropicError('mystery_error')],
-    ['k-a503-overloaded', 'anthropic', 503, anthropicError('overloaded_error')],
+    ['k-a503-api-error', 'anthropic', 503, anthropicError('api_error')],
     ['k-a500-no-envelope', 'anthropic', 500, { error: { type: 'api_error', message: 'fixture error' } }],
     ['k-a500-openai-shape', 'anthropic', 500, openaiError('server_error', null)],
     ['k-a500-gateway', 'anthropic', 500, { error: { status: 500, message: 'gateway error' } }],
@@ -344,7 +345,7 @@ describe('provider error answers through the proxy', () => {
   ] as Array<[string, 'anthropic' | 'openai', number, unknown]>)('%s: a %s %d that is not a known not-billed envelope keeps its reservation', async (name, provider, status, body) => {
     const o = await send(name, provider, route(provider), { status, body, ...(typeof body === 'string' ? { type: 'text/html' } : {}) });
     expect(o.status).toBe(status);
-    expect(o.line).toMatchObject({ outcome: 'forwarded', status, charged_reservation: true, reason: 'the response carried no usage' });
+    expect(o.line).toMatchObject({ outcome: 'forwarded', status, charged_reservation: true, usage_unknown: true, reported_usd: 0, reason: 'the response carried no usage' });
     expect(o.line.reserved_usd!).toBeGreaterThan(0);
     expect(o.line.actual_usd).toBe(o.line.reserved_usd!);
     expect(o.entry).toMatchObject({ status: 'charged-reservation', actual_usd: o.entry.reserved_usd });
