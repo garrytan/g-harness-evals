@@ -102,11 +102,15 @@ export interface ResolvedGbrain {
   access?: 'rules';
   /** internal-task: present only on a cell that sends shared-channel remembers to the channel's source. */
   channel_remember?: 'conversation';
+  /** internal-task: present only on a cell whose brain is labelled as serving several people. */
+  serves?: 'several';
+  /** internal-task: present only on a cell of the reader-labelled bot-visible brain. */
+  labels?: 'readers';
 }
 
 /** The cell's gbrain configuration with every default filled in; the cell itself is not changed. */
 export function resolveGbrain(c: GbrainCellConfig): ResolvedGbrain {
-  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}), ...(c.channel_remember === 'conversation' ? { channel_remember: 'conversation' as const } : {}) };
+  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}), ...(c.channel_remember === 'conversation' ? { channel_remember: 'conversation' as const } : {}), ...(c.serves ? { serves: c.serves } : {}), ...(c.labels ? { labels: c.labels } : {}) };
 }
 
 /** What plan prints for a gbrain cell: <surface>/<install>/<embeddings>. */
@@ -475,7 +479,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       // Member brain: brain "member" carries member tokens and ingest tokens; ingest "live" needs it.
       if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible", "company" or "member"; got ${JSON.stringify(c.gbrain.brain)}`);
       if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'sources' && c.gbrain.scope !== 'member-sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member", "sources", "member-sources" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
-      if (c.gbrain.scope !== undefined && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "${c.gbrain.scope}" needs gbrain.brain "company" or "member"; only those brains carry member tokens and per-member source grants`);
+      if (c.gbrain.scope !== undefined && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member' && !(c.gbrain.serves === 'several' && c.gbrain.scope === 'member')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "${c.gbrain.scope}" needs gbrain.brain "company" or "member"; only those brains carry member tokens and per-member source grants`);
       if (c.gbrain.ingest !== undefined && c.gbrain.ingest !== 'off' && c.gbrain.ingest !== 'live') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest must be "off", "live" or absent; got ${JSON.stringify(c.gbrain.ingest)}`);
       if (c.gbrain.ingest === 'live' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.brain "member"; only the member brain carries the per-source ingest tokens (gbrain/README.md, "The member brain")`);
       if (c.gbrain.ingest === 'live' && c.harness_mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.ingest "live" runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: drop harness_mode "process" from the cell`);
@@ -491,6 +495,18 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.channel_remember === 'conversation' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.channel_remember "conversation" needs gbrain.brain "member"; only the member brain carries the per-source ingest tokens it writes with`);
       if (c.gbrain.channel_remember === 'conversation' && c.gbrain.access === 'rules') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.channel_remember "conversation" runs without access "rules"; a channel-source fact lands outside the folder rules, where every member token reads it`);
       if (c.gbrain.channel_remember === 'conversation' && c.harness_mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.channel_remember "conversation" runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: drop harness_mode "process" from the cell`);
+      // internal-task: serves "several" has two shapes, the refused company arm and the installer's member-key arm on the bot-visible brain.
+      if (c.gbrain.serves !== undefined && c.gbrain.serves !== 'several') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.serves must be "several" or absent; got ${JSON.stringify(c.gbrain.serves)}`);
+      if (c.gbrain.labels !== undefined && c.gbrain.serves !== 'several') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.labels needs gbrain.serves "several" with the member-key shape; the labels are read only by member-bound keys`);
+      if (c.gbrain.serves === 'several') {
+        const g = c.gbrain;
+        const refused = g.brain === 'company' && g.scope === undefined && (g.install ?? 'mcp') === 'mcp';
+        const memberKeys = (g.brain ?? 'bot-visible') === 'bot-visible' && g.install === 'gbrain-installer' && g.scope === 'member';
+        if (g.ingest === 'live' || g.access !== undefined || g.channel_remember !== undefined || (g.embeddings ?? 'off') !== 'off') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.serves "several" runs without live ingestion, access rules, channel_remember or embeddings; the labelling adds gbrain's own people/<member>/ rules and member keys, and nothing else may change what a read returns`);
+        if (g.labels !== undefined && g.labels !== 'readers') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.labels must be "readers" or absent; got ${JSON.stringify(g.labels)}`);
+        if (g.labels === 'readers' && (!memberKeys || c.split !== 'dev')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.labels "readers" needs the member-key shape (bot-visible brain, install "gbrain-installer", scope "member") on the dev split; only the dev bot-visible brain is built with reader labels, and only member keys read through them (got brain ${JSON.stringify(g.brain ?? 'bot-visible')}, scope ${JSON.stringify(g.scope ?? 'none')}, split ${c.split})`);
+        if (!refused && !memberKeys) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.serves "several" takes two shapes: {"surface": "starter", "brain": "company", "serves": "several"} (no scope or install: the unbound token, refused) or {"surface": "starter", "install": "gbrain-installer", "brain": "bot-visible", "scope": "member", "serves": "several"} (each member's own key); got brain ${JSON.stringify(g.brain ?? 'bot-visible')}, install ${JSON.stringify(g.install ?? 'mcp')}, scope ${JSON.stringify(g.scope ?? 'none')}`);
+      }
     }
     // internal-task-a (internal-task-b plan v3, M1): QM's memory-provider config reaches gbrain only through MEMORY_PROVIDER_CONFIG, so it needs a
     // QM harness in docker (the client secret stays in the compose stack) and a gbrain sidecar behind the tap, served over MCP.
@@ -716,7 +732,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}${c.gbrain.channel_remember ? ` channel_remember=${c.gbrain.channel_remember}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}${c.gbrain.channel_remember ? ` channel_remember=${c.gbrain.channel_remember}` : ''}${c.gbrain.serves ? ` serves=${c.gbrain.serves}` : ''}${c.gbrain.labels ? ` labels=${c.gbrain.labels}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
@@ -1029,6 +1045,26 @@ async function main(argv: string[]): Promise<number> {
           const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(runDir, `preflight-gbrain-company-${split}`), scope);
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=company scope=${scope} split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token${scope === 'member' ? `, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}` : ''}, ready in ${probe.ready_ms} ms`);
           await probeScoped('company', split);
+        }
+      }
+      // internal-task: each serves-several configuration is checked per split, keyless, before any trial: the refused arm's unbound token
+      // is refused with no page, and each member key reads as its member (on the labelled brain, exactly its member's pages).
+      const servesRuns = [...new Set(gbrainCells.filter((c) => c.gbrain!.serves === 'several').map((c) => `${c.gbrain!.brain === 'company' ? 'refused' : 'member-keys'}|${c.gbrain!.labels ?? 'none'}|${c.split}`))];
+      if (servesRuns.length) {
+        const { probeServesSeveral, writeAccessPreflight } = await import('./trial/gbrain.ts');
+        const { tokenMembers, labelledPageList } = await import('../gbrain/build-brain.ts');
+        const { worldAt, DEFAULT_WORLD_PATH } = await import('./trial/world.ts');
+        const world = worldAt(setWorld?.path ?? (sealed ? sealed.worldPath : DEFAULT_WORLD_PATH));
+        for (const run of servesRuns) {
+          const [arm, labels, split] = run.split('|') as ['refused' | 'member-keys', 'none' | 'readers', 'dev' | 'heldout'];
+          const name = `${arm}${labels === 'none' ? '' : `-${labels}`}-${split}`;
+          const members = tokenMembers(world, split).map((mm) => mm.id);
+          const dir = join(runDir, `preflight-gbrain-serves-${name}`);
+          const { evidence, problems } = await probeServesSeveral(image, split, dir, { arm, members, ...(labels === 'readers' ? { readers: Object.fromEntries(labelledPageList(world, split).map((p) => [p.page_slug, p.readers])) } : {}) });
+          const record = join(runDir, `serves-preflight-${name}.json`);
+          writeAccessPreflight(record, { split, image, ok: !problems.length, problems, evidence }, dir);
+          if (problems.length) throw new RunnerError('HE-GBRAIN-002', `serves=several ${name}: ${image} fails ${problems.length} check(s): ${problems.slice(0, 4).join('; ')}${problems.length > 4 ? `; ${problems.length - 4} more in ${record}` : ''}`);
+          console.log(`GBRAIN: serves=several ${name} image ${image} id=${evidence.image_id}: labelled ${evidence.labelled.members} members, ${evidence.labelled.rules} people/<member>/ rules, ${evidence.labelled.keys} member keys, access.serves_since past the grace; the unbound trial token's search refused (${evidence.unbound.code}, 0 rows)${arm === 'member-keys' ? `; ${evidence.members.length} member keys each read as their member${labels === 'readers' ? `, list_pages to the end ${evidence.members.reduce((a, r) => a + (r.listed ?? 0), 0)} pages over all keys, 0 outside the member's readers, none missing` : ''}` : ''}; record ${record}`);
         }
       }
     }

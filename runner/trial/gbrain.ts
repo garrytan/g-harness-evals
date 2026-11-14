@@ -34,7 +34,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { RunnerError } from '../errors.ts';
-import type { BrainIngest, CompanyBrainManifest, CompanyTokens, IngestTokens } from '../../gbrain/build-brain.ts';
+import { memberTokenName, type BrainIngest, type CompanyBrainManifest, type CompanyTokens, type IngestTokens } from '../../gbrain/build-brain.ts';
 import { verifyFiles, type InstallFile, type InstallerRecord } from '../../gbrain/build-install.ts';
 import type { GbrainCellConfig } from '../contracts.ts';
 import type { InternalNetwork } from './docker.ts';
@@ -72,6 +72,13 @@ export interface GbrainSidecarOptions {
   /** internal-task: "conversation" (member brain only) makes the entrypoint copy ingest-tokens.json out even without live ingestion,
    *  for the tap to send a shared-channel remember under the channel source's token; default member. */
   channelRemember?: 'member' | 'conversation';
+  /** internal-task: "several" makes the entrypoint label the brain with gbrain access serves several for servesMembers (the split's
+   *  token members, gbrain/build-brain.ts tokenMembers) after the trial token is minted, and move access.serves_since past the
+   *  grace; under scope "member" it writes tokens.json from the member keys that labelling minted. */
+  serves?: 'several';
+  servesMembers?: readonly string[];
+  /** internal-task: "readers" serves the reader-labelled bot-visible brain (/brains/<split>-labelled); serves "several" only. */
+  labels?: 'readers';
   /** The surface (default starter) and the embedding model (default off); an embedded brain needs openaiBaseUrl, the
    *  metering proxy's slot URL as the container reaches it (a route, never a key), and proxyToken, the random per-trial token
    *  the proxy requires on that slot (2026-10-28; the entrypoint hands it to gbrain as its OpenAI credential, which the proxy
@@ -188,12 +195,14 @@ export async function waitHealthy(url: string, timeoutMs: number, exited: () => 
   throw new Error(`no healthy /health at ${url} after ${Math.round(timeoutMs / 1000)} s`);
 }
 
-/** tokens.json is well formed, for this split, and names a token for every member given (HE-GBRAIN-004). */
-export function checkCompanyTokens(value: unknown, split: 'dev' | 'heldout', members: string[], path: string): CompanyTokens {
+/** tokens.json is well formed, for this split, and names a token for every member given (HE-GBRAIN-004). brains names the brain
+ *  kinds the file may say it was written for: the company and member brains by default, the bot-visible brain for the member keys
+ *  a serves-several sidecar writes (internal-task). */
+export function checkCompanyTokens(value: unknown, split: 'dev' | 'heldout', members: string[], path: string, brains: readonly CompanyTokens['brain'][] = ['company', 'member']): CompanyTokens {
   const t = value as Partial<CompanyTokens> | null;
   const bad = (what: string) => new RunnerError('HE-GBRAIN-004', `${path}: ${what}; fix: rebuild the company or member brain image (gbrain/README.md, "The company brain") so tokens.json carries one granted token per member of the split plus public-only`);
   if (!t || typeof t !== 'object') throw bad('not a JSON object');
-  if (t.schema_version !== 1 || (t.brain !== 'company' && t.brain !== 'member')) throw bad(`expected schema_version 1 and brain "company" or "member", got ${JSON.stringify({ schema_version: t.schema_version, brain: t.brain })}`);
+  if (t.schema_version !== 1 || !t.brain || !brains.includes(t.brain)) throw bad(`expected schema_version 1 and brain ${brains.map((b) => JSON.stringify(b)).join(' or ')}, got ${JSON.stringify({ schema_version: t.schema_version, brain: t.brain })}`);
   if (t.split !== split) throw bad(`tokens are for split ${String(t.split)}, the trial runs ${split}`);
   if (typeof t.public_only !== 'string' || !t.public_only) throw bad('no public_only token');
   if (!t.members || typeof t.members !== 'object') throw bad('no members map');
@@ -241,6 +250,16 @@ export function checkIngestTokens(tokensValue: unknown, manifestValue: unknown, 
   return { tokens: t as IngestTokens, map: m.ingest };
 }
 
+/** internal-task: the sidecar environment of a serves-several brain: the labelling, the members it labels and the reader-labelled
+ *  brain when asked for; none without serves. */
+export function servesEnv(o: Pick<GbrainSidecarOptions, 'serves' | 'servesMembers' | 'labels'>): string[] {
+  if (o.labels && !o.serves) throw new RunnerError('HE-GBRAIN-002', `labels "${o.labels}" needs serves "several"; only member-bound keys read through the labels`);
+  if (!o.serves) return [];
+  const members = o.servesMembers;
+  if (!members?.length || members.some((m) => !/^[a-z0-9][a-z0-9-]*$/.test(m))) throw new RunnerError('HE-GBRAIN-002', `serves "several" needs the split's token members as plain member ids (got ${JSON.stringify(members ?? null)}); gbrain access serves several labels exactly those`);
+  return ['-e', 'HE_GBRAIN_SERVES=several', '-e', `HE_GBRAIN_MEMBERS=${members.join(',')}`, ...(o.labels ? ['-e', `HE_GBRAIN_LABELS=${o.labels}`] : [])];
+}
+
 export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<GbrainSidecar> {
   const image = o.image ?? DEFAULT_GBRAIN_IMAGE;
   const brain = o.brain ?? 'bot-visible';
@@ -249,6 +268,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const access = o.access ?? 'none';
   const surface = o.surface ?? 'starter';
   const embeddings = o.embeddings ?? 'off';
+  const serves = servesEnv(o);
   if (embeddings !== 'off' && !o.openaiBaseUrl) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the metering proxy's slot URL as OPENAI_BASE_URL; the runner passes none without a proxy`);
   if (embeddings !== 'off' && !o.proxyToken) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the proxy slot's per-trial token as HE_GBRAIN_PROXY_TOKEN; the proxy forwards nothing for the slot without it`);
   const log = o.log ?? (() => undefined);
@@ -275,7 +295,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`, '-e', `HE_GBRAIN_INGEST=${ingest}`, ...(access === 'rules' ? ['-e', 'HE_GBRAIN_ACCESS=rules'] : []),
     '-e', `HE_GBRAIN_SURFACE=${surface}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
     ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`, '-e', `HE_GBRAIN_PROXY_TOKEN=${o.proxyToken}`] : []),
-    ...(o.channelRemember === 'conversation' ? ['-e', 'HE_GBRAIN_CHANNEL_REMEMBER=conversation'] : []),
+    ...(o.channelRemember === 'conversation' ? ['-e', 'HE_GBRAIN_CHANNEL_REMEMBER=conversation'] : []), ...serves,
     image]);
   const image_id = (await sh(['docker', 'image', 'inspect', '-f', '{{.Id}}', image])).stdout.trim();
   if (run.status !== 0) {
@@ -351,7 +371,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
       tokens = JSON.parse(readFileSync(tokensPath, 'utf8')) as CompanyTokens;
     }
     const ready_ms = Date.now() - started;
-    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, access ${access}, ingest ${ingest}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}${ingestTokens ? `, ${Object.keys(ingestTokens.tokens.sources).length} ingest tokens` : ''}`);
+    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, access ${access}${o.serves ? `, serves ${o.serves}` : ''}${o.labels ? `, labels ${o.labels}` : ''}, ingest ${ingest}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}${ingestTokens ? `, ${Object.keys(ingestTokens.tokens.sources).length} ingest tokens` : ''}`);
     return { url, token, tokenPath, image, image_id, brain, scope, access, surface, embeddings, tokens, grants, ingest: ingest === 'live' ? ingestTokens : null, channelRemember: o.channelRemember === 'conversation' ? ingestTokens : null, ready_ms, stop };
   } catch (e) {
     await stop(5_000);
@@ -651,7 +671,7 @@ export async function probeAccessRules(image: string, split: 'dev' | 'heldout', 
     };
     const strip = (p: string) => (p.startsWith('member:') ? p.slice(7) : p);
     const checks: AccessRulesEvidence['checks'] = [];
-    for (const token of [...expected.token_members.map((m) => `member-${m}`), 'public-only']) {
+    for (const token of [...expected.token_members.map(memberTokenName), 'public-only']) {
       const r = await gbrain(['access', 'check', '--token', token]);
       if (typeof r.error === 'string') { checks.push({ token, member: null, status: null, verdict: null, error: r.error }); continue; }
       const m = (r as { member?: { id?: unknown; status?: unknown } | null }).member;
@@ -731,6 +751,63 @@ export function writeAccessPreflight(path: string, record: unknown, tokenDir: st
   writeFileSync(path, text);
 }
 
+/** internal-task: what the serves-several preflight saw for one split and arm, keyless; counts, codes and slugs, never a token. */
+export interface ServesEvidence {
+  arm: 'refused' | 'member-keys';
+  split: 'dev' | 'heldout';
+  image_id: string;
+  ready_ms: number;
+  labels: 'none' | 'readers';
+  /** Counts from the labelling receipt the sidecar wrote (serves.json). */
+  labelled: { members: number; rules: number; keys: number };
+  /** One search under the trial's unbound token: gbrain's code and the rows it returned. */
+  unbound: { code: string | null; rows: number };
+  /** Member-key arm: per member, whom its key read as on a search (_meta.access.member) and, on the labelled brain, what
+   *  list_pages to the end returned against the member's readers. */
+  members: Array<{ member: string; reads_as: string | null; code: string | null; listed?: number; outside?: string[]; missing?: string[] }>;
+}
+
+/** internal-task preflight, keyless: one serves-several sidecar for the split and arm. Refused arm (company brain, the unbound token):
+ *  a search must answer requester_scope_required with no row. Member-key arm (bot-visible brain): the unbound token is refused the
+ *  same way, every member's key reads as that member, and with readers (slug -> readers, the labelled brain) each key's
+ *  list_pages, paged to the end, holds every page the member may read and nothing else. Problems are returned, not thrown. */
+export async function probeServesSeveral(image: string, split: 'dev' | 'heldout', scratchDir: string, o: { arm: 'refused' | 'member-keys'; members: readonly string[]; readers?: Record<string, readonly string[]> }): Promise<{ evidence: ServesEvidence; problems: string[] }> {
+  const query = SOURCE_PROBE_QUERIES[0]!;
+  const fail = (what: string) => new RunnerError('HE-GBRAIN-002', `the serves-several ${o.arm} brain for ${split} in ${image} ${what}`);
+  const rowsOf = (p: unknown): Array<Record<string, unknown>> => Array.isArray(p) ? p : p && typeof p === 'object' ? ['results', 'pages'].flatMap((k) => { const v = (p as Record<string, unknown>)[k]; return Array.isArray(v) ? v : []; }) : [];
+  const codeOf = (p: unknown): string | null => p && typeof p === 'object' && !Array.isArray(p) && typeof (p as { code?: unknown }).code === 'string' ? (p as { code: string }).code : null;
+  const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-serves-${o.arm}-${split}-${process.pid}`, split, outDir: scratchDir, image, serves: 'several', servesMembers: o.members,
+    ...(o.arm === 'refused' ? { brain: 'company' as const, scope: 'none' as const } : { brain: 'bot-visible' as const, scope: 'member' as const }), ...(o.readers ? { labels: 'readers' as const } : {}) });
+  try {
+    const receipt = JSON.parse(readFileSync(join(scratchDir, 'serves.json'), 'utf8')) as { members?: unknown[]; rules?: unknown[]; keys?: unknown[] };
+    const unbound = await callGbrain(sidecar.url, sidecar.token, 'search', { query, limit: 10 });
+    const evidence: ServesEvidence = { arm: o.arm, split, image_id: sidecar.image_id, ready_ms: sidecar.ready_ms, labels: o.readers ? 'readers' : 'none', labelled: { members: receipt.members?.length ?? 0, rules: receipt.rules?.length ?? 0, keys: receipt.keys?.length ?? 0 }, unbound: { code: codeOf(unbound), rows: rowsOf(unbound).length }, members: [] };
+    const problems: string[] = [];
+    if (evidence.unbound.code !== 'requester_scope_required' || evidence.unbound.rows) problems.push(`a search under the unbound trial token answered ${evidence.unbound.code ?? 'no code'} with ${evidence.unbound.rows} row(s), not requester_scope_required with none`);
+    if (o.arm === 'refused') return { evidence, problems };
+    if (!sidecar.tokens) throw fail('started under scope "member" without tokens.json');
+    for (const member of [...o.members].sort()) {
+      const key = sidecar.tokens.members[member];
+      if (!key) { evidence.members.push({ member, reads_as: null, code: 'no key in tokens.json' }); problems.push(`no member key for ${member} in tokens.json`); continue; }
+      const { payload, meta } = await callGbrainReply(sidecar.url, key, 'search', { query, limit: 10 });
+      const readsAs = (meta?.access as { member?: unknown } | undefined)?.member;
+      const row: ServesEvidence['members'][number] = { member, reads_as: typeof readsAs === 'string' ? readsAs : null, code: codeOf(payload) };
+      if (row.reads_as !== member || row.code) problems.push(`${member}'s key read as ${row.reads_as ?? 'nobody'}${row.code ? ` (${row.code})` : ''}, not as ${member}`);
+      if (o.readers) {
+        const listed = (await listPagesToEnd(async (offset) => rowsOf(await callGbrain(sidecar.url, key, 'list_pages', { limit: 100, offset, sort: 'slug' })), fail)).map((r) => String(r.slug ?? ''));
+        const may = Object.entries(o.readers).filter(([, readers]) => readers.includes(member)).map(([slug]) => slug);
+        Object.assign(row, { listed: listed.length, outside: listed.filter((s) => !may.includes(s)), missing: may.filter((s) => !listed.includes(s)) });
+        if (row.outside!.length) problems.push(`${member}'s key listed ${row.outside!.length} page(s) outside ${member}'s readers: ${row.outside!.join(', ')}`);
+        if (row.missing!.length) problems.push(`${member}'s key did not list ${row.missing!.length} page(s) ${member} may read: ${row.missing!.join(', ')}`);
+      }
+      evidence.members.push(row);
+    }
+    return { evidence, problems };
+  } finally {
+    await sidecar.stop(5_000);
+  }
+}
+
 /** run's check that the access-rules preflight passed on the image it is about to use. A resumed shard that rebuilt the
  *  image re-mints the tokens and re-adds the rules, so a record for another image id does not cover it. */
 export function accessPreflightProblem(path: string, split: string, image: string, imageId: string): string | null {
@@ -756,13 +833,13 @@ export function accessRulesProblems(e: AccessRulesEvidence, x: AccessRulesExpect
   const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
   const members = new Set(x.token_members);
   for (const m of x.token_members) {
-    const c = e.checks.find((k) => k.token === `member-${m}`);
-    if (!c) problems.push({ check: 'a', what: `no access check for member-${m}` });
-    else if (c.error || c.verdict !== 'reads_as_member' || c.member !== m || c.status !== 'enabled') problems.push({ check: 'a', what: `member-${m} is ${c.error ?? `${c.verdict} as ${c.member ?? 'nobody'} (${c.status ?? '-'})`}, not bound to ${m}` });
+    const c = e.checks.find((k) => k.token === memberTokenName(m));
+    if (!c) problems.push({ check: 'a', what: `no access check for ${memberTokenName(m)}` });
+    else if (c.error || c.verdict !== 'reads_as_member' || c.member !== m || c.status !== 'enabled') problems.push({ check: 'a', what: `${memberTokenName(m)} is ${c.error ?? `${c.verdict} as ${c.member ?? 'nobody'} (${c.status ?? '-'})`}, not bound to ${m}` });
   }
   const pub = e.checks.find((k) => k.token === 'public-only');
   if (!pub || pub.error || pub.verdict !== 'unbound' || pub.member !== null) problems.push({ check: 'a', what: `public-only is ${pub ? pub.error ?? `${pub.verdict} as ${pub.member ?? 'nobody'}` : 'unchecked'}, not unbound` });
-  for (const k of e.checks) if (k.token !== 'public-only' && !members.has(k.token.replace(/^member-/, ''))) problems.push({ check: 'a', what: `${k.token} is not a token member's token` });
+  for (const k of e.checks) if (k.token !== 'public-only' && !x.token_members.some((m) => memberTokenName(m) === k.token)) problems.push({ check: 'a', what: `${k.token} is not a token member's token` });
 
   const sourceReaders = new Map(x.sources.map((s) => [s.id, s.readers]));
   const rulesOf = new Map(e.rules.map((r) => [r.source, r]));
@@ -897,16 +974,21 @@ export function verifyInstallView(view: InstallViewManifest, root: string, insta
 
 /** One tools/call against the sidecar directly, under the token given; the parsed JSON of the first text content. */
 export async function callGbrain(url: string, token: string, name: string, args: Record<string, unknown>): Promise<unknown> {
+  return (await callGbrainReply(url, token, name, args)).payload;
+}
+
+/** callGbrain with the reply's _meta beside the payload (internal-task: _meta.access names the member a key reads as). */
+export async function callGbrainReply(url: string, token: string, name: string, args: Record<string, unknown>): Promise<{ payload: unknown; meta: Record<string, unknown> | null }> {
   const res = await fetch(`${url}/mcp`, {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
   });
   const text = await res.text();
   const data = res.headers.get('content-type')?.includes('text/event-stream') ? text.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('') : text;
-  const msg = JSON.parse(data) as { result?: { content?: Array<{ text?: string }>; isError?: boolean }; error?: { message?: string } };
+  const msg = JSON.parse(data) as { result?: { content?: Array<{ text?: string }>; isError?: boolean; _meta?: Record<string, unknown> }; error?: { message?: string } };
   if (msg.error) throw new Error(`gbrain ${name}: ${msg.error.message ?? 'rpc error'}`);
   const first = msg.result?.content?.[0]?.text;
-  return first ? JSON.parse(first) : null;
+  return { payload: first ? JSON.parse(first) : null, meta: msg.result?._meta ?? null };
 }
 
 /** Company brain preflight: the company brain of a split, served from the image under the unscoped token, lists every page

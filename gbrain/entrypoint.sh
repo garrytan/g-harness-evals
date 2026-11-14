@@ -20,6 +20,16 @@
 #   HE_GBRAIN_ACCESS  none (default) | rules: with rules (internal-task; member brain and member scope only) serves /brains/<split>-member-acl,
 #                     the member brain whose reads are gated by gbrain folder rules and member-bound tokens (gbrain/build-brain.ts
 #                     --access rules); its tokens.json is copied the same way
+#   HE_GBRAIN_SERVES  none (default) | several: with several (internal-task) the brain is labelled, after the trial token is minted and
+#                     before serve, with gbrain access serves several --members $HE_GBRAIN_MEMBERS (gbrain's members, people/<member>/
+#                     folder rules and one member-bound key per member), and access.serves_since moves 15 days back, so the trial's
+#                     unbound token is past gbrain's grace and refused; the labelling receipt (key paths, never key values) goes to
+#                     $HE_GBRAIN_OUT/serves.json. Two shapes: company brain with scope none (every read refused), or the bot-visible
+#                     brain with scope member, where tokens.json is written from the member keys (public_only: the trial token)
+#   HE_GBRAIN_MEMBERS with several: the split's token members, comma-separated (runner/trial/gbrain.ts)
+#   HE_GBRAIN_LABELS  none (default) | readers: with readers (internal-task; serves several, bot-visible brain, member scope) serves
+#                     /brains/<split>-labelled, the bot-visible slice with each page's readers in its frontmatter as readable_by
+#                     (gbrain/build-brain.ts --labels readers; dev only)
 #   HE_GBRAIN_OUT     a mounted evaluator directory: the token(s) and the sidecar's logs land here
 #   HE_TRIAL_ID       names the token (trial-<id>)
 #   HE_GBRAIN_SURFACE starter (default) | verbs: the MCP surface gbrain serves (internal-task, the install ladder; gbrain/pin.json
@@ -55,6 +65,8 @@ set -euo pipefail
 : "${HE_GBRAIN_INGEST:=off}"
 : "${HE_GBRAIN_ACCESS:=none}"
 : "${HE_GBRAIN_CHANNEL_REMEMBER:=member}"
+: "${HE_GBRAIN_SERVES:=none}"
+: "${HE_GBRAIN_LABELS:=none}"
 refuse() { echo "$1" >&2; exit 2; }
 pin=/opt/sidecar/gbrain/pin.json
 case "$HE_GBRAIN_SPLIT" in dev|heldout) ;; *) refuse "HE_GBRAIN_SPLIT must be dev or heldout (got $HE_GBRAIN_SPLIT)" ;; esac
@@ -64,11 +76,20 @@ case "$HE_GBRAIN_INGEST" in off|live) ;; *) refuse "HE_GBRAIN_INGEST must be off
 case "$HE_GBRAIN_CHANNEL_REMEMBER" in member|conversation) ;; *) refuse "HE_GBRAIN_CHANNEL_REMEMBER must be member or conversation (got $HE_GBRAIN_CHANNEL_REMEMBER); fix: set gbrain.channel_remember on the cell to one of them" ;; esac
 [ "$HE_GBRAIN_CHANNEL_REMEMBER" = member ] || [ "$HE_GBRAIN_BRAIN" = member ] || refuse "HE_GBRAIN_CHANNEL_REMEMBER=conversation needs HE_GBRAIN_BRAIN=member (got $HE_GBRAIN_BRAIN); only the member brain carries ingest tokens"
 case "$HE_GBRAIN_SCOPE" in none|member|sources|member-sources) ;; *) refuse "HE_GBRAIN_SCOPE must be none, member, sources or member-sources (got $HE_GBRAIN_SCOPE); fix: set gbrain.scope on the cell to one of them" ;; esac
-[ "$HE_GBRAIN_SCOPE" = none ] || [ "$HE_GBRAIN_BRAIN" = company ] || [ "$HE_GBRAIN_BRAIN" = member ] || refuse "HE_GBRAIN_SCOPE=$HE_GBRAIN_SCOPE needs HE_GBRAIN_BRAIN=company or member (got $HE_GBRAIN_BRAIN); only those brains carry member tokens and source grants; fix: set gbrain: {surface: starter, brain: company, scope: $HE_GBRAIN_SCOPE}"
+[ "$HE_GBRAIN_SCOPE" = none ] || [ "$HE_GBRAIN_BRAIN" = company ] || [ "$HE_GBRAIN_BRAIN" = member ] || [ "$HE_GBRAIN_SERVES/$HE_GBRAIN_BRAIN/$HE_GBRAIN_SCOPE" = several/bot-visible/member ] || refuse "HE_GBRAIN_SCOPE=$HE_GBRAIN_SCOPE needs HE_GBRAIN_BRAIN=company or member (got $HE_GBRAIN_BRAIN); only those brains carry member tokens and source grants; fix: set gbrain: {surface: starter, brain: company, scope: $HE_GBRAIN_SCOPE}"
 case "$HE_GBRAIN_ACCESS" in none|rules) ;; *) refuse "HE_GBRAIN_ACCESS must be none or rules (got $HE_GBRAIN_ACCESS); fix: set gbrain.access on the cell to rules or leave it out" ;; esac
 [ "$HE_GBRAIN_ACCESS" = none ] || { [ "$HE_GBRAIN_BRAIN" = member ] && [ "$HE_GBRAIN_SCOPE" = member ] && [ "$HE_GBRAIN_INGEST" = off ]; } || refuse "HE_GBRAIN_ACCESS=rules needs HE_GBRAIN_BRAIN=member, HE_GBRAIN_SCOPE=member and HE_GBRAIN_INGEST=off (got $HE_GBRAIN_BRAIN, $HE_GBRAIN_SCOPE, $HE_GBRAIN_INGEST); fix: set gbrain: {surface: starter, brain: member, scope: member, access: rules}"
 case "$HE_GBRAIN_SURFACE" in starter|verbs) ;; *) refuse "HE_GBRAIN_SURFACE must be starter or verbs (got $HE_GBRAIN_SURFACE); fix: set gbrain.surface on the cell to one of them" ;; esac
 case "$HE_GBRAIN_EMBEDDINGS" in off) ;; openai:text-embedding-3-small) ;; *) refuse "HE_GBRAIN_EMBEDDINGS must be off or openai:text-embedding-3-small (got $HE_GBRAIN_EMBEDDINGS); fix: set gbrain.embeddings on the cell to one of them" ;; esac
+case "$HE_GBRAIN_SERVES" in none|several) ;; *) refuse "HE_GBRAIN_SERVES must be none or several (got $HE_GBRAIN_SERVES); fix: set gbrain.serves on the cell to several or leave it out" ;; esac
+case "$HE_GBRAIN_LABELS" in none|readers) ;; *) refuse "HE_GBRAIN_LABELS must be none or readers (got $HE_GBRAIN_LABELS); fix: set gbrain.labels on the cell to readers or leave it out" ;; esac
+[ "$HE_GBRAIN_LABELS" = none ] || [ "$HE_GBRAIN_SERVES" = several ] || refuse "HE_GBRAIN_LABELS=$HE_GBRAIN_LABELS needs HE_GBRAIN_SERVES=several; the labels are read only by member-bound keys"
+if [ "$HE_GBRAIN_SERVES" = several ]; then
+  case "$HE_GBRAIN_BRAIN/$HE_GBRAIN_SCOPE" in company/none|bot-visible/member) ;; *) refuse "HE_GBRAIN_SERVES=several needs HE_GBRAIN_BRAIN=company with HE_GBRAIN_SCOPE=none, or HE_GBRAIN_BRAIN=bot-visible with HE_GBRAIN_SCOPE=member (got $HE_GBRAIN_BRAIN, $HE_GBRAIN_SCOPE)" ;; esac
+  [ "$HE_GBRAIN_INGEST/$HE_GBRAIN_ACCESS/$HE_GBRAIN_CHANNEL_REMEMBER/$HE_GBRAIN_EMBEDDINGS" = off/none/member/off ] || refuse "HE_GBRAIN_SERVES=several runs without live ingestion, access rules, channel_remember conversation or embeddings (got $HE_GBRAIN_INGEST, $HE_GBRAIN_ACCESS, $HE_GBRAIN_CHANNEL_REMEMBER, $HE_GBRAIN_EMBEDDINGS)"
+  [ "$HE_GBRAIN_LABELS" = none ] || [ "$HE_GBRAIN_BRAIN/$HE_GBRAIN_SCOPE" = bot-visible/member ] || refuse "HE_GBRAIN_LABELS=$HE_GBRAIN_LABELS needs HE_GBRAIN_BRAIN=bot-visible and HE_GBRAIN_SCOPE=member (got $HE_GBRAIN_BRAIN, $HE_GBRAIN_SCOPE)"
+  [[ "${HE_GBRAIN_MEMBERS:-}" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] || refuse "HE_GBRAIN_SERVES=several needs HE_GBRAIN_MEMBERS, the split's token members as comma-separated member ids (got '${HE_GBRAIN_MEMBERS:-}')"
+fi
 if [ "$HE_GBRAIN_EMBEDDINGS" != off ]; then
   [ "$HE_GBRAIN_BRAIN" = bot-visible ] || refuse "HE_GBRAIN_EMBEDDINGS=$HE_GBRAIN_EMBEDDINGS needs HE_GBRAIN_BRAIN=bot-visible (got $HE_GBRAIN_BRAIN); only the bot-visible brains are built with embeddings"
   [ -n "${OPENAI_BASE_URL:-}" ] || refuse "HE_GBRAIN_EMBEDDINGS=$HE_GBRAIN_EMBEDDINGS needs OPENAI_BASE_URL (the metering proxy's slot URL); the sidecar never holds a key, so without the route gbrain cannot embed a query"
@@ -81,10 +102,12 @@ if [ "$HE_GBRAIN_EMBEDDINGS" != off ]; then
 else
   case "$HE_GBRAIN_BRAIN" in bot-visible) src="/brains/$HE_GBRAIN_SPLIT" ;; *) src="/brains/$HE_GBRAIN_SPLIT-$HE_GBRAIN_BRAIN" ;; esac
   [ "$HE_GBRAIN_ACCESS" = none ] || src="$src-acl"
+  [ "$HE_GBRAIN_LABELS" = none ] || src="$src-labelled"
 fi
 [ -d "$src/.gbrain" ] || refuse "no brain at $src; rebuild the image (gbrain/README.md)"
+[ "$HE_GBRAIN_LABELS" = none ] || [ "$(jq -r '.labels // empty' "$src/manifest.json")" = "$HE_GBRAIN_LABELS" ] || refuse "the brain at $src was not built with --labels $HE_GBRAIN_LABELS; rebuild the image (gbrain/Dockerfile stage brain-dev-labelled)"
 [ "$HE_GBRAIN_ACCESS" = none ] || [ "$(jq -r '.access // empty' "$src/manifest.json")" = rules ] || refuse "the brain at $src was not built with --access rules; rebuild the image (gbrain/Dockerfile stage brain-dev-member-acl)"
-case "$HE_GBRAIN_SCOPE" in member|member-sources) want_tokens=1 ;; *) want_tokens=0 ;; esac
+case "$HE_GBRAIN_SERVES/$HE_GBRAIN_SCOPE" in none/member|none/member-sources) want_tokens=1 ;; *) want_tokens=0 ;; esac
 case "$HE_GBRAIN_SCOPE" in sources|member-sources) want_grants=1 ;; *) want_grants=0 ;; esac
 [ "$want_tokens" = 0 ] || [ -s "$src/tokens.json" ] || refuse "no tokens.json in $src; the $HE_GBRAIN_BRAIN brain was built without member tokens; rebuild the image (gbrain/README.md)"
 case "$HE_GBRAIN_INGEST/$HE_GBRAIN_CHANNEL_REMEMBER" in live/*|*/conversation) want_ingest_tokens=1 ;; *) want_ingest_tokens=0 ;; esac
@@ -131,7 +154,7 @@ t1=$(date +%s%N)
 bun /opt/sidecar/gbrain/rebind-sources.ts $rebind_ids > "$HE_GBRAIN_OUT/rebind.log" 2>&1 \
   || { log "source re-stamp failed (see rebind.log): $(tail -1 "$HE_GBRAIN_OUT/rebind.log")"; echo "gbrain source re-stamp failed; see $HE_GBRAIN_OUT/rebind.log" >&2; exit 2; }
 log "re-stamped $(grep -c ' re-stamped at ' "$HE_GBRAIN_OUT/rebind.log") source checkouts in $(( ($(date +%s%N) - t1) / 1000000 )) ms"
-log "brain $HE_GBRAIN_BRAIN scope $HE_GBRAIN_SCOPE access $HE_GBRAIN_ACCESS ingest $HE_GBRAIN_INGEST embeddings $HE_GBRAIN_EMBEDDINGS copied from $src ($(jq -r '.counts.total' /brain/manifest.json) pages$(jq -r 'if .sources then ", \(.sources | length) sources, \(.grants | length) grants" else "" end' /brain/manifest.json), gbrain $(jq -r '.gbrain_commit' /brain/manifest.json | cut -c1-12)) in $(( ($(date +%s%N) - t0) / 1000000 )) ms"
+log "brain $HE_GBRAIN_BRAIN scope $HE_GBRAIN_SCOPE access $HE_GBRAIN_ACCESS serves $HE_GBRAIN_SERVES labels $HE_GBRAIN_LABELS ingest $HE_GBRAIN_INGEST embeddings $HE_GBRAIN_EMBEDDINGS copied from $src ($(jq -r '.counts.total' /brain/manifest.json) pages$(jq -r 'if .sources then ", \(.sources | length) sources, \(.grants | length) grants" else "" end' /brain/manifest.json), gbrain $(jq -r '.gbrain_commit' /brain/manifest.json | cut -c1-12)) in $(( ($(date +%s%N) - t0) / 1000000 )) ms"
 
 # The token is printed once by gbrain; it goes to the token file and nowhere else.
 umask 077
@@ -140,6 +163,33 @@ tok=$(bun /opt/gbrain/src/cli.ts auth create "trial-$HE_TRIAL_ID" 2>>"$HE_GBRAIN
 printf '%s' "$tok" > "$HE_GBRAIN_OUT/token.tmp"
 mv "$HE_GBRAIN_OUT/token.tmp" "$HE_GBRAIN_OUT/token"
 unset tok
+if [ "$HE_GBRAIN_SERVES" = several ]; then
+  # internal-task: gbrain's own shared-bot setup, after the trial token exists so that token is one gbrain finds unbound. The receipt
+  # names key paths; the keys stay under /brain and, under member scope, in tokens.json (mode 0600) for the tap only.
+  serr="$HE_GBRAIN_OUT/serves.stderr.log"
+  bun /opt/gbrain/src/cli.ts access serves several --members "$HE_GBRAIN_MEMBERS" --yes --json > "$HE_GBRAIN_OUT/serves.json.tmp" 2>>"$serr" || true
+  if grep -qE 'gbrain_[0-9a-f]{20}' "$HE_GBRAIN_OUT/serves.json.tmp"; then rm -f "$HE_GBRAIN_OUT/serves.json.tmp"; log "gbrain access serves several printed a key value; receipt discarded"; echo "serves several: receipt carried a key value" >&2; exit 2; fi
+  [ "$(jq -r '.applied' "$HE_GBRAIN_OUT/serves.json.tmp" 2>/dev/null)" = true ] || { log "gbrain access serves several did not apply: $(jq -c '[(.members // [])[], (.rules // [])[], (.keys // [])[]] | map(select(.action == "blocked")) | .[0]' "$HE_GBRAIN_OUT/serves.json.tmp" 2>/dev/null || tail -1 "$serr")"; echo "gbrain access serves several did not apply; see $HE_GBRAIN_OUT/sidecar.log" >&2; exit 2; }
+  mv "$HE_GBRAIN_OUT/serves.json.tmp" "$HE_GBRAIN_OUT/serves.json"
+  since=$(date -u -d '15 days ago' +%Y-%m-%dT%H:%M:%SZ)
+  bun /opt/gbrain/src/cli.ts config set access.serves_since "$since" --force >>"$serr" 2>&1 || { log "gbrain config set access.serves_since failed (see serves.stderr.log)"; echo "gbrain config set access.serves_since failed" >&2; exit 2; }
+  state=$(bun /opt/gbrain/src/cli.ts access serves --json 2>>"$serr" || true)
+  jq -e --arg members "$HE_GBRAIN_MEMBERS" '.serves == "several" and .from == "config" and (.since | fromdateiso8601) < now and ((.enabled_members | sort) == ($members | split(",") | sort))' <<<"$state" >/dev/null 2>&1 \
+    || { log "gbrain access serves reports $(jq -c '{serves, from, since, enabled_members: (.enabled_members | length)}' <<<"$state" 2>/dev/null || echo 'no JSON'), not serves several from config with a past since and the $(tr ',' '\n' <<<"$HE_GBRAIN_MEMBERS" | grep -c .) members"; echo "the brain is not labelled serves several; see $HE_GBRAIN_OUT/sidecar.log" >&2; exit 2; }
+  if [ "$HE_GBRAIN_SCOPE" = member ]; then
+    echo '{}' > "$HE_GBRAIN_OUT/members.json.tmp"
+    for m in ${HE_GBRAIN_MEMBERS//,/ }; do
+      key=$(jq -r --arg m "$m" '.keys[] | select(.member == $m) | .path' "$HE_GBRAIN_OUT/serves.json")
+      [ -s "$key" ] || { log "no member key for $m at '$key'"; echo "serves several: no member key for $m" >&2; exit 2; }
+      jq --arg m "$m" --rawfile k "$key" '. + {($m): ($k | rtrimstr("\n"))}' "$HE_GBRAIN_OUT/members.json.tmp" > "$HE_GBRAIN_OUT/members.json.tmp2"
+      mv "$HE_GBRAIN_OUT/members.json.tmp2" "$HE_GBRAIN_OUT/members.json.tmp"
+    done
+    jq -n --arg split "$HE_GBRAIN_SPLIT" --rawfile pub "$HE_GBRAIN_OUT/token" --slurpfile members "$HE_GBRAIN_OUT/members.json.tmp" '{schema_version: 1, brain: "bot-visible", split: $split, members: $members[0], public_only: $pub}' > "$HE_GBRAIN_OUT/tokens.json.tmp"
+    rm -f "$HE_GBRAIN_OUT/members.json.tmp"
+    mv "$HE_GBRAIN_OUT/tokens.json.tmp" "$HE_GBRAIN_OUT/tokens.json"
+  fi
+  log "serves several: $(jq -r '"\(.members | length) members, \(.rules | length) people/<member>/ rules, \(.keys | length) member keys under \(.key_dir)"' "$HE_GBRAIN_OUT/serves.json"), access.serves_since $since (the unbound trial-$HE_TRIAL_ID token past the grace); receipt $HE_GBRAIN_OUT/serves.json$([ "$HE_GBRAIN_SCOPE" = member ] && echo ", member keys in $HE_GBRAIN_OUT/tokens.json")"
+fi
 if [ "$want_tokens" = 1 ]; then
   # The member tokens were minted at image build (gbrain/build-brain.ts); they are copied, mode 0600, for the tap only.
   cp "$src/tokens.json" "$HE_GBRAIN_OUT/tokens.json.tmp"

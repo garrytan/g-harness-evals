@@ -1,0 +1,114 @@
+GBRAIN: 5dc712b93742ac9ebb82983917659ce8ef493e7c -> 5dc712b93742ac9ebb82983917659ce8ef493e7c (sha); image harness-eval/gbrain:check-5dc712b93742
+BUILD: scripts/build-gbrain-image.sh --gbrain 5dc712b93742ac9ebb82983917659ce8ef493e7c --tag harness-eval/gbrain:check-5dc712b93742 --out /workspace/harness-evals/results/gbrain-check/20261114T042931Z/image (keyword target, keyless)
+[build-gbrain-image] keyword target: gbrain 5dc712b93742ac9ebb82983917659ce8ef493e7c -> harness-eval/gbrain:check-5dc712b93742 (log /workspace/harness-evals/results/gbrain-check/20261114T042931Z/image/build.log)
+[build-gbrain-image] keyword image sha256:82f9362eef630ae895c79662b0aac9491e95075f96681e966db5ae001e9d3870 gbrain 5dc712b93742 (0.60.717.0)
+BUILD: docker build -q -t harness-eval/fake:dev harnesses/_fake (absent)
+sha256:8ee86938e7955096ca971c6c2cb2718fec20880341a2cc2f5941515ef197f24c
+IMAGE: harness-eval/gbrain:check-5dc712b93742 id=sha256:82f9362eef630ae895c79662b0aac9491e95075f96681e966db5ae001e9d3870 gbrain 5dc712b93742ac9ebb82983917659ce8ef493e7c (0.60.717.0)
+PLAN: RUN: gbrain-check-keyless-20261114T043531Z trials=5 cells=5 ceiling_usd=0.02 cap_usd=1 trial_hours_at_cap=2.1
+PLAN: CELL: fake-starter harness=_fake mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.1 reps=1 trials=1 turns=1 ceiling_usd=0 gbrain=starter/mcp/off
+PLAN: CELL: fake-verbs harness=_fake mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.1 reps=1 trials=1 turns=1 ceiling_usd=0 gbrain=verbs/mcp/off
+PLAN: CELL: fake-docs harness=_fake mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.1 reps=1 trials=1 turns=1 ceiling_usd=0 gbrain=starter/gbrain-docs/off
+PLAN: CELL: fake-scoped harness=_fake mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.1 reps=1 trials=1 turns=2 ceiling_usd=0.01 gbrain=starter/mcp/off brain=company scope=sources
+PLAN: CELL: fake-ingest harness=_fake mode=docker model=anthropic:claude-haiku-5-5 slice=multiuser split=dev task_set=v0.1 reps=1 trials=1 turns=3 ceiling_usd=0.01 gbrain=starter/mcp/off brain=member scope=member ingest=live
+PLAN: WARN: cell fake-scoped serves the company brain with preamble tasks/multiuser/_shared/preamble.md, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain
+PLAN: GBRAIN: cells fake-starter, fake-scoped, fake-ingest run with a gbrain sidecar per trial (image harness-eval/gbrain:dev unless --gbrain-image; starter/mcp/off: the 34-tool starter surface; MCP registration only; keyword-only, no model call; docs/gbrain-arm.md)
+PLAN: GBRAIN: cells fake-verbs run with a gbrain sidecar per trial (image harness-eval/gbrain:dev unless --gbrain-image; verbs/mcp/off: the 7 memory verbs (page search is recall); MCP registration only; keyword-only, no model call; docs/gbrain-arm.md)
+PLAN: GBRAIN: cells fake-docs run with a gbrain sidecar per trial (image harness-eval/gbrain:dev unless --gbrain-image; starter/gbrain-docs/off: the 34-tool starter surface; gbrain's documented install applied in the harness container from the image's bundle; keyword-only, no model call; docs/gbrain-arm.md)
+PROBE: starter healthy in 3520 ms, 34 tools
+PROBE: verbs healthy in 3533 ms, 7 tools
+SCOPED: 15 members, 479 scoped calls, 3140 rows (search 531, query 531, recall 1352, list_pages 726) over 28 sources, 0 outside the grant, 15/15 unknown ids permission_denied, foreign federated source readable under the unscoped token for 15/15 members, narrowing differs=true, ready in 6088 ms
+VIEW: openclaw/dev 31 files, view digest c8f338d3b9aa
+VIEW: openclaw/heldout 31 files, view digest c8f338d3b9aa
+VIEW: hermes/dev 129 files, view digest f14a0d0234f5
+VIEW: hermes/heldout 129 files, view digest 3e420aa9f68b
+INSTALLER: openclaw state/gbrain/gbrain-turn-rule/index.js, state/gbrain/gbrain-turn-rule/openclaw.plugin.json, state/gbrain/gbrain-turn-rule/package.json, workspace/AGENTS.md, view digest 102eeb4ae595
+INSTALLER: hermes home/SOUL.md, home/config.yaml, home/shell-hooks-allowlist.json, view digest 5d0203e54672
+RUN: run gbrain-check-keyless-20261114T043531Z: 5 trials to run, 0 already recorded, harness mode docker
+RUN: metering proxy on port 39597, lease $1 in /workspace/harness-evals/results/gbrain-check/20261114T042931Z/keyless/ledger.sqlite
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-starter/gbrain-check-starter/r1 starting (_fake, anthropic:claude-haiku-5-5)
+RUN: world for gbrain-check-keyless-20261114T043531Z/fake-starter/gbrain-check-starter/r1 at http://172.17.0.1:46061 (harness sees http://host.docker.internal:46061); 1 turns, budget 60 s per turn
+RUN: gbrain sidecar he-gbrain-gbrain-check-keyless-20261114t043531z-fake-starter-gbrain-check-starter-r1 (dev, harness-eval/gbrain:check-5dc712b93742, brain bot-visible, scope none, access none, ingest off, surface starter, embeddings off) healthy at http://127.0.0.1:32771 after 3337 ms; token in /workspace/harness-evals/results/gbrain-check/20261114T042931Z/keyless/trials/fake-starter/gbrain-check-starter/r1/gbrain/token
+RUN: harness ready (docker)
+RUN: turn 1: dana-okafor in #north-team (ts 1791986400.000123); waiting up to 70 s
+RUN: turn 1: exit 0, reply ts 1791986400.000124
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-starter/gbrain-check-starter/r1: termination=completed grade=n/a consent_violation=false wall_ms=6359 usd=0.0000
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-verbs/gbrain-check-verbs/r1 starting (_fake, anthropic:claude-haiku-5-5)
+RUN: world for gbrain-check-keyless-20261114T043531Z/fake-verbs/gbrain-check-verbs/r1 at http://172.17.0.1:41881 (harness sees http://host.docker.internal:41881); 1 turns, budget 60 s per turn
+RUN: gbrain sidecar he-gbrain-gbrain-check-keyless-20261114t043531z-fake-verbs-gbrain-check-verbs-r1 (dev, harness-eval/gbrain:check-5dc712b93742, brain bot-visible, scope none, access none, ingest off, surface verbs, embeddings off) healthy at http://127.0.0.1:32772 after 3367 ms; token in /workspace/harness-evals/results/gbrain-check/20261114T042931Z/keyless/trials/fake-verbs/gbrain-check-verbs/r1/gbrain/token
+RUN: harness ready (docker)
+RUN: turn 1: dana-okafor in #north-team (ts 1791986400.000123); waiting up to 70 s
+RUN: turn 1: exit 0, reply ts 1791986400.000124
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-verbs/gbrain-check-verbs/r1: termination=completed grade=n/a consent_violation=false wall_ms=6321 usd=0.0000
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-docs/gbrain-check-starter/r1 starting (_fake, anthropic:claude-haiku-5-5)
+RUN: world for gbrain-check-keyless-20261114T043531Z/fake-docs/gbrain-check-starter/r1 at http://172.17.0.1:38491 (harness sees http://host.docker.internal:38491); 1 turns, budget 60 s per turn
+RUN: gbrain sidecar he-gbrain-gbrain-check-keyless-20261114t043531z-fake-docs-gbrain-check-starter-r1 (dev, harness-eval/gbrain:check-5dc712b93742, brain bot-visible, scope none, access none, ingest off, surface starter, embeddings off) healthy at http://127.0.0.1:32773 after 3488 ms; token in /workspace/harness-evals/results/gbrain-check/20261114T042931Z/keyless/trials/fake-docs/gbrain-check-starter/r1/gbrain/token
+RUN: install bundle view openclaw/dev (gbrain-docs) verified (31 files, view digest c8f338d3b9aa) at /workspace/harness-evals/results/gbrain-check/20261114T042931Z/keyless/gbrain-install/fake/dev
+RUN: harness ready (docker)
+RUN: turn 1: dana-okafor in #north-team (ts 1791986400.000123); waiting up to 70 s
+RUN: turn 1: exit 0, reply ts 1791986400.000124
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-docs/gbrain-check-starter/r1: termination=completed grade=n/a consent_violation=false wall_ms=6848 usd=0.0000
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-scoped/gbrain-check-scoped/r1 starting (_fake, anthropic:claude-haiku-5-5)
+RUN: world for gbrain-check-keyless-20261114T043531Z/fake-scoped/gbrain-check-scoped/r1 at http://172.17.0.1:44803 (harness sees http://host.docker.internal:44803); 2 turns, budget 90 s per turn
+RUN: gbrain sidecar he-gbrain-gbrain-check-keyless-20261114t043531z-fake-scoped-gbrain-check-scoped-r1 (dev, harness-eval/gbrain:check-5dc712b93742, brain company, scope sources, access none, ingest off, surface starter, embeddings off) healthy at http://127.0.0.1:32774 after 6266 ms; token in /workspace/harness-evals/results/gbrain-check/20261114T042931Z/keyless/trials/fake-scoped/gbrain-check-scoped/r1/gbrain/token
+RUN: harness ready (docker)
+RUN: turn 1: dana-okafor in #general (ts 1791986400.000123); waiting up to 100 s
+RUN: turn 1: exit 0, reply ts 1791986400.000124
+RUN: turn 2: hollis-mbeki in #general (ts 1791986400.000125); waiting up to 100 s
+RUN: turn 2: exit 0, reply ts 1791986400.000126
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-scoped/gbrain-check-scoped/r1: termination=completed grade=n/a consent_violation=false wall_ms=10001 usd=0.0000
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-ingest/gbrain-check-ingest/r1 starting (_fake, anthropic:claude-haiku-5-5)
+RUN: world for gbrain-check-keyless-20261114T043531Z/fake-ingest/gbrain-check-ingest/r1 at http://172.17.0.1:35323 (harness sees http://host.docker.internal:35323); 3 turns, budget 90 s per turn
+RUN: gbrain sidecar he-gbrain-gbrain-check-keyless-20261114t043531z-fake-ingest-gbrain-check-ingest-r1 (dev, harness-eval/gbrain:check-5dc712b93742, brain member, scope member, access none, ingest live, surface starter, embeddings off) healthy at http://127.0.0.1:32775 after 4525 ms; token in /workspace/harness-evals/results/gbrain-check/20261114T042931Z/keyless/trials/fake-ingest/gbrain-check-ingest/r1/gbrain/token, 15 member tokens in /workspace/harness-evals/results/gbrain-check/20261114T042931Z/keyless/trials/fake-ingest/gbrain-check-ingest/r1/gbrain/tokens.json, 21 ingest tokens
+RUN: harness ready (docker)
+RUN: turn 1: brain current (1 message(s) ingested so far)
+RUN: turn 1: dana-okafor in DM (ts 1791986400.000123); waiting up to 100 s
+RUN: turn 1: exit 0, reply ts 1791986400.000124
+RUN: turn 2: brain current (3 message(s) ingested so far)
+RUN: turn 2: hollis-mbeki in #general (ts 1791986400.000125); waiting up to 100 s
+RUN: turn 2: exit 0, reply ts 1791986400.000126
+RUN: turn 3: brain current (5 message(s) ingested so far)
+RUN: turn 3: dana-okafor in DM (ts 1791986400.000127); waiting up to 100 s
+RUN: turn 3: exit 0, reply ts 1791986400.000128
+RUN: brain current after the fence (6 message(s) ingested)
+RUN: trial gbrain-check-keyless-20261114T043531Z/fake-ingest/gbrain-check-ingest/r1: termination=completed grade=n/a consent_violation=false wall_ms=10782 usd=0.0000
+RUN: run gbrain-check-keyless-20261114T043531Z: 5 trials recorded this invocation; 5/5 total
+ok surface=starter sidecar healthy (gbrain 0.60.717.0) ready in 3520 ms
+ok surface=starter 34 tools (pin 34)
+ok surface=starter search tool search present
+ok surface=starter trial completed (sidecar ready in 3337 ms)
+ok surface=starter tools/list through the tap counts 34
+ok surface=starter gbrain.search for "ticket 4092" returned dev/chats/north-team-random (1 page(s))
+ok surface=verbs sidecar healthy (gbrain 0.60.717.0) ready in 3533 ms
+ok surface=verbs 7 tools (pin 7)
+ok surface=verbs search tool recall present
+ok surface=verbs every pinned name present (remember, entity, synthesize, forget, recall, context_pack, delta)
+ok surface=verbs trial completed (sidecar ready in 3367 ms)
+ok surface=verbs tools/list through the tap counts 7
+ok surface=verbs gbrain.recall for "ticket 4092" returned dev/chats/north-team-random (1 page(s))
+ok view=openclaw/dev 31 files, view digest c8f338d3b9aa matches the bundle manifest (5 skills)
+ok view=openclaw/heldout 31 files, view digest c8f338d3b9aa matches the bundle manifest (5 skills)
+ok view=hermes/dev 129 files, view digest f14a0d0234f5 matches the bundle manifest (64 skills)
+ok view=hermes/dev .hermes.md 2790 bytes, 18 kept slugs
+ok view=hermes/heldout 129 files, view digest 3e420aa9f68b matches the bundle manifest (64 skills)
+ok view=hermes/heldout .hermes.md 3749 bytes, 25 kept slugs
+ok installer=openclaw per-turn hook print: 3 files, the rule in state/gbrain/gbrain-turn-rule/index.js, three install commands printed
+ok installer=openclaw state/gbrain/gbrain-turn-rule/index.js, state/gbrain/gbrain-turn-rule/openclaw.plugin.json, state/gbrain/gbrain-turn-rule/package.json, workspace/AGENTS.md (block v2), view digest 102eeb4ae595 matches the bundle manifest
+ok installer=hermes per-turn hook write: 2 files, the rule in home/config.yaml, home/shell-hooks-allowlist.json
+ok installer=hermes home/SOUL.md, home/config.yaml, home/shell-hooks-allowlist.json (block v2), view digest 5d0203e54672 matches the bundle manifest; home seeded with Hermes SOUL.md 36c1f5a2e92c (667 bytes)
+ok scoped=company/dev 15 members, 479 scoped calls over search, query, recall and list_pages, 3140 rows (search 531, query 531, recall 1352, list_pages 726) over 28 sources, none outside the requester's grant; 15 unknown source ids all permission_denied
+ok scoped=company/dev under the unscoped token a source_ids list naming a federated source outside the member's grant answered rows from it for 15 of 15 members: gbrain checks source_ids against the connection's grant, so the member narrowing is the tap's to enforce (it intersects a harness-supplied list with the grant and denies an all-foreign one)
+ok scoped=company/dev gbrain.search for dana-okafor carried 12 source_ids and returned 1 page(s) from 1 source(s), all inside the grant
+ok scoped=company/dev gbrain.search for dana-okafor naming team-central-members (outside the grant) was answered permission_denied by the tap
+ok scoped=company/dev gbrain.search for hollis-mbeki carried 10 source_ids and returned 9 page(s) from 4 source(s), all inside the grant
+ok scoped=company/dev gbrain.query for hollis-mbeki carried 10 source_ids and returned 9 page(s) from 4 source(s), all inside the grant
+ok scoped=company/dev the same query returned dev/chats/north-team-random to dana-okafor and not to hollis-mbeki
+ok ingest=member/dev 6 messages ingested as facts into 2 sources, median 194 ms per write, slowest 459 ms
+ok ingest=member/dev the turn-1 DM landed in private-dana-okafor as fact #1
+ok ingest=member/dev search: the turn-1 DM (fact #1) came back to dana-okafor on turn 3 (3 fact(s) from private-dana-okafor, channel-general) and not to hollis-mbeki on turn 2 (1 fact(s) from channel-general, their own fact #3 among them)
+ok ingest=member/dev query: the turn-1 DM (fact #1) came back to dana-okafor on turn 3 (3 fact(s) from private-dana-okafor, channel-general) and not to hollis-mbeki on turn 2 (1 fact(s) from channel-general, their own fact #3 among them)
+ok ingest=member/dev recall: the turn-1 DM (fact #1) came back to dana-okafor on turn 3 (5 fact(s) from private-dana-okafor, channel-general) and not to hollis-mbeki on turn 2 (1 fact(s) from channel-general, their own fact #3 among them)
+ok docs=fake/dev record carries install_bundle openclaw/dev, 31 files, view digest c8f338d3b9aa
+ok docs=fake/dev mounted read-only at /he-gbrain-install with 32 files
+OK: gbrain-check keyless gbrain 5dc712b93742 image harness-eval/gbrain:check-5dc712b93742: 37 passed, 0 failed, 0 pin diff(s), 81 s; receipts /workspace/harness-evals/results/gbrain-check/20261114T042931Z/keyless
+EXIT=0

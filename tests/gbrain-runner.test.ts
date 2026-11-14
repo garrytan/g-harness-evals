@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import type { GradeResult, TrialEvidence, TurnWindow } from '../runner/contracts.ts';
+import type { GbrainCellConfig, GradeResult, TrialEvidence, TurnWindow } from '../runner/contracts.ts';
 import { buildManifest, embeddingAllowanceUsd, loadPrereg, renderPlan, resolveGbrain, type Cell, type Prereg } from '../runner/run.ts';
 import { DEFAULT_GBRAIN_IMAGE, checkCompanyTokens, checkIngestTokens, gbrainImagePresent, probeCompanyBrain } from '../runner/trial/gbrain.ts';
 import { companyPageList } from '../gbrain/build-brain.ts';
@@ -118,7 +118,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, the host-harness pilot and the Claude Code and Codex installer run carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, the host-harness pilot, the Claude Code and Codex installer run and the shared-bot scope run carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -279,6 +279,23 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         if (!c.gbrain) expect(c.preamble).toBeUndefined();
         else if (c.gbrain.brain === 'company') { expect(c.gbrain).toEqual({ surface: 'starter', brain: 'company', scope: 'member-sources' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md'); }
         else { expect(c.gbrain).toEqual({ surface: 'starter', brain: 'member', scope: 'member', ingest: 'live' }); expect(['tasks/multiuser/_shared/preamble.gbrain-memory.md', 'tasks/multiuser/_shared/preamble.md']).toContain(c.preamble!); }
+      }
+      else if (p.run_id === 'shared-bot-scope-2026-11') {
+        // internal-task-a (internal-task-b): gbrain's two shared-bot fixes at 5dc712b9 on the v0.3.1 dev split, three repetitions, cap $325. Fix 2: OpenClaw and Hermes on Opus 5.5 and GPT-6.1 Sol,
+        // the company brain open and refused (serves several) with the company preamble, and none. Fix 1: Claude Code on Opus and Codex on Sol, the installer open, member and labelled, and none, on 17 tasks.
+        expect(c.task_set).toBe('v0.3.1'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(3); expect(p.spend_cap_usd).toBe(325); expect(p.gbrain_commit).toBe('5dc712b93742ac9ebb82983917659ce8ef493e7c');
+        expect(p.cells).toHaveLength(20); expect(buildManifest(p, sha256, '2026-11-14T00:00:00Z').trials).toHaveLength(1128);
+        expect(['anthropic:claude-opus-5-5', 'openai:gpt-6.1-sol']).toContain(c.model);
+        const fix1 = c.harness === 'claude-code' || c.harness === 'codex';
+        if (fix1) expect(c.tasks).toHaveLength(17); else expect(c.tasks).toBeUndefined();
+        if (!c.gbrain) { expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.md'); continue; }
+        if (fix1) {
+          expect([{ surface: 'starter', install: 'gbrain-installer' }, { surface: 'starter', install: 'gbrain-installer', scope: 'member', serves: 'several' }, { surface: 'starter', install: 'gbrain-installer', scope: 'member', serves: 'several', labels: 'readers' }] as GbrainCellConfig[]).toContainEqual(c.gbrain);
+          expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.md');
+        } else {
+          expect([{ surface: 'starter', brain: 'company' }, { surface: 'starter', brain: 'company', serves: 'several' }] as GbrainCellConfig[]).toContainEqual(c.gbrain);
+          expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md');
+        }
       }
       else expect(c.gbrain).toBeUndefined();
     }

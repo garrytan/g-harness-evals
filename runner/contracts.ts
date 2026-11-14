@@ -364,6 +364,18 @@ export interface GbrainCellConfig {
    *  remember keeps the member's token. Needs brain "member" and scope "member" or "member-sources", runs in docker mode
    *  only and not with access "rules"; with ingest "off" the sidecar still copies the ingest tokens out, for the tap alone. */
   channel_remember?: 'member' | 'conversation';
+  /** internal-task addition (gbrain v0.60.717.0, the shared-bot fixes): "several" labels the brain, after the trial's unbound token is
+   *  minted, with gbrain access serves several for every token member of the split, and moves access.serves_since 15 days back,
+   *  so the unbound token is past gbrain's grace. Two shapes only: brain "company" with no scope, where the tap keeps the unbound
+   *  token and gbrain refuses every read (requester_scope_required); and the bot-visible brain with install "gbrain-installer"
+   *  and scope "member", where the tap presents the asking member's own key from that labelling. No ingestion, access rules,
+   *  channel_remember or embeddings; preflight checks the refusal or each key's member binding per split (HE-GBRAIN-002). */
+  serves?: 'several';
+  /** internal-task addition: "readers" serves the dev bot-visible brain built with each page's world readers (the token members only)
+   *  in its frontmatter as readable_by (gbrain/build-brain.ts --labels readers), so each member's key reads only that member's
+   *  pages. Needs serves "several" on the member-key shape (bot-visible brain, scope "member") and split dev; preflight lists
+   *  every page under each member key (HE-GBRAIN-002). */
+  labels?: 'readers';
 }
 
 /** The install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
@@ -459,6 +471,10 @@ export interface TrialGbrain {
   ingested?: { ok: number; skipped: number; failed: number };
   /** internal-task: present only when the cell set channel_remember "conversation". */
   channel_remember?: 'conversation';
+  /** internal-task: present only when the sidecar labelled the brain as serving several people. */
+  serves?: 'several';
+  /** internal-task: present only when the sidecar served the reader-labelled brain. */
+  labels?: 'readers';
   image_id?: string;
   /** Milliseconds from docker run to a healthy sidecar with a token on disk. */
   sidecar_ready_ms: number;

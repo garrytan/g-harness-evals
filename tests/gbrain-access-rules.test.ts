@@ -86,14 +86,14 @@ describe('build-brain --access rules (gbrain stand-in)', () => {
   test('every token member is added as a member and its token bound with --member and no --sources; public-only stays unbound', () => {
     expect(acl.calls.filter((c) => c.argv[0] === 'access' && c.argv[1] === 'member').map((c) => c.argv)).toEqual(members.map((m) => ['access', 'member', 'add', m, '--json']));
     const rescopes = acl.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'rescope').map((c) => c.argv);
-    const memberRescopes = rescopes.filter((r) => r[3]!.startsWith('member-'));
-    expect(memberRescopes).toEqual(members.map((m) => ['auth', 'rescope', '--token', `member-${m}`, '--member', m]));
+    const memberRescopes = rescopes.filter((r) => r[3]!.startsWith('he-member-'));
+    expect(memberRescopes).toEqual(members.map((m) => ['auth', 'rescope', '--token', `he-member-${m}`, '--member', m]));
     expect(memberRescopes.some((r) => r.includes('--sources'))).toBe(false);
     expect(rescopes.some((r) => r.includes('public-only'))).toBe(false);
     expect(acl.calls.some((c) => c.argv.join(' ') === 'auth create public-only')).toBe(true);
     const creates = acl.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'create').map((c) => c.argv);
-    expect(creates.filter((a) => a[2]!.startsWith('member-'))).toEqual(members.map((m) => ['auth', 'create', `member-${m}`, '--member', m]));
-    expect(creates.filter((a) => !a[2]!.startsWith('member-')).every((a) => a.length === 3)).toBe(true);
+    expect(creates.filter((a) => a[2]!.startsWith('he-member-'))).toEqual(members.map((m) => ['auth', 'create', `he-member-${m}`, '--member', m]));
+    expect(creates.filter((a) => !a[2]!.startsWith('he-member-')).every((a) => a.length === 3)).toBe(true);
     // the per-source ingest tokens keep their one write source
     expect(rescopes.filter((r) => r[3]!.startsWith('ingest-')).every((r) => r[4] === '--sources')).toBe(true);
   });
@@ -112,7 +112,7 @@ describe('build-brain --access rules (gbrain stand-in)', () => {
     expect(acl.manifest.access).toBe('rules');
     expect(acl.manifest.rules!.map((r) => r.source)).toEqual(sources.filter((s) => s.id !== 'public').map((s) => s.id));
     expect(acl.manifest.rules!.find((r) => r.source === 'team-central-members')).toMatchObject({ prefix: 'dev/', rule_id: 'dev', pages_restamped: 4 });
-    expect(acl.manifest.bindings).toEqual([...members.map((m) => ({ token_name: `member-${m}`, member: m })), { token_name: 'public-only', member: null }]);
+    expect(acl.manifest.bindings).toEqual([...members.map((m) => ({ token_name: `he-member-${m}`, member: m })), { token_name: 'public-only', member: null }]);
     expect(acl.manifest.gbrain_version).toBe('0.60.554.0');
     expect(JSON.stringify(acl.manifest)).not.toMatch(/gbrain_[0-9a-f]{20}/);
     expect(statSync(join(acl.out, 'tokens.json')).mode & 0o777).toBe(0o600);
@@ -124,7 +124,7 @@ describe('build-brain --access rules (gbrain stand-in)', () => {
     const plain = build('plain');
     expect(plain.calls.some((c) => c.argv[0] === 'access')).toBe(false);
     expect(plain.manifest.access).toBeUndefined();
-    const memberRescopes = plain.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'rescope' && c.argv[3]!.startsWith('member-'));
+    const memberRescopes = plain.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'rescope' && c.argv[3]!.startsWith('he-member-'));
     expect(memberRescopes.length).toBe(members.length);
     expect(memberRescopes.every((c) => c.argv[4] === '--sources' && !c.argv.includes('--member'))).toBe(true);
     expect(plain.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'create').every((c) => c.argv.length === 3)).toBe(true);
@@ -133,7 +133,7 @@ describe('build-brain --access rules (gbrain stand-in)', () => {
   test('against a gbrain that refuses unbound tokens (internal-task), public-only and the ingest tokens are created --reads-unscoped --yes; members stay bound', () => {
     const strict = build('acl-gst363', 'rules', 'gst363');
     const creates = strict.calls.filter((c) => c.argv[0] === 'auth' && c.argv[1] === 'create').map((c) => c.argv);
-    expect(creates.filter((a) => a[2]!.startsWith('member-'))).toEqual(members.map((m) => ['auth', 'create', `member-${m}`, '--member', m]));
+    expect(creates.filter((a) => a[2]!.startsWith('he-member-'))).toEqual(members.map((m) => ['auth', 'create', `he-member-${m}`, '--member', m]));
     expect(creates.filter((a) => a[2] === 'public-only')).toEqual([['auth', 'create', 'public-only'], ['auth', 'create', 'public-only', '--reads-unscoped', '--yes']]);
     const ingest = creates.filter((a) => a[2]!.startsWith('ingest-'));
     expect(ingest.length).toBeGreaterThan(0);
@@ -196,7 +196,7 @@ describe('access-rules preflight: fails closed on (a), (b) and (c)', () => {
   /** What a correct brain answers at gbrain 0.60.554.0: who-can-read blind to folder rules, the rules and remote reads right. */
   const good = (): AccessRulesEvidence => ({
     image_id: 'sha256:fixture', ready_ms: 1,
-    checks: [...expected.token_members.map((m) => ({ token: `member-${m}`, member: m, status: 'enabled', verdict: 'reads_as_member' })), { token: 'public-only', member: null, status: null, verdict: 'unbound' }],
+    checks: [...expected.token_members.map((m) => ({ token: `he-member-${m}`, member: m, status: 'enabled', verdict: 'reads_as_member' })), { token: 'public-only', member: null, status: null, verdict: 'unbound' }],
     rules: expected.sources.map((s) => ({ source: s.id, rules: s.id === 'public' ? [] : [{ id: 'dev', prefix: 'dev/', readers: s.readers }], held: 0, pending: 0, invalid: 0 })),
     who: expected.pages.map((p) => ({ slug: p.page_slug, source_id: p.source, readers: null, members: 'every_source_reader' as const })),
     tap: ['public-only', ...expected.token_members].flatMap((grant) => [

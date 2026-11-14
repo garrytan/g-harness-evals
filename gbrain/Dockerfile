@@ -11,6 +11,7 @@
 # and /brains/dev-member and /brains/heldout-member, each the bot-visible slice in one federated source per reader set with an
 # empty private source per member, member tokens and one ingest token per source for the world's live ingestion (internal-task),
 # and /brains/dev-member-acl, the dev member brain with gbrain folder rules and member-bound tokens in place of source grants (internal-task),
+# and /brains/dev-labelled, the dev bot-visible brain with each page's readers in its frontmatter as readable_by (internal-task),
 # every brain with a manifest.json listing its pages and their sha256. gbrain records absolute paths inside a brain, so
 # each brain is built at /brain in its own stage and the entrypoint copies the trial's brain back to /brain before serving.
 # A copied source checkout is a new directory, so the entrypoint re-stamps each one with gbrain's relocated-root
@@ -193,6 +194,15 @@ RUN if env -i PATH="$PATH" HOME=/tmp bun /opt/gbrain/src/cli.ts access --help 2>
       mkdir -p /brain && printf '{"access":"rules","unavailable":"gbrain %s has no access command"}\n' "$GBRAIN_COMMIT" > /brain/unavailable.json; \
     fi
 
+# internal-task: the dev bot-visible brain with each page's world readers (token members only) in its frontmatter as readable_by
+# (build-brain.ts --labels readers), for the serves-several member-key arm. Dev only.
+FROM builder AS brain-dev-labelled
+ARG GBRAIN_COMMIT
+ARG CORPUS_COMMIT
+RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --labels readers \
+      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
+
 # internal-task-a: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless. internal-task-b: the installer
 # section runs gbrain setup <harness> --instructions-only; for Hermes the build HERMES_HOME is seeded first with Hermes's own
 # SOUL.md at the pinned Hermes commit (harnesses/hermes/pin.json soul_md: what Hermes's first run writes into HERMES_HOME, which
@@ -229,6 +239,7 @@ COPY --from=brain-heldout-company /brain /brains/heldout-company
 COPY --from=brain-dev-member /brain /brains/dev-member
 COPY --from=brain-heldout-member /brain /brains/heldout-member
 COPY --from=brain-dev-member-acl /brain /brains/dev-member-acl
+COPY --from=brain-dev-labelled /brain /brains/dev-labelled
 COPY --from=install /install /install
 # /brain is the per-trial working copy; the container runs as the calling user, so it must be writable by anyone.
 RUN chmod -R a+rX /brains /install && mkdir -m 0777 /brain && chmod 0555 /opt/sidecar/gbrain/entrypoint.sh /opt/sidecar/gbrain/export-install.sh

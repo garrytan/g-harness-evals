@@ -44,6 +44,11 @@
 // public source; gbrain access member add <id> per token member; each member token rescoped with --member <id> and no
 // --sources, so the rules are the only read gate; the public-only token created and left bound to nobody, so it reads only
 // pages under no rule. The manifest records access "rules", every rule and every binding; the tokens stay in tokens.json.
+//
+// internal-task (gbrain v0.60.717.0, the shared-bot fixes): --labels readers, bot-visible only, writes each staged page's readers among
+// the token members (labelledPageList: a channel page its channel's employees and agent, a public file every one of them) into
+// its frontmatter as readable_by before import, so a member-bound key reads only the pages its member may read in the world.
+// The manifest records labels "readers" and each page's readers; the brain builds at /brains/<split>-labelled by default.
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -65,6 +70,8 @@ export interface BrainPage {
   world_id: string;
   world_name: string;
   visibility: 'channel' | 'public';
+  /** internal-task: present only in a brain built with --labels readers: the token members written into the page's readable_by. */
+  readers?: string[];
 }
 
 /** How an embedded brain was built. The usage summary is added by scripts/build-gbrain-image.sh from the proxy's ledger. */
@@ -89,6 +96,8 @@ export interface BrainManifest {
   built_at: string;
   /** 'off' (keyword-only, the gbrain arm) or the embedding record. */
   embeddings: 'off' | BrainEmbeddings;
+  /** internal-task: present only when every page carries its world readers in its frontmatter (--labels readers). */
+  labels?: 'readers';
   pages: BrainPage[];
   counts: { channel_pages: number; public_files: number; total: number };
   import: Record<string, unknown>;
@@ -170,7 +179,8 @@ export interface AccessBinding { token_name: string; member: string | null }
  *  evaluator-owned <trial dir>/gbrain/ and never committed (the results .gitignore excludes that directory). */
 export interface CompanyTokens {
   schema_version: 1;
-  brain: ScopedBrainKind;
+  /** bot-visible only in the copy a serves-several sidecar writes from gbrain's member keys (internal-task). */
+  brain: ScopedBrainKind | 'bot-visible';
   split: 'dev' | 'heldout';
   /** member id -> bearer token; each granted the sources whose readers include the member, writing to private-<member>. */
   members: Record<string, string>;
@@ -324,12 +334,16 @@ export function tokenMembers(world: World, split: 'dev' | 'heldout'): Member[] {
   return loadedMembers(world, split).filter((m) => m.kind === 'employee' || m.kind === 'agent');
 }
 
+/** The name of a member's token in a company or member brain. gbrain's own `access serves several` names the key it mints for a
+ *  member member-<id> and refuses to run while a token of that name exists, so ours carry a prefix gbrain never uses. */
+export const memberTokenName = (member: string): string => `he-member-${member}`;
+
 /** The grants: for each token member every source whose readers include them, private-<member> first as the write source. */
 export function companyGrants(world: World, split: 'dev' | 'heldout', sources: CompanySource[]): CompanyGrant[] {
   const grants: CompanyGrant[] = tokenMembers(world, split).map((m) => {
     const write = `private-${m.id}`;
     const reads = sources.filter((s) => s.id !== write && s.readers.includes(m.id)).map((s) => s.id).sort();
-    return { member: m.id, token_name: `member-${m.id}`, write, sources: [write, ...reads] };
+    return { member: m.id, token_name: memberTokenName(m.id), write, sources: [write, ...reads] };
   });
   grants.push({ member: 'public-only', token_name: 'public-only', write: 'public', sources: ['public'] });
   return grants;
@@ -349,6 +363,13 @@ export function pageList(world: World, split: 'dev' | 'heldout'): ListedPage[] {
     pages.push({ page_slug: `${split}/${f.slug}`, slug: f.slug, kind: 'file', world_id: f.id, world_name: f.title, visibility: 'public' });
   }
   return pages;
+}
+
+/** internal-task: the bot-visible slice with each page's readers among the token members (employees and the agent; guests are
+ *  dropped): a channel page its channel's token members, a public file every token member. */
+export function labelledPageList(world: World, split: 'dev' | 'heldout'): Array<ListedPage & { readers: string[] }> {
+  const members = tokenMembers(world, split).map((m) => m.id);
+  return pageList(world, split).map((p) => ({ ...p, readers: p.kind === 'channel' ? sortedUnique(world.channels.find((c) => c.id === p.world_id)!.members.filter((id) => members.includes(id))) : sortedUnique(members) }));
 }
 
 /** Find a page in the corpus: under its own split first, then the other split for a "both" record. */
@@ -407,6 +428,8 @@ export interface BuildOptions {
   embeddings?: string;
   /** internal-task: "rules" gates reads with folder rules and member-bound tokens instead of per-token source grants; member or company only. */
   access?: 'rules';
+  /** internal-task: "readers" writes each page's readers (labelledPageList) into its frontmatter as readable_by; bot-visible only. */
+  labels?: 'readers';
   log?: (line: string) => void;
 }
 
@@ -416,12 +439,13 @@ export const EMBEDDING_MODELS = ['openai:text-embedding-3-small'] as const;
 export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifest {
   if (o.access !== undefined && o.access !== 'rules') throw new Error(`--access must be "rules" (got ${String(o.access)})`);
   if (o.access && o.brain !== 'member' && o.brain !== 'company') throw new Error(`--access rules needs --brain member or company; the ${o.brain ?? 'bot-visible'} brain has no reader sets to gate`);
+  if (o.labels !== undefined && (o.labels !== 'readers' || (o.brain ?? 'bot-visible') !== 'bot-visible' || o.embeddings)) throw new Error(`--labels must be "readers" on the keyword bot-visible brain (got --labels ${String(o.labels)} --brain ${o.brain ?? 'bot-visible'}${o.embeddings ? ` --embeddings ${o.embeddings}` : ''})`);
   if ((o.brain === 'company' || o.brain === 'member') && o.embeddings) throw new Error(`--embeddings is for bot-visible brains only; the ${o.brain} brains are keyword-only`);
   if (o.brain === 'company' || o.brain === 'member') return buildScopedBrain(o, o.brain);
   if (o.embeddings && !(EMBEDDING_MODELS as readonly string[]).includes(o.embeddings)) throw new Error(`--embeddings must be one of ${EMBEDDING_MODELS.join(', ')} (got ${o.embeddings})`);
   const log = o.log ?? ((l) => console.error(l));
   const world = JSON.parse(readFileSync(o.worldPath, 'utf8')) as World;
-  const listed = pageList(world, o.split);
+  const listed: Array<ListedPage & { readers?: string[] }> = o.labels ? labelledPageList(world, o.split) : pageList(world, o.split);
   if (!listed.length) throw new Error(`no bot-visible pages for split ${o.split} in ${o.worldPath}`);
 
   rmSync(o.staging, { recursive: true, force: true });
@@ -434,7 +458,12 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
     const body = readFileSync(src);
     const dest = join(o.staging, o.split, `${p.slug}.md`);
     mkdirSync(dirname(dest), { recursive: true });
-    copyFileSync(src, dest);
+    if (p.readers) {
+      const text = body.toString('utf8');
+      const end = text.indexOf('\n---', 3);
+      if (!text.startsWith('---\n') || end < 0 || /^readable_by:/m.test(text.slice(0, end))) throw new Error(`${p.slug}: --labels readers needs frontmatter without readable_by`);
+      writeFileSync(dest, `---\nreadable_by: [${p.readers.join(', ')}]\n${text.slice(4)}`);
+    } else copyFileSync(src, dest);
     pages.push({ ...p, source_path: `${o.split}/${p.slug}.md`, sha256: createHash('sha256').update(body).digest('hex'), bytes: body.length });
   }
   if (missing.length) throw new Error(`${missing.length} listed page(s) missing from ${o.corpus}: ${missing.join(', ')}`);
@@ -491,6 +520,7 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
     world_id: world.world_id,
     built_at: new Date().toISOString(),
     embeddings,
+    ...(o.labels ? { labels: o.labels } : {}),
     pages,
     counts: { channel_pages: pages.filter((p) => p.kind === 'channel').length, public_files: pages.filter((p) => p.kind === 'file').length, total: pages.length },
     import: summary,
@@ -662,8 +692,9 @@ if (import.meta.main) {
   const split = arg('split');
   const brain = arg('brain', 'bot-visible');
   const access = arg('access');
-  if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company' && brain !== 'member') || (access !== undefined && access !== 'rules')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company|member] [--access rules] [--embeddings openai:text-embedding-3-small] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
-  const home = brain === 'bot-visible' ? split : `${split}-${brain}${access ? '-acl' : ''}`;
+  const labels = arg('labels');
+  if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company' && brain !== 'member') || (access !== undefined && access !== 'rules') || (labels !== undefined && labels !== 'readers')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company|member] [--access rules] [--labels readers] [--embeddings openai:text-embedding-3-small] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
+  const home = brain === 'bot-visible' ? `${split}${labels ? '-labelled' : ''}` : `${split}-${brain}${access ? '-acl' : ''}`;
   const pin = JSON.parse(readFileSync(join(import.meta.dir, 'pin.json'), 'utf8')) as { gbrain: { commit: string }; corpus: { repo: string; commit: string } };
   try {
     const m = buildBrain({
@@ -674,6 +705,7 @@ if (import.meta.main) {
       staging: resolve(arg('staging', join('/tmp', `gbrain-staging-${home}`))!),
       brain,
       ...(access ? { access } : {}),
+      ...(labels ? { labels: 'readers' as const } : {}),
       embeddings: arg('embeddings'),
       gbrain: (arg('gbrain', 'gbrain')!).split(' ').filter(Boolean),
       commit: arg('commit', pin.gbrain.commit)!,

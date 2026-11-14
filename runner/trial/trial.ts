@@ -30,6 +30,7 @@ import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
 import { type InternalNetwork, startComposeHarness, startDockerHarness } from './docker.ts';
 import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, checkCompanyTokens, checkIngestTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
 import { GBRAIN_WRITE_TOOLS, type GbrainUpstream } from '../../world/services/gbrain-tap.ts';
+import { tokenMembers } from '../../gbrain/build-brain.ts';
 import { isQmMemoryProvider, memoryProviderWiring, type QmProviderBlock, type QmProviderWiring } from '../../harnesses/qm/memory-provider.ts';
 import { canReadFile } from '../grade/predicates.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
@@ -240,9 +241,10 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       // The sidecar slot exists only while an embedded brain needs it; a keyword brain makes no provider call and gets no slot.
       if (gbrain.embeddings !== 'off') await proxy!.bind(gbrainSlot, key, gbrainToken, [gbrain.embeddings]);
       sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest, ...(gbrain.access ? { access: gbrain.access } : {}), ...(gbrain.channel_remember ? { channelRemember: gbrain.channel_remember } : {}),
+        ...(gbrain.serves ? { serves: gbrain.serves, servesMembers: tokenMembers(world.world, cell.split).map((m) => m.id) } : {}), ...(gbrain.labels ? { labels: gbrain.labels } : {}),
         surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}), ...(network ? { network } : {}), log });
       // Under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
-      if (sidecar.scope === 'member' || sidecar.scope === 'member-sources') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'));
+      if (sidecar.scope === 'member' || sidecar.scope === 'member-sources') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'), sidecar.brain === 'bot-visible' ? ['bot-visible'] : undefined);
       // gbrain#7481: under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'sources' || sidecar.scope === 'member-sources') checkCompanyGrants(JSON.parse(readFileSync(join(dirs.root, 'gbrain', 'manifest.json'), 'utf8')), cell.split, task.actors, join(dirs.root, 'gbrain', 'manifest.json'));
       // Under live ingestion every actor's DM source and every channel source needs an ingest token (HE-GBRAIN-004).
@@ -485,6 +487,7 @@ export function gbrainSummary(config: ResolvedGbrain | GbrainCellSurface, sideca
     install: resolved.install, embeddings: resolved.embeddings,
     ...(resolved.ingest !== 'off' ? { ingest: resolved.ingest, ingested: ingestedCounts(ingests) } : {}),
     ...(resolved.channel_remember ? { channel_remember: resolved.channel_remember } : {}),
+    ...(resolved.serves ? { serves: resolved.serves } : {}), ...(resolved.labels ? { labels: resolved.labels } : {}),
     events: { ...count(mine.filter((e) => e.caller !== 'provider')), ...(provider.length ? { provider: count(provider) } : {}) },
   };
 }

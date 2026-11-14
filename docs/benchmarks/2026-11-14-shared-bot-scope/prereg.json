@@ -1,0 +1,549 @@
+{
+  "schema_version": 1,
+  "run_id": "shared-bot-scope-2026-11",
+  "question": "When several people talk to one bot that shares a gbrain brain, do gbrain v0.60.717.0's two fixes (5dc712b93742ac9ebb82983917659ce8ef493e7c) stop other people's pages from reaching the bot's gbrain reads, and do they cost right answers? Fix 2, the refusal: on the company brain labelled as serving several people (gbrain access serves several), the bot's one connection bound to nobody, past its 14-day grace, against today's open default and against no brain, on OpenClaw and Hermes with Opus 5.5 and GPT-6.1 Sol, all 20 v0.3.1 dev tasks, 3 repetitions. Fix 1, each person their own scope: the bot-visible brain labelled the same way with each asker's own member key presented, once with the pages carrying no reader labels (what the fix alone does on a bulk-loaded brain) and once with each page's readers written as readable_by, against the gbrain installer as it is today and against no brain, on Claude Code with Opus 5.5 and Codex with GPT-6.1 Sol, the 17 tasks of installer-cc-codex-2026-11, 3 repetitions. Main measure: the share of trials in which any gbrain read returned a page or fact outside the asking person's readers. Check: answers right under the grader's rule with the scope check left out. Paired by task and repetition within each harness and model, task-clustered 95% intervals, pooled per fix. Dev, public tasks.",
+  "tasks": {},
+  "wall_clock_s": {
+    "multiuser": 1500
+  },
+  "spend_cap_usd": 325,
+  "drop_order": [],
+  "minimum_v01": [
+    "openclaw-opus-gbrain-open-mu-v031-dev",
+    "openclaw-opus-gbrain-refused-mu-v031-dev",
+    "openclaw-opus-none-mu-v031-dev",
+    "hermes-opus-gbrain-open-mu-v031-dev",
+    "hermes-opus-gbrain-refused-mu-v031-dev",
+    "hermes-opus-none-mu-v031-dev",
+    "openclaw-sol-gbrain-open-mu-v031-dev",
+    "openclaw-sol-gbrain-refused-mu-v031-dev",
+    "openclaw-sol-none-mu-v031-dev",
+    "hermes-sol-gbrain-open-mu-v031-dev",
+    "hermes-sol-gbrain-refused-mu-v031-dev",
+    "hermes-sol-none-mu-v031-dev",
+    "claude-code-opus-gbrain-installer-open-mu-v031-dev",
+    "claude-code-opus-gbrain-installer-member-mu-v031-dev",
+    "claude-code-opus-gbrain-installer-labelled-mu-v031-dev",
+    "claude-code-opus-none-mu-v031-dev",
+    "codex-sol-gbrain-installer-open-mu-v031-dev",
+    "codex-sol-gbrain-installer-member-mu-v031-dev",
+    "codex-sol-gbrain-installer-labelled-mu-v031-dev",
+    "codex-sol-none-mu-v031-dev"
+  ],
+  "gbrain_commit": "5dc712b93742ac9ebb82983917659ce8ef493e7c",
+  "gbrain_surface_tools": {
+    "starter": 34
+  },
+  "cells": [
+    {
+      "id": "openclaw-opus-gbrain-open-mu-v031-dev",
+      "harness": "openclaw",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "openclaw-opus-gbrain-refused-mu-v031-dev",
+      "harness": "openclaw",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company",
+        "serves": "several"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "openclaw-opus-none-mu-v031-dev",
+      "harness": "openclaw",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 20000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "hermes-opus-gbrain-open-mu-v031-dev",
+      "harness": "hermes",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "hermes-opus-gbrain-refused-mu-v031-dev",
+      "harness": "hermes",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company",
+        "serves": "several"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "hermes-opus-none-mu-v031-dev",
+      "harness": "hermes",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 20000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "openclaw-sol-gbrain-open-mu-v031-dev",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "openclaw-sol-gbrain-refused-mu-v031-dev",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company",
+        "serves": "several"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "openclaw-sol-none-mu-v031-dev",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 20000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "hermes-sol-gbrain-open-mu-v031-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "hermes-sol-gbrain-refused-mu-v031-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "company",
+        "serves": "several"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.gbrain-company.md"
+    },
+    {
+      "id": "hermes-sol-none-mu-v031-dev",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 20000,
+        "output_tokens": 2000
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "claude-code-opus-gbrain-installer-open-mu-v031-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "tasks": [
+        "si-01-marrow-agrisupply-site",
+        "si-02-tansley-parcel-site",
+        "si-03-quarrendon-seat-count",
+        "si-04-marrow-fieldworks-ticket",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "sy-01-quarrendon-ticket-numbers",
+        "sy-02-marrow-agrisupply-sites",
+        "sy-03-marrow-fieldworks-ticket-numbers",
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "ar-01-thornbury-rate-hollis",
+        "ar-02-quarrendon-rate-hollis",
+        "ar-03-tansley-parcel-rate-tobias",
+        "cr-01-marrow-agrisupply-site-retraction"
+      ],
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "claude-code-opus-gbrain-installer-member-mu-v031-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer",
+        "scope": "member",
+        "serves": "several"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "tasks": [
+        "si-01-marrow-agrisupply-site",
+        "si-02-tansley-parcel-site",
+        "si-03-quarrendon-seat-count",
+        "si-04-marrow-fieldworks-ticket",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "sy-01-quarrendon-ticket-numbers",
+        "sy-02-marrow-agrisupply-sites",
+        "sy-03-marrow-fieldworks-ticket-numbers",
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "ar-01-thornbury-rate-hollis",
+        "ar-02-quarrendon-rate-hollis",
+        "ar-03-tansley-parcel-rate-tobias",
+        "cr-01-marrow-agrisupply-site-retraction"
+      ],
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "claude-code-opus-gbrain-installer-labelled-mu-v031-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer",
+        "scope": "member",
+        "serves": "several",
+        "labels": "readers"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "tasks": [
+        "si-01-marrow-agrisupply-site",
+        "si-02-tansley-parcel-site",
+        "si-03-quarrendon-seat-count",
+        "si-04-marrow-fieldworks-ticket",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "sy-01-quarrendon-ticket-numbers",
+        "sy-02-marrow-agrisupply-sites",
+        "sy-03-marrow-fieldworks-ticket-numbers",
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "ar-01-thornbury-rate-hollis",
+        "ar-02-quarrendon-rate-hollis",
+        "ar-03-tansley-parcel-rate-tobias",
+        "cr-01-marrow-agrisupply-site-retraction"
+      ],
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "claude-code-opus-none-mu-v031-dev",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "tasks": [
+        "si-01-marrow-agrisupply-site",
+        "si-02-tansley-parcel-site",
+        "si-03-quarrendon-seat-count",
+        "si-04-marrow-fieldworks-ticket",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "sy-01-quarrendon-ticket-numbers",
+        "sy-02-marrow-agrisupply-sites",
+        "sy-03-marrow-fieldworks-ticket-numbers",
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "ar-01-thornbury-rate-hollis",
+        "ar-02-quarrendon-rate-hollis",
+        "ar-03-tansley-parcel-rate-tobias",
+        "cr-01-marrow-agrisupply-site-retraction"
+      ],
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "codex-sol-gbrain-installer-open-mu-v031-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "tasks": [
+        "si-01-marrow-agrisupply-site",
+        "si-02-tansley-parcel-site",
+        "si-03-quarrendon-seat-count",
+        "si-04-marrow-fieldworks-ticket",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "sy-01-quarrendon-ticket-numbers",
+        "sy-02-marrow-agrisupply-sites",
+        "sy-03-marrow-fieldworks-ticket-numbers",
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "ar-01-thornbury-rate-hollis",
+        "ar-02-quarrendon-rate-hollis",
+        "ar-03-tansley-parcel-rate-tobias",
+        "cr-01-marrow-agrisupply-site-retraction"
+      ],
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "codex-sol-gbrain-installer-member-mu-v031-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer",
+        "scope": "member",
+        "serves": "several"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "tasks": [
+        "si-01-marrow-agrisupply-site",
+        "si-02-tansley-parcel-site",
+        "si-03-quarrendon-seat-count",
+        "si-04-marrow-fieldworks-ticket",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "sy-01-quarrendon-ticket-numbers",
+        "sy-02-marrow-agrisupply-sites",
+        "sy-03-marrow-fieldworks-ticket-numbers",
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "ar-01-thornbury-rate-hollis",
+        "ar-02-quarrendon-rate-hollis",
+        "ar-03-tansley-parcel-rate-tobias",
+        "cr-01-marrow-agrisupply-site-retraction"
+      ],
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "codex-sol-gbrain-installer-labelled-mu-v031-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "gbrain": {
+        "surface": "starter",
+        "install": "gbrain-installer",
+        "scope": "member",
+        "serves": "several",
+        "labels": "readers"
+      },
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "tasks": [
+        "si-01-marrow-agrisupply-site",
+        "si-02-tansley-parcel-site",
+        "si-03-quarrendon-seat-count",
+        "si-04-marrow-fieldworks-ticket",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "sy-01-quarrendon-ticket-numbers",
+        "sy-02-marrow-agrisupply-sites",
+        "sy-03-marrow-fieldworks-ticket-numbers",
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "ar-01-thornbury-rate-hollis",
+        "ar-02-quarrendon-rate-hollis",
+        "ar-03-tansley-parcel-rate-tobias",
+        "cr-01-marrow-agrisupply-site-retraction"
+      ],
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    },
+    {
+      "id": "codex-sol-none-mu-v031-dev",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "v0.3.1",
+      "repetitions": 3,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "internal",
+      "tasks": [
+        "si-01-marrow-agrisupply-site",
+        "si-02-tansley-parcel-site",
+        "si-03-quarrendon-seat-count",
+        "si-04-marrow-fieldworks-ticket",
+        "sc-01-central-random-two-asks",
+        "sc-02-north-team-two-asks",
+        "sy-01-quarrendon-ticket-numbers",
+        "sy-02-marrow-agrisupply-sites",
+        "sy-03-marrow-fieldworks-ticket-numbers",
+        "cn-01-tamsin-cold-chain-site",
+        "cn-02-tansleigh-packaging-deadline",
+        "cn-03-marrow-agrisupply-site",
+        "cn-04-quarrendon-site",
+        "ar-01-thornbury-rate-hollis",
+        "ar-02-quarrendon-rate-hollis",
+        "ar-03-tansley-parcel-rate-tobias",
+        "cr-01-marrow-agrisupply-site-retraction"
+      ],
+      "preamble": "tasks/multiuser/_shared/preamble.md"
+    }
+  ]
+}
