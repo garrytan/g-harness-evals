@@ -9,7 +9,7 @@
 // seam=stub suites and a bare remote; no_claim=the real rigs (scripts/canary/gstack and gbrain have their own tests).
 import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -27,6 +27,8 @@ function sh(cmd: string[], cwd: string, env: Record<string, string>) {
 }
 
 /** A clean checkout: commit A holds the rig; main (commit B) names A as canary_rig; HEAD is A, detached. */
+const BASELINE_LEDGER = 'leases/' + JSON.parse(readFileSync(join(ROOT, PREREG), 'utf8')).leases.baseline_ledger + '.sqlite';
+
 function rig(opts: { headIsRig?: boolean; prereg?: (p: any) => void } = {}) {
   const base = mkdtempSync(join(tmp, 'case-'));
   const home = join(base, 'home'), repo = join(base, 'repo'), remote = join(base, 'receipts.git');
@@ -72,6 +74,21 @@ const baseline = (r: Rig, gstackNew = SHA.gs197) => r.run(['--baseline', ...comm
 const nightly = (r: Rig, id: string, now: string, extra: Record<string, string> = {}) => r.run([...common, '--run-id', id, '--now', now, '--drive-dir', join(r.base, 'drive')], extra);
 const block = (out: string) => out.match(/CANARY_ALERT_BEGIN\n([\s\S]*?)CANARY_ALERT_END/)?.[1] ?? null;
 const calls = (r: Rig, id: string) => readFileSync(join(r.base, 'work', id, 'out/calls.log'), 'utf8');
+const leaseBlob = (r: Rig) => sh(['git', '--git-dir', r.remote, 'rev-parse', 'canary-receipts:leases/canary-2026-11.sqlite'], r.base, r.env);
+/** The month lease's committed spend as the receipts branch holds it. */
+function committedUsd(r: Rig) {
+  const file = join(r.base, 'lease-check.sqlite');
+  writeFileSync(file, spawnSync('git', ['--git-dir', r.remote, 'show', 'canary-receipts:leases/canary-2026-11.sqlite'], { env: r.env }).stdout);
+  return JSON.parse(sh(['bun', join(r.repo, 'scripts/canary/lease.ts'), 'status', '--ledger', file], r.base, r.env)).committed_usd as number;
+}
+/** Env that puts tests/fixtures/canary-core/stub-git.sh first on PATH as git, failing the named receipts step. */
+function stubGit(r: Rig, fail: 'lease-read' | 'push') {
+  const bin = join(r.base, 'stub-bin');
+  mkdirSync(bin, { recursive: true });
+  copyFileSync(join(FIX, 'stub-git.sh'), join(bin, 'git'));
+  chmodSync(join(bin, 'git'), 0o755);
+  return { PATH: `${bin}:${r.env.PATH}`, CANARY_STUB_GIT: Bun.which('git', { PATH: r.env.PATH })!, CANARY_STUB_GIT_FAIL: fail };
+}
 
 describe('run.sh end to end with stub suites', () => {
   test('baseline, then an OK move, then a quiet night, then the dead-man check', () => {
@@ -90,7 +107,7 @@ describe('run.sh end to end with stub suites', () => {
     expect([h.product, h.status, h.tiers, h.new.version, h.lease_month]).toEqual(['gstack', 'OK', ['T0', 'T1'], '1.98.0.0', '2026-11']);
     expect(h.spend_usd).toBeCloseTo(4, 6);
     for (const f of ['verdict.json', 'alert.md', 'summary.md']) expect(existsSync(join(r.base, 'drive/canary/runs/night1', f))).toBe(true);
-    expect(r.tree()).toEqual(expect.arrayContaining(['leases/canary-2026-11.sqlite', 'leases/canary-baseline.sqlite', 'runs/night1/gstack/verdict.json', 'runs/night1/gstack/T1/trials.jsonl']));
+    expect(r.tree()).toEqual(expect.arrayContaining(['leases/canary-2026-11.sqlite', BASELINE_LEDGER, 'runs/night1/gstack/verdict.json', 'runs/night1/gstack/T1/trials.jsonl']));
     expect(r.tree()).not.toContain('lock.json');
     const q = nightly(r, 'night2', '2026-11-11T09:30:00Z');
     expect(q.code).toBe(0);
@@ -100,6 +117,30 @@ describe('run.sh end to end with stub suites', () => {
     const dead = r.run(['dead-man', '--now', '2026-11-13T10:00:00Z']);
     expect(dead.code).toBe(30);
     expect(block(dead.out)).toContain('no run has reported for 48.5 hours');
+  }, 300_000);
+
+  test('amendment 2: a re-baseline runs under the ledger leases.baseline_ledger names, and leaves the first baseline ledger alone', () => {
+    expect(BASELINE_LEDGER).toBe('leases/canary-baseline-4.sqlite');
+    const r = rig();
+    expect(baseline(r).code).toBe(0);
+    expect(r.tree()).toContain('leases/canary-baseline-4.sqlite');
+    expect(r.tree()).not.toContain('leases/canary-baseline.sqlite');
+    const d = rig({ prereg: (p) => { delete p.leases.baseline_ledger; } });
+    expect(baseline(d).code).toBe(0);
+    expect(d.tree()).toContain('leases/canary-baseline.sqlite');
+  }, 300_000);
+  test('a baseline rerun of one product opens the shared baseline lease at its full cap and counts its spend once', () => {
+    const r = rig();
+    expect(baseline(r).code).toBe(0);
+    const g = r.run(['--baseline', ...common, '--products', 'gbrain', '--run-id', 'base-gbrain', '--now', '2026-11-09T12:00:00Z', '--drive-dir', join(r.base, 'drive'),
+      '--gstack-prev', SHA.gs196, '--gstack-new', SHA.gs197, '--gbrain-prev', SHA.gb593, '--gbrain-new', SHA.gb613]);
+    expect(g.err).not.toContain('stopped unexpectedly');
+    expect(g.code).toBe(0);
+    expect(calls(r, 'base-gbrain')).toBe('T2 opus,sol,particle plain,prev,new 3\n');
+    const h = r.history().at(-1);
+    expect([h.product, h.status, h.mode, h.pending]).toEqual(['gbrain', 'OK', 'baseline', null]);
+    const trials = readFileSync(join(r.base, 'work/base-gbrain/out/gbrain/T2/trials.jsonl'), 'utf8').trim().split('\n').length;
+    expect(h.spend_usd).toBeCloseTo(trials * 0.25, 6);
   }, 300_000);
 
   test('BROKEN at T0 exits 10 with the alert block and runs no paid tier', () => {
@@ -197,11 +238,67 @@ describe('run.sh end to end with stub suites', () => {
   test('receipts cat exits 1 only for a missing branch or file and 6 when the remote cannot be read, so a network failure never resets a lease', () => {
     const r = rig();
     const cat = (remote: string, path: string) => spawnSync('bash', [join(r.repo, 'scripts/canary/receipts.sh'), 'cat', '--remote', remote, '--path', path, '--out', join(r.base, 'cat.out')], { cwd: r.repo, env: r.env, encoding: 'utf8' }).status;
-    expect(cat(r.remote, 'leases/canary-baseline.sqlite')).toBe(1);
-    expect(cat(join(r.base, 'no-such-remote.git'), 'leases/canary-baseline.sqlite')).toBe(6);
+    expect(cat(r.remote, BASELINE_LEDGER)).toBe(1);
+    expect(cat(join(r.base, 'no-such-remote.git'), BASELINE_LEDGER)).toBe(6);
     expect(baseline(r).code).toBe(0);
-    expect(cat(r.remote, 'leases/canary-baseline.sqlite')).toBe(0);
+    expect(cat(r.remote, BASELINE_LEDGER)).toBe(0);
     expect(cat(r.remote, 'leases/canary-2030-01.sqlite')).toBe(1);
-    expect(cat(join(r.base, 'no-such-remote.git'), 'leases/canary-baseline.sqlite')).toBe(6);
+    expect(cat(join(r.base, 'no-such-remote.git'), BASELINE_LEDGER)).toBe(6);
   }, 120_000);
+
+  test('a lease read cut off mid-file stops the run as INCOMPLETE, leaves no partial ledger and never resets the lease', () => {
+    const r = rig();
+    expect(baseline(r).code).toBe(0);
+    expect(nightly(r, 'night1', '2026-11-10T09:30:00Z').code).toBe(0);
+    const before = leaseBlob(r);
+    const n = nightly(r, 'cut', '2026-11-11T09:30:00Z', stubGit(r, 'lease-read'));
+    expect(n.code).toBe(30);
+    expect(block(n.out)).toContain("what to check first: the receipts remote and git access; a fresh ledger would reset the month's spend");
+    expect(existsSync(join(r.base, 'work/cut/canary-2026-11.sqlite'))).toBe(false);
+    expect(existsSync(join(r.base, 'work/cut/canary-2026-11.sqlite.part'))).toBe(false);
+    expect(leaseBlob(r)).toBe(before);
+    expect(r.tree()).not.toContain('lock.json');
+    expect(r.history().filter((h) => h.run_id === 'cut').map((h) => h.status)).toEqual(['INCOMPLETE', 'INCOMPLETE']);
+  }, 300_000);
+
+  test('a refused publish still pushes the lease alone and unlocks, so the spend counts and the next run repeats the night', () => {
+    const r = rig();
+    expect(baseline(r).code).toBe(0);
+    writeFileSync(join(r.base, 'pregate-refuses'), '#!/bin/sh\necho "stub pregate: refused" >&2\nexit 1\n', { mode: 0o755 });
+    const n = nightly(r, 'refused', '2026-11-10T09:30:00Z', { CANARY_PREGATE: join(r.base, 'pregate-refuses') });
+    expect(n.code).toBe(30);
+    expect(block(n.out)).toContain('- Receipts push failed (receipts: gstack-pregate sealed refused the push)');
+    expect(block(n.out)).not.toContain('keeps its lock');
+    expect(r.tree()).toContain('leases/canary-2026-11.sqlite');
+    expect(r.tree()).not.toContain('lock.json');
+    expect(r.tree().some((p) => p.startsWith('runs/refused/'))).toBe(false);
+    expect(r.history().some((h) => h.run_id === 'refused')).toBe(false);
+    expect(committedUsd(r)).toBeCloseTo(4, 6);
+    const again = nightly(r, 'again', '2026-11-10T11:00:00Z');
+    expect(again.code).toBe(0);
+    expect(calls(r, 'again')).toBe('T1 opus,sol prev,new 1\n');
+    expect(committedUsd(r)).toBeCloseTo(8, 6);
+  }, 300_000);
+
+  test('when the lease cannot be pushed either, the run keeps its lock, and a later run stops on the stale lock with no tier until it is reconciled', () => {
+    const r = rig();
+    expect(baseline(r).code).toBe(0);
+    const n = nightly(r, 'cutoff', '2026-11-10T09:30:00Z', stubGit(r, 'push'));
+    expect(n.code).toBe(30);
+    expect(block(n.out)).toContain('- The lease canary-2026-11.sqlite could not be pushed either, so this run keeps its lock');
+    expect(r.tree()).toContain('lock.json');
+    expect(r.tree()).not.toContain('leases/canary-2026-11.sqlite');
+    const later = nightly(r, 'later', '2026-11-11T09:30:00Z');
+    expect(later.code).toBe(30);
+    expect(block(later.out)).toContain("what to check first: reconcile leases/ on canary-receipts against that run's ledger, then remove lock.json by hand");
+    expect(existsSync(join(r.base, 'work/later/out/calls.log'))).toBe(false);
+    expect(JSON.parse(sh(['git', '--git-dir', r.remote, 'show', 'canary-receipts:lock.json'], r.base, r.env)).run_id).toBe('cutoff');
+    const receipts = (...a: string[]) => spawnSync('bash', [join(r.repo, 'scripts/canary/receipts.sh'), ...a], { cwd: r.repo, env: r.env, encoding: 'utf8' }).status;
+    expect(receipts('put-lease', '--run-id', 'cutoff', '--ledger', join(r.base, 'work/cutoff/canary-2026-11.sqlite'), '--ledger-name', 'canary-2026-11.sqlite')).toBe(0);
+    expect(receipts('unlock', '--run-id', 'cutoff')).toBe(0);
+    expect(committedUsd(r)).toBeCloseTo(4, 6);
+    const reconciled = nightly(r, 'reconciled', '2026-11-11T11:00:00Z');
+    expect(reconciled.code).toBe(0);
+    expect(calls(r, 'reconciled')).toBe('T1 opus,sol prev,new 1\n');
+  }, 300_000);
 });

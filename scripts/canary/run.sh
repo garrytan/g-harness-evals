@@ -15,7 +15,7 @@
 # history line and exits 30.
 # Money: a monthly ledger lease canary-YYYY-MM (prereg leases.monthly, $1,000) that every tier's lease is reserved from; T2,
 # T3 and bisect keep the month's T1 reserve untouched, so a used-up month runs T0 and T1 only and the verdict says so.
-# --baseline runs T0, then T2 at 3 attempts for each product with the given commits, under a canary-baseline ledger.
+# --baseline runs T0, then T2 at 3 attempts for each product with the given commits, under the baseline ledger (prereg leases.baseline_ledger, default canary-baseline).
 # Suites are scripts/canary/<suite>/t0.sh and run-tier.sh (docs/canary.md); --fake passes through to them, and without
 # --local t0.sh and run-tier.sh get --remote (one Ubicloud VM per tier; UBI_OWNER must be set by the caller).
 set -uo pipefail
@@ -136,9 +136,13 @@ finish() {
   local published=1
   receipts publish --run-id "$run_id" --dir "$out" --history "$lines" "${ledger_args[@]}" 2>>"$work/publish.log" || published=0
   if [ $published -eq 0 ]; then
-    [ $locked -eq 0 ] || receipts unlock --run-id "$run_id" 2>/dev/null || true
     worst=INCOMPLETE
     printf -- '- Receipts push failed (%s); the next run repeats this one. Check first: %s\n' "$(tail -1 "$work/publish.log" 2>/dev/null)" "the canary-receipts remote" >> "$out/alert.md"
+    if [ ${#ledger_args[@]} -eq 0 ] || receipts put-lease --run-id "$run_id" "${ledger_args[@]}" 2>>"$work/publish.log"; then
+      [ $locked -eq 0 ] || receipts unlock --run-id "$run_id" 2>/dev/null || true
+    else
+      printf -- '- The lease %s could not be pushed either, so this run keeps its lock and the next run stops until someone reconciles the lease from %s and removes lock.json.\n' "$ledger_name" "$ledger" >> "$out/alert.md"
+    fi
   fi
   if [ "$worst" != OK ]; then printf 'CANARY_ALERT_BEGIN\n'; cat "$out/alert.md"; printf 'CANARY_ALERT_END\n'; else cat "$out/alert.md"; fi
   case $worst in BROKEN) exit 10 ;; INCOMPLETE) exit 30 ;; *) exit 0 ;; esac
@@ -174,21 +178,21 @@ if [ $local_run -eq 0 ] && [ -z "${UBI_OWNER:+x}" ]; then fail_run "UBI_OWNER is
 # ---- lock, releases, state, lease ------------------------------------------------------------------------------------------
 step=lock
 receipts lock --run-id "$run_id" --fresh-hours "$(P '.schedule.lock_fresh_hours // 12')" --now "$now" 2>>"$out/run.log"
-case $? in 0) locked=1 ;; 3) fail_run "another canary run holds the lock on canary-receipts" "the run named in canary-receipts lock.json" ;; *) fail_run "could not take the run lock on canary-receipts" "the receipts remote and git access" ;; esac
+case $? in 0) locked=1 ;; 3) fail_run "another canary run holds the lock on canary-receipts" "the run named in canary-receipts lock.json" ;; 7) fail_run "an earlier canary run left its lock on canary-receipts, so its spend may be missing from the lease; nothing runs until it is reconciled" "reconcile leases/ on canary-receipts against that run's ledger, then remove lock.json by hand" ;; *) fail_run "could not take the run lock on canary-receipts" "the receipts remote and git access" ;; esac
 step=releases
 bun "$here/releases.ts" current > "$out/releases.json" 2>>"$out/run.log" || fail_run "could not resolve the stable releases" "git ls-remote to garrytan/gstack and garrytan/gbrain"
 step=state
 receipts state --now "$now" > "$out/state.json" 2>>"$out/run.log" || fail_run "could not read canary-receipts history" "the receipts remote"
 step=lease
 if [ "$mode" = baseline ]; then
-  ledger_name=canary-baseline.sqlite
-  cap=0; for p in "${plist[@]}"; do cap=$(( cap + $(P ".leases.baseline_usd.$p") )); done
+  ledger_name=$(P '.leases.baseline_ledger // "canary-baseline"').sqlite
+  cap=$(P '[.leases.baseline_usd[]] | add')
 else
   ledger_name=canary-$month.sqlite; cap=$(P '.leases.monthly.cap_usd')
 fi
 ledger=$work/$ledger_name
 receipts cat --path "leases/$ledger_name" --out "$ledger" 2>>"$out/run.log"
-case $? in 0) ;; 1) rm -f "$ledger" ;; *) fail_run "could not read the lease leases/$ledger_name from canary-receipts" "the receipts remote and git access; a fresh ledger would reset the month's spend" ;; esac
+case $? in 0) ;; 1) rm -f "$ledger" ;; *) rm -f "$ledger"; ledger=""; fail_run "could not read the lease leases/$ledger_name from canary-receipts" "the receipts remote and git access; a fresh ledger would reset the month's spend" ;; esac
 budget_run=$(bun "$here/lease.ts" open --ledger "$ledger" --month "${ledger_name%.sqlite}" --cap-usd "$cap" --run-id "$run_id" 2>>"$out/run.log")
 case $? in 0) ;; 20) budget_run=""; log "the lease $ledger_name is used up" ;; *) fail_run "could not open the lease $ledger_name" "runner/ledger/budget-ledger.ts on $ledger_name" ;; esac
 t1_keep=$(P '.leases.monthly.t1_reserve_usd // 0'); [ "$mode" = baseline ] && t1_keep=0
@@ -310,7 +314,7 @@ run_product() { # <product> <kind: moved|due|baseline> <prev sha> <new sha>
   fi
   cp "${last_verdict[$p]}" "$pd/verdict.json"
   if [ "$(jq -r .status "$pd/verdict.json")" = OK ]; then bun "$here/alert.ts" ok --verdict "$pd/verdict.json" > "$pd/alert.md"; else bun "$here/alert.ts" alert --verdict "$pd/verdict.json" > "$pd/alert.md"; fi
-  spend[$p]=$(find "$pd" -name trials.jsonl -exec cat {} + | jq -s 'map(.usage.usd // 0) | add // 0')
+  spend[$p]=$(find "$pd" -mindepth 2 -maxdepth 2 -name trials.jsonl -exec cat {} + | jq -s 'map(.usage.usd // 0) | add // 0')
 }
 
 # ---- what to run -------------------------------------------------------------------------------------------------------

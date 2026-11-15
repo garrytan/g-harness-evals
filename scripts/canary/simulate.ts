@@ -75,7 +75,7 @@ export function baselines(flip: number | null): Array<{ suite: string; model: st
   const out: Array<{ suite: string; model: string; p: number[] }> = [];
   for (const suite of ['gstack', 'gbrain'] as const) {
     const f = JSON.parse(readFileSync(join(DIR, `tasks-${suite}.json`), 'utf8')) as TasksFile & { source: { receipts: string[] } };
-    const rows = f.source.receipts.flatMap((r) => {
+    const rows = flip !== null ? [] : f.source.receipts.flatMap((r) => {
       const m = r.match(/^(?:origin\/([^@]+)|main)@([0-9a-f]+):(.+)$/)!;
       return execFileSync('git', ['show', `${m[2]}:${m[3]}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 }).split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as Trial);
     });

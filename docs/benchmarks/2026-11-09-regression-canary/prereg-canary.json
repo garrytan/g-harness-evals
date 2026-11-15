@@ -2,7 +2,7 @@
   "schema": "canary/1",
   "run_id": "regression-canary-2026-11",
   "status": "preregistered: frozen by the pull request that adds PREREGISTRATION.md; canary_rig is set by the dated amendment described there",
-  "canary_rig": "PLACEHOLDER",
+  "canary_rig": "cb982929b3ef1d5c24491c8f20a24e77cc43be8d",
   "canary_rig_rule": "scripts/canary/run.sh refuses unless HEAD is this commit. A rig change is a dated amendment that sets a new commit and resets the previous-screened baseline; the release under test is the only thing that moves.",
   "products": {
     "gstack": {
@@ -141,7 +141,7 @@
     "per_run_usd": {
       "T1": {
         "gstack": 10,
-        "gbrain": 15
+        "gbrain": 20
       },
       "T2": {
         "gstack": 105,
@@ -152,13 +152,14 @@
         "gbrain": 25
       }
     },
+    "baseline_ledger": "canary-baseline-4",
     "baseline_usd": {
-      "gstack": 300,
+      "gstack": 450,
       "gbrain": 100
     }
   },
   "schedule": {
-    "automation": "nightly 01:30 America/Los_Angeles, at most one run a day; created disabled, enabled after its first manual run passes (internal-task, 2026-11-09)",
+    "automation": "nightly 01:30 America/Los_Angeles, at most one run a day; created disabled, and stays disabled until the results pull request carrying the 2026-11-09 canary_rig amendment has passed /ship and merged; until then runs are supervised only, with the lease file reconciled by hand after each (internal-task, 2026-11-09, amendment 1)",
     "dead_man_hours": 48,
     "lock_fresh_hours": 12
   },

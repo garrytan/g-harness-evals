@@ -6,7 +6,7 @@
 
 **What it does not answer:** whether gstack or gbrain help at all. That is the job of the head-to-head evals. The canary only compares a release with the previous one.
 
-Status: preregistered ([PREREGISTRATION.md](benchmarks/2026-11-09-regression-canary/PREREGISTRATION.md), rule and leases in `prereg-canary.json`). Its `canary_rig` commit is set by a dated amendment once the preregistration merges, so `run.sh` refuses to run for real until then. The nightly automation is created disabled and enabled after its first manual run passes.
+Status: preregistered ([PREREGISTRATION.md](benchmarks/2026-11-09-regression-canary/PREREGISTRATION.md), rule and leases in `prereg-canary.json`), with baseline results in [report.md](benchmarks/2026-11-09-regression-canary/report.md). Its `canary_rig` commit is set by a dated amendment once the preregistration merges, so `run.sh` refuses to run for real until then. The nightly automation is created disabled. It stays disabled until the results pull request carrying the canary_rig amendment has passed /ship and merged. Until then every run is supervised, and someone reconciles the lease file by hand after each one (see "When a run cannot publish" below).
 
 ## What it checks
 
@@ -36,7 +36,7 @@ Most nights nothing moved, and the run ends at about $0 with a quiet history lin
 Frozen in the preregistration (`thresholds` in prereg-canary.json); the code is `scripts/canary/decide.ts`.
 
 - **BROKEN:** T0 fails, or a trial's first captured request is missing gstack's skills or router, or gbrain's tools. One such trial is enough, because none of these is behaviour.
-- **WATCH (a screen flag):** at T1 or T2, more tasks got worse than better and the exact one-sided sign test gives p 0.10 or less. Or cost per task rose by 1.25 times or more with a 90% lower bound of 1.10. Or the skill-load or gbrain tool-call rate fell (Fisher test, p 0.05 or less). Or, for gbrain, a cross-scope read or hidden-fact leak the previous release did not have.
+- **WATCH (a screen flag):** at T1 or T2, more tasks got worse than better and the exact one-sided sign test gives p 0.10 or less. Or cost per task rose by 1.25 times or more with a 90% lower bound of 1.10. Or the skill-load or gbrain tool-call rate fell: on trials paired by task, more tasks lost loads or calls than gained them, with an exact one-sided sign test p of 0.05 or less (amendment 2; at T1's 4 tasks this can't reach 0.05, so it acts from T2). Or, for gbrain, a cross-scope read or hidden-fact leak the previous release did not have.
 - **REGRESSION:** T3 confirms it: a paired drop of 10 points or more with sign-flip p 0.05 or less, or the cost rise again with a 95% lower bound of 1.10, or the leak again.
 - **REGRESSION at once (gbrain 0.60.621.0 and later):** that release fixed the member-bound write leak into the default source, so any cross-scope read or leak on it or a later release is a REGRESSION without waiting for T3, even if the previous release leaked too (`gbrain_leak_free_from` in the preregistration).
 - **WATCH cleared:** T3 ran and did not confirm.
@@ -82,10 +82,11 @@ On anything but OK, `run.sh` prints the alert between `CANARY_ALERT_BEGIN` and `
     scripts/canary/run.sh dead-man [--hours 48]
 
 - **It refuses** unless HEAD is the preregistration's `canary_rig` commit (read from origin/main) and the task lists match their hashes. A rig change is a dated amendment that resets the previous-screened release.
-- **One run at a time:** a lock on `canary-receipts` refuses a second run while the first lock is under 12 hours old.
+- **One run at a time:** a lock on `canary-receipts` refuses a second run while the first lock is under 12 hours old. A lock older than that means a run died before it published, so the next run stops as INCOMPLETE (exit 30, `receipts.sh lock` exit 7) and runs no tier until someone reconciles it.
+- **When a run cannot publish:** the month's lease ledger still has to reach `canary-receipts`, or the spend cap stops binding. If the receipts push fails, `run.sh` pushes the ledger alone (`receipts.sh put-lease`) and then unlocks. If that fails too, it keeps the lock and says so in the alert. To reconcile by hand, push the ledger the alert names with `scripts/canary/receipts.sh put-lease --run-id <id> --ledger <file> --ledger-name <name>`, then run `scripts/canary/receipts.sh unlock --run-id <id>`. A lease read that fails, or stops partway, stops the run before any tier and never starts a fresh ledger.
 - **State** (the last screened release, the last T2, a pending tier) comes from `history.jsonl` on `canary-receipts`, not from the drive.
 - **Dead-man check:** `run.sh dead-man` alerts when no history line has landed for 48 hours.
-- **Suites** plug in as `scripts/canary/<suite>/t0.sh` and `scripts/canary/<suite>/run-tier.sh`. `t0.sh --prev --new --out` writes `t0.json` and exits 10 on a failed check. `run-tier.sh --tier --prev --new --tasks --attempts --arms --models --out` writes `trials.jsonl` rows with a `canary` block. Without `--local` it gets `--remote` (one Ubicloud VM per tier; the caller sets `UBI_OWNER`).
+- **Suites** plug in as `scripts/canary/<suite>/t0.sh` and `scripts/canary/<suite>/run-tier.sh`. `t0.sh --prev --new --out` writes `t0.json` and exits 10 on a failed check. `run-tier.sh --tier --prev --new --tasks --attempts --arms --models --out` writes `trials.jsonl` rows with a `canary` block. Without `--local` it gets `--remote` (one Ubicloud VM per tier; the caller sets `UBI_OWNER`). Both suites interleave their arms in time (amendments 2 and 3): gstack runs every cell at once in its own lane, one trial at a time per cell, when the tier lease holds one worst-case call per cell, and otherwise runs each attempt in chunks that alternate across its cells; and gbrain runs its arm shards at once under weighted shares of the tier lease, or in turn when a share would be below $8. The gstack half of this is in the rig commit cb982929, which the canary is pinned to, and reaches main in a later change.
 - **Before every push** the receipts are scanned for token patterns, capture bodies are replaced by hashes, and `gstack-pregate sealed` runs when installed. Any hit refuses the push.
 - **Keyless tests:** `bun test tests/canary-core.test.ts tests/canary-core-run.test.ts`, plus `tests/canary-gstack.test.ts` and `tests/canary-gbrain.test.ts` for the two suites. The end-to-end test runs `run.sh` against stub suites, a local receipts remote and recorded release refs.
 
@@ -93,7 +94,7 @@ On anything but OK, `run.sh` prints the alert between `CANARY_ALERT_BEGIN` and `
 
 - **Monthly lease:** `canary-YYYY-MM`, $1,000. Every tier reserves its estimate from it and settles to the metered spend.
 - **T1 reserve:** $200 of each month is kept for T0 and T1. When the rest is used up, T2, T3 and bisect wait, the verdict says so, and the pending tier runs when the lease renews next month.
-- **Per run leases** (prereg `leases`, priced from the source receipts and the two T1 smokes): T1 $10 gstack, $15 gbrain; T2 $105 gstack, $40 gbrain; T3 $70 (gstack) or $25 (gbrain) per flagged model; baseline $300 gstack, $100 gbrain. Each lease is an upper bound that also leaves room for one worst-case call, which the metering proxy reserves before it forwards the call; spend settles to the metered cost.
+- **Per run leases** (prereg `leases`, priced from the source receipts and the two T1 smokes): T1 $10 gstack, $20 gbrain (amendment 2); T2 $105 gstack, $40 gbrain; T3 $70 (gstack) or $25 (gbrain) per flagged model; baseline $450 gstack (amendment 4), $100 gbrain, under the ledger named in `leases.baseline_ledger`. Each lease is an upper bound that also leaves room for one worst-case call, which the metering proxy reserves before it forwards the call; spend settles to the metered cost.
 - **Expected spend** at today's cadence (about 13 gstack and 12 gbrain stable moves a month): about $50 of T1 probes plus about $120 for the two monthly screens, so roughly $170 in a month with no flag. Each flag adds a screen and a confirm on one model, about $150 for gstack or $45 for gbrain. A night with no move costs only the automation's wake-up.
 
 ## Pausing it

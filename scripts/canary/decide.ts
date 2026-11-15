@@ -14,7 +14,9 @@
 //   - pass confirm (T3): the task-clustered paired mean difference and bootstrap interval from runner/stats/paired.ts, and the
 //     exact one-sided sign-flip p over task clusters, computed by convolution so it stays exact above 20 clusters;
 //   - cost: per-task log ratio new over previous, geometric mean, task bootstrap one-sided lower bound;
-//   - exposure: exact one-sided Fisher test that the new release's skill-load or tool-call rate is below the previous one's.
+//   - exposure (amendment 2): trials paired by task and attempt as the pass screen pairs them, a task counted as lost when
+//     the new release loaded a skill or called a gbrain tool in fewer of its paired trials than the previous one, gained in
+//     the reverse case, and the exact one-sided sign test on lost against gained.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { clusteredPairedDelta, seededRandom, type PairedItem } from '../../runner/stats/paired.ts';
@@ -66,7 +68,7 @@ export interface ModelReport {
   screen?: PassBlock & { tier: TrialTier };
   confirm?: { delta_points: number; ci95: [number, number] | null; p_less: number; tasks: number };
   cost: CostBlock;
-  exposure: { called: Counts; listed: Counts; p: number | null; first_request_false: { prev: number; new: number }; plain_contaminated: number };
+  exposure: { called: Counts; listed: Counts; paired: { tasks: number; lost: number; gained: number }; p: number | null; first_request_false: { prev: number; new: number }; plain_contaminated: number };
   safety: { prev: { reads: number; leaks: number }; new: { reads: number; leaks: number } } | null;
   plain: { pass: number; n: number } | null;
   digest?: { prev: number; new: number; n: number; b: number; c: number; p: number };
@@ -235,11 +237,25 @@ function exposureBlock(prev: Rows, next: Rows, plain: Rows): ModelReport['exposu
     const k = (rows: Rows) => rows.filter((t) => !isExcluded(t) && known(t));
     return { prev: { a: k(prev).filter(hit).length, n: k(prev).length }, new: { b: k(next).filter(hit).length, n: k(next).length } };
   };
-  const called = counts((t) => t.canary.exposure.product_calls !== null, (t) => (t.canary.exposure.product_calls ?? 0) > 0);
   const listed = counts((t) => t.canary.exposure.first_request_has_product !== null, (t) => t.canary.exposure.first_request_has_product === true);
+  const known = (t: CanaryTrial) => !isExcluded(t) && t.canary.exposure.product_calls !== null;
+  const hit = (t: CanaryTrial) => ((t.canary.exposure.product_calls ?? 0) > 0 ? 1 : 0);
+  const right = new Map(next.filter(known).map((t) => [slot(t), t]));
+  const byTask = new Map<string, { a: number; b: number }>();
+  let n = 0;
+  for (const p of prev.filter(known)) {
+    const q = right.get(slot(p));
+    if (!q) continue;
+    const s = byTask.get(p.canary.task) ?? { a: 0, b: 0 };
+    s.a += hit(p); s.b += hit(q); n++;
+    byTask.set(p.canary.task, s);
+  }
+  const sums = [...byTask.values()];
+  const lost = sums.filter((s) => s.a > s.b).length, gained = sums.filter((s) => s.b > s.a).length;
   return {
-    called, listed,
-    p: called.prev.n && called.new.n ? fisherLessP(called.prev.a, called.prev.n, called.new.b, called.new.n) : null,
+    called: { prev: { a: sums.reduce((x, s) => x + s.a, 0), n }, new: { b: sums.reduce((x, s) => x + s.b, 0), n } }, listed,
+    paired: { tasks: byTask.size, lost, gained },
+    p: n ? signTestP(lost, gained) : null,
     first_request_false: { prev: listed.prev.n - listed.prev.a, new: listed.new.n - listed.new.b },
     plain_contaminated: plain.filter((t) => t.canary.exposure.first_request_has_product === true || (t.canary.exposure.product_calls ?? 0) > 0).length,
   };
@@ -369,9 +385,9 @@ export function decide(input: DecideInput): Verdict {
         flag({ rule: 'pass_screen', status: 'WATCH', detail: `${name} pass ${pass.prev}/${pass.n} -> ${pass.new}/${pass.n} at ${tier}, ${pass.b} worse and ${pass.c} better, sign test p ${pass.screen_p.toFixed(4)}`, check_first: `the tasks that got worse: ${pass.worse.slice(0, 3).join(', ')}`, confirm_with: 'T3' });
       }
       if (costFlag) flag({ rule: 'cost_screen', status: 'WATCH', detail: costDetail, check_first: costCheck, confirm_with: 'T3' });
-      const { called } = exposure;
-      if (exposure.p !== null && exposure.p <= th.exposure_alpha && called.new.b * called.prev.n < called.prev.a * called.new.n) {
-        flag({ rule: 'exposure_rate', status: 'WATCH', sticky: true, detail: `${name} ${suite === 'gstack' ? 'skill loads' : 'gbrain tool calls'} in ${called.prev.a}/${called.prev.n} -> ${called.new.b}/${called.new.n} trials, Fisher p ${exposure.p.toFixed(4)}`, check_first: suite === 'gstack' ? 'the skill descriptions and router text the model sees' : "gbrain's tool descriptions and server instructions" });
+      const { called, paired } = exposure;
+      if (exposure.p !== null && exposure.p <= th.exposure_alpha && paired.lost > paired.gained) {
+        flag({ rule: 'exposure_rate', status: 'WATCH', sticky: true, detail: `${name} ${suite === 'gstack' ? 'skill loads' : 'gbrain tool calls'} in ${called.prev.a}/${called.prev.n} -> ${called.new.b}/${called.new.n} paired trials, ${paired.lost} task(s) lost and ${paired.gained} gained, sign test p ${exposure.p.toFixed(4)}`, check_first: suite === 'gstack' ? 'the skill descriptions and router text the model sees' : "gbrain's tool descriptions and server instructions" });
       }
       if (tier !== 'T2') continue;
       if (spec.digest.length) {

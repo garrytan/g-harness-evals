@@ -8,10 +8,16 @@
 # It renders one spec per arm (canary.ts render: the h2h told-scoped cell for each model in its home harness, Claude Code on
 # Opus 5.5, Codex on GPT-6.1 Sol, Hermes on particle-1, on the tier's tasks of tasks.json; the release arms carry the gbrain
 # block, the gbrain-memory preamble, the release's peeled commit as gbrain_commit and its image's measured tool counts; the
-# plain arm carries none of them), writes their sha256s to <out>/specs/canary-spec.json, and runs each arm as one
-# scripts/run-shard.sh shard on this machine, in the order prev, new, plain, trials sequential, each with
-# --clean-arm-preflight and the release's own image (harness-eval/gbrain:canary-<version>). Each shard's lease is what is
-# left of --lease-usd after the shards before it, read from their ledgers, so the run never spends past it. It then writes
+# plain arm carries none of them; each arm's spec has its own run id, <run-id>-<arm>), writes their sha256s to
+# <out>/specs/canary-spec.json, and runs each arm as one scripts/run-shard.sh shard on this machine, trials sequential
+# within a shard, each with --clean-arm-preflight and the release's own image (harness-eval/gbrain:canary-<version>).
+# The harness images are built once before the shards, which all run with --skip-build. The arms run at the same time
+# (preregistration amendment 2), so a drift in the models or the network over the hours a tier takes lands on every arm
+# alike: --lease-usd is split by weight, 1.6 for a release arm and 1.0 for the plain arm (the product-to-plain cost ratio
+# the leases are priced on), and a shard never spends past its share. When any share would be below one worst-case call
+# reservation ($8; the metering proxy would refuse that call), the arms run in turn instead, prev, new, plain, each under
+# what is left of --lease-usd after the shards before it, read from their ledgers. Either way the run never spends past
+# --lease-usd. It then writes
 # <out>/trials.jsonl: every trial record of every shard with its canary block (suite, tier, arm, product version and sha,
 # model key, task, attempt, exposure, safety; canary.ts annotate), and <out>/run-tier.json with the specs' hashes, each
 # shard's exit and spend, and the plain arm's post-run clean-arm audit.
@@ -103,32 +109,67 @@ for arm in prev new; do
 done
 "${canary[@]}" render --tasks "$tasks" --tier "$tier" --attempts "$attempts" --arms "$arms" --models "$models" --run-id "$run_id" --lease-usd "$lease" --out "$out/specs" ${render_args[@]+"${render_args[@]}"} >> "$out/run-tier.log" 2>&1 || { log "rendering the specs failed: $(tail -1 "$out/run-tier.log")"; exit 2; }
 
-# 2. One shard per arm, sequential, each under what is left of the lease.
-built_harness=0
-for arm in prev new plain; do
-  case ",$arms," in *,"$arm",*) ;; *) continue ;; esac
-  shard="$out/shards/$arm"
-  spec="$out/specs/$arm.prereg.json"
-  cells=$(jq -r '[.cells[].id] | join(",")' "$spec")
-  left=$(python3 -c 'import sys; print(f"{float(sys.argv[1]) - float(sys.argv[2]):.4f}")' "$lease" "$spent")
-  if python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) < 0.5 else 1)' "$left"; then log "lease stop: \$$left left of \$$lease before the $arm shard"; lease_stop=1; break; fi
+# 2. One shard per arm: at the same time under weighted shares of the lease, or in turn when a share would be too small.
+run_arms=()
+for arm in prev new plain; do case ",$arms," in *,"$arm",*) run_arms+=("$arm") ;; esac; done
+release_image=""
+for arm in "${run_arms[@]}"; do [ "$arm" = plain ] || { release_image=$(jq -r .image "$out/$arm/release.json"); break; }; done
+prebuilt=0
+if [ "$fake" -eq 0 ] && [ -n "$release_image" ]; then
+  for h in $(jq -r '.cells[].harness' "$out"/specs/*.prereg.json | sort -u); do
+    log "building harness-eval/$h:dev from harnesses/$h"
+    docker build -q -t "harness-eval/$h:dev" "harnesses/$h" > "$out/build-$h.log" 2>&1 || { log "the harness image harness-eval/$h:dev did not build: $(tail -1 "$out/build-$h.log")"; exit 2; }
+  done
+  prebuilt=1
+fi
+mapfile -t shares < <(python3 -c '
+import sys
+lease, arms = float(sys.argv[1]), sys.argv[2:]
+w = [1.0 if a == "plain" else 1.6 for a in arms]
+for x in w: print(f"{lease * x / sum(w):.4f}")' "$lease" "${run_arms[@]}")
+together=0
+if [ "${#run_arms[@]}" -gt 1 ] && python3 -c 'import sys; sys.exit(0 if min(map(float, sys.argv[1:])) >= 8 else 1)' "${shares[@]}"; then together=1; fi
+mkdir -p "$out/shards"
+run_arm() { # <arm> <lease usd>: one arm's shard; writes <out>/shards/<arm>.rc and <arm>.usd
+  local arm=$1 left=$2 rc usd=0
+  local shard="$out/shards/$arm" spec="$out/specs/$arm.prereg.json"
   if [ "$fake" -eq 1 ]; then
     set +e; "${canary[@]}" fake-shard --spec "$spec" --arm "$arm" --out "$shard" $([ "$fake_break" = "$arm" ] && echo --break) >> "$out/run-tier.log" 2>&1; rc=$?; set -e
-    arm_spent=0
   else
-    shard_args=(--prereg "$spec" --name "$arm" --cells "$cells" --lease-usd "$left" --out "$shard" --clean-arm-preflight)
-    if [ "$arm" = plain ]; then
-      # The plain arm runs no sidecar; after a release shard it reuses that shard's harness images and names its image only
-      # because run-shard.sh records one.
-      if [ "$built_harness" -eq 1 ]; then shard_args+=(--skip-build --gbrain-image "$(jq -r .image "$out/$last_release/release.json")"); fi
-    else
-      shard_args+=(--gbrain-image "$(jq -r .image "$out/$arm/release.json")")
-    fi
+    local shard_args=(--prereg "$spec" --name "$arm" --cells "$(jq -r '[.cells[].id] | join(",")' "$spec")" --lease-usd "$left" --out "$shard" --clean-arm-preflight)
+    # The plain arm runs no sidecar; it names a release image only because run-shard.sh records one.
+    if [ "$arm" != plain ]; then shard_args+=(--gbrain-image "$(jq -r .image "$out/$arm/release.json")"); elif [ -n "$release_image" ]; then shard_args+=(--gbrain-image "$release_image"); fi
+    [ "$prebuilt" -eq 0 ] || shard_args+=(--skip-build)
     log "shard $arm: scripts/run-shard.sh ${shard_args[*]}"
     set +e; scripts/run-shard.sh "${shard_args[@]}" > "$out/shard-$arm.log" 2>&1; rc=$?; set -e
-    arm_spent=$( [ -f "$shard/ledger.sqlite" ] && bun runner/proxy/metering-proxy.ts summary --budget-ledger "$shard/ledger.sqlite" --run-id "$run_id" 2>/dev/null | jq -r '.committed_usd // 0' || echo 0)
-    [ "$arm" = plain ] || { built_harness=1; last_release=$arm; }
+    usd=$( [ -f "$shard/ledger.sqlite" ] && bun runner/proxy/metering-proxy.ts summary --budget-ledger "$shard/ledger.sqlite" --run-id "$(jq -r .run_id "$spec")" 2>/dev/null | jq -r '.committed_usd // 0' || echo 0)
   fi
+  echo "$rc" > "$out/shards/$arm.rc"; echo "${usd:-0}" > "$out/shards/$arm.usd"
+}
+declare -A arm_lease=()
+if [ "$together" -eq 1 ]; then
+  pids=()
+  for i in "${!run_arms[@]}"; do
+    arm_lease[${run_arms[$i]}]=${shares[$i]}
+    log "shard ${run_arms[$i]}: \$${shares[$i]} of \$$lease, run at the same time as the other arms"
+    run_arm "${run_arms[$i]}" "${shares[$i]}" &
+    pids+=($!)
+  done
+  for p in "${pids[@]}"; do wait "$p" || true; done
+else
+  [ "${#run_arms[@]}" -le 1 ] || log "the arms run in turn: a weighted share (\$${shares[*]}) would be below one worst-case call reservation (\$8)"
+fi
+for arm in "${run_arms[@]}"; do
+  shard="$out/shards/$arm"
+  spec="$out/specs/$arm.prereg.json"
+  if [ "$together" -eq 0 ]; then
+    left=$(python3 -c 'import sys; print(f"{float(sys.argv[1]) - float(sys.argv[2]):.4f}")' "$lease" "$spent")
+    if python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) < 0.5 else 1)' "$left"; then log "lease stop: \$$left left of \$$lease before the $arm shard"; lease_stop=1; break; fi
+    arm_lease[$arm]=$left
+    run_arm "$arm" "$left" || true
+  fi
+  rc=$(cat "$shard.rc" 2>/dev/null || echo 2)
+  arm_spent=$(cat "$shard.usd" 2>/dev/null || echo 0)
   spent=$(python3 -c 'import sys; print(f"{float(sys.argv[1]) + float(sys.argv[2]):.6f}")' "$spent" "${arm_spent:-0}")
   if [ -f "$shard/trials.jsonl" ] && ! "${canary[@]}" annotate --spec-dir "$out/specs" --arm "$arm" --shard "$shard" --out "$out/trials.jsonl" >> "$out/run-tier.log" 2>&1; then
     log "annotating the $arm shard failed ($out/run-tier.log)"; [ "$rc" -ne 0 ] || rc=2
@@ -138,11 +179,11 @@ for arm in prev new plain; do
     set +e; bun scripts/v04/clean-arm-audit.ts audit --results "$shard" --out "$shard/clean-arm-audit.json" > "$shard/clean-arm-audit.log" 2>&1; arc=$?; set -e
     audit=$(jq -nc --argjson rc "$arc" '{exit: $rc, file: "shards/plain/clean-arm-audit.json"}')
   fi
-  shards=$(jq -c --arg arm "$arm" --argjson rc "$rc" --argjson usd "${arm_spent:-0}" --argjson n "$(grep -c . "$shard/trials.jsonl" 2>/dev/null || echo 0)" --argjson planned "$(jq '[.cells[] | (.tasks | length) * .repetitions] | add' "$spec")" --argjson audit "$audit" \
-    '. + [{arm: $arm, exit: $rc, spent_usd: $usd, trials: $n, planned: $planned, clean_arm_audit: $audit}]' <<<"$shards")
+  shards=$(jq -c --arg arm "$arm" --argjson rc "$rc" --argjson usd "${arm_spent:-0}" --argjson lease_usd "${arm_lease[$arm]}" --argjson together "$([ "$together" -eq 1 ] && echo true || echo false)" --argjson n "$(grep -c . "$shard/trials.jsonl" 2>/dev/null || echo 0)" --argjson planned "$(jq '[.cells[] | (.tasks | length) * .repetitions] | add' "$spec")" --argjson audit "$audit" \
+    '. + [{arm: $arm, exit: $rc, lease_usd: $lease_usd, at_once: $together, spent_usd: $usd, trials: $n, planned: $planned, clean_arm_audit: $audit}]' <<<"$shards")
   log "shard $arm exited $rc, \$${arm_spent:-0} spent, \$$spent in all"
-  if [ "$rc" -eq 3 ]; then lease_stop=1; break; fi
-  if [ "$rc" -ne 0 ]; then infra_rc=$rc; break; fi
+  if [ "$rc" -eq 3 ]; then lease_stop=1; [ "$together" -eq 1 ] || break; continue; fi
+  if [ "$rc" -ne 0 ]; then [ "$infra_rc" -ne 0 ] || infra_rc=$rc; [ "$together" -eq 1 ] || break; fi
 done
 [ "$lease_stop" -eq 0 ] || end 20
 [ "$infra_rc" -eq 0 ] || end "$infra_rc"

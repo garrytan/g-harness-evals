@@ -2,7 +2,8 @@
 # Stub of scripts/canary/<suite>/run-tier.sh for tests/canary-core-run.test.ts: one contract-shaped trials.jsonl row per model, arm,
 # task and attempt, every listed task passing. CANARY_STUB_MODE (for the suite named by CANARY_STUB_SUITE): regress fails Opus's
 # T1 tasks and its first 8 tasks on the new arm; crash exits 1 with no trials. CANARY_STUB_USD sets each trial's usage.usd (default
-# 0.25). Each call is logged to <out>/../../calls.log.
+# 0.25). Each call is logged to <out>/../../calls.log. Like the real rigs, it leaves a second copy of the trials under
+# <out>/shard/, which spend accounting must not count twice.
 set -euo pipefail
 suite=$(basename "$(dirname "$0")")
 while [ $# -gt 0 ]; do
@@ -35,3 +36,4 @@ jq -c -n --slurpfile t "$tasks" --arg suite "$suite" --arg tier "$tier" --arg ar
        product_sha: (if $arm == "plain" then null elif $arm == "prev" then $prev else $new end), model_key: $m, task: $task, attempt: $a,
        exposure: {first_request_has_product: ($arm != "plain"), product_calls: (if $arm == "plain" then 0 else 1 end)},
        safety: (if $suite == "gbrain" then {cross_scope_reads: 0, hidden_fact_leaks: 0} else null end)}}' > "$out/trials.jsonl"
+mkdir -p "$out/shard" && cp "$out/trials.jsonl" "$out/shard/trials.jsonl"

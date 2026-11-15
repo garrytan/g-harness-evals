@@ -51,11 +51,12 @@ describe('release identity', () => {
 
 describe('specs', () => {
   const { specs, cells } = render({ tools: { prev: { starter: 34, verbs: 7 }, new: { starter: 34, verbs: 7 } } });
-  test('prev and new name their own commits and differ only in it, so their hashes differ', () => {
+  test('prev and new name their own commits and differ only in it and their run ids, so their hashes differ', () => {
     expect(specs.prev!.gbrain_commit).toBe(P593);
     expect(specs.new!.gbrain_commit).toBe(P613);
+    expect([specs.prev!.run_id, specs.new!.run_id, specs.plain!.run_id]).toEqual(['canary-test-prev', 'canary-test-new', 'canary-test-plain']);
     expect(sha256(specText(specs.prev!))).not.toBe(sha256(specText(specs.new!)));
-    const strip = (s: Prereg) => ({ ...s, question: '', gbrain_commit: '', cells: s.cells.map((c) => ({ ...c, id: c.id.replace(/-(prev|new)-/, '-x-') })) });
+    const strip = (s: Prereg) => ({ ...s, question: '', gbrain_commit: '', run_id: '', cells: s.cells.map((c) => ({ ...c, id: c.id.replace(/-(prev|new)-/, '-x-') })) });
     expect(strip(specs.prev!)).toEqual(strip(specs.new!));
     expect(specs.prev!.gbrain_surface_tools).toEqual({ starter: 34, verbs: 7 });
   });
@@ -202,4 +203,22 @@ describe('entry points with --fake', () => {
     expect(summary.specs.prev!.spec_sha256).toBe(sha256(readFileSync(join(out, 'specs', 'prev.prereg.json'))));
     expect(run('run-tier.sh', ['--tier', 'T1', '--prev', P593, '--new', P613, '--tasks', tasksFile, '--attempts', '1', '--arms', 'plain,prev,new', '--models', 'opus', '--lease-usd', '10', '--run-id', 'canary-fake', '--out', out, '--fake']).status).toBe(2);
   });
+  test('amendment 2: the arms run at the same time under weighted shares of the lease, or in turn when a share is below one worst-case call', () => {
+    type Shard = { arm: string; lease_usd: number; at_once: boolean; exit: number };
+    const go = (lease: string, name: string) => {
+      const out = join(tmp, name);
+      expect(run('run-tier.sh', ['--tier', 'T1', '--prev', P593, '--new', P613, '--tasks', tasksFile, '--attempts', '1', '--arms', 'plain,prev,new', '--models', 'opus,sol', '--lease-usd', lease, '--run-id', 'canary-fake', '--out', out, '--fake']).status).toBe(0);
+      const rows = jsonl<TrialRecord & { canary: { arm: string } }>(join(out, 'trials.jsonl'));
+      return { out, rows, shards: (JSON.parse(readFileSync(join(out, 'run-tier.json'), 'utf8')) as { shards: Shard[] }).shards };
+    };
+    const at = go('42', 'rt-together');
+    expect(at.shards.map((x) => [x.arm, x.lease_usd, x.at_once, x.exit])).toEqual([['prev', 16, true, 0], ['new', 16, true, 0], ['plain', 10, true, 0]]);
+    expect([...new Set(at.rows.map((x) => x.canary.arm))]).toEqual(['prev', 'new', 'plain']);
+    for (const row of at.rows) expect(row.trial_id.startsWith('canary-fake-' + row.canary.arm + '/')).toBe(true);
+    expect(readFileSync(join(at.out, 'run-tier.log'), 'utf8')).toContain('run at the same time as the other arms');
+    const turn = go('20', 'rt-turn');
+    expect(turn.shards.map((x) => [x.arm, x.at_once])).toEqual([['prev', false], ['new', false], ['plain', false]]);
+    expect(turn.shards.every((x) => x.lease_usd === 20)).toBe(true);
+    expect(readFileSync(join(turn.out, 'run-tier.log'), 'utf8')).toContain('the arms run in turn');
+   }, 120_000);
 });

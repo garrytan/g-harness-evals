@@ -5,7 +5,9 @@
 # temporary clone (sparse, blobless) that is removed on exit, so no checkout of main is ever touched.
 #
 #   scripts/canary/receipts.sh state [--now <iso>]                       JSON from history.jsonl (scripts/canary/receipts.ts state)
-#   scripts/canary/receipts.sh lock --run-id <id> [--fresh-hours 12]     push lock.json; exit 3 when another run holds a fresh lock
+#   scripts/canary/receipts.sh lock --run-id <id> [--fresh-hours 12]     push lock.json; exit 3 when another run holds a fresh lock,
+#       7 when another run left a stale one (its spend may be missing from leases/; reconcile, then remove lock.json by hand)
+#   scripts/canary/receipts.sh put-lease --run-id <id> --ledger <file> --ledger-name <name>   push only the lease ledger
 #   scripts/canary/receipts.sh unlock --run-id <id>                      remove this run's lock
 #   scripts/canary/receipts.sh cat --path <path> --out <file>            copy one file from the branch tip; exit 1 when absent, 6 when the remote or fetch fails
 #   scripts/canary/receipts.sh publish --run-id <id> --dir <run dir> --history <lines.jsonl> [--ledger <file> --ledger-name <name>]
@@ -86,12 +88,14 @@ case $cmd in
     [ -n "$heads" ] || exit 1
     git init -q "$w"; g fetch -q --depth 1 "$remote" "+refs/heads/$branch:refs/remotes/origin/$branch" || { say "cannot fetch $branch"; exit 6; }
     g cat-file -e "origin/$branch:$path" 2>/dev/null || exit 1
-    g show "origin/$branch:$path" > "$out" || { say "cannot read $path"; exit 6; } ;;
+    g show "origin/$branch:$path" > "$out.part" || { rm -f "$out.part"; say "cannot read $path"; exit 6; }
+    mv "$out.part" "$out" ;;
   lock)
     [ -n "$run_id" ] || { say "lock needs --run-id"; exit 2; }
     for try in 1 2 3; do
       checkout
-      bun "$here/receipts.ts" lock-check --lock "$w/lock.json" --run-id "$run_id" --fresh-hours "$fresh_hours" --now "$now" >/dev/null || exit 3
+      held=$(bun "$here/receipts.ts" lock-check --lock "$w/lock.json" --run-id "$run_id" --fresh-hours "$fresh_hours" --now "$now") || exit 3
+      [ "$held" != stale ] || { say "run $(jq -r .run_id "$w/lock.json") left its lock and may not have published its spend"; exit 7; }
       printf '{"run_id": "%s", "at": "%s", "host": "%s"}\n' "$run_id" "$now" "$(hostname)" > "$w/lock.json"
       g add lock.json
       g commit -q -m "Lock canary run $run_id"
@@ -109,6 +113,19 @@ case $cmd in
       push && exit 0
     done
     exit 1 ;;
+  put-lease)
+    [ -n "$run_id" ] && [ -f "$ledger" ] && [ -n "$ledger_name" ] || { say "put-lease needs --run-id, --ledger and --ledger-name"; exit 2; }
+    mkdir -p "$work/lease-in"; cp "$ledger" "$work/lease-in/$ledger_name"
+    bun "$here/receipts.ts" prepare --src "$work/lease-in" --dst "$work/lease-out" >/dev/null || { say "refused the lease before push: see the lines above"; exit 4; }
+    for try in 1 2 3; do
+      checkout
+      mkdir -p "$w/leases"; cp "$work/lease-out/$ledger_name" "$w/leases/$ledger_name"
+      g add --sparse "leases/$ledger_name"
+      g commit -q -m "Canary lease after run $run_id (its receipts did not publish)"
+      push && exit 0
+      say "lease push lost a race (try $try)"
+    done
+    exit 1 ;;
   publish)
     [ -n "$run_id" ] && [ -d "$dir" ] && [ -f "$history" ] || { say "publish needs --run-id, --dir <run dir> and --history <file>"; exit 2; }
     [ -z "$ledger" ] || [ -n "$ledger_name" ] || { say "--ledger needs --ledger-name"; exit 2; }
@@ -118,6 +135,7 @@ case $cmd in
     [ -z "$ledger" ] || cp "$ledger" "$work/in/extra/$ledger_name"
     bun "$here/receipts.ts" prepare --src "$work/in" --dst "$work/out" >/dev/null || { say "refused before push: see the lines above"; exit 4; }
     [ ! -f "$work/out/capture-manifest.json" ] || mv "$work/out/capture-manifest.json" "$work/out/runs/$run_id/capture-manifest.json"
+    [ ! -f "$work/out/omitted-manifest.json" ] || mv "$work/out/omitted-manifest.json" "$work/out/runs/$run_id/omitted-manifest.json"
     for try in 1 2 3; do
       checkout
       if [ -n "$base" ] && g cat-file -e "$base:runs/$run_id" 2>/dev/null; then say "runs/$run_id is already on $branch"; exit 5; fi

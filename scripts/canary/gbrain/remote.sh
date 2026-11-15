@@ -74,14 +74,30 @@ for k in ${keys[@]+"${keys[@]}"}; do pass+=(--pass "$k"); done
 started=$(date +%s)
 jq -n --arg vm "$vm" --arg owner "$UBI_OWNER" --argjson ttl "$ttl" --arg commit "$commit" --arg entry "$entry" --arg args "${rest[*]+${rest[*]}}" --arg keys "${keys[*]+${keys[*]}}" \
   --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{vm: $vm, owner: $owner, size: "standard-16", ttl_hours: $ttl, commit: $commit, entry: $entry, args: $args, keys: $keys, started_at: $at}' > "$out/remote.json"
-log "VM $vm (TTL $ttl h) for $entry at $commit; keys: ${keys[*]+${keys[*]}}"
-( while sleep 600; do bash "$runner" pull "$vm" canary/out "$out/vm-replica" > /dev/null 2>&1 || true; done ) &
-rep_pid=$!
-set +e
-bash "$runner" run -n "$vm" --src "$scratch/harness-evals" --setup "$root/scripts/ubicloud/bootstrap.sh" ${pass[@]+"${pass[@]}"} --pull "canary/out:$out/vm" -- "$cmd" >> "$out/lane.log" 2>&1
-rc=$?
-set -e
-kill "$rep_pid" 2>/dev/null || true; rep_pid=""
+# A VM that never leaves "waiting for capacity" ran nothing, so the next location is tried; when none has room, an empty
+# trials.jsonl records that no trial ran and the lease settles to $0.
+locations=("${UBI_LOCATION:-eu-central-h1}"); for l in eu-central-h1 eu-north-h1 us-east-a2; do [[ " ${locations[*]} " == *" $l "* ]] || locations+=("$l"); done
+no_room=0
+for loc in "${locations[@]}"; do
+  log "VM $vm in $loc (TTL $ttl h) for $entry at $commit; keys: ${keys[*]+${keys[*]}}"
+  jq --arg vm "$vm" --arg loc "$loc" '. + {vm: $vm, location: $loc}' "$out/remote.json" > "$out/remote.json.tmp" && mv "$out/remote.json.tmp" "$out/remote.json"
+  ( while sleep 600; do bash "$runner" pull "$vm" canary/out "$out/vm-replica" || true; done ) > /dev/null 2>&1 &
+  rep_pid=$!
+  set +e
+  bash "$runner" run -n "$vm" -l "$loc" --src "$scratch/harness-evals" --setup "$root/scripts/ubicloud/bootstrap.sh" ${pass[@]+"${pass[@]}"} --pull "canary/out:$out/vm" -- "$cmd" > "$scratch/try.log" 2>&1
+  rc=$?
+  set -e
+  kill "$rep_pid" 2>/dev/null || true; rep_pid=""
+  cat "$scratch/try.log" >> "$out/lane.log"
+  no_room=0
+  if [ "$rc" -ne 0 ] && [ ! -d "$out/vm/out" ] && grep -q 'did not reach running in .*waiting for capacity' "$scratch/try.log" && ! grep -q 'failed to destroy' "$scratch/try.log"; then
+    no_room=1; log "no capacity in $loc; nothing ran"
+    vm="ubirun-$owner-$(date +%s)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' \n')-t$ttl"
+    continue
+  fi
+  break
+done
+if [ "$no_room" -eq 1 ] && [ "$entry" = run-tier ] && [ ! -e "$out/trials.jsonl" ]; then : > "$out/trials.jsonl"; log "no location had capacity; no trial ran (empty trials.jsonl)"; fi
 [ ! -d "$out/vm/out" ] || cp -a "$out/vm/out/." "$out/"
 if bash "$runner" list --mine 2>/dev/null | grep -qF "$vm"; then log "VM $vm is still listed; destroying it"; bash "$runner" down "$vm" >> "$out/lane.log" 2>&1 || log "WARNING: down $vm failed; run: UBI_OWNER=$UBI_OWNER $runner down $vm"; fi
 left=$(bash "$runner" list --mine 2>/dev/null | grep -cF "$vm" || true)

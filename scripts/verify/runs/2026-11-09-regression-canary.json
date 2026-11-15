@@ -1,0 +1,150 @@
+{
+  "run": "2026-11-09-regression-canary",
+  "about": "The regression canary baselines: each scored report (baseline-report.ts on the committed T2 trial records, release shas from the report) for gbrain baseline 1, the gbrain a3 re-baseline, the gstack a4 re-baseline, the first gstack baseline under amendment 2's paired rule and the stopped a3 gstack half.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/canary/baseline-report.ts",
+        "--suite",
+        "gbrain",
+        "--trials",
+        "{run}/results/trials/baseline-2026-11-12-gbrain-t2-gbrain.jsonl",
+        "--prev-sha",
+        "27f8b9d6287c2ba635532c7d3bc015c50e1d769b",
+        "--prev-version",
+        "0.60.593.0",
+        "--new-sha",
+        "98dda48fb9fd339609d6d4eef009811280ff648d",
+        "--new-version",
+        "0.60.613.0",
+        "--draws",
+        "10000",
+        "--out",
+        "{run}/results/baseline-1-gbrain.json"
+      ],
+      "outputs": [
+        "results/baseline-1-gbrain.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/canary/baseline-report.ts",
+        "--suite",
+        "gbrain",
+        "--trials",
+        "{run}/results/trials/baseline-2026-11-13-a3-gbrain.jsonl",
+        "--prev-sha",
+        "27f8b9d6287c2ba635532c7d3bc015c50e1d769b",
+        "--prev-version",
+        "0.60.593.0",
+        "--new-sha",
+        "98dda48fb9fd339609d6d4eef009811280ff648d",
+        "--new-version",
+        "0.60.613.0",
+        "--draws",
+        "10000",
+        "--out",
+        "{run}/results/rebaseline-gbrain-a3.json"
+      ],
+      "outputs": [
+        "results/rebaseline-gbrain-a3.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/canary/baseline-report.ts",
+        "--suite",
+        "gstack",
+        "--trials",
+        "{run}/results/trials/baseline-2026-11-11-r2-gstack.jsonl",
+        "--prev-sha",
+        "e75a69c9e15164d090e080fa001dc515495ec350",
+        "--prev-version",
+        "1.97.0.0",
+        "--new-sha",
+        "910093087dec4877f99dfaed6600784942ed7a7b",
+        "--new-version",
+        "1.98.0.0",
+        "--draws",
+        "10000",
+        "--out",
+        "{run}/results/baseline-1-gstack-paired.json"
+      ],
+      "outputs": [
+        "results/baseline-1-gstack-paired.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/canary/baseline-report.ts",
+        "--suite",
+        "gstack",
+        "--trials",
+        "{run}/results/trials/baseline-2026-11-13-a3-gstack.jsonl",
+        "--prev-sha",
+        "e75a69c9e15164d090e080fa001dc515495ec350",
+        "--prev-version",
+        "1.97.0.0",
+        "--new-sha",
+        "910093087dec4877f99dfaed6600784942ed7a7b",
+        "--new-version",
+        "1.98.0.0",
+        "--draws",
+        "10000",
+        "--out",
+        "{run}/results/a3-gstack-partial.json"
+      ],
+      "outputs": [
+        "results/a3-gstack-partial.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/canary/baseline-report.ts",
+        "--suite",
+        "gstack",
+        "--trials",
+        "{run}/results/trials/baseline-2026-11-14-a4-gstack.jsonl",
+        "--prev-sha",
+        "e75a69c9e15164d090e080fa001dc515495ec350",
+        "--prev-version",
+        "1.97.0.0",
+        "--new-sha",
+        "910093087dec4877f99dfaed6600784942ed7a7b",
+        "--new-version",
+        "1.98.0.0",
+        "--draws",
+        "10000",
+        "--out",
+        "{run}/results/rebaseline-gstack-a4.json"
+      ],
+      "outputs": [
+        "results/rebaseline-gstack-a4.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "results/baseline-1-gstack.json (the first gstack baseline under the skill-load rule as first frozen)",
+      "file": "results/baseline-1-gstack.json",
+      "reason": "It was scored by baseline-report.ts at the first rig commit (00533952); the current script applies amendment 2's paired skill-load rule, which is results/baseline-1-gstack-paired.json from the same trials."
+    },
+    {
+      "what": "results/skill-body-scan-r2.json and results/skill-body-scan-a4.json",
+      "reason": "skill-body-scan.ts reads each trial's captured request log, and the raw trial folders are not committed: they stay on the controlling machine, and the canary-receipts branch leaves them out."
+    },
+    {
+      "what": "The held-reservation counts in results/a3-gstack-incomplete.md and deviations 6 and 10 in report.md",
+      "reason": "They come from the runs' proxy usage logs, which are on the canary-receipts branch and never committed here."
+    },
+    {
+      "what": "The Spend table in report.md",
+      "reason": "It reads the runs' ledgers, which are on the canary-receipts branch and never committed here."
+    }
+  ]
+}

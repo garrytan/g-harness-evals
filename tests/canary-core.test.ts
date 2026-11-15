@@ -3,9 +3,9 @@
 // selection's pools, the receipts helpers and the monthly lease. Keyless: no network, no model call.
 import { describe, expect, test } from 'bun:test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { clusteredPairedDelta, seededRandom } from '../runner/stats/paired.ts';
 import { renderAlert, renderDigest, renderNoMove, renderOk, type HistoryLine } from '../scripts/canary/alert.ts';
 import { decide, fisherLessP, flaggedModels, signFlipPLess, signTestP, type Arm, type CanaryTrial, type DecideInput, type ModelKey, type TasksFile, type Thresholds, type TrialTier, type Verdict } from '../scripts/canary/decide.ts';
@@ -218,18 +218,33 @@ describe('decide: the rule', () => {
     expect(b.models.opus!.plain).toEqual({ pass: 0, n: 30 });
     expect(c.notes.some((n) => n.includes('plain arm for opus reached gstack'))).toBe(true);
   });
-  test('an exposure drop at T2 is WATCH by the Fisher test', () => {
-    const rows = trials('gstack', 'T2', ['plain', 'prev', 'new'], ['opus', 'sol'], 1, { patch: (t) => { if (t.canary.arm === 'new' && t.canary.model_key === 'opus' && Number(t.task.slice(-2)) < 12) t.canary.exposure.product_calls = 0; } });
+  test('an exposure drop at T2 is WATCH by the sign test on tasks paired across arms (amendment 2)', () => {
+    const rows = trials('gstack', 'T2', ['plain', 'prev', 'new'], ['opus', 'sol'], 1, { patch: (t) => { if (t.canary.arm === 'new' && t.canary.model_key === 'opus' && t.task.startsWith('task-') && Number(t.task.slice(-2)) < 12) t.canary.exposure.product_calls = 0; } });
     const v = decide(input('gstack', 'T2', rows));
     expect(v.reasons.map((r) => r.rule)).toEqual(['exposure_rate']);
+    expect(v.models.opus!.exposure.paired).toEqual({ tasks: 34, lost: 12, gained: 0 });
+    expect(v.models.opus!.exposure.p).toBeCloseTo(signTestP(12, 0), 12);
+    expect(v.reasons[0]!.detail).toContain('12 task(s) lost and 0 gained, sign test p 0.0002');
     expect(v.next).toBe('none');
   });
-  test('an exposure drop at T1 is WATCH by the Fisher test too', () => {
+  test('a task that loads in one arm and not the other only counts against its own pair, so a drop that other tasks gain back is not flagged', () => {
+    const rows = trials('gstack', 'T2', ['plain', 'prev', 'new'], ['opus', 'sol'], 1, { patch: (t) => {
+      if (t.canary.model_key !== 'opus' || !t.task.startsWith('task-')) return;
+      const i = Number(t.task.slice(-2));
+      if (t.canary.arm === 'new' && i < 8) t.canary.exposure.product_calls = 0;
+      if (t.canary.arm === 'prev' && i >= 8 && i < 14) t.canary.exposure.product_calls = 0;
+    } });
+    const v = decide(input('gstack', 'T2', rows));
+    expect(v.models.opus!.exposure.paired).toEqual({ tasks: 34, lost: 8, gained: 6 });
+    expect(v.reasons.map((r) => r.rule)).toEqual([]);
+  });
+  test('at T1 the four paired tasks cannot reach p 0.05, so even a full exposure drop is left to T2 (amendment 2)', () => {
     const rows = trials('gstack', 'T1', ['prev', 'new'], ['opus', 'sol'], 1, { patch: (t) => { if (t.canary.arm === 'new' && t.canary.model_key === 'opus') t.canary.exposure.product_calls = 0; } });
     const v = decide(input('gstack', 'T1', rows));
-    expect(v.reasons.map((r) => r.rule)).toEqual(['exposure_rate']);
-    expect(v.status).toBe('WATCH');
-    expect(v.next).toBe('T2');
+    expect(v.models.opus!.exposure.paired).toEqual({ tasks: 4, lost: 4, gained: 0 });
+    expect(v.models.opus!.exposure.p).toBeCloseTo(0.0625, 12);
+    expect(v.reasons.map((r) => r.rule)).toEqual([]);
+    expect(v.status).toBe('OK');
   });
   test('particle-1 never yields REGRESSION: flags go to the digest, and WATCH only on two screens in a row', () => {
     const rows = trials('gbrain', 'T2', ['plain', 'prev', 'new'], ['opus', 'sol', 'particle'], 1, regress(BAD6, 'particle'));
@@ -396,6 +411,51 @@ describe('receipts helpers', () => {
     expect(dirty.problems).toContain('gstack/T1/copy.ndjson: holds captured request bodies outside proxy-requests.ndjson');
     expect(dirty.problems).toContain('gstack/T1/run.log: token pattern anthropic');
     expect(dirty.problems.join(' ')).not.toContain('QQQQ');
+  });
+  test('prepare leaves raw trial trees, arm tarballs and per-trial token files on the run machine, with hashes', () => {
+    const src = mkdtempSync(join(tmpdir(), 'canary-src-'));
+    const put = (p: string, body: string) => { mkdirSync(dirname(join(src, p)), { recursive: true }); writeFileSync(join(src, p), body); };
+    put('gstack/T2/trials.jsonl', '{"ok":1}\n');
+    put('gstack/T2/shard/trials.jsonl', '{"ok":1}\n');
+    put('gstack/T2/shard/trials/opus-cc-new/a1/harbor/agent.txt', 'transcript\n');
+    put('gstack/T2/shard/run/jobs/opus-cc-new__a1/result.json', '{}\n');
+    put('gstack/t0/fake-trial/arms/new-claude.tar.gz', 'tarball');
+    put('gstack/t0/fake-trial/arms/new-claude.tar.gz.json', '{}\n');
+    put('gbrain/t0/new/gbrain-check/keyless/trials/fake-docs/r1/trial.json', '{"slack":{"bot":{"token":"' + ['xoxb', 'trial', '12345678'].join('-') + '"}}}\n');
+    put('gbrain/t0/new/plan/preflight-gbrain-starter/token', 'gbrain_' + 'a'.repeat(40) + '\n');
+    put('gbrain/t0/new/plan/preflight-gbrain-member-dev/tokens.json', '{}\n');
+    const dst = mkdtempSync(join(tmpdir(), 'canary-dst-'));
+    const r = prepare(src, dst);
+    expect(r.problems).toEqual([]);
+    expect(existsSync(join(dst, 'gstack/T2/trials.jsonl'))).toBe(true);
+    expect(existsSync(join(dst, 'gstack/T2/shard/trials.jsonl'))).toBe(true);
+    expect(existsSync(join(dst, 'gstack/t0/fake-trial/arms/new-claude.tar.gz.json'))).toBe(true);
+    const m = JSON.parse(readFileSync(join(dst, 'omitted-manifest.json'), 'utf8')) as { trees: Array<{ path: string; files: number }>; files: Array<{ path: string; why: string }> };
+    expect(m.trees.map((t) => [t.path, t.files])).toEqual([['gbrain/t0/new/gbrain-check/keyless/trials', 1], ['gstack/T2/shard/run/jobs', 1], ['gstack/T2/shard/trials', 1]]);
+    expect(m.files.map((f) => [f.path, f.why])).toEqual([
+      ['gbrain/t0/new/plan/preflight-gbrain-member-dev/tokens.json', 'per-trial bearer token'],
+      ['gbrain/t0/new/plan/preflight-gbrain-starter/token', 'per-trial bearer token'],
+      ['gstack/t0/fake-trial/arms/new-claude.tar.gz', 'arm install tarball'],
+    ]);
+  });
+  test('prepare keeps a gbrain tier\'s shard trial trees and its VM replica on the run machine, and never follows a dangling symbolic link', () => {
+    const src = mkdtempSync(join(tmpdir(), 'canary-src-'));
+    const put = (p: string, body: string) => { mkdirSync(dirname(join(src, p)), { recursive: true }); writeFileSync(join(src, p), body); };
+    put('gbrain/T2/trials.jsonl', '{"ok":1}\n');
+    put('gbrain/T2/shards/prev/trials.jsonl', '{"ok":1}\n');
+    put('gbrain/T2/shards/prev/trials/canary-prev-codex-sol/t/r1/events.jsonl', '{}\n');
+    mkdirSync(join(src, 'gbrain/T2/shards/prev/trials/canary-prev-codex-sol/t/r1/state/tmp'), { recursive: true });
+    symlinkSync('/nonexistent/codex', join(src, 'gbrain/T2/shards/prev/trials/canary-prev-codex-sol/t/r1/state/tmp/apply_patch'));
+    put('gbrain/T2/vm-replica/out/shards/prev/trials.jsonl', '{"ok":1}\n');
+    symlinkSync('/nonexistent/elsewhere', join(src, 'gbrain/T2/stray-link'));
+    const dst = mkdtempSync(join(tmpdir(), 'canary-dst-'));
+    const r = prepare(src, dst);
+    expect(r.problems).toEqual([]);
+    expect(existsSync(join(dst, 'gbrain/T2/shards/prev/trials.jsonl'))).toBe(true);
+    expect(existsSync(join(dst, 'gbrain/T2/stray-link'))).toBe(false);
+    const m = JSON.parse(readFileSync(join(dst, 'omitted-manifest.json'), 'utf8')) as { trees: Array<{ path: string; files: number }>; files: Array<{ path: string; why: string }> };
+    expect(m.trees.map((t) => [t.path, t.files])).toEqual([['gbrain/T2/shards/prev/trials', 2], ['gbrain/T2/vm-replica', 1]]);
+    expect(m.files.map((f) => [f.path, f.why])).toEqual([['gbrain/T2/stray-link', 'symbolic link']]);
   });
   test('state: the last screened release, the last T2, a pending tier and the dead-man clock', () => {
     const at = (d: number) => new Date(Date.UTC(2026, 10, d, 9)).toISOString();

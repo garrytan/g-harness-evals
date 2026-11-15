@@ -5,17 +5,26 @@
 //       copies the run directory, replaces proxy-capture files (proxy-requests.ndjson) with capture-manifest.json (path,
 //       bytes, sha256), refuses any other file holding capture-shaped request bodies, then scans every staged file for token
 //       shapes with scripts/publish-audit.ts's patterns (gzip decoded, SQLite read as bytes). Exit 4 on any refusal; the
-//       report names the pattern and the file, never the match.
+//       report names the pattern and the file, never the match. Raw per-trial trees (shard/trials, shard/run/jobs,
+//       keyless/trials, a gbrain tier's shards/<arm>/trials, and vm-replica, the mid-run copy of a VM's results) and arm
+//       install tarballs (arms/*.tar.gz) are too big for a git branch and stay on the run machine, the per-trial
+//       bearer-token files a gbrain check mints (token, tokens.json, ingest-tokens.json) are withheld, and a symbolic link
+//       is never followed or copied; all of them are listed with their sha256 in omitted-manifest.json.
 //   bun scripts/canary/receipts.ts state --history <history.jsonl> [--now <iso>]
 //       the last screened release per product, the last T2, a pending tier, and the last history timestamp (dead-man check).
 //   bun scripts/canary/receipts.ts lock-check --lock <lock.json> --run-id <id> --fresh-hours <h> [--now <iso>]
 //       exit 0 when the lock is absent, stale or this run's own; exit 3 when another run holds a fresh one.
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { CAPTURE_FILE } from '../../runner/proxy/capture.ts';
 import { scanText, type Hit } from '../publish-audit.ts';
 import type { HistoryLine } from './alert.ts';
+
+const OMIT_TREE = /^(.*?(?:^|\/)(?:shard\/trials|shard\/run\/jobs|keyless\/trials|shards\/[^/]+\/trials|vm-replica))\//;
+const OMIT_FILE = /(?:^|\/)arms\/[^/]+\.tar\.gz$/;
+const WITHHOLD_NAME = new Set(['token', 'tokens.json', 'ingest-tokens.json']);
+const sha256 = (buf: Buffer | string) => createHash('sha256').update(buf).digest('hex');
 
 const CAPTURE_LINE = /"seq"\s*:\s*\d+\s*,\s*"prev"\s*:\s*"[0-9a-f]*"\s*,\s*"route"\s*:/;
 
@@ -23,10 +32,13 @@ function files(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...files(p)); else out.push(p);
+    if (lstatSync(p).isDirectory()) out.push(...files(p)); else out.push(p);
   }
   return out.sort();
 }
+
+/** A file's bytes, or for a symbolic link (a harness leaves dangling ones in its trial state) the text symlink:<target>. */
+const bytesOf = (path: string): Buffer => (lstatSync(path).isSymbolicLink() ? Buffer.from('symlink:' + readlinkSync(path)) : readFileSync(path));
 
 const textOf = (path: string) => {
   const buf = readFileSync(path);
@@ -36,13 +48,28 @@ const textOf = (path: string) => {
 export function prepare(src: string, dst: string): { copied: number; stripped: Array<{ path: string; bytes: number; sha256: string }>; problems: string[] } {
   const stripped: Array<{ path: string; bytes: number; sha256: string }> = [];
   const problems: string[] = [];
+  const trees = new Map<string, { files: number; bytes: number; hashes: string[] }>();
+  const omitted: Array<{ path: string; bytes: number; sha256: string; why: string }> = [];
   let copied = 0;
   for (const p of files(src)) {
     const rel = relative(src, p);
     const name = rel.split('/').at(-1)!;
+    const tree = OMIT_TREE.exec(rel)?.[1];
+    if (tree) {
+      const buf = bytesOf(p);
+      const t = trees.get(tree) ?? { files: 0, bytes: 0, hashes: [] };
+      t.files++; t.bytes += buf.length; t.hashes.push(`${sha256(buf)}  ${relative(tree, rel)}`);
+      trees.set(tree, t);
+      continue;
+    }
+    if (OMIT_FILE.test(rel) || WITHHOLD_NAME.has(name) || lstatSync(p).isSymbolicLink()) {
+      const buf = bytesOf(p);
+      omitted.push({ path: rel, bytes: buf.length, sha256: sha256(buf), why: WITHHOLD_NAME.has(name) ? 'per-trial bearer token' : OMIT_FILE.test(rel) ? 'arm install tarball' : 'symbolic link' });
+      continue;
+    }
     if (name === CAPTURE_FILE || name.startsWith(CAPTURE_FILE + '.')) {
       const buf = readFileSync(p);
-      stripped.push({ path: rel, bytes: buf.length, sha256: createHash('sha256').update(buf).digest('hex') });
+      stripped.push({ path: rel, bytes: buf.length, sha256: sha256(buf) });
       continue;
     }
     if (CAPTURE_LINE.test(textOf(p))) { problems.push(`${rel}: holds captured request bodies outside ${CAPTURE_FILE}`); continue; }
@@ -51,6 +78,11 @@ export function prepare(src: string, dst: string): { copied: number; stripped: A
     copied++;
   }
   if (stripped.length) writeFileSync(join(dst, 'capture-manifest.json'), JSON.stringify({ note: 'captured request bodies stay on the run machine; hashes only', files: stripped }, null, 2) + '\n');
+  if (trees.size || omitted.length) {
+    mkdirSync(dst, { recursive: true });
+    const treeRows = [...trees].map(([path, t]) => ({ path, files: t.files, bytes: t.bytes, sha256: sha256(t.hashes.sort().join('\n') + '\n') }));
+    writeFileSync(join(dst, 'omitted-manifest.json'), JSON.stringify({ note: 'raw per-trial trees, arm tarballs and per-trial bearer-token files stay on the run machine; a tree hash is the sha256 of its sorted "<sha256>  <path>" lines', trees: treeRows, files: omitted }, null, 2) + '\n');
+  }
   const hits: Hit[] = [];
   for (const p of existsSync(dst) ? files(dst) : []) scanText(textOf(p), relative(dst, p), hits, {});
   for (const h of hits) problems.push(`${h.where}: token pattern ${h.pattern}`);
