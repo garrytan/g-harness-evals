@@ -56,7 +56,7 @@ Before ready, the adapter lists every name Cursor's docs say it loads on its own
 - `.agents/`, `.claude/` and `.codex/` (skills, agents, Claude Code hooks: [skills](https://cursor.com/docs/skills), [subagents](https://cursor.com/docs/subagents), [third-party hooks](https://cursor.com/docs/reference/third-party-hooks));
 - `.cursorignore` ([agent security](https://cursor.com/docs/agent/security)).
 
-The list goes to `instruction-files.json` and `ready`. Any hit is exit 2 (HE-CURSOR-004). The first build also listed `CLAUDE.local.md`, `.cursorrules` and `.[name withheld]/`; no public Cursor source names them, so they are gone.
+The list goes to `instruction-files.json` and `ready`. Any hit is exit 2 (HE-CURSOR-004). The first build also listed `CLAUDE.local.md`, `.cursorrules` and `.grok/`; no public Cursor source names them, so they are gone.
 
 **Not visible here:** account-level User Rules and Memories live on Cursor's servers. The dedicated account must have none.
 
@@ -109,7 +109,7 @@ Cursor's terms (1.5 (vii)) allow publishing benchmark results of the Service onl
 
 Our own repository parts stay as they were: key forwarding, `KEY_NAMES`, the literal-value key scan, the time-window attribution of usage and the runner wiring.
 
-**Removed** (JavaScript only, no allowed source found): `--exclude-tools` and its four tool names; the stream keys for web tools and the `interaction_query` records; the `usage` records and their token fields; the Connect error strings and "Authentication failed"; `api3.cursor.sh` as a metrics host; the statsig hosts; the `--force`-approves-web-search claim; `CURSOR_FORCED_SHELL_EGRESS` and the sandbox notes; the shell-environment claim; `CLAUDE.local.md`, `.cursorrules`, `.[name withheld]/`; the token-cache claim; the guessed `opus[ -]?5[.-]5` pattern; the usage-export column names.
+**Removed** (JavaScript only, no allowed source found): `--exclude-tools` and its four tool names; the stream keys for web tools and the `interaction_query` records; the `usage` records and their token fields; the Connect error strings and "Authentication failed"; `api3.cursor.sh` as a metrics host; the statsig hosts; the `--force`-approves-web-search claim; `CURSOR_FORCED_SHELL_EGRESS` and the sandbox notes; the shell-environment claim; `CLAUDE.local.md`, `.cursorrules`, `.grok/`; the token-cache claim; the guessed `opus[ -]?5[.-]5` pattern; the usage-export column names.
 
 **Docs read on 2026-11-09 (UTC)**, each fetched as its `.md` form from the index at https://cursor.com/llms.txt:
 

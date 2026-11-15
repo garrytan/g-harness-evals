@@ -177,14 +177,26 @@ if [ "$workload" = frontier-harbor ]; then
     # 2026-11-15), and since #461 one missing none-arm request fails the whole gstack check. Only that failure is retried,
     # with the qm-driver smoke's tries and backoff (HE_SMOKE_TRIES, HE_RETRY_BASE_S doubling up to 120 s), from an empty
     # results directory, keeping each try's logs and install-check.json as ~/shard/smoke/try<n>.*; the installed runtime/
-    # trees are not read. A try whose install-check.json also fails egress, canary or zdr is never retried, and a results
-    # directory that cannot be cleared ends the retries, so the shard stops on that try's report.
+    # trees are not read. A try whose install-check.json also fails egress, canary or zdr, or whose gstack check reports
+    # its own fake-key canary or packet-capture failure, is never retried. A zdr no_capture on a cell whose own trial ended
+    # in AgentSetupTimeoutError does not stop it (that cell sent nothing to check). A results directory that cannot be
+    # cleared ends the retries, so the shard stops on that try's report.
     smoke_tries=${HE_SMOKE_TRIES:-4} wait_s=${HE_RETRY_BASE_S:-30}
     for ((try = 1; ; try++)); do
       "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
       rc=$?
       [ "$rc" -ne 0 ] && [ "$try" -lt "$smoke_tries" ] && grep -rqs --exclude-dir=runtime --include='*.log' --include=result.json AgentSetupTimeoutError "$shard/smoke/results" &&
-        ! grep -Eqs '"(egress|canary|zdr): ' "$shard/smoke/results/install-check.json" || break
+        python3 - "$shard/smoke/results/install-check.json" <<'PY' || break
+import json, os, re, sys
+report = json.load(open(sys.argv[1])) if os.path.exists(sys.argv[1]) else {}
+cells = (report.get("agents") or {}).get("cells") or {}
+def stops(reason):
+    m = re.match(r"zdr: cell (\S+) no_capture: ", reason)
+    if m:
+        return (cells.get(m.group(1)) or {}).get("exception") != "AgentSetupTimeoutError"
+    return re.match(r"(egress|canary|zdr): |gstack: agents: (the|no) fake-key canary |gstack: skill start \([^)]*\): (no packet capture|the tcpdump sidecar|\d+ packet)", reason) is not None
+sys.exit(1 if any(stops(r) for r in report.get("reasons") or []) else 0)
+PY
       cp "$shard/smoke/results/run.stdout.log" "$shard/smoke/try$try.run.stdout.log"
       for f in install-check.log install-check.json; do [ ! -f "$shard/smoke/results/$f" ] || cp "$shard/smoke/results/$f" "$shard/smoke/try$try.$f"; done
       log "smoke try $try of $smoke_tries: an agent setup timed out (AgentSetupTimeoutError); next try in ${wait_s}s"

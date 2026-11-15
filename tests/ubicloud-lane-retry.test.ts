@@ -286,7 +286,7 @@ describe('vm-shard.sh --workload frontier-harbor: the keyless smoke is retried o
 
   for (const gate of ['egress', 'canary', 'zdr'] as const) {
     test('a timeout beside a failed ' + gate + ' check is not retried, and that report is kept', () => {
-      const report = JSON.stringify({ pass: false, reasons: ['gstack: no none-baseline request for hermes', gate + ': failed'] }, null, 2);
+      const report = JSON.stringify({ pass: false, reasons: ['gstack: no none-baseline request for hermes', gate + ': failed'] });
       const r = frontierShardHome(1, TIMEOUT, 'install-check.log', 'printf "%s\\n" ' + JSON.stringify(report) + ' > "$out/install-check.json"');
       expect(r.code, r.out).toBe(4);
       expect(r.smokes).toBe(1);
@@ -295,8 +295,32 @@ describe('vm-shard.sh --workload frontier-harbor: the keyless smoke is retried o
     }, 60_000);
   }
 
+  const withReport = (report: object) => frontierShardHome(1, TIMEOUT, 'install-check.log', 'printf "%s\\n" ' + JSON.stringify(JSON.stringify(report)) + ' > "$out/install-check.json"');
+  const noCapture = (cell: string) => 'zdr: cell ' + cell + ' no_capture: no captured Responses request';
+  test('a zdr no_capture on a cell whose own trial timed out in agent setup is retried', () => {
+    const r = withReport({ pass: false, agents: { vm_run_exit: 1, cells: { 'codex-sol': { exception: 'AgentSetupTimeoutError' } }, pass: false }, reasons: ['agents: cell codex-sol did not run', noCapture('codex-sol')] });
+    expect(r.code, r.out).toBe(0);
+    expect(r.smokes).toBe(2);
+    expect(r.driver).toContain('--name opus-b1');
+  }, 60_000);
+  for (const [why, report] of [
+    ['a zdr no_capture on a cell that did not time out', { agents: { cells: { 'codex-sol': { exception: 'AgentSetupTimeoutError' }, 'hermes-sol': { exception: null } } }, reasons: [noCapture('codex-sol'), noCapture('hermes-sol')] }],
+    ['a zdr fail on the cell that timed out', { agents: { cells: { 'codex-sol': { exception: 'AgentSetupTimeoutError' } } }, reasons: ['zdr: cell codex-sol fail: store was not false'] }],
+    ['the gstack arm\'s own fake-key canary in a file', { reasons: ['gstack: agents: the fake-key canary appears in run/jobs/x/agent/log.txt'] }],
+    ['no gstack fake-key canary to scan for', { reasons: ['gstack: agents: no fake-key canary to scan for (canary.txt missing or empty)'] }],
+    ['packets leaving the gstack skill start container', { reasons: ['gstack: skill start (hermes): 3 packet(s) left the container'] }],
+    ['a gstack skill start with no packet capture', { reasons: ['gstack: skill start (codex): no packet capture was written'] }],
+  ] as const) {
+    test('a timeout beside ' + why + ' is not retried', () => {
+      const r = withReport({ pass: false, ...report });
+      expect(r.code, r.out).toBe(4);
+      expect(r.smokes).toBe(1);
+      expect(r.driver).toBe('');
+    }, 60_000);
+  }
+
   test('a timeout whose report fails only other checks is retried, and each try keeps its install-check.json', () => {
-    const report = JSON.stringify({ pass: false, reasons: ['gstack: no none-baseline request for hermes'] }, null, 2);
+    const report = JSON.stringify({ pass: false, reasons: ['gstack: no none-baseline request for hermes'] });
     const r = frontierShardHome(1, TIMEOUT, 'install-check.log', 'printf "%s\\n" ' + JSON.stringify(report) + ' > "$out/install-check.json"');
     expect(r.code, r.out).toBe(0);
     expect(r.smokes).toBe(2);
