@@ -37,7 +37,7 @@
  * Attribution across processes (lease mode): the harness binds a slot (the
  * path segment a shim's base URL carries) to a key around each question or
  * namespace ingest and reads the key's meter afterwards, through
- * `POST /__proxy/bind {slot, key, token?, models?, ablation?, max_requests?, collect_requests?}`, `POST /__proxy/unbind {slot}`,
+ * `POST /__proxy/bind {slot, key, token?, models?, ablation?, max_requests?, collect_requests?, install?}`, `POST /__proxy/unbind {slot}`,
  * `POST /__proxy/finalize {key}` and `POST /__proxy/requests {key}` (internal-task Phase B, SlotLimits). With `--control-token` (or
  * SHOOTOUT_PROXY_CONTROL_TOKEN) these need the `x-proxy-control` header, so a
  * vendor container cannot move charges.
@@ -75,7 +75,7 @@
  *     [--usage-log <file>] [--allow-models openai:gpt-4.1-mini,...] [--max-output-tokens 32768] [--free-count-tokens]
  *     [--forbidden-markers <file>] [--streaming meter|refuse] [--upstream openai=http://...] [--new-run] [--control-token <t>] [--ablation-log <file>] [--log-sections]
  *     [--route-texts <file.json>] [--refuse-hosted-tools] [--capture-bodies <dir> [--capture-max-bytes <n>]]
- *   bun runner/proxy/metering-proxy.ts summary --budget-ledger <file> --run-id <id>
+ *   bun runner/proxy/metering-proxy.ts summary --budget-ledger <file> --run-id <id> [--usage-log <file>]
  *
  * One lease ledger can hold a cell's reruns: each run id is its own lease, the
  * output cap is recorded with the lease, and `--new-run` closes a lease still
@@ -114,8 +114,25 @@
  *
  * Output cap: `--max-output-tokens` sets the cap for one proxy start (and its lease); set it to the harness's own
  * max output, since a request naming more is refused. Without it the cap is DEFAULT_MAX_OUTPUT_TOKENS.
+ *
+ * Install slots (internal-task, the gbrain install eval): a lease-mode bind with `install: true` (it needs `token` and `models`, and
+ * is refused on a proxy started with --refuse-hosted-tools) writes one usage line for every request that reaches the slot,
+ * forwarded or refused, with `kind: "install_slot"`, `method`, `endpoint` (endpointClass), the model it names, `token_presented`,
+ * a sanitized `user_agent`, the `status` the proxy answered and `non_harness`. A request is the harness's own model call only
+ * when it presents the token and is a generation or count_tokens call for a bound model, or a GET /v1/models metadata read
+ * (forwarded free as before). A tool that inherits the harness's environment presents the token too (the Claude Code and
+ * Hermes adapters export it there today), so a same-model call from such a tool counts as the harness's own. Any other
+ * request (no token, an embeddings call, another route, another model) is `non_harness: true` and refused 403 at $0
+ * (HE-PROXY-010), logged under `slot:<id>` when it lacks the token, as before. Provider-hosted web tools stay allowed:
+ * a forwarded generation line carries `web_search_calls`, `web_search_usd`, `web_fetch_calls` and `web_fetch_usd`, read from the
+ * response (runner/proxy/hosted-tools.ts webToolUse) and priced from the price table's `tool_fees`, and the fees are charged to
+ * the key and the lease on top of tokens. The reservation adds each declared tool's fee times its `max_uses`, or times 20 calls
+ * when the request sets none (webToolAllowance), and the request settles at the calls the response reports, as overshoot when
+ * it ran more. A hosted web tool with no fee row (OpenAI web_search_preview, Chat Completions web_search_options) is refused 400
+ * on an install slot (HE-PROXY-011). `summary` adds per-key install totals (installTotals). A slot bound without `install`
+ * behaves exactly as before.
  */
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { BudgetExceededError, BudgetRun, jsonOrNull, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, unbilledAnswer, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
 
@@ -125,7 +142,7 @@ import type { RouteCopies } from '../contracts.ts';
 import type { AblationBinding, AblationReceipt, AblationSpec } from './ablate.ts';
 import { requestSections, responseExtras, sectionRoute, type RequestSections } from './sections.ts';
 import { effortFields } from './effort.ts';
-import { hostedWebTools } from './hosted-tools.ts';
+import { hostedWebTools, unpricedWebTools, webToolAllowance, webToolUse } from './hosted-tools.ts';
 import { BodyCapture, CAPTURE_FILE, DEFAULT_CAPTURE_MAX_BYTES } from './capture.ts';
 import { canonicalLookup } from '../pricing/model-pricing.ts';
 
@@ -229,7 +246,7 @@ export interface RouteTexts { copies: string[]; listing: string[] }
  *  agent's last step, which no forwarded body does. */
 export interface SlotLimits { max_requests?: number; collect_requests?: boolean }
 export const REQUEST_CAP = 'request_cap';
-type SlotBinding = { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null; routes?: boolean; maxRequests?: number; sent?: number; collect?: boolean; capture?: string };
+type SlotBinding = { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null; routes?: boolean; maxRequests?: number; sent?: number; collect?: boolean; capture?: string; install?: boolean };
 
 export interface UsageLine {
   at: string; key: string; provider: string; route: string; model: string | null;
@@ -263,6 +280,53 @@ export interface UsageLine {
   usage_unknown?: true; reported_usd?: number;
   /** Particle only, on a non-2xx answer: its JSON `error.code` and `error.type` when each is a short token. Nothing else from the body is logged. runner/trial/trial.ts `trialTermination` reads `error_code` (internal-task plan decision 12); `error_type` is for the reader of the log. */
   error_code?: string; error_type?: string;
+  /** internal-task, on every line of an install slot and nowhere else: the request's method and endpoint class, whether it presented
+   *  the slot's token, its user agent (sanitizeUserAgent) and whether it was not the harness's own model call (refused, HE-PROXY-010).
+   *  `status` is then always the HTTP status the proxy answered (502 on a failed line). */
+  kind?: 'install_slot'; method?: string; endpoint?: EndpointClass; token_presented?: boolean; user_agent?: string; non_harness?: boolean;
+  /** internal-task, on a forwarded generation line of an install slot: the provider-hosted web tool calls the response reported and
+   *  their fees, which are part of actual_usd (hosted-tools.ts webToolUse). */
+  web_search_calls?: number; web_search_usd?: number; web_fetch_calls?: number; web_fetch_usd?: number;
+}
+
+/** internal-task: what an install-slot request is, by method and route. */
+export type EndpointClass = 'generation' | 'models' | 'embeddings' | 'count_tokens' | 'other';
+export function endpointClass(method: string, route: string): EndpointClass {
+  if (route === COUNT_TOKENS_ROUTE) return 'count_tokens';
+  if (method === 'GET' && /^\/v1\/models(\/[^/]+)?$/.test(route)) return 'models';
+  if (/^\/v1\/embeddings$/.test(route)) return 'embeddings';
+  if (method === 'POST' && /^\/v1\/(messages|chat\/completions|responses)$/.test(route)) return 'generation';
+  return 'other';
+}
+
+/** internal-task: a user agent fit for the usage log: printable ASCII only, the slot's token and anything token-like (an sk-, pk- or
+ *  rk- key, or a run of 20 or more letters, digits, -, _, + or =) replaced by [masked], at most 120 characters. */
+export function sanitizeUserAgent(ua: string | null, token: string | null): string {
+  let s = (ua ?? '').replace(/[^\x20-\x7e]/g, ' ');
+  if (token) s = s.split(token).join('[masked]');
+  return s.replace(/\b(sk|pk|rk)-[A-Za-z0-9_-]{6,}/g, '[masked]').replace(/[A-Za-z0-9_+=-]{20,}/g, '[masked]').slice(0, 120);
+}
+
+type InstallTag = Required<Pick<UsageLine, 'kind' | 'method' | 'endpoint' | 'token_presented' | 'user_agent' | 'non_harness'>> & { model: string | null };
+
+export interface InstallTotals {
+  requests: number;
+  non_harness: Record<EndpointClass, number>;
+  web_search_calls: number; web_search_usd: number; web_fetch_calls: number; web_fetch_usd: number;
+}
+
+/** internal-task: install-slot totals per usage-line key (a trial's key, or `slot:<id>` for requests without its token), from usage lines. */
+export function installTotals(lines: UsageLine[]): Record<string, InstallTotals> {
+  const out: Record<string, InstallTotals> = {};
+  for (const l of lines) {
+    if (l.kind !== 'install_slot') continue;
+    const t = out[l.key] ??= { requests: 0, non_harness: { generation: 0, models: 0, embeddings: 0, count_tokens: 0, other: 0 }, web_search_calls: 0, web_search_usd: 0, web_fetch_calls: 0, web_fetch_usd: 0 };
+    t.requests++;
+    if (l.non_harness) t.non_harness[l.endpoint ?? 'other']++;
+    t.web_search_calls += l.web_search_calls ?? 0; t.web_search_usd += l.web_search_usd ?? 0;
+    t.web_fetch_calls += l.web_fetch_calls ?? 0; t.web_fetch_usd += l.web_fetch_usd ?? 0;
+  }
+  return out;
 }
 
 /** The internal-task fields of a line that reported no usage worth reading (a count_tokens call). */
@@ -458,9 +522,16 @@ export class MeteringProxy {
   get port(): number { return this.server!.port as number; }
   /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it; with `models`, only requests for those provider:model ids;
    *  with `ablation` (lease mode), the bound layers are cut from every generation request (runner/proxy/ablate.ts); with
-   *  `routes` (internal-task), count route copies on its usage lines when the proxy has route texts. */
-  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false, limits: SlotLimits = {}, capture: string | null = null) {
-    this.bindings.set(slot, { key, token, models, ablation, ...(routes ? { routes } : {}), ...(limits.max_requests ? { maxRequests: limits.max_requests, sent: 0 } : {}), ...(limits.collect_requests ? { collect: true } : {}), ...(capture ? { capture } : {}) });
+   *  `routes` (internal-task-a), count route copies on its usage lines when the proxy has route texts; with `install` (internal-task-b, lease
+   *  mode, needs `token` and `models`), record every request and refuse the ones that are not the harness's own model call.
+   *  Throws, binding nothing, when an install bind lacks one of those or the proxy refuses hosted web tools. */
+  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false, limits: SlotLimits = {}, capture: string | null = null, install = false) {
+    if (install) {
+      const missing = !this.options.policy ? 'a lease proxy' : !token ? 'a token' : !models?.length ? 'models' : null;
+      if (missing) throw new Error(`bind install refused: an install slot needs ${missing}, which tells the harness's own model call apart from any other request`);
+      if (this.options.policy!.refuseHostedTools) throw new Error('bind install refused: this proxy was started with --refuse-hosted-tools, and an install slot meters hosted web tools instead of refusing them; start the install proxy without the flag');
+    }
+    this.bindings.set(slot, { key, token, models, ablation, ...(routes ? { routes } : {}), ...(limits.max_requests ? { maxRequests: limits.max_requests, sent: 0 } : {}), ...(limits.collect_requests ? { collect: true } : {}), ...(capture ? { capture } : {}), ...(install ? { install } : {}) });
   }
   /** The request bodies collected for `key` since its slot was bound with collect_requests, in order, and the first body the
    *  request cap refused (refused, empty when none was); drops them. */
@@ -490,7 +561,10 @@ export class MeteringProxy {
     if (this.inflight.get(key)) m.undrained = this.inflight.get(key);
     return m;
   }
-  private log(line: UsageLine) {
+  /** `install`: the request is on an install slot, so its line carries the install fields, the model the request named when the
+   *  line has none, and the status the proxy answered (502 for a failed line). */
+  private log(line: UsageLine, install?: InstallTag) {
+    if (install) { const { model, ...fields } = install; line = { ...line, model: line.model ?? model, ...fields, status: line.status ?? 502 }; }
     if (line.outcome === 'refused') this.counts.refused++; else if (line.outcome === 'failed') this.counts.failed++; else this.counts.forwarded++;
     if (this.options.policy?.usageLog) appendFileSync(this.options.policy.usageLog, JSON.stringify(line) + '\n');
   }
@@ -509,19 +583,43 @@ export class MeteringProxy {
         const [, slot = 'default', prov, rest] = m as unknown as [string, string | undefined, ProviderName, string];
         const binding = this.bindings.get(slot);
         const key = binding?.key ?? `slot:${slot}`;
+        let install: InstallTag | undefined;
         if (this.options.policy) {
           const refused = (reason: string) => { this.log({ at: new Date().toISOString(), key, provider: prov, route: rest, model: null, outcome: 'refused', reason, status: 403 }); return json(403, 'invalid_request', reason); };
           if (!binding) return refused(`slot ${slot} is not bound; the proxy forwards only for a slot the runner bound`);
+          if (binding.install) {
+            this.inflight.set(key, (this.inflight.get(key) ?? 0) + 1);
+            let raw: string | undefined;
+            try { raw = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.clone().text(); } catch (e) { this.settled(key); throw e; }
+            const named = (jsonOrNull(raw ?? '') as { model?: unknown } | null)?.model;
+            const model = typeof named === 'string' && /^[A-Za-z0-9._:/-]{1,200}$/.test(named) ? named : null;
+            const endpoint = endpointClass(req.method, rest);
+            const tokenPresented = presentedCredential(req) === binding.token;
+            install = { kind: 'install_slot', method: req.method.slice(0, 16), endpoint, token_presented: tokenPresented, user_agent: sanitizeUserAgent(req.headers.get('user-agent'), binding.token), non_harness: true, model };
+            const why = !tokenPresented ? `the credential presented for slot ${slot} is not the slot's token`
+              : endpoint === 'embeddings' ? 'an embeddings request, which the harness\'s own model call never makes'
+              : endpoint === 'other' ? `route ${req.method} /${prov}${rest} is not a model call the harness makes`
+              : endpoint !== 'models' && !binding.models!.includes(`${prov}:${model}`) ? `${prov}:${model ?? '(no model)'} is not on slot ${slot}'s model list (${binding.models!.join(', ')})`
+              : null;
+            if (why) {
+              this.settled(key);
+              const reason = `HE-PROXY-010 ${why}; an install slot refuses at $0, and counts, every request that is not the harness's own model call (docs/errors.md)`;
+              this.log({ at: new Date().toISOString(), key: tokenPresented ? key : `slot:${slot}`, provider: prov, route: rest, model, outcome: 'refused', reason, status: 403 }, install);
+              return json(403, 'invalid_request', reason);
+            }
+            install.non_harness = false;
+          }
           if (binding.token !== null && presentedCredential(req) !== binding.token) {
+            if (install) this.settled(key);
             this.log({ at: new Date().toISOString(), key: `slot:${slot}`, provider: prov, route: rest, model: null, outcome: 'refused', reason: `the credential presented for slot ${slot} is not the slot's token`, status: 403 });
             return json(403, 'invalid_request', `the credential presented for slot ${slot} is not the slot's token`);
           }
         }
-        this.inflight.set(key, (this.inflight.get(key) ?? 0) + 1);
+        if (!install) this.inflight.set(key, (this.inflight.get(key) ?? 0) + 1);
         let streaming = false;
         try {
           const r = this.options.policy
-            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); }, slot, binding?.models ?? null, binding?.ablation ?? null, binding?.routes === true, binding)
+            ? await this.forwardLeased(req, prov, rest, url.search, key, send, () => { streaming = true; return () => this.settled(key); }, slot, binding?.models ?? null, binding?.ablation ?? null, binding?.routes === true, binding, install)
             : await this.forwardInProcess(req, slot, prov, rest, url.search, key, send);
           return r;
         } finally { if (!streaming) this.settled(key); }
@@ -539,7 +637,7 @@ export class MeteringProxy {
 
   private async control(path: string, req: Request): Promise<Response> {
     if (this.options.controlToken && req.headers.get('x-proxy-control') !== this.options.controlToken) return json(403, 'invalid_request', 'control endpoints need the x-proxy-control token');
-    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; capture?: unknown; timeout_ms?: number; max_requests?: unknown; collect_requests?: unknown };
+    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; capture?: unknown; timeout_ms?: number; max_requests?: unknown; collect_requests?: unknown; install?: unknown };
     try { body = await req.json() as typeof body; } catch { return json(400, 'invalid_request', 'control body is not JSON'); }
     if (path === '/__proxy/bind' && body.slot && body.key) {
       if (body.models !== undefined && (!Array.isArray(body.models) || body.models.some(m => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(m)))) return json(400, 'invalid_request', 'bind models must be a list of provider:model ids');
@@ -551,6 +649,7 @@ export class MeteringProxy {
       }
       if (body.max_requests !== undefined && !(Number.isInteger(body.max_requests) && (body.max_requests as number) > 0)) return json(400, 'invalid_request', 'bind max_requests must be a positive whole number');
       if (body.max_requests !== undefined && !(Array.isArray(body.models) && body.models.length)) return json(400, 'invalid_request', 'bind max_requests needs models: the cap counts requests for the first model');
+      if (body.install !== undefined && typeof body.install !== 'boolean') return json(400, 'invalid_request', 'bind install must be true or false');
       let capture: string | null = null;
       if (body.capture !== undefined) {
         const root = this.options.policy?.captureRoot;
@@ -561,8 +660,10 @@ export class MeteringProxy {
         try { mkdirSync(dir, { recursive: true }); } catch (e) { return json(400, 'invalid_request', `bind capture refused: ${(e as Error).message}`); }
         capture = join(dir, CAPTURE_FILE);
       }
-      this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[], ablation, body.routes === true,
-        { ...(body.max_requests !== undefined ? { max_requests: body.max_requests as number } : {}), ...(body.collect_requests === true ? { collect_requests: true } : {}) }, capture);
+      try {
+        this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[], ablation, body.routes === true,
+          { ...(body.max_requests !== undefined ? { max_requests: body.max_requests as number } : {}), ...(body.collect_requests === true ? { collect_requests: true } : {}) }, capture, body.install === true);
+      } catch (e) { return json(400, 'invalid_request', (e as Error).message); }
       return Response.json({ ok: true });
     }
     if (path === '/__proxy/requests' && body.key) return Response.json(this.takeRequests(body.key));
@@ -628,7 +729,7 @@ export class MeteringProxy {
   }
 
   /** Lease mode, POST /anthropic/v1/messages/count_tokens: forwarded with the proxy's key, never priced, reserved or metered. */
-  private async forwardCount(req: Request, route: string, search: string, key: string, send: Send, realKey: string, raw: string | undefined, model: string | null, at: string): Promise<Response> {
+  private async forwardCount(req: Request, route: string, search: string, key: string, send: Send, realKey: string, raw: string | undefined, model: string | null, at: string, install?: InstallTag): Promise<Response> {
     const headers = new Headers(req.headers);
     for (const h of ['host', 'content-length', 'accept-encoding', 'connection', ...CREDENTIAL_HEADERS]) headers.delete(h);
     headers.set('x-api-key', realKey);
@@ -637,23 +738,23 @@ export class MeteringProxy {
     let res: Response;
     try { res = await send(`${this.options.upstream?.anthropic ?? UPSTREAM.anthropic}${route}${search}`, { method: 'POST', headers, body: raw, timeout: false, signal: AbortSignal.timeout(UPSTREAM_DEADLINE_MS) } as RequestInit); }
     catch (e) {
-      this.log({ at, key, provider: 'anthropic', route, model, outcome: 'failed', reason: `count_tokens (free): ${(e as Error).message.slice(0, 300)}`, reserved_usd: 0, actual_usd: 0 });
+      this.log({ at, key, provider: 'anthropic', route, model, outcome: 'failed', reason: `count_tokens (free): ${(e as Error).message.slice(0, 300)}`, reserved_usd: 0, actual_usd: 0 }, install);
       return json(502, 'product_error', `upstream failed: ${(e as Error).message}`);
     }
     const text = await res.text();
-    this.log({ at, key, provider: 'anthropic', route, model, outcome: 'forwarded', status: res.status, reserved_usd: 0, actual_usd: 0, reason: 'count_tokens: free, never metered', ...NO_EXTRAS });
+    this.log({ at, key, provider: 'anthropic', route, model, outcome: 'forwarded', status: res.status, reserved_usd: 0, actual_usd: 0, reason: 'count_tokens: free, never metered', ...NO_EXTRAS }, install);
     const out = new Headers(res.headers);
     for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
     return new Response(text, { status: res.status, headers: out });
   }
 
   /** Lease mode: allowlist, tripwire, output cap, price, reserve, inject the key, forward, settle. Every refusal happens before forwarding. */
-  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null, ablation: AblationBinding | null = null, routes = false, binding?: SlotBinding): Promise<Response> {
+  private async forwardLeased(req: Request, prov: ProviderName, route: string, search: string, key: string, send: Send, beginStream: () => () => void, slot: string, slotModels: string[] | null, ablation: AblationBinding | null = null, routes = false, binding?: SlotBinding, install?: InstallTag): Promise<Response> {
     const capture = binding?.capture ?? null;
     const p = this.options.policy!;
     const at = new Date().toISOString();
     const refuse = (status: number, kind: string, reason: string, model: string | null = null) => {
-      this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status });
+      this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status }, install);
       return json(status, kind, reason);
     };
     const countRoute = prov === 'anthropic' && req.method === 'POST' && route === COUNT_TOKENS_ROUTE && p.freeCountTokens === true;
@@ -675,7 +776,7 @@ export class MeteringProxy {
     if (countRoute) {
       if (p.allowModels && !p.allowModels.includes(`anthropic:${model}`)) return refuse(403, 'budget', `anthropic:${model} is not on this cell's model allowlist`, model);
       if (slotModels && !slotModels.includes(`anthropic:${model}`)) return refuse(403, 'budget', `anthropic:${model} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, model);
-      return this.forwardCount(req, route, search, key, send, realKey, raw, model, at);
+      return this.forwardCount(req, route, search, key, send, realKey, raw, model, at, install);
     }
     const streamed = body?.stream === true;
     if (streamed && (p.streaming ?? 'meter') === 'refuse') return refuse(400, 'invalid_request', 'streaming is disabled for this cell', model);
@@ -685,6 +786,8 @@ export class MeteringProxy {
       this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status: 400, ...effortFields(body) });
       return json(400, 'invalid_request', reason);
     }
+    const unpriced = install ? unpricedWebTools(prov, body) : [];
+    if (unpriced.length) return refuse(400, 'invalid_request', `HE-PROXY-011 the request declares a provider-hosted web tool with no published per-call fee in the price table (${unpriced.join(', ')}); an install slot refuses it rather than meter it at $0 (docs/errors.md). fix: use a hosted tool the price table prices, or add its fee row to a new dated price table`, model);
     const pinned = prov === 'openrouter' ? openrouterRefusal(body, model) : null;
     if (pinned) return refuse(400, 'invalid_request', `HE-PROXY-008 ${pinned}; the metering proxy forwards an OpenRouter request only for an allowlisted model on its pinned endpoint (docs/errors.md). fix: name the bare model id and drop OpenRouter routing fields`, model);
     const pinnedRow = prov === 'openrouter' ? canonicalLookup(`openrouter:${model}`) : undefined;
@@ -730,7 +833,8 @@ export class MeteringProxy {
     }
     if (binding?.collect && body) { const list = this.collected.get(key) ?? []; list.push(structuredClone(body)); this.collected.set(key, list); }
     const bounded = price ? { ...price, inputTokens: Math.max(price.inputTokens, Buffer.byteLength(outBody ?? '') + 64) } : null;
-    const reserved = bounded ? reservationUsd(bounded) : 0;
+    // internal-task: an install slot also reserves the most its declared hosted web tools can bill (hosted-tools.ts webToolAllowance).
+    const reserved = bounded ? reservationUsd(bounded) + (install ? webToolAllowance(prov, body) : 0) : 0;
     let entry: string | null = null;
     if (bounded) {
       try { entry = p.lease.reserve(reserved, `${prov}:${bounded.model} ${bounded.kind} [${key}]`); }
@@ -749,6 +853,9 @@ export class MeteringProxy {
     /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation.
      *  `response`: the parsed body, or a stream's text, which the usage-line schema v1 fields are read from once the request is charged. */
     const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, response: unknown, cached?: number, reason?: string, unfinished = false, facts: Partial<UsageLine> = {}) => {
+      // internal-task: an install slot charges the hosted web tool fees the response reports on top of its tokens.
+      const web = install && bounded ? webToolUse(prov, route, response, isStream) : null;
+      if (cost && web && web.web_search_usd + web.web_fetch_usd > 0) cost = { ...cost, usd: cost.usd + web.web_search_usd + web.web_fetch_usd };
       const charged = !!bounded && (!cost || unfinished);
       if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost);
       const usd = !cost ? reserved : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
@@ -758,7 +865,7 @@ export class MeteringProxy {
       this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(why ? { reason: why } : {}), status, reserved_usd: reserved, actual_usd: usd,
         input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged,
         ...(charged ? { usage_unknown: true as const, reported_usd: cost?.usd ?? 0 } : {}), streamed: isStream, ...knobs,
-        ...facts, ...(cost?.reported_usd !== undefined ? { openrouter_cost_usd: cost.reported_usd } : {}), ...lineExtrasFor(prov, route, response, request) });
+        ...facts, ...(cost?.reported_usd !== undefined ? { openrouter_cost_usd: cost.reported_usd } : {}), ...lineExtrasFor(prov, route, response, request), ...web }, install);
     };
     // The upstream never answered, or its non-streamed body broke off: usage is unknown, so the reservation is charged.
     const failed = (message: string) => {
@@ -766,7 +873,7 @@ export class MeteringProxy {
       this.charge(key, prov, bounded?.model ?? null, reserved, !!bounded);
       this.observe(key, 'failed');
       this.log({ at, key, provider: prov, route, model, outcome: 'failed', reason: message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded,
-        ...(bounded ? { usage_unknown: true as const, reported_usd: 0 } : {}), ...knobs });
+        ...(bounded ? { usage_unknown: true as const, reported_usd: 0 } : {}), ...knobs }, install);
       return json(502, 'product_error', `upstream failed: ${message}`);
     };
     if (receipt && p.ablationLog) appendFileSync(p.ablationLog, JSON.stringify({ at, key, ...receipt }) + '\n');
@@ -927,8 +1034,14 @@ if (import.meta.main) {
       const s = ledgerStatus({ ledgerPath: one('--budget-ledger'), runId: one('--run-id') });
       if (!s.run) throw new Error(`no lease ${one('--run-id')} in ${s.ledger}`);
       const requests = BudgetRun.runRequests(s.ledger, s.run.run_id);
+      // internal-task: install-slot totals from the usage log lines written while this lease was open (the log has no run id).
+      const usageLog = one('--usage-log') ?? `${s.ledger}.usage.ndjson`;
+      const { started_at: from, finished_at: until } = s.run;
+      const lines = (existsSync(usageLog) ? readFileSync(usageLog, 'utf8').split('\n') : []).filter((l) => l.includes('"kind":"install_slot"'))
+        .map((l) => jsonOrNull(l) as UsageLine | null).filter((l): l is UsageLine => !!l && l.at >= from && (!until || l.at <= until));
+      const install = installTotals(lines);
       console.log(JSON.stringify({ run_id: s.run.run_id, lease_usd: s.run.budget_usd, committed_usd: s.run.committed_usd, measured_usd: s.run.measured_usd, usage_unknown_usd: s.run.usage_unknown_usd, overshoot_usd: s.run.overshoot_usd, requests,
-        max_output_tokens: BudgetRun.leaseMaxOutputTokens(s.ledger, s.run.run_id) ?? DEFAULT_MAX_OUTPUT_TOKENS, finished_at: s.run.finished_at }));
+        max_output_tokens: BudgetRun.leaseMaxOutputTokens(s.ledger, s.run.run_id) ?? DEFAULT_MAX_OUTPUT_TOKENS, finished_at: s.run.finished_at, ...(Object.keys(install).length ? { install } : {}) }));
     } else {
       const a = parseProxyArgs(argv);
       const proxy = startLeaseProxy(a);

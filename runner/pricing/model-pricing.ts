@@ -106,13 +106,15 @@ export const ANTHROPIC_CACHE_WRITE_5M_MULT = 1.25;
 export const ANTHROPIC_CACHE_WRITE_1H_MULT = 2;
 
 /** The dated price table this module reads, in runner/pricing/. */
-export const PRICE_TABLE_FILE = 'prices-2026-11-10.json';
+export const PRICE_TABLE_FILE = 'prices-2026-11-15.json';
 const PRICE_TABLE_BYTES = readFileSync(new URL(`./${PRICE_TABLE_FILE}`, import.meta.url));
 
 /** The price table's repository path and the sha256 of its bytes, for a run or bundle to record. */
 export function priceTableIdentity(): { file: string; sha256: string } {
   return { file: `runner/pricing/${PRICE_TABLE_FILE}`, sha256: createHash('sha256').update(PRICE_TABLE_BYTES).digest('hex') };
 }
+
+const isCalendarDay = (date: unknown) => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && new Date(Date.parse(`${date}T00:00:00Z`) || 0).toISOString().slice(0, 10) === date;
 
 /**
  * Parse a price table into canonical rows keyed `provider:model`, in file
@@ -139,9 +141,7 @@ export function parsePriceTable(text: string, file = PRICE_TABLE_FILE): Record<s
     if (folded.has(key.toLowerCase())) throw bad('duplicate key (case-insensitive)');
     folded.add(key.toLowerCase());
     if (typeof row.source_url !== 'string' || !row.source_url.startsWith('https://')) throw bad('source_url must be an https URL');
-    const date = row.source_date;
-    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(Date.parse(`${date}T00:00:00Z`) || 0).toISOString().slice(0, 10) !== date)
-      throw bad('source_date must be a real YYYY-MM-DD date');
+    if (!isCalendarDay(row.source_date)) throw bad('source_date must be a real YYYY-MM-DD date');
     const rates = (r: Record<string, unknown>, where: string) => {
       const rate = (field: string, optional: boolean) => {
         const v = r[field];
@@ -176,6 +176,39 @@ export function parsePriceTable(text: string, file = PRICE_TABLE_FILE): Record<s
  * the legacy `google:gemini-2-flash` alias); the table keeps them in lockstep.
  */
 export const CANONICAL_PRICING: Record<string, ModelPricing> = parsePriceTable(PRICE_TABLE_BYTES.toString('utf8'));
+
+/**
+ * internal-task: the per-call fees a provider bills for a server-side web tool on top of tokens, read from a table's
+ * `tool_fees` (USD per 1,000 calls in the file) and returned as USD per call keyed `provider:tool`
+ * (`anthropic:web_search`). The metering proxy charges them on install slots (runner/proxy/hosted-tools.ts). A table
+ * without `tool_fees` has none. Throws HE-PIN-004 on a row that is not an object, a missing or negative fee, a duplicate
+ * key, or a row with no https source URL or real source date.
+ */
+export function parseToolFees(text: string, file = PRICE_TABLE_FILE): Record<string, number> {
+  const refuse = (why: string) => new RunnerError('HE-PIN-004', `price table runner/pricing/${file}: ${why}; fix: correct the table, or add a new dated prices-<date>.json`);
+  let table: { tool_fees?: unknown } | null;
+  try { table = JSON.parse(text) as { tool_fees?: unknown } | null; } catch (e) { throw refuse(`not JSON (${(e as Error).message})`); }
+  if (table?.tool_fees === undefined) return {};
+  if (!Array.isArray(table.tool_fees)) throw refuse('tool_fees must be a list');
+  const out: Record<string, number> = {};
+  for (const [index, raw] of (table.tool_fees as unknown[]).entries()) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw refuse(`tool_fees row ${index} must be an object`);
+    const row = raw as Record<string, unknown>;
+    const key = `${row.provider}:${row.tool}`;
+    const bad = (why: string) => refuse(`tool fee ${key}: ${why}`);
+    if (typeof row.provider !== 'string' || !row.provider || typeof row.tool !== 'string' || !row.tool) throw bad('provider and tool must be non-empty strings');
+    if (Object.hasOwn(out, key)) throw bad('duplicate key');
+    const fee = row.usd_per_1000_calls;
+    if (typeof fee !== 'number' || !Number.isFinite(fee) || fee < 0) throw bad('usd_per_1000_calls must be a non-negative number');
+    if (typeof row.source_url !== 'string' || !row.source_url.startsWith('https://')) throw bad('source_url must be an https URL');
+    if (!isCalendarDay(row.source_date)) throw bad('source_date must be a real YYYY-MM-DD date');
+    out[key] = fee / 1000;
+  }
+  return out;
+}
+
+/** The web tool fees of PRICE_TABLE_FILE, USD per call keyed `provider:tool` (parseToolFees). */
+export const TOOL_FEES: Record<string, number> = parseToolFees(PRICE_TABLE_BYTES.toString('utf8'));
 
 /** Per-model cache-read multipliers where an anthropic: row's cache reads
  *  are not ANTHROPIC_CACHE_READ_MULT (0.1x) of its input rate, derived from

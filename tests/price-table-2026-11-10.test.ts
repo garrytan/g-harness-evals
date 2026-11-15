@@ -11,10 +11,11 @@ const read = (file: string) => JSON.parse(readFileSync(new URL(`../runner/pricin
 const DS = 'openrouter:deepseek/deepseek-v4.1-flash-1017';
 
 describe('prices-2026-11-10', () => {
-  test('is the table model-pricing.ts reads: every prices-2026-11-09 row unchanged, then the prices-2026-11-08 DeepSeek row unchanged', () => {
-    expect(PRICE_TABLE_FILE).toBe('prices-2026-11-10.json');
+  test('was the table model-pricing.ts read until prices-2026-11-15: every prices-2026-11-09 row unchanged, then the prices-2026-11-08 DeepSeek row unchanged', () => {
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json this test accepts the table it covers and the table that replaced it
+    expect(['prices-2026-11-10.json', 'prices-2026-11-15.json']).toContain(PRICE_TABLE_FILE);
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-09.json the new table is checked against the two tables it joins
-    const fable = read('prices-2026-11-09.json'), deepseek = read('prices-2026-11-08.json'), now = read('prices-2026-11-10.json');
+    const fable = read('prices-2026-11-09.json'), deepseek = read('prices-2026-11-08.json'), now = read('prices-2026-11-10.json'); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json this test reads the table it covers by name
     expect(now.date).toBe('2026-11-10');
     expect(now.rows.slice(0, fable.rows.length)).toEqual(fable.rows);
     expect(now.rows.slice(fable.rows.length)).toEqual(deepseek.rows.filter(r => `${r.provider}:${r.model}` === DS));

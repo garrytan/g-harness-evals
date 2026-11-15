@@ -18,7 +18,7 @@ afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
 describe('prices-2026-11-08', () => {
   test('was the table model-pricing.ts read until prices-2026-11-10, and holds every 2026-11-07 row unchanged plus the OpenRouter DeepSeek row', () => {
-    expect(['prices-2026-11-08.json', 'prices-2026-11-10.json']).toContain(PRICE_TABLE_FILE);
+    expect(['prices-2026-11-08.json', 'prices-2026-11-10.json', 'prices-2026-11-15.json']).toContain(PRICE_TABLE_FILE); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json this test accepts the table it covers and the tables that replaced it
     const before = read('prices-2026-11-07.json'), now = read('prices-2026-11-08.json');
     expect(now.date).toBe('2026-11-08');
     const added = now.rows.filter(r => !before.rows.some(b => b.provider === r.provider && b.model === r.model));
