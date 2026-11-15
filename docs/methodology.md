@@ -32,7 +32,18 @@ Terms: a **trial** is one harness attempt at one task from a frozen image; a **c
 
     Not adopted: Thresholdout (no measured benefit in the one loop test found) and language-model monitors as score inputs. **The keyless recall rung** (`scripts/gbrain-check.ts --rungs recall`, which internal-task runs on request for gbrain) is a dev set by design: its cases come from counted receipts and their full failing queries go to gbrain, because that is the rung's purpose. R1, R2 (former passes lost reported beside former misses fixed), R5 (the gbrain commit is the hash), R6 and R7 apply to it. R4 does not apply inside the rung, and the tasks its cases come from are recorded as exposures of their held-out set. R3 governs what leaves the rung: a rung champion is confirmed only by a counted run on a set it was not developed against.
 
+15. **Pinned files are checked at the run commit.** A counted run loads its files from a worktree pinned at one commit, so a preregistration that pins files by sha256 (today, the gstack delivery run's `pins.sha256`) is checked at that commit, not at main's tip. Main can then change a shared script without breaking another run's pins. The run's entry in `docs/benchmarks/preregistrations.d/` names the commit:
+    - `"run_commit": { "commit": "<sha>" }` is the preregistration's merge commit: an ancestor of HEAD that adds the preregistration file against its first parent. The check refuses a commit that doesn't, so a branch that merged main after the preregistration landed still finds the same commit.
+    - A dated amendment that moves the run to a later commit adds `"amendments": [{ "date": "YYYY-MM-DD", "commit": "<sha>", "heading": "Amendment 1" }]`. The preregistration at that commit must have a heading with that name and date, each amendment must come after the one before it, and the latest amendment's commit is the run commit.
+    - The pins file on main must equal its copy at the run commit, so a re-pin needs an amendment. A wrong hash at the run commit still fails.
+    - The check fails closed: a shallow clone, a commit the checkout doesn't hold, or a commit that is not an ancestor of HEAD stops it with a message, and it never falls back to the tip. CI checks out full history (`fetch-depth: 0`), so the commits must be on main's history: an amendment's branch merges with a merge commit.
+    - A preregistration with no `run_commit` is still checked against the checkout's files, as before. `runner/prereg/run-commit.ts` holds the check.
+
 ## Changelog
+
+### 2026-11-15: Item 15 added: pinned files are checked at the run commit (internal-task)
+
+A frozen run's pins were checked against main's tip, so a shared-script change on main failed CI until someone re-pinned another run's preregistration (three times on 2026-11-15). Item 15 checks them at the commit the run loads, named by a new `run_commit` field with dated amendments, and fails closed when that commit is missing. The gstack delivery run is backfilled at its preregistration's merge commit.
 
 ### 2026-11-09: Item 10 states how the README ranks harnesses
 

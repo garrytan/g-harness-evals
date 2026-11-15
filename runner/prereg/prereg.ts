@@ -89,6 +89,11 @@ export interface ManifestEntry {
    */
   stats_kit?: { commit: string; amendment: string };
   /**
+   * The commit the run loads, where its pinned files are checked instead of at main's tip (runner/prereg/run-commit.ts):
+   * the preregistration's merge commit, then one entry per dated amendment that names a later commit.
+   */
+  run_commit?: { commit: string; amendments?: Array<{ date: string; commit: string; heading: string }> };
+  /**
    * The private-by-hash result class (runner/prereg/private-by-hash.ts): the run's ledger and usage log stay private, its
    * preregistration pins them by name, schema and location only, and results/private-by-hash.json attests their sha256
    * after the run. Absent for a run that publishes its billing artifacts.
