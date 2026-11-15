@@ -134,9 +134,9 @@ export async function verifyRun(root: string, recipe: Recipe, keep = false): Pro
       if (s.stdout && 'file' in s.stdout) writeFileSync(join(shadow, s.stdout.file), r.stdout);
       if (s.stdout && 'contained_in' in s.stdout) {
         const file = s.stdout.contained_in;
-        const published = readFileSync(join(src, file), 'utf8');
+        const published = asPublished(readFileSync(join(src, file), 'utf8'));
         const have = new Set(published.split('\n'));
-        const block = r.stdout.replace(/\n+$/, '');
+        const block = asPublished(r.stdout).replace(/\n+$/, '');
         result.files++;
         if (!block.trim()) { result.failures.push(file + ': step ' + (i + 1) + ' printed nothing, so there is nothing to find in the published file.'); continue; }
         if (published.includes(block)) continue;

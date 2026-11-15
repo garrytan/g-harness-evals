@@ -17,6 +17,7 @@ const passes = rows.filter((r) => r.passed).length;
 writeFileSync(run + '/results/summary.json', JSON.stringify({ cells: [{ id: 'a', passes, scored: rows.length, pass_rate: passes / rows.length }], commit: 'c' + Date.now() }, null, 1) + '\n');
 writeFileSync(run + '/results/summary.md', '| cell | passes |\n| a | ' + passes + ' / ' + rows.length + ' |\n');
 if (process.argv.includes('--table')) console.log('| a | ' + passes + ' / ' + rows.length + ' |');
+if (process.argv.includes('--coded')) console.log('Design for H1 (internal-task): | a | ' + passes + ' / ' + rows.length + ' |');
 if (process.argv.includes('--scribble')) writeFileSync(run + '/results/trials.jsonl', '');
 if (process.argv.includes('--scribble-trial')) writeFileSync(run + '/results/trials/t0/record.json', '{}');
 if (process.argv.includes('--env')) console.log(Object.keys(process.env).sort().join(','));
@@ -161,6 +162,19 @@ describe('verify on a fixture run', () => {
       writeFileSync(join(f.root, 'docs/benchmarks', RUN, 'report.md'), '# Fixture\n\n| a | 4 / 4 |\n');
       const r = await verifyRun(f.root, f.recipe);
       expect(r.failures).toEqual(['report.md: the line "| a | 3 / 4 |", printed by step 1 from the receipts, is not in the published file.']);
+    } finally { f.cleanup(); }
+  });
+
+  test('a printed line matches a report whose task code the public copy replaced, but its numbers are still compared', async () => {
+    const steps = [{ cmd: ['bun', 'gen.ts', '{run}', '--coded'], outputs: ['results/summary.json'], stdout: { contained_in: 'report.md' } }];
+    const f = fixture({ passes: 3, scored: 4 }, { steps });
+    try {
+      writeFileSync(join(f.root, 'docs/benchmarks', RUN, 'report.md'), '# Fixture\n\nDesign for H1 (internal-task): | a | 3 / 4 |\n');
+      expect((await verifyRun(f.root, f.recipe)).status).toBe('match');
+      writeFileSync(join(f.root, 'docs/benchmarks', RUN, 'report.md'), '# Fixture\n\nDesign for H1 (internal-task): | a | 4 / 4 |\n');
+      const r = await verifyRun(f.root, f.recipe);
+      expect(r.status).toBe('differs');
+      expect(r.failures.join('\n')).toContain('| a | 3 / 4 |');
     } finally { f.cleanup(); }
   });
 
