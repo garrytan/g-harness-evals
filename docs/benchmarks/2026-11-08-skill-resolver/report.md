@@ -32,9 +32,9 @@
   - **names-only:** a plain list of skill names, with the harness's listing limits raised.
   - **QM pull:** a tool QM's model can call to ask the resolver.
   - **no-catalog (set T only):** no skills installed. This is also the clean arm with no gstack.
-- **Set P (Phase B):** 289 labelled synthetic requests (228 or 229 skill-needing per setup before the reachability cut, 60 or 61 needing no skill), one trial per request per arm, each stopped at 6 model requests. 6,936 trials. Acceptable skills come from judges that never saw what an agent read. Each Claude setup is scored with GPT-6 Astra's labels and each GPT setup with Opus 5.5's labels (cross-family). Files: `results/sets/`, kept in the private repository ([held-back.md](held-back.md) gives their sha256).
+- **Set P (Phase B):** 289 labelled synthetic requests (228 or 229 skill-needing per setup before the reachability cut, 60 or 61 needing no skill), one trial per request per arm, each stopped at 6 model requests. 6,936 trials. Acceptable skills come from judges that never saw what an agent read. Each Claude setup is scored with GPT-6 Astra's labels and each GPT setup with Opus 5.5's labels (cross-family). Files: [results/sets/](results/sets/).
 - **Set T (task phase):** 48 graded tasks under [tasks/skill-resolver/T/](../../../tasks/skill-resolver/T/README.md), one try each, native, resolver-on and no-catalog in all 8 setups. 1,152 trials. Success and "Used it" are declarative file checks, not a judge.
-- **In all:** 8,088 trials in 48 cells on 25 Ubicloud shards (one VM per shard), every one at commit `a0431909`, the merge commit of the 2026-11-12 amendment. Trial records: `results/merged/trials.jsonl`, kept in the private repository ([held-back.md](held-back.md) gives its sha256).
+- **In all:** 8,088 trials in 48 cells on 25 Ubicloud shards (one VM per shard), every one at commit `a0431909`, the merge commit of the 2026-11-12 amendment. Trial records: [results/merged/trials.jsonl](results/merged/trials.jsonl).
 
 ## What works
 
@@ -144,7 +144,7 @@ Set T: 48 tasks, 384 pairs, 48 task clusters ([analysis-7-counted-in](results/an
     - **harness_error 3**, all Hermes Opus on request p-s-112 (native, resolver-on and names-only).
     - model_error 1 (QM Opus native). Resolver status code BAD_JSON on 6 turns.
     - **Hermes harness errors, checked against an adapter log race.** The run commit predates a fix for a race in the Hermes adapter (see #440). The adapter could grep its stderr for a provider 402 or 429 before the background `tee` had flushed it, so a provider refusal could be scored as a harness error (exit 2) instead of a model error (exit 3). The metering proxy's counts don't depend on the adapter's stderr, so we checked them for the 3 trials above:
-        - Each trial had 12 calls refused by the proxy and 1 or 2 model calls that returned 200, with none failed, per `usage.refused` and `usage.upstream` in `results/merged/trials.jsonl`.
+        - Each trial had 12 calls refused by the proxy and 1 or 2 model calls that returned 200, with none failed, per `usage.refused` and `usage.upstream` in [results/merged/trials.jsonl](results/merged/trials.jsonl).
         - No model call returned a 402 or 429, so the provider refused none of them. 12 is also the refused count of every completed Hermes Opus trial (661 of 661), so these are the routine refusals, not a budget or rate refusal. All 3 stay harness errors.
         - Operator checks of shard logs that aren't committed: the 12 refusals were the proxy's 403s on model-discovery routes, and Hermes's own per-turn stderr wasn't kept for these 3 trials. None of the 40 Hermes turn stderr logs that were kept matches the adapter's model-error pattern.
         - Every termination is kept intention to treat, so these labels change no score. The same request also gave QM's only model error (exit 3; 2 model calls that returned 200 and none failed, per the same fields).
@@ -276,7 +276,7 @@ bun scripts/skill-resolver/analyze.ts --results $R/results/merged \
 ```
 
 - The headline runs `bun $R/results/tools/analyze-sensitivity.ts` with the same arguments plus `--uncontaminate $R/results/tools/contaminated-7-trials.txt`. The other sensitivity folders use `--drop-trials` with the id lists in [results/tools/](results/tools/). `bun run verify --run 2026-11-08-skill-resolver` runs all of them.
-- **What is committed:** the trial records (`merged/trials.jsonl`), the merge manifest, each shard's manifest, run summary, preflight, kit and VM records, and the per-trial files `analyze.ts` reads (`got-skill.json` and the resolver status log). Set P's requests and all its labels, both halves, are in `results/sets/`, matching the sha256 values in [SETS.md](SETS.md). The public copy leaves out the trial records, 164 of the per-trial files and every set file, because they name harnesses we keep out of public files; [held-back.md](held-back.md) lists each one with its sha256.
+- **What is committed:** the trial records ([merged/trials.jsonl](results/merged/trials.jsonl)), the merge manifest, each shard's manifest, run summary, preflight, kit and VM records, and the per-trial files `analyze.ts` reads (`got-skill.json` and the resolver status log). Set P's requests and all its labels, both halves, are in [results/sets/](results/sets/), matching the sha256 values in [SETS.md](SETS.md).
 - **Not committed:** full agent traces, set T workspaces, proxy logs and ledgers. Phase B traces were scrubbed on each VM by design, before results left it. The set T clean-arm and OpenClaw checks read set T traces that stay outside the repository, so their scripts in [results/tools/](results/tools/) can't be rerun from the repository alone.
 - **Pins:** commit `a0431909`; gbrain v0.60.633.0 (`5ad4345f`); catalog hash `b6d67f1f...`; seed 20261108, 10,000 draws.
 
