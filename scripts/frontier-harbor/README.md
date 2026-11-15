@@ -122,7 +122,7 @@
 - **Where:** Claude in `~/.claude/skills` (router at `gstack/SKILL.md`), Codex in `~/.gstack/arms/codex/.agents/skills`, Hermes in one `gstack` category. Harbor copies each to the folder the harness reads.
 - **Refused:** HE-FRONTIER-009 when the render, the checkout or the container does not match the preregistered lock; HE-FRONTIER-008 when gstack refuses the render, the builder fails, a path the tree names would be missing, or the skills folder holds a SKILL.md the lock does not list.
 - **Listing:** Claude Code does not list a skill whose frontmatter sets `disable-model-invocation: true` (land-and-deploy and modernize at 1.98.0.0). `skills.json` names them per host (`unlisted`), and each cell manifest carries `expected_listed`.
-- **Check:** `gstack-check.sh` runs every host's none, full and minus-retro arms against the fake upstream and compares the first request's skill listing with the lock. It also runs gstack-skill-start in the task image with every packet captured, and probes the 52 pinned task images.
+- **Check:** `gstack-check.sh` runs every host's none, full and minus-retro arms against the fake upstream and compares the first request's skill listing with the lock. A harness whose none arm captured no request fails each of its gstack arms with "no none-baseline request for <harness>". It also runs gstack-skill-start in the task image with every packet captured, and probes the 52 pinned task images.
 - **Fails closed:** the check passes only when `vm-run.sh` exits 0 and every step it depends on finishes and passes. Any failure, including a script that stops early, leaves `gstack-check.json` with `"pass": false` and a `reasons` list saying what failed. `install-check.sh` also fails when its own `vm-run.sh` or `gstack-check.sh` exits non-zero, whatever their reports say, and lists its failures under `reasons` in `install-check.json`.
 
 `bun scripts/frontier-harbor/plan.ts show --prereg <file>` prints the cells, the trial count and each shard's lease.
@@ -319,7 +319,7 @@ Since 2026-11-14 the OpenAI organization behind the shared key enforces zero dat
 
 ### Checks
 
-- **Keyless:** `install-check.sh` runs a `cursor-opus` cell. It passes when the trial stopped with HE-CURSOR-002, recorded `cursor_api_key: absent` and ran no agent command (no `cursor_version`, no `container_logs_entries`). Nothing contacts Cursor.
+- **Keyless:** `install-check.sh` runs a `cursor-opus` cell. It passes when the trial stopped with HE-CURSOR-002, recorded `cursor_api_key: absent` and ran no agent command (no `cursor_version`, no `container_logs_entries`). Its `effort_flag: "unchecked"` does not fail the check; any other effort flag, on any cell, does. Nothing contacts Cursor.
 - **Keyed one-trial smoke** (paid on Cursor's side, not run by this PR): on a bootstrapped Ubicloud VM, with `CURSOR_API_KEY` set in that shell only:
 
   ```

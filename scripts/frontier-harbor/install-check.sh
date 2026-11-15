@@ -142,6 +142,8 @@ def marker(name):
 def replayed(a):
     r = a.get("reasoning_replay")
     return not str(a.get("model") or "").startswith("openrouter:") or bool(r and r["replaying"] >= 1 and r["with_reasoning"] == r["replaying"])
+def effort_flagged(a):
+    return a.get("effort_flag") is not None and not (a.get("keyless_stop") and a["effort_flag"] == "unchecked")
 def rewards(jobs, job):
     res = {}
     for r in glob.glob(f"{jobs}/{job}/*/result.json"):
@@ -191,7 +193,7 @@ report = {
                "dependencies": pin["harbor"]["dependencies"]["file"], "dependencies_sha256": pin["harbor"]["dependencies"]["sha256"], "installed_from_hashed_lock": marker(".lock-sha256") == pin["harbor"]["dependencies"]["sha256"],
                "python": subprocess.run([os.path.expanduser("~/.frontier-harbor/venv/bin/python"), "--version"], capture_output=True, text=True).stdout.strip() or None},
     "terminal_bench_2_1": pin["terminal_bench"]["commit"],
-    "agents": {"vm_run_exit": agents_rc, "cells": agents, "pass": agents_rc == 0 and all(a.get("ran") and (a.get("effort_flag") is None or a.get("harness") == "cursor") and replayed(a) for a in agents.values())},
+    "agents": {"vm_run_exit": agents_rc, "cells": agents, "pass": agents_rc == 0 and all(a.get("ran") and not effort_flagged(a) and replayed(a) for a in agents.values())},
     "oracle": {"tasks": oracle, "planned": len(baseline_ids), "pass": sorted(oracle) == sorted(baseline_ids) and all(v["reward"] == 1 for v in oracle.values())},
     "nop": {"tasks": nop, "planned": len(baseline_ids), "pass": sorted(nop) == sorted(baseline_ids) and all(v["reward"] == 0 for v in nop.values())},
     "egress": {"probe": probe, "pass": bool(probe and probe.get("pass"))},
@@ -211,7 +213,7 @@ reasons = []
 if agents_rc != 0:
     reasons.append(f"agents: vm-run.sh exited {agents_rc}")
 reasons += [f"agents: cell {c} did not run" for c, a in agents.items() if not a.get("ran")]
-reasons += [f"agents: cell {c} has effort flag {a['effort_flag']}" for c, a in agents.items() if a.get("ran") and a.get("effort_flag") is not None]
+reasons += [f"agents: cell {c} has effort flag {a['effort_flag']}" for c, a in agents.items() if a.get("ran") and effort_flagged(a)]
 reasons += [f"{k}: failed" for k in ("oracle", "nop", "egress", "canary") if not report[k]["pass"]]
 reasons += [f"zdr: cell {c['cell']} {c['status']}: {c.get('note', '')}" for c in report["zdr"].get("cells", []) if c["status"] != "pass"] or ([] if report["zdr"]["pass"] else ["zdr: " + report["zdr"].get("note", "failed")])
 if gstack_rc != 0:

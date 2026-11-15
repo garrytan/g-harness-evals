@@ -1,6 +1,9 @@
 // run-shard.sh's drive mirror at teardown, keyless, no VM: the qm-driver smoke's gstack checkout
 // (smoke/work/gstack-edition, pulled back with shard/smoke) holds gstack's own test text, which is key-shaped, so the mirror
 // leaves that checkout out; key-shaped text anywhere else still stops the mirror.
+// A frontier-harbor shard's gstack smoke likewise copies gstack's tests into each host's runtime
+// (smoke/results/gstack/agents/run/gstack/<host>/runtime/root/.local/share/gstack/test); the mirror leaves out only that
+// directory, so the smoke's Harbor jobs and agent homes are still mirrored and scanned.
 //
 // Value: protects=each qm-driver shard's final copy reaches --replicate-to although its smoke's gstack checkout holds
 // key-shaped test text, and the mirror never carries that checkout; key-shaped text in any other file, smoke results and
@@ -20,7 +23,7 @@ afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true 
 // Built at run time so this file holds no key-shaped literal.
 const KEY_SHAPED = 'sk-' + 'ant-' + 'api03-' + 'x'.repeat(24);
 
-function attachWithSmoke(smokeFiles: Record<string, string>) {
+function attachWithSmoke(smokeFiles: Record<string, string>, workload = 'qm-driver') {
   const dir = mkdtempSync(join(tmpdir(), 'he-ubi-mirror-'));
   dirs.push(dir);
   const files = join(dir, 'smoke-files.json');
@@ -43,7 +46,7 @@ function attachWithSmoke(smokeFiles: Record<string, string>) {
   const dest = join(dir, 'dest');
   const replica = join(dir, 'replica');
   mkdirSync(dest);
-  writeFileSync(join(dest, 'shard-vm.json'), JSON.stringify({ name: 'opus-b1', vm: 'vm1', size: 'standard-16', sealed: false, workload: 'qm-driver', cleanup: 'pending' }));
+  writeFileSync(join(dest, 'shard-vm.json'), JSON.stringify({ name: 'opus-b1', vm: 'vm1', size: 'standard-16', sealed: false, workload, cleanup: 'pending' }));
   const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir, UBI_RUNNER: runner, UBI_RUNNER_STATE: join(dir, 'state'), UBI_OWNER: 'test-owner', UBICLOUD_API_KEY: 'placeholder-not-a-key' };
   const r = spawnSync('bash', [join(ROOT, 'scripts', 'ubicloud', 'run-shard.sh'), '--attach', '--dest', dest, '--poll-seconds', '1', '--replicate-to', replica], { cwd: ROOT, encoding: 'utf8', timeout: 60_000, env, stdio: ['ignore', 'pipe', 'pipe'] });
   const laneLog = existsSync(join(dest, 'lane.log')) ? readFileSync(join(dest, 'lane.log'), 'utf8') : '';
@@ -70,6 +73,27 @@ describe('run-shard.sh mirrors a qm-driver shard without its smoke\'s gstack che
       expect(r.code, r.err).toBe(0);
       expect(r.laneLog).toContain('WARNING: replicate: key-shaped text in ' + path);
       expect(existsSync(join(r.mirror, 'results'))).toBe(false);
+      expect(existsSync(join(r.mirror, 'smoke'))).toBe(false);
+    }, 60_000);
+  }
+});
+
+describe('run-shard.sh mirrors a frontier-harbor shard without the gstack smoke\'s copies of gstack\'s own tests', () => {
+  const GSTACK_TEST = 'smoke/results/gstack/agents/run/gstack/hermes/runtime/root/.local/share/gstack/test/redact-engine.test.ts';
+  const JOB_LOG = 'smoke/results/gstack/agents/run/jobs/hermes-opus-full__a1/t1/trial.log';
+  test('key-shaped test text in a gstack runtime\'s test directory no longer stops the mirror, and that directory is not mirrored', () => {
+    const r = attachWithSmoke({ [GSTACK_TEST]: 'const fake = "' + KEY_SHAPED + '";\n', [JOB_LOG]: 'trial ok\n' }, 'frontier-harbor');
+    expect(r.code, r.err).toBe(0);
+    expect(r.laneLog).not.toContain('key-shaped text');
+    expect(existsSync(join(r.mirror, JOB_LOG))).toBe(true);
+    expect(existsSync(join(r.mirror, GSTACK_TEST))).toBe(false);
+  }, 60_000);
+
+  for (const path of [JOB_LOG, 'smoke/results/gstack/agents/run/gstack/hermes/home/notes.txt', 'smoke/results/gstack/agents/run/gstack/hermes/runtime/root/.local/share/gstack/tests/x.ts'] as const) {
+    test('key-shaped text in ' + path + ' still keeps the mirror from being written', () => {
+      const r = attachWithSmoke({ [GSTACK_TEST]: KEY_SHAPED, [path]: 'leaked ' + KEY_SHAPED + '\n' }, 'frontier-harbor');
+      expect(r.code, r.err).toBe(0);
+      expect(r.laneLog).toContain('WARNING: replicate: key-shaped text in ' + path);
       expect(existsSync(join(r.mirror, 'smoke'))).toBe(false);
     }, 60_000);
   }

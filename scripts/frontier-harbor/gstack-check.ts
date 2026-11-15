@@ -180,7 +180,8 @@ if (import.meta.main) {
     writeFileSync(join(out, 'first-requests', host + '-' + arm + '-first-request.json'), scrub(JSON.stringify({ route: req.route, body: req.body }, null, 1)) + '\n');
     const listing = parseListing(bodyText(req.body), host);
     const noneReq = first(noneCell.id);
-    const base = noneReq ? parseListing(bodyText(noneReq.body), host) : [];
+    if (!noneReq) { cells[c.id] = { host, arm, route: req.route, exception, pass: false, note: 'no none-baseline request for ' + c.harness }; continue; }
+    const base = parseListing(bodyText(noneReq.body), host);
     const added = arm === 'none' ? [] : gstackListed(listing, base);
     const names = added.map((l) => canonicalName(l.name, host));
     const dup = names.filter((n, i) => names.indexOf(n) !== i);
