@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Review sessions on the OpenClaw and Hermes gstack overlays for the real-bug review eval (internal-task, cells C3 particle-1 in
- * OpenClaw and C4 DeepSeek V4 Pro in Hermes; plan handoffs/internal-task/autoplan/plan-full.md, "Arms", "Cells", build step 2).
+ * Review sessions on the OpenClaw and Hermes gstack overlays for the real-bug review eval (cells C3 particle-1 in
+ * OpenClaw and C4 DeepSeek V4 Pro in Hermes; eval plan, "Arms", "Cells", build step 2).
  * One session is one PR-pass: one unit repo, one arm, one pass, one model, run through harnesses/run-trial.sh on an overlay
  * image, with the metering proxy as the only network the container has.
  *
@@ -14,7 +14,7 @@
  *   bun scripts/review-bugs/harness-review.ts session --harness openclaw --arm review --unit owner/repo#12@abc1234 \
  *     --unit-repo <dir> --base main --pass 1 --image harness-eval/openclaw:gstack-4bee369d --model particle-1 \
  *     --base-url http://host.docker.internal:8787/<slot>/particle --api-key "$cred" --out <dir> \
- *     [--trial-id <slot>] [--time-budget 3600] [--network <internal net> --host-gateway <gateway ip>] [--dry-run]
+ *     [--trial-id <slot>] [--time-budget 3600] [--network <internal net> --host-gateway <gateway ip>] [--pr-context <dir>] [--dry-run]
  *   bun scripts/review-bugs/harness-review.ts collect --sessions <dir> --out <arm dir> --id <arm id> --label <text> \
  *     --suite <suite id> --usage-log <proxy usage ndjson> [--usage-log ...] [--suite-sha256 <hex>] [--date YYYY-MM-DD]
  *
@@ -38,6 +38,12 @@
  * - Read audit: evidence.ts's classified tool calls (skill_open, helper_run, gstack_path). A plain session is clean only when
  *   all three are zero and gstack-register.log carries the wrapper's "gstack: none" line (CREW.md, "Clean no-gstack arms").
  * - session.json never holds the token; the base URL is kept with its slot.
+ * - --pr-context <dir>: the session is told the PR's title and first description, as the Claude Code cells are with
+ *   gstack-evals review-units --pr-context. It reads <dir>/<unit id with / # and @ as _>/pr.md (build-unit.ts's layout) and
+ *   tells TOLD_PR_TEMPLATE (told.ts); session.json's told block records the template's sha256 and the pr.md's sha256. A
+ *   missing or unshowable pr.md refuses the session before anything runs.
+ * - collect checks that every session shares one told line apart from its per-unit parts (base, PR text and the filled
+ *   text's sha256), so a run whose units differ in base branch or PR text collects as one arm.
  *
  * Exit codes: 0 the session ran (whatever its outcome) or the command finished; 2 a refusal before any model request (bad
  * unit repo, wrong image for the arm, a session dir that is not empty); 64 usage.
@@ -47,13 +53,13 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSyn
 import { join, resolve } from 'node:path';
 import { extract } from '../gsta-135/evidence.ts';
 import { parseFinalTurn, renderFindings, outcomeLabel, PARSER_SHA256, UPSTREAM_PARSER_SHA256, type ParseOutcome } from './rig-findings.ts';
-import { REVIEW_ARMS, REVIEW_HARNESSES, sha256, toldRecord, toldText, type ReviewArm, type ReviewHarness } from './told.ts';
+import { prTextProblem, REVIEW_ARMS, REVIEW_HARNESSES, sha256, toldRecord, toldText, type ReviewArm, type ReviewHarness } from './told.ts';
 
 const ROOT = resolve(import.meta.dir, '../..');
 export const SESSION_SCHEMA = 1;
 
 export class ReviewError extends Error {
-  constructor(public code: 'E_REVIEW_UNIT' | 'E_REVIEW_IMAGE' | 'E_REVIEW_OUT' | 'E_REVIEW_USAGE' | 'E_REVIEW_SESSION', message: string) { super(code + ' ' + message); }
+  constructor(public code: 'E_REVIEW_UNIT' | 'E_REVIEW_IMAGE' | 'E_REVIEW_OUT' | 'E_REVIEW_USAGE' | 'E_REVIEW_SESSION' | 'E_REVIEW_PR', message: string) { super(code + ' ' + message); }
 }
 
 const git = (dir: string, ...args: string[]) => spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp' } });
@@ -96,12 +102,23 @@ export function imageRefusal(labels: ImageLabels, arm: ReviewArm, harness: Revie
 export interface SessionOptions {
   harness: ReviewHarness; arm: ReviewArm; unit: string; unitRepo: string; base: string; pass: number; image: string; model: string;
   baseUrl: string; apiKey: string; out: string; trialId: string; timeBudget: number; network: string | null; hostGateway: string | null;
+  prContext?: string | null;
+}
+
+/** The unit's pr.md under a --pr-context dir, as build-unit.ts lays it out, or a refusal. */
+export function readPrText(dir: string, unit: string): string {
+  const file = join(dir, unit.replace(/[/#@]/g, '_'), 'pr.md');
+  if (!existsSync(file)) throw new ReviewError('E_REVIEW_PR', 'no pr.md for ' + unit + ' at ' + file);
+  const text = readFileSync(file, 'utf8');
+  const problem = prTextProblem(text);
+  if (problem) throw new ReviewError('E_REVIEW_PR', file + ' cannot be shown: ' + problem);
+  return text;
 }
 
 /** The task directory run-trial.sh copies: the told text as instruction.md, the unit repo as workspace/, a grader that
  *  always passes (a review session is scored by the judges, never by run-trial.sh's grade). */
 export function prepareTask(o: SessionOptions, taskDir: string): string {
-  const text = toldText(o.arm, o.harness, o.base);
+  const text = toldText(o.arm, o.harness, o.base, o.prContext ? readPrText(o.prContext, o.unit) : undefined);
   mkdirSync(join(taskDir, 'grader'), { recursive: true });
   writeFileSync(join(taskDir, 'instruction.md'), text);
   writeFileSync(join(taskDir, 'task.toml'), 'id = "review-' + o.trialId + '"\nslice = "review-bugs"\ntime_budget_s = ' + o.timeBudget + '\n');
@@ -152,7 +169,7 @@ export function runSession(o: SessionOptions, dryRun = false) {
     ...(o.network ? ['--network', o.network] : []), ...(o.hostGateway ? ['--host-gateway', o.hostGateway] : [])];
   const base = { schema_version: SESSION_SCHEMA, harness: o.harness, arm: o.arm, unit: o.unit, pass: o.pass, trial_id: o.trialId, model: o.model,
     base_url: o.baseUrl, image: o.image, image_labels: labels, network: o.network, unit_repo: unit,
-    told: { ...toldRecord(o.arm, o.harness), text_sha256: sha256(text), base: o.base }, parser_sha256: PARSER_SHA256, upstream_parser_sha256: UPSTREAM_PARSER_SHA256 };
+    told: { ...toldRecord(o.arm, o.harness, !!o.prContext), text_sha256: sha256(text), base: o.base, ...(o.prContext ? { pr_sha256: sha256(readPrText(o.prContext, o.unit)) } : {}) }, parser_sha256: PARSER_SHA256, upstream_parser_sha256: UPSTREAM_PARSER_SHA256 };
   if (dryRun) {
     const plan = { ...base, dry_run: true, command: args.map((a) => (a === o.apiKey ? '<token>' : a)) };
     writeFileSync(join(o.out, 'session.json'), JSON.stringify(plan, null, 2) + '\n');
@@ -218,7 +235,8 @@ export function collect(o: CollectOptions) {
   if (!real.length) throw new ReviewError('E_REVIEW_SESSION', 'no finished session.json under ' + o.sessions);
   const one = (f: string) => { const v = [...new Set(real.map((s) => JSON.stringify(s[f])))]; if (v.length > 1) throw new ReviewError('E_REVIEW_SESSION', 'sessions under ' + o.sessions + ' mix ' + f + ' values ' + v.join(', ') + '; one arm is one harness, arm, model and image'); return JSON.parse(v[0]!); };
   const harness = one('harness'), arm = one('arm'), model = one('model'), image = one('image');
-  one('told');
+  [...new Set(real.map((s) => { const { text_sha256: _t, base: _b, pr_sha256: _p, ...arm } = s.told ?? {}; return JSON.stringify(arm); }))].length > 1
+    && (() => { throw new ReviewError('E_REVIEW_SESSION', 'sessions under ' + o.sessions + ' mix told lines beyond their base and PR text; one arm is one told line'); })();
   const usage = readUsage(o.usageLogs);
   const byUnit = new Map<string, any[]>();
   for (const s of real) byUnit.set(s.unit, [...(byUnit.get(s.unit) ?? []), s]);
@@ -295,7 +313,7 @@ if (import.meta.main) {
       mkdirSync(out, { recursive: true });
       const rec = runSession({ harness: pick(f.one('--harness'), REVIEW_HARNESSES, '--harness'), arm: pick(f.one('--arm'), REVIEW_ARMS, '--arm'), unit: f.one('--unit'), unitRepo: resolve(f.one('--unit-repo')),
         base: f.one('--base'), pass, image: f.one('--image'), model: f.one('--model'), baseUrl: f.one('--base-url'), apiKey: f.one('--api-key'), out, trialId, timeBudget: budget,
-        network: f.flags.get('--network')?.at(-1) ?? null, hostGateway: f.flags.get('--host-gateway')?.at(-1) ?? null }, f.has('--dry-run'));
+        network: f.flags.get('--network')?.at(-1) ?? null, hostGateway: f.flags.get('--host-gateway')?.at(-1) ?? null, prContext: f.flags.get('--pr-context')?.at(-1) ? resolve(f.flags.get('--pr-context')!.at(-1)!) : null }, f.has('--dry-run'));
       const r = rec as any;
       console.log(JSON.stringify({ session: join(out, 'session.json'), exit_code: r.exit_code ?? null, parse: r.parse ?? null, read_audit: r.read_audit?.verdict ?? null, dry_run: r.dry_run ?? false }));
     } else if (cmd === 'collect') {

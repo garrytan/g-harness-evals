@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Exposure reader for the review-bugs eval (plan internal-task, "Exposure gate"; build step 3). For each PR-pass (one review
+ * Exposure reader for the review-bugs eval (eval plan, "Exposure gate"; build step 3). For each PR-pass (one review
  * session of one unit) it reads the harness's OWN transcript, never a wrapper log, and prints four signals:
  *
  *   1 skill_opened      the gstack review skill file was opened, with a result that shows the file, not an error
@@ -30,7 +30,12 @@
  *                task_notification for its id whose status is completed or absent; both must come before the last result
  *                message. Skill open: a Skill call for review (review, gstack:review, gstack-review) whose result is not
  *                an error, a Read (or shell read) of a review SKILL.md whose result shows the file, or a main-agent user
- *                message carrying the skill body (a /review slash command expands to it).
+ *                message carrying the skill body (a /review slash command expands to it), or a main-agent Bash call to
+ *                the skill's preamble, gstack-skill-start --skill review, whose result has a line starting
+ *                "SKILL_START_PROTO: " (review-real-bugs stage 1, amendment 2: the rig never logs the slash-command
+ *                expansion). With --skill ship the same four kinds of signal are read for /ship instead (a Skill call for
+ *                ship, a read of ship/SKILL.md, the gstack-skill-start --skill ship preamble), for stage 2's ship-panel
+ *                arm; the body-in-a-user-message signal is /review's only.
  *   codex        CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl under <out>/state/codex (Codex 0.165.0's own thread
  *                log). The main thread is the rollout whose session_meta has no parent_thread_id. Launch: a function_call
  *                spawn_agent (namespace collaboration); started: its function_call_output names a task_name; returned: an
@@ -69,7 +74,7 @@
  *   E_EXPOSURE_TAMPERED     a user turn after the main session's first assistant row that is not the harness's own
  *                           delivery of a reader's result (evidence.ts's rule)
  *
- *   bun scripts/review-bugs/exposure.ts --sessions <file> --map <reader-map.json> --expected <expected.json> [--json]
+ *   bun scripts/review-bugs/exposure.ts --sessions <file> --map <reader-map.json> --expected <expected.json> [--skill review|ship] [--json]
  *
  * The sessions file is TSV with a header row (unit, pass, harness, path, and optionally arm) or JSON lines with the same
  * keys; a relative path resolves from the sessions file's folder. expected.json is {"<unit>": ["<reader>", ...]}, reader
@@ -134,7 +139,11 @@ export interface SkillOpen { opened: boolean; locator: string | null; how: strin
 export interface SessionRead { harness: Harness; files: string[]; skill: SkillOpen; launches: Launch[]; note: string }
 
 const REVIEW_BODY = /# Pre-Landing PR Review|AUTO-GENERATED from SKILL\.md\.tmpl/;
-const REVIEW_SKILL_MD = /(?:^|\/)(?:gstack-)?review\/SKILL\.md$/;
+export const GATE_SKILLS = ['review', 'ship'] as const;
+export type GateSkill = (typeof GATE_SKILLS)[number];
+const skillStart = (skill: GateSkill) => new RegExp('gstack-skill-start\\s+--skill\\s+["\']?' + skill + '["\']?(?=\\s|$)');
+const skillMd = (skill: GateSkill) => new RegExp('(?:^|/)(?:gstack-)?' + skill + '/SKILL\\.md$');
+const REVIEW_SKILL_MD = skillMd('review');
 const REAL_OPENCLAW_SKILL = /gstack\/skills\/gstack-review\/SKILL\.md$/;
 const ERROR_TEXT = /^\s*(?:error|no such)\b|<tool_use_error>|No such file or directory|ENOENT|Permission denied/i;
 const shows = (text: string | null | undefined): boolean => !!text && REVIEW_BODY.test(text) && !ERROR_TEXT.test(text.slice(0, 400));
@@ -162,7 +171,7 @@ function jsonLines(file: string): Array<Record<string, any>> {
 
 // ---- Claude Code (gstack-evals review rig) ----------------------------------------------------------------------------
 
-export function readClaudeCode(path: string): SessionRead {
+export function readClaudeCode(path: string, gateSkill: GateSkill = 'review'): SessionRead {
   const file = [path, join(path, 'transcript.ndjson'), join(path, 'host', 'transcript.ndjson')].find(p => existsSync(p) && statSync(p).isFile()) ?? join(path, 'transcript.ndjson');
   const msgs = jsonLines(file);
   const lastResult = msgs.map(m => m.type).lastIndexOf('result');
@@ -184,7 +193,7 @@ export function readClaudeCode(path: string): SessionRead {
     if (m.type === 'user' && main) {
       for (const b of content) if (b?.type === 'tool_result' && typeof b.tool_use_id === 'string' && !results.has(b.tool_use_id)) results.set(b.tool_use_id, { at, text: textOf(b.content), error: b.is_error === true });
       const text = typeof m.message?.content === 'string' ? m.message.content : textOf(content);
-      if (!skill.opened && shows(text) && /# Pre-Landing PR Review/.test(text)) skill = { opened: true, locator: 'line ' + (at + 1), how: 'skill body in a main-agent user message' };
+      if (!skill.opened && gateSkill === 'review' && shows(text) && /# Pre-Landing PR Review/.test(text)) skill = { opened: true, locator: 'line ' + (at + 1), how: 'skill body in a main-agent user message' };
     }
     if (m.type === 'system' && m.subtype === 'task_started' && typeof m.tool_use_id === 'string') started.add(m.tool_use_id);
     if (typeof m.parent_tool_use_id === 'string') started.add(m.parent_tool_use_id);
@@ -194,9 +203,11 @@ export function readClaudeCode(path: string): SessionRead {
     if (skill.opened) break;
     const r = results.get(id);
     if (!r || r.error) continue;
-    if (u.name === 'Skill' && /^(?:gstack[:-])?review$/.test(String(u.input.skill ?? ''))) skill = { opened: true, locator: 'line ' + (u.at + 1) + ' tool_use ' + id, how: 'Skill ' + u.input.skill };
-    else if (u.name === 'Read' && REVIEW_SKILL_MD.test(String(u.input.file_path ?? u.input.path ?? '')) && shows(r.text)) skill = { opened: true, locator: 'line ' + (u.at + 1) + ' tool_use ' + id, how: 'Read ' + (u.input.file_path ?? u.input.path) };
-    else if (u.name === 'Bash' && shellReadArgs(String(u.input.command ?? '')).some(a => REVIEW_SKILL_MD.test(a)) && shows(r.text)) skill = { opened: true, locator: 'line ' + (u.at + 1) + ' tool_use ' + id, how: 'Bash read of a review SKILL.md' };
+    const md = skillMd(gateSkill);
+    if (u.name === 'Skill' && new RegExp('^(?:gstack[:-])?' + gateSkill + '$').test(String(u.input.skill ?? ''))) skill = { opened: true, locator: 'line ' + (u.at + 1) + ' tool_use ' + id, how: 'Skill ' + u.input.skill };
+    else if (u.name === 'Read' && md.test(String(u.input.file_path ?? u.input.path ?? '')) && shows(r.text)) skill = { opened: true, locator: 'line ' + (u.at + 1) + ' tool_use ' + id, how: 'Read ' + (u.input.file_path ?? u.input.path) };
+    else if (u.name === 'Bash' && shellReadArgs(String(u.input.command ?? '')).some(a => md.test(a)) && shows(r.text)) skill = { opened: true, locator: 'line ' + (u.at + 1) + ' tool_use ' + id, how: 'Bash read of a ' + gateSkill + ' SKILL.md' };
+    else if (u.name === 'Bash' && skillStart(gateSkill).test(String(u.input.command ?? '')) && /^SKILL_START_PROTO: /m.test(r.text)) skill = { opened: true, locator: 'line ' + (u.at + 1) + ' tool_use ' + id, how: gateSkill + ' skill preamble: gstack-skill-start --skill ' + gateSkill };
   }
   const out: Launch[] = [];
   for (const [id, l] of launches) {
@@ -391,8 +402,9 @@ export function readHermesSession(path: string): SessionRead {
   return { harness: 'hermes', files: t.files.map(f => f.path), skill: skillFromCalls(mainCalls, 'hermes'), launches, note: rows.length + ' rows; main session ' + main + ' ending at id ' + last.id + ', ' + (new Set(rows.map(r => r.session_id)).size - 1) + ' child session(s)' };
 }
 
-export function readSession(harness: Harness, path: string): SessionRead {
-  if (harness === 'claude-code') return readClaudeCode(path);
+export function readSession(harness: Harness, path: string, gateSkill: GateSkill = 'review'): SessionRead {
+  if (harness === 'claude-code') return readClaudeCode(path, gateSkill);
+  if (gateSkill !== 'review') throw new UsageError('--skill ' + gateSkill + ' reads only claude-code sessions, not ' + harness);
   if (harness === 'codex') return readCodex(path);
   if (harness === 'openclaw') return readOpenclawSession(path);
   return readHermesSession(path);
@@ -426,10 +438,10 @@ export function assess(s: SessionRead, map: ReaderMap, expected: string[]): Omit
     gate: gateWhy.length ? 'fail (' + gateWhy.join('; ') + ')' : 'pass', strict: strictWhy.length ? 'fail (' + strictWhy.join('; ') + ')' : 'pass', skill_how: s.skill.how, note: s.note };
 }
 
-export function exposureRow(r: SessionRow, map: ReaderMap, expected: Record<string, string[]>): ExposureRow {
+export function exposureRow(r: SessionRow, map: ReaderMap, expected: Record<string, string[]>, gateSkill: GateSkill = 'review'): ExposureRow {
   const exp = expected[r.unit] ?? [];
   try {
-    return { ...r, gap: null, ...assess(readSession(r.harness, r.path), map, exp) };
+    return { ...r, gap: null, ...assess(readSession(r.harness, r.path, gateSkill), map, exp) };
   } catch (e) {
     if (!(e instanceof ExposureGap)) throw e;
     return { ...r, gap: { code: e.code, file: e.file, detail: e.detail }, skill_opened: null, army_dispatched: null, adv_dispatched: null, all_returned: null, dispatched: [], returned: [], not_returned: [], refused: 0, expected: exp, expected_missing: [], gate: 'gap', strict: 'gap', skill_how: null, note: e.code };
@@ -499,11 +511,13 @@ export function tsv(rows: ExposureRow[], tot: Totals[]): string {
 
 export function main(argv: string[], out: (s: string) => void = s => process.stdout.write(s), err: (s: string) => void = s => process.stderr.write(s)): number {
   const one = (name: string) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
-  const usage = 'usage: exposure.ts --sessions <sessions.tsv|.jsonl> --map <reader-map.json> --expected <expected.json> [--json]\n';
-  const known = new Set(['--sessions', '--map', '--expected', '--json']);
+  const usage = 'usage: exposure.ts --sessions <sessions.tsv|.jsonl> --map <reader-map.json> --expected <expected.json> [--skill review|ship] [--json]\n';
+  const known = new Set(['--sessions', '--map', '--expected', '--skill', '--json']);
   for (let i = 0; i < argv.length; i++) { if (!known.has(argv[i])) { err('E_EXPOSURE_USAGE unknown argument ' + argv[i] + '\n' + usage); return EXIT.usage; } if (argv[i] !== '--json') i++; }
   const [sessions, mapFile, expFile] = [one('--sessions'), one('--map'), one('--expected')];
   if (!sessions || !mapFile || !expFile) { err(usage); return EXIT.usage; }
+  const gateSkill = (one('--skill') ?? 'review') as GateSkill;
+  if (!GATE_SKILLS.includes(gateSkill)) { err('E_EXPOSURE_USAGE --skill takes review or ship\n' + usage); return EXIT.usage; }
   try {
     const m = loadReaderMap(mapFile);
     if ('problem' in m) throw new UsageError('reader map ' + mapFile + ': ' + m.problem);
@@ -511,7 +525,7 @@ export function main(argv: string[], out: (s: string) => void = s => process.std
     const rows = parseSessions(sessions);
     const unlisted = [...new Set(rows.map(r => r.unit).filter(u => !(u in expected)))];
     if (unlisted.length) throw new UsageError('E_EXPOSURE_EXPECTED expected file ' + expFile + ' lists no readers for unit(s) ' + unlisted.join(', ') + ' (an empty list means the depth rule names none)');
-    const result = rows.map(r => exposureRow(r, m.map, expected));
+    const result = rows.map(r => exposureRow(r, m.map, expected, gateSkill));
     const tot = totals(result);
     out(argv.includes('--json') ? JSON.stringify({ rows: result, totals: tot }, null, 2) + '\n' : tsv(result, tot));
     for (const r of result) if (r.gap) err(r.gap.code + ' ' + r.gap.file + ': ' + r.gap.detail + ' (unit ' + r.unit + ' pass ' + r.pass + '); expected ' + FORMATS[r.harness] + '\n');

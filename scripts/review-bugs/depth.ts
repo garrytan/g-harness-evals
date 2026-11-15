@@ -22,9 +22,13 @@
 //   hermes neither (hosts/define-host.ts CROSS_MODEL_RESOLVERS). A C2 cell that runs Sol through Claude Code is the claude
 //   host. The outside voice (Codex or Claude through its CLI) is not an Agent subagent and is never a required reader.
 // - ship-panel (--ship-panel, claude host only): runs bin/gstack-review-plan --base <base> and takes its DISPATCH lines;
-//   a specialist line with two or more checklists is the batched reader, as gstack-evals' readers.ts names it.
+//   a specialist line with two or more checklists is the batched reader, as gstack-evals' readers.ts names it. For the
+//   exposure gate (exposure.ts --skill ship), ship_panel_gate names what the reader map can see: every checklist a
+//   DISPATCH line names (a batched or merged reader covers each of its checklists, as exposure.ts counts a launch that
+//   names two or more), plus adversarial-native for an adversarial line that names none. The outside voice is never in it.
 //
-// Output: { expected: { <host>: { <unit>: [readers] } }, ship_panel: { claude: { <unit>: [readers] } }, details }.
+// Output: { expected: { <host>: { <unit>: [readers] } }, ship_panel: { claude: { <unit>: [readers] } },
+//   ship_panel_gate: { claude: { <unit>: [readers] } }, details }.
 // Keyless: no model call, no network, every gstack helper runs with env -i and a scratch HOME.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -94,9 +98,10 @@ export function parseScope(diffScope: string, stateMatrix: string, diffLines: nu
 }
 
 /** gstack-review-plan's DISPATCH lines as reader names; the outside voice runs through a CLI, not as a subagent. */
-export function parseReviewPlan(text: string): { depth: string | null; readers: string[]; outside: boolean } {
+export function parseReviewPlan(text: string): { depth: string | null; readers: string[]; gate: string[]; outside: boolean } {
   const depth = /^REVIEW_DEPTH: (\S+)/m.exec(text)?.[1] ?? null;
   const readers: string[] = [];
+  const gate = new Set<string>();
   let outside = false;
   for (const m of text.matchAll(/^DISPATCH: (\S+) (\S+)(.*)$/gm)) {
     const [, role, name, rest] = m as unknown as [string, string, string, string];
@@ -104,20 +109,26 @@ export function parseReviewPlan(text: string): { depth: string | null; readers: 
       outside = true;
       continue;
     }
-    if (role === "specialist") {
-      const lists = /checklists=(\S+)/.exec(rest)?.[1]?.split(",").filter(Boolean) ?? [];
-      readers.push(lists.length >= 2 ? BATCHED : lists[0] ?? name);
-    } else if (role === "adversarial-native") readers.push(ADVERSARIAL);
-    else readers.push(name);
+    const lists = /checklists=(\S+)/.exec(rest)?.[1]?.split(",").filter(Boolean) ?? [];
+    for (const l of lists) gate.add(l);
+    if (role === "specialist") readers.push(lists.length >= 2 ? BATCHED : lists[0] ?? name);
+    else if (role === "adversarial-native") {
+      readers.push(ADVERSARIAL);
+      if (!lists.length) gate.add(ADVERSARIAL);
+    } else {
+      readers.push(name);
+      if (!lists.length) gate.add(name);
+    }
   }
   if (depth === null) throw new DepthError("E_DEPTH_PLAN", "gstack-review-plan printed no REVIEW_DEPTH line");
-  return { depth, readers: readers.sort(), outside };
+  return { depth, readers: readers.sort(), gate: [...gate].sort(), outside };
 }
 
 const sha256 = (b: string | Buffer) => createHash("sha256").update(b).digest("hex");
 
 function run(cmd: string, args: string[], cwd: string, home: string): string {
   const r = spawnSync(cmd, args, { cwd, encoding: "utf8", env: { HOME: home, PATH: process.env.PATH ?? "/usr/bin:/bin", GSTACK_STATE_ROOT: join(home, ".gstack") }, timeout: 300_000 });
+  if (r.status === 2 && cmd.endsWith("gstack-diff-scope") && /^SCOPE_ERROR=unmatched$/m.test(r.stdout ?? "")) return r.stdout;
   if (r.status !== 0) throw new DepthError("E_DEPTH_HELPER", [cmd, ...args].join(" ") + " in " + cwd + " exited " + r.status + ": " + (r.stderr || r.stdout).trim().split("\n").slice(-3).join(" | "));
   return r.stdout;
 }
@@ -187,6 +198,7 @@ export async function main(argv: string[]): Promise<number> {
     const caps = Object.fromEntries(hosts.map((h) => [h, renderCaps(gstack, h, scratch)])) as Record<Host, HostCaps>;
     const expected: Record<string, Record<string, string[]>> = Object.fromEntries(hosts.map((h) => [h, {}]));
     const shipPanel: Record<string, string[]> = {};
+    const shipGate: Record<string, string[]> = {};
     const details: Record<string, unknown> = {};
     for (const u of suite.units) {
       const source = sources.get(u.repo);
@@ -211,10 +223,12 @@ export async function main(argv: string[]): Promise<number> {
       if (flags.has("--ship-panel")) {
         plan = parseReviewPlan(run(join(gstack, "bin", "gstack-review-plan"), ["--base", baseBranch], dir, home));
         shipPanel[u.id] = plan.readers;
+        shipGate[u.id] = plan.gate;
       }
       details[u.id] = { diff_lines: diffLines, merge_base: mb, scope, review: perHost, ...(plan ? { ship_panel: plan } : {}) };
+      rmSync(dir, { recursive: true, force: true });
     }
-    const out = { schema_version: 1, suite: suite.id, gstack: { repo: "garrytan/gstack", sha: GSTACK_PIN }, rule: { review_army_sha256: REVIEW_ARMY_SHA256, army_marker: ARMY_MARKER, adversarial_marker: ADVERSARIAL_MARKER }, expected, ...(flags.has("--ship-panel") ? { ship_panel: { claude: shipPanel } } : {}), details };
+    const out = { schema_version: 1, suite: suite.id, gstack: { repo: "garrytan/gstack", sha: GSTACK_PIN }, rule: { review_army_sha256: REVIEW_ARMY_SHA256, army_marker: ARMY_MARKER, adversarial_marker: ADVERSARIAL_MARKER }, expected, ...(flags.has("--ship-panel") ? { ship_panel: { claude: shipPanel }, ship_panel_gate: { claude: shipGate } } : {}), details };
     writeFileSync(outFile, JSON.stringify(out, null, 2) + "\n");
     console.log("wrote " + outFile + ": " + suite.units.length + " units, hosts " + hosts.join(", ") + (flags.has("--ship-panel") ? ", ship-panel" : ""));
     return 0;

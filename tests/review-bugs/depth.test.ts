@@ -50,7 +50,11 @@ describe("gstack-review-plan's DISPATCH lines", () => {
     "SKIP: maintainability, performance, simplification (lean ensemble: read only when forced)",
   ].join("\n");
   test("batched, red-team and adversarial-native are readers; the outside voice is not a subagent", () => {
-    expect(parseReviewPlan(full)).toEqual({ depth: "full", readers: [ADVERSARIAL, "batched", "red-team"], outside: true });
+    expect(parseReviewPlan(full)).toEqual({ depth: "full", readers: [ADVERSARIAL, "batched", "red-team"], gate: [ADVERSARIAL, "red-team", "security", "state-machines", "testing"], outside: true });
+  });
+  test("the ship-panel gate names each checklist a reader carries, and adversarial-native only when it carries none", () => {
+    const merged = "REVIEW_DEPTH: standard x\nDISPATCH: adversarial-native merged effort=full checklists=api-contract,red-team\nDISPATCH: specialist batched effort=medium checklists=testing,maintainability\nDISPATCH: outside-voice outside-voice effort=host";
+    expect(parseReviewPlan(merged)).toEqual({ depth: "standard", readers: [ADVERSARIAL, "batched"], gate: ["api-contract", "maintainability", "red-team", "testing"], outside: true });
   });
   test("a specialist line with one checklist is that checklist's reader", () => {
     expect(parseReviewPlan("REVIEW_DEPTH: light x\nDISPATCH: specialist testing effort=medium checklists=testing\nDISPATCH: targeted targeted effort=full").readers).toEqual(["targeted", "testing"]);

@@ -1,5 +1,5 @@
-// The told lines for the OpenClaw and Hermes review sessions of the real-bug review eval (internal-task, plan
-// handoffs/internal-task/autoplan/plan-full.md, "Arms"). Both come from the gstack-evals review rig, vendored here byte for byte so
+// The told lines for the OpenClaw and Hermes review sessions of the real-bug review eval (eval plan,
+// "Arms"). Both come from the gstack-evals review rig, vendored here byte for byte so
 // the harness cells are told what the Claude Code and Codex cells are told:
 //
 // - TOLD_TEMPLATE is gstack-evals src/trial/review/told.ts TOLD_TEMPLATE (garrytan/gstack-evals at 0030e40c, MIT,
@@ -18,6 +18,11 @@
 //   the skill itself through skill_view.
 // The rest of the prefix is unchanged on both hosts, including its last sentence about a stop hook, which neither host has:
 // rewording it would change the review arm's text against R2's for no reader's benefit.
+//
+// With the unit's PR text (harness-review.ts session --pr-context), the template is TOLD_PR_TEMPLATE, gstack-evals
+// src/trial/review/told.ts TOLD_PR_TEMPLATE at 064c7f18 (#344) byte for byte: TOLD_TEMPLATE with the pull request's title and
+// description after its first paragraph. Its sha256 is pinned as TOLD_PR_SHA256, the value the stage 1 preregistration
+// froze for the Claude Code cells, so every cell sees the same block. prTextProblem is that file's check, also vendored.
 import { createHash } from 'node:crypto';
 
 export const TOLD_TEMPLATE = [
@@ -35,6 +40,18 @@ export const TOLD_TEMPLATE = [
 ].join('\n');
 
 export const TOLD_SHA256 = '16862a34212cd2eddbcedbc5654b26cb92b0dad50e3d501686770e6bc3d088ad';
+
+export const TOLD_PR_TEMPLATE = TOLD_TEMPLATE.replace('\n\n', "\n\nThe pull request's title and description, as its author first wrote them:\n\n{pr}\n\n");
+
+export const TOLD_PR_SHA256 = 'f52ecea76a934596833e535d314b14ce696d4e6ed40926eea532542cdf876a79';
+
+/** Why a pr.md cannot be shown to a reviewer, or null: no title or description past its heading marker, or a control
+ *  character other than a line feed or tab. */
+export function prTextProblem(text: string): string | null {
+  if (!text.replace(/^\s*#*/, '').trim()) return 'it holds no title or description';
+  const control = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\ufeff]/.exec(text);
+  return control ? 'it has a control character (U+' + control[0].charCodeAt(0).toString(16).toUpperCase().padStart(4, '0') + ') at character ' + (control.index + 1) + '; only line feeds and tabs may appear' : null;
+}
 
 export const R2_REVIEW_PREFIX = '/review Run the full review procedure: dispatch the Review Army specialists your plan selects and run the adversarial pass. Do not make Fix-First edits; report findings only. Writes to gstack\'s own state (its learnings, timeline and review log) are allowed. If a stop hook blocks your reply, end your next reply again with the complete fenced json block.';
 
@@ -56,15 +73,19 @@ export function reviewPrefix(harness: ReviewHarness): string {
   return HOST_COMMAND[harness] + R2_REVIEW_PREFIX.slice('/review'.length);
 }
 
-/** The whole told text for one arm on one host, {base} filled. A base name with whitespace or a control character is refused. */
-export function toldText(arm: ReviewArm, harness: ReviewHarness, base: string): string {
+/** The whole told text for one arm on one host, {base} filled, and with pr (the unit's pr.md text) TOLD_PR_TEMPLATE's with
+ *  {pr} filled after {base}, so the PR text is never rewritten. A base name with whitespace or a control character is
+ *  refused, and so is PR text prTextProblem names. */
+export function toldText(arm: ReviewArm, harness: ReviewHarness, base: string, pr?: string): string {
   if (!/^[\w./-]+$/.test(base)) throw new Error('base branch name ' + JSON.stringify(base) + ' must be letters, digits and . _ / -');
-  const text = TOLD_TEMPLATE.replaceAll('{base}', base);
+  const problem = pr === undefined ? null : prTextProblem(pr);
+  if (problem) throw new Error('the PR text cannot be shown: ' + problem);
+  const text = pr === undefined ? TOLD_TEMPLATE.replaceAll('{base}', base) : TOLD_PR_TEMPLATE.replaceAll('{base}', base).replace('{pr}', () => pr.trimEnd());
   return arm === 'plain' ? text : reviewPrefix(harness) + ' ' + text;
 }
 
 /** What arm.json records about the told line of one arm on one host. */
-export function toldRecord(arm: ReviewArm, harness: ReviewHarness) {
+export function toldRecord(arm: ReviewArm, harness: ReviewHarness, withPr = false) {
   const prefix = arm === 'plain' ? '' : reviewPrefix(harness);
-  return { arm, harness, prefix, prefix_sha256: prefix ? sha256(prefix) : null, template_sha256: sha256(TOLD_TEMPLATE), r2_prefix_file_sha256: arm === 'plain' ? null : R2_PREFIX_FILE_SHA256, adapted: prefix !== '' && prefix !== R2_REVIEW_PREFIX };
+  return { arm, harness, prefix, prefix_sha256: prefix ? sha256(prefix) : null, template_sha256: sha256(withPr ? TOLD_PR_TEMPLATE : TOLD_TEMPLATE), r2_prefix_file_sha256: arm === 'plain' ? null : R2_PREFIX_FILE_SHA256, adapted: prefix !== '' && prefix !== R2_REVIEW_PREFIX, pr_context: withPr };
 }
