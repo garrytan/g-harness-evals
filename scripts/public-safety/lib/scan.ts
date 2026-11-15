@@ -277,9 +277,11 @@ export function leafHits(data: Buffer, needles: Needle[], rules: CompiledRule[],
 export async function* catObjects(gitDir: string, oids: string[], env: Record<string, string>, timeoutMs = 10 * 60_000): AsyncGenerator<{ oid: string; type: string; data: Buffer }> {
   const run = spawnBounded(['git', '--git-dir=' + gitDir, 'cat-file', '--batch'], { op: 'git cat-file --batch', timeoutMs, env });
   const { p } = run;
+  p.stdin.on('error', () => {});
+  const writable = () => new Promise<void>((r) => { const go = () => { p.stdin.off('drain', go); p.stdin.off('close', go); r(); }; p.stdin.on('drain', go); p.stdin.on('close', go); });
   const writer = (async () => {
-    for (let i = 0; i < oids.length; i += 1000) {
-      if (!p.stdin.write(oids.slice(i, i + 1000).join('\n') + '\n')) await new Promise((r) => p.stdin.once('drain', r));
+    for (let i = 0; i < oids.length && !p.stdin.destroyed; i += 1000) {
+      if (!p.stdin.write(oids.slice(i, i + 1000).join('\n') + '\n')) await writable();
     }
     p.stdin.end();
   })();

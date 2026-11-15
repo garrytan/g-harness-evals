@@ -21,7 +21,7 @@ import { isPublicRemote } from '../scripts/public-safety/lib/hook.ts';
 import { Boundary, escapeControls, WITHHELD } from '../scripts/public-safety/lib/output.ts';
 import { exactHit, parsePack, prefilter16, prefilterCandidates, prefilterKey, shingleHit } from '../scripts/public-safety/lib/pack.ts';
 import { PsError, runSync } from '../scripts/public-safety/lib/proc.ts';
-import { compileRules, expand, leafHits, nameKind, ruleApplies } from '../scripts/public-safety/lib/scan.ts';
+import { catObjects, compileRules, expand, leafHits, nameKind, ruleApplies } from '../scripts/public-safety/lib/scan.ts';
 import { tarOf } from '../scripts/public-safety/lib/tools.ts';
 import { buildPack, GATE, keyCanary, NOREPLY, OWNER_ACCEPTED, ROOT, scrubbedEnv } from './public-safety-fixture.ts';
 
@@ -263,6 +263,22 @@ test('a timed-out tool is killed with its whole process group and maps to PS-TOO
   expect(Date.now() - t0).toBeLessThan(10_000);
   Bun.sleepSync(3500);
   expect(existsSync(marker)).toBe(false);
+});
+
+test('a cat-file batch that outlives its deadline maps to PS-TOOL-TIMEOUT, even while its writer is blocked on a full pipe', async () => {
+  const repo = join(tmp, 'catfile-' + randomBytes(4).toString('hex'));
+  expect(spawnSync('git', ['init', '-q', '--bare', repo], { env: ENV }).status).toBe(0);
+  const oid = spawnSync('git', ['--git-dir=' + repo, 'hash-object', '-w', '--stdin'], { env: ENV, input: 'x'.repeat(4096) }).stdout.toString().trim();
+  const t0 = Date.now();
+  let err: unknown;
+  let seen = 0;
+  try {
+    for await (const _ of catObjects(repo, Array<string>(200_000).fill(oid), ENV, 1500)) { if (++seen === 1) await Bun.sleep(3000); }
+  } catch (e) { err = e; }
+  expect(err).toBeInstanceOf(PsError);
+  expect((err as PsError).code).toBe('PS-TOOL-TIMEOUT');
+  expect(seen).toBeLessThan(200_000);
+  expect(Date.now() - t0).toBeLessThan(15_000);
 });
 
 test('a download that hangs past its deadline is retried once, then refused as PS-TOOL-TIMEOUT, leaving no partial file', () => {
