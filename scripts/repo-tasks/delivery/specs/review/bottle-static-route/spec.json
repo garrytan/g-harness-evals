@@ -1,0 +1,83 @@
+{
+ "repo": "bottle",
+ "title": "Add Bottle.static() to serve a directory",
+ "description": "Adds `app.static(prefix, root, index='index.html', cache_max_age=None, follow_symlinks=False, **options)`, so a directory can be served under a URL prefix without writing the route by hand. Files go out through `static_file()`, so 404, HEAD, Range and conditional requests work as before, and the extra keyword arguments (`mimetype`, `download`, `charset`, `headers`) are passed on to it on every request. Hidden files and directories, any path segment starting with a dot, answer 404. Unless `follow_symlinks=True`, anything that resolves outside `root`, through a symlink or otherwise, answers 403. A directory is answered with its index file (404 with `index=None`). A directory URL without the trailing slash is redirected to the same URL with it, query string included, and this also works when the app is mounted under a path. Index pages are sent with `Cache-Control: no-cache`; other files get `max-age=<cache_max_age>` when it is set and no Cache-Control otherwise. `root` must be an existing directory: if not, `static()` raises ValueError and the app is left unchanged. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "hidden",
+   "class": "trust",
+   "file": "bottle.py",
+   "summary": "Only the last path segment is checked for a leading dot, so files inside hidden directories such as .git/ are served.",
+   "test": "test_hidden_dir.py",
+   "corrected": "    return any(part.startswith('.') for part in path.split('/'))\n",
+   "defective": "    return os.path.basename(path).startswith('.')\n"
+  },
+  {
+   "id": "symlink",
+   "class": "trust",
+   "file": "bottle.py",
+   "summary": "The containment check uses abspath, which does not resolve symlinks, so a symlink below root serves files from anywhere on disk.",
+   "test": "test_symlink.py",
+   "corrected": "    path, root = os.path.realpath(path), os.path.realpath(root)\n",
+   "defective": "    path, root = os.path.abspath(path), os.path.abspath(root)\n"
+  },
+  {
+   "id": "mount",
+   "class": "logic",
+   "file": "bottle.py",
+   "summary": "The trailing-slash redirect is built from request.path, which drops SCRIPT_NAME, so a mounted app redirects out of its mount point.",
+   "test": "test_mounted_redirect.py",
+   "corrected": "                url = request.fullpath + '/'\n",
+   "defective": "                url = request.path + '/'\n"
+  },
+  {
+   "id": "headers",
+   "class": "side-effect",
+   "file": "bottle.py",
+   "summary": "The response headers are written into the shared options dict, so the no-cache of an index page sticks to every later file response and changes the caller's headers dict.",
+   "test": "test_shared_headers.py",
+   "corrected": "            headers = dict(options.get('headers') or {})\n",
+   "defective": "            headers = options.setdefault('headers', {})\n"
+  },
+  {
+   "id": "register",
+   "class": "side-effect",
+   "file": "bottle.py",
+   "summary": "The routes are registered before root is checked, so a failed call still leaves routes that shadow later ones.",
+   "test": "test_bad_root.py",
+   "corrected": "        if not os.path.isdir(root):\n            raise ValueError('Static root is not a directory: %r' % root)\n        self.route(prefix + '<path:path>', ['GET', 'HEAD'], serve)\n        self.route(prefix, ['GET', 'HEAD'], serve)\n",
+   "defective": "        self.route(prefix + '<path:path>', ['GET', 'HEAD'], serve)\n        self.route(prefix, ['GET', 'HEAD'], serve)\n        if not os.path.isdir(root):\n            raise ValueError('Static root is not a directory: %r' % root)\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "join",
+   "file": "bottle.py",
+   "anchor": "            target = os.path.join(root, path)\n",
+   "why": "The joined path is only used for the directory test and for _resolves_inside(); a path out of root answers 403 there, and static_file() checks it again.",
+   "test": "decoy_traversal.py"
+  },
+  {
+   "id": "index",
+   "file": "bottle.py",
+   "anchor": "                path, target = path + index, os.path.join(target, index)\n",
+   "why": "At this point path is empty or ends with a slash, because a directory path without one was redirected above, so plain concatenation is right.",
+   "test": "decoy_index.py"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "rootprefix",
+   "class": "trust",
+   "file": "bottle.py",
+   "summary": "static_file() now compares against root without a trailing separator, so for root /srv/pub a request for ../pub-private/key.txt passes the containment check and files from any sibling directory whose name starts with the root's name are served.",
+   "test": "test_root_prefix.py",
+   "corrected": "\n    root = os.path.join(os.path.abspath(root), '')\n",
+   "defective": "\n    root = os.path.abspath(root)\n"
+  }
+ ]
+}

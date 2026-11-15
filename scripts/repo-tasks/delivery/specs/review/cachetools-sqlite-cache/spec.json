@@ -1,0 +1,92 @@
+{
+ "repo": "cachetools",
+ "title": "Add a persistent SQLite cache",
+ "description": "Adds `cachetools.sqlite.SQLiteCache`, an LRU cache kept in an SQLite file, so a function decorated with `@cached(SQLiteCache(...))` keeps its results across restarts. Each cache lives in its own table (`table`, default `\"cache\"`; any string is a valid name), so several caches can share one file. Keys and values are pickled and keys are matched by their pickled form; as with `shelve`, only open files you trust. `maxsize` bounds the number of items: storing a new key in a full cache evicts the least recently used item. Reading an item with `cache[key]` counts as a use, checking `key in cache` does not, and storing a new value for a key that is already in the cache never evicts another item. With `ttl`, an item expires `ttl` seconds after it was stored, by the same rule as `TTLCache`, measured with `timer` (`time.time` by default, because items outlive the process). A value that cannot be pickled raises and leaves the cache as it was. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "quote",
+   "class": "sql",
+   "file": "src/cachetools/sqlite.py",
+   "summary": "The table name is wrapped in double quotes without doubling the quotes inside it, so a table name containing a double quote breaks or rewrites every statement.",
+   "test": "test_quote.py",
+   "corrected": "        self.__table = '\"%s\"' % table.replace('\"', '\"\"')\n",
+   "defective": "        self.__table = '\"%s\"' % table\n"
+  },
+  {
+   "id": "expiry",
+   "class": "logic",
+   "file": "src/cachetools/sqlite.py",
+   "summary": "Items count as live while expires >= now, so an item is still returned exactly ttl seconds after it was stored, unlike TTLCache and unlike expire().",
+   "test": "test_expiry.py",
+   "corrected": "_LIVE = \"expires IS NULL OR expires > ?\"\n",
+   "defective": "_LIVE = \"expires IS NULL OR expires >= ?\"\n"
+  },
+  {
+   "id": "recency",
+   "class": "logic",
+   "file": "src/cachetools/sqlite.py",
+   "summary": "A read sets used to used + 1 instead of past the current maximum, so a read item does not become the most recently used and is evicted before items used later.",
+   "test": "test_recency.py",
+   "corrected": "            \"UPDATE {table} SET used = (SELECT MAX(used) + 1 FROM {table}) \"\n            \"WHERE key = ?\",\n",
+   "defective": "            \"UPDATE {table} SET used = used + 1 WHERE key = ?\",\n"
+  },
+  {
+   "id": "contains",
+   "class": "side-effect",
+   "file": "src/cachetools/sqlite.py",
+   "summary": "`key in cache` goes through __getitem__, which marks the item as used, so membership checks change which item is evicted.",
+   "test": "test_contains.py",
+   "corrected": "        row = self.__execute(\n            \"SELECT 1 FROM {table} WHERE key = ? AND (\" + _LIVE + \")\",\n            (pickle.dumps(key), self.__timer()),\n        ).fetchone()\n        return row is not None\n",
+   "defective": "        try:\n            self[key]\n        except KeyError:\n            return False\n        return True\n"
+  },
+  {
+   "id": "unpicklable",
+   "class": "side-effect",
+   "file": "src/cachetools/sqlite.py",
+   "summary": "The value is pickled only after an item has been evicted, so storing a value that cannot be pickled raises but has already evicted an item from a full cache.",
+   "test": "test_unpicklable.py",
+   "corrected": "        v = pickle.dumps(value)\n        now = self.__timer()\n        self.expire(now)\n        self.__evict(k)\n",
+   "defective": "        now = self.__timer()\n        self.expire(now)\n        self.__evict(k)\n        v = pickle.dumps(value)\n"
+  },
+  {
+   "id": "replace",
+   "class": "side-effect",
+   "file": "src/cachetools/sqlite.py",
+   "summary": "Eviction counts the key being stored, so replacing the value of a key already in a full cache evicts another item.",
+   "test": "test_replace.py",
+   "corrected": "        (count,) = self.__execute(\n            \"SELECT COUNT(*) FROM {table} WHERE key != ?\", (key,)\n        ).fetchone()\n",
+   "defective": "        (count,) = self.__execute(\"SELECT COUNT(*) FROM {table}\").fetchone()\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "precedence",
+   "class": "sql",
+   "file": "src/cachetools/sqlite.py",
+   "summary": "The lookup in __getitem__ appends _LIVE after AND without parentheses, and _LIVE is an OR, so the query reads (key = ? AND expires IS NULL) OR expires > ? and a missing key returns whichever item with a ttl has not expired yet.",
+   "test": "test_lookup_ttl.py",
+   "corrected": "            \"SELECT value FROM {table} WHERE key = ? AND (\" + _LIVE + \")\",\n",
+   "defective": "            \"SELECT value FROM {table} WHERE key = ? AND \" + _LIVE,\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "table",
+   "file": "src/cachetools/sqlite.py",
+   "anchor": "        return self.__conn.execute(sql.format(table=self.__table), params)\n",
+   "why": "Only the table name is formatted into the SQL, and it is already a quoted identifier; every value goes in as a parameter.",
+   "test": "decoy_table.py"
+  },
+  {
+   "id": "expire",
+   "file": "src/cachetools/sqlite.py",
+   "anchor": "    def expire(self, time=None):\n",
+   "why": "The parameter shadows the time module only inside expire(), which does not use the module; the signature matches TTLCache.expire.",
+   "test": "decoy_expire.py"
+  }
+ ]
+}

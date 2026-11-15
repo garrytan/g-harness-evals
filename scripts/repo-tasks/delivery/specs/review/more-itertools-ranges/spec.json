@@ -1,0 +1,92 @@
+{
+ "repo": "more-itertools",
+ "title": "Add iter_ranges and format_ranges for page-range specs",
+ "description": "Adds two functions to `more_itertools/more.py` for the range specs that print dialogs and command-line flags accept, such as `1-3, 7, 10-12`. `iter_ranges(spec, limit=10_000)` returns an iterator over the numbers a spec names: parts are separated by commas, whitespace around a part is ignored and empty parts are skipped, and each part is a number or two numbers joined by `-` (both ends included), written with the ASCII digits 0 to 9 only. Numbers come out in the order the spec names them, each one once. Specs usually come from users, so the whole spec is checked when `iter_ranges` is called and a bad spec raises ValueError right there, before any number is produced. A spec is bad if a part is not a number or range, if a range ends below its start (`3-3` is fine), or if its parts name more than `limit` numbers in total, counting a number again each time a part names it. `format_ranges(iterable)` goes the other way: it takes non-negative integers in any order, with repeats, and writes runs of three or more consecutive integers as `start-end` and the others one by one, in increasing order (`[3, 1, 2, 7, 9, 10]` gives `1-3,7,9,10`). It accepts only integers (anything with `__index__`): a negative one raises ValueError, and a float, string or other object raises TypeError. Includes type stubs and tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "digits",
+   "class": "trust",
+   "file": "more_itertools/more.py",
+   "summary": "The part pattern uses \\d, which matches every Unicode decimal digit, so specs written in other scripts' digits or full-width digits are accepted instead of rejected.",
+   "test": "test_digits.py",
+   "corrected": "_RANGE_PART = re.compile(r'([0-9]+)(?:-([0-9]+))?')\n",
+   "defective": "_RANGE_PART = re.compile(r'(\\d+)(?:-(\\d+))?')\n"
+  },
+  {
+   "id": "limit",
+   "class": "trust",
+   "file": "more_itertools/more.py",
+   "summary": "The limit is compared with the size of one part instead of the running total, so a user can name any amount of numbers by splitting them over several parts.",
+   "test": "test_limit.py",
+   "corrected": "        if total > limit:\n",
+   "defective": "        if count > limit:\n"
+  },
+  {
+   "id": "upfront",
+   "class": "side-effect",
+   "file": "more_itertools/more.py",
+   "summary": "The parts are no longer collected before numbers are produced, so a bad spec is only noticed while iterating, after the numbers before it were already handed out.",
+   "test": "test_upfront.py",
+   "corrected": "    bounds = list(_range_parts(spec, limit))\n",
+   "defective": "    bounds = _range_parts(spec, limit)\n"
+  },
+  {
+   "id": "types",
+   "class": "trust",
+   "file": "more_itertools/more.py",
+   "summary": "Values are converted with int(), so strings and floats are silently accepted (and floats truncated) instead of raising TypeError.",
+   "test": "test_types.py",
+   "corrected": "        n = _index(n)\n",
+   "defective": "        n = int(n)\n"
+  },
+  {
+   "id": "single",
+   "class": "logic",
+   "file": "more_itertools/more.py",
+   "summary": "A range whose end equals its start, such as 3-3, is rejected as ending before it starts.",
+   "test": "test_single.py",
+   "corrected": "    if stop < start:\n",
+   "defective": "    if stop <= start:\n"
+  },
+  {
+   "id": "pairs",
+   "class": "logic",
+   "file": "more_itertools/more.py",
+   "summary": "Runs of two consecutive integers are written as start-end, although only runs of three or more should be.",
+   "test": "test_pairs.py",
+   "corrected": "        if len(group) >= 3:\n",
+   "defective": "        if len(group) >= 2:\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "limitint",
+   "class": "trust",
+   "file": "more_itertools/more.py",
+   "summary": "The limit is converted with int() instead of operator.index like format_ranges' values, so a float limit is silently truncated and a string limit such as '10' is accepted instead of raising TypeError.",
+   "test": "test_limit_type.py",
+   "corrected": "    limit = _index(limit)\n",
+   "defective": "    limit = int(limit)\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "cap",
+   "file": "more_itertools/more.py",
+   "anchor": "def iter_ranges(spec, limit=10_000):\n",
+   "why": "The 10,000 cap is the documented default, and a spec naming exactly limit numbers is allowed; only more raises.",
+   "test": "decoy_limit.py"
+  },
+  {
+   "id": "empty",
+   "file": "more_itertools/more.py",
+   "anchor": "        if not part:\n            continue\n",
+   "why": "Skipping empty parts (as in 1,,2 or a trailing comma) is the documented behaviour.",
+   "test": "decoy_empty.py"
+  }
+ ]
+}

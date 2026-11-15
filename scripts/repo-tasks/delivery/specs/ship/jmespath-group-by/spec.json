@@ -1,0 +1,58 @@
+{
+ "repo": "jmespath",
+ "module": "jmespath/functions.py",
+ "summary": "Add a group_by function, so an array of objects can be split into groups by a string key in one expression.",
+ "behaviour": [
+  "`group_by(array, &expr)` returns an object with one key per distinct value of `expr` over the elements. Each key maps to an array of the elements with that key, in their original order, and the keys appear in the order they first occur.",
+  "The key of an element must be a string. Elements whose key is null are left out; any other type of key (number, boolean, array or object) raises `JMESPathTypeError`.",
+  "An empty array gives an empty object `{}`.",
+  "The first argument must be an array; anything else raises `JMESPathTypeError`, as for `sort_by`."
+ ],
+ "version": "1.1.0",
+ "history": [
+  "- Added: Python 3.14 support."
+ ],
+ "release": {
+  "version": "1.2.0",
+  "entries": [
+   "- Fixed: min_by and max_by raise JMESPathTypeError, not TypeError, when the keys mix numbers and strings. (feature/0b71e4)",
+   "- Fixed: merge() builds its result with the dict_cls given in Options, like the rest of a search. (feature/2e6f48)"
+  ]
+ },
+ "teammate_entry": "- Added group_by",
+ "entry": "- Added: A group_by function that groups the elements of an array by a string key. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add a group_by function",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Make min_by and max_by require keys of one type, like sort_by",
+   "dir": "main1"
+  },
+  {
+   "message": "Build merge() results with the dict_cls from Options",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "tests"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "jmespath/functions.py",
+  "tests_feature/test_group_by.py"
+ ],
+ "repo_tests_min": 999,
+ "repo_skips_max": 1,
+ "checks": [
+  "nullkey",
+  "emptynone",
+  "dropmain",
+  "r61stale"
+ ]
+}

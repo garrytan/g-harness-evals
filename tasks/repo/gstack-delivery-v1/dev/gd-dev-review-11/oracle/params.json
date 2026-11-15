@@ -1,0 +1,54 @@
+{
+ "kind": "review",
+ "base": "main",
+ "branch": "feature/edf89d",
+ "env": {},
+ "findings": [
+  {
+   "file": "jmespath/sqlite.py",
+   "line": 88,
+   "summary": "The GLOB pattern for starts_with and ends_with does not escape '[', so a literal bracket starts a character class and matches the wrong rows.",
+   "test": "/work/out/tests/test_glob.py",
+   "probe": "/oracle/test_glob.py",
+   "correct": false
+  },
+  {
+   "file": "jmespath/sqlite.py",
+   "line": 52,
+   "summary": "select wraps its query in 'with conn:', which commits whatever the caller had pending on the connection.",
+   "test": "/work/out/tests/test_transaction.py",
+   "probe": "/oracle/test_transaction.py",
+   "correct": false
+  },
+  {
+   "file": "jmespath/sqlite.py",
+   "line": 33,
+   "summary": "Swapping the sides of an ordering negates it instead of mirroring it, so `5` < n compiles to n >= 5.",
+   "test": "/work/out/tests/test_swapped.py",
+   "probe": "/oracle/test_swapped.py",
+   "correct": false
+  },
+  {
+   "file": "jmespath/sqlite.py",
+   "line": 123,
+   "summary": "The double-quote check only looks at a plain field, so a key with a double quote inside a dotted path goes into the JSON path unescaped and reads another field (team.\"a\\\".\\\"b\" reads team.a.b).",
+   "test": "/work/out/tests/test_path_quote.py",
+   "probe": "/oracle/test_path_quote.py",
+   "correct": false
+  }
+ ],
+ "decoys": [
+  {
+   "file": "jmespath/sqlite.py",
+   "line": 150,
+   "probe": "/oracle/decoy_operators.py",
+   "correct": true
+  },
+  {
+   "file": "jmespath/sqlite.py",
+   "line": 143,
+   "probe": "/oracle/decoy_null.py",
+   "correct": true
+  }
+ ]
+}

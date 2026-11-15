@@ -1,0 +1,63 @@
+{
+ "repo": "bottle",
+ "module": "bottle.py",
+ "summary": "Add best_match() for content negotiation, so a handler can pick the response type the client's Accept header prefers (also as request.best_match(offers)).",
+ "behaviour": [
+  "`bottle.best_match(header, offers, default=None)` returns the entry of `offers` (media types such as `application/json`) that the Accept header value `header` prefers, or `default` when the header accepts none of them.",
+  "Each offer gets the quality of the most specific media range in the header that matches it: an exact `type/subtype` before `type/*` before `*/*`, whatever their order or quality. A range without `q` has quality 1, a `q` that is not a number counts as 0, and parameters other than `q` are ignored. Types and parameter names match without regard to case.",
+  "An offer whose quality is 0 is never returned. So `text/html;q=0, */*` rules out `text/html` even though `*/*` matches it.",
+  "The offer with the highest quality wins; on a tie the one listed first in `offers` wins. The offer is returned exactly as it was given.",
+  "A missing or empty header (`None` or `''`) accepts everything: the first offer is returned, or `default` if `offers` is empty."
+ ],
+ "version": "0.14.0",
+ "history": [
+  "- Changed: Maintenance release."
+ ],
+ "release": {
+  "version": "0.15.0",
+  "entries": [
+   "- Added: parse_link_header() parses HTTP Link headers. (feature/7a41c9)",
+   "- Changed: _parse_http_header() returns header parameters as (name, value) pairs in order, so repeated parameters are kept. (feature/2e8d05)",
+   "- Added: __all__ lists the public API, so `from bottle import *` imports only public names. (feature/c3f19a)"
+  ]
+ },
+ "teammate_entry": "- Added best_match",
+ "entry": "- Added: best_match() and request.best_match() pick the media type an Accept header prefers. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add best_match() for Accept header negotiation",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Keep header parameters in order, with duplicates",
+   "dir": "main1"
+  },
+  {
+   "message": "Add parse_link_header()",
+   "dir": "main2"
+  },
+  {
+   "message": "Define __all__ for the public API",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "test"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "bottle.py",
+  "tests_feature/test_best_match.py"
+ ],
+ "repo_tests_min": 374,
+ "repo_skips_max": 0,
+ "checks": [
+  "maxq",
+  "dropmain",
+  "r61stale"
+ ]
+}

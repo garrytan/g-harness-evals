@@ -1,0 +1,83 @@
+{
+ "repo": "peewee",
+ "title": "Add playhouse.query_args for list endpoints",
+ "description": "Adds `apply_args(query, args, fields, search=None, per_page=20, max_per_page=100)` in `playhouse/query_args.py`, so a list view can hand its query string straight to peewee: `<field>=<value>` and `<field>__<op>=<value>` filter (eq, ne, lt, lte, gt, gte with their usual meaning, `in` with a comma-separated list, `isnull` with true or false), `q` keeps the rows where any of the `search` fields contains the text ignoring case, with the text matched literally, `sort` takes comma-separated field names with `-` for descending, and `page` (from 1) and `per_page` paginate. The arguments come from the client, so only the fields the view lists in `fields` can be filtered or sorted on, `per_page` never goes above `max_per_page`, and anything else raises `ValueError` for the view to turn into a 400. Empty values are ignored, since browsers send empty form fields. Includes tests in `tests/query_args.py`.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "sortfield",
+   "class": "trust",
+   "file": "playhouse/query_args.py",
+   "summary": "sort looks names up among all of the model's fields instead of the allowed ones, so a client can sort on a field the view did not list, such as a password hash, and learn its values from the order.",
+   "test": "test_sortfield.py",
+   "corrected": "        field = allowed.get(name.lstrip('-'))\n",
+   "defective": "        field = query.model._meta.fields.get(name.lstrip('-'))\n"
+  },
+  {
+   "id": "like",
+   "class": "sql",
+   "file": "playhouse/query_args.py",
+   "summary": "The search text goes into a LIKE pattern without escaping, so % and _ in q act as wildcards instead of matching literally.",
+   "test": "test_like.py",
+   "corrected": "    return reduce(operator.or_, [field.contains(text) for field in fields])\n",
+   "defective": "    pattern = '%' + text + '%'\n    return reduce(operator.or_, [field ** pattern for field in fields])\n"
+  },
+  {
+   "id": "cap",
+   "class": "trust",
+   "file": "playhouse/query_args.py",
+   "summary": "max_per_page only caps the default page size, so a client-supplied per_page is used as given and can fetch any number of rows.",
+   "test": "test_cap.py",
+   "corrected": "    per_page = min(_positive(args, 'per_page', per_page), max_per_page)\n",
+   "defective": "    per_page = _positive(args, 'per_page', min(per_page, max_per_page))\n"
+  },
+  {
+   "id": "lte",
+   "class": "logic",
+   "file": "playhouse/query_args.py",
+   "summary": "The lte operator maps to operator.lt, so __lte excludes rows equal to the value.",
+   "test": "test_lte.py",
+   "corrected": "    'lte': operator.le,\n",
+   "defective": "    'lte': operator.lt,\n"
+  },
+  {
+   "id": "isnull",
+   "class": "logic",
+   "file": "playhouse/query_args.py",
+   "summary": "isnull passes the string to is_null, and the string 'false' is truthy, so __isnull=false selects the rows that are null.",
+   "test": "test_isnull.py",
+   "corrected": "    return field.is_null(value == 'true')\n",
+   "defective": "    return field.is_null(value)\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "negative",
+   "class": "trust",
+   "file": "playhouse/query_args.py",
+   "summary": "_positive only rejects 0, so a negative per_page gets through. min() keeps it below max_per_page and SQLite treats LIMIT -1 as no limit, so a client can fetch every row.",
+   "test": "test_negative.py",
+   "corrected": "    if value < 1:\n",
+   "defective": "    if not value:\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "value",
+   "file": "playhouse/query_args.py",
+   "anchor": "        return OPS[op](field, value)\n",
+   "why": "The client's value becomes a bound parameter of a peewee expression, never SQL text.",
+   "test": "decoy_value.py"
+  },
+  {
+   "id": "blank",
+   "file": "playhouse/query_args.py",
+   "anchor": "        if key in RESERVED or value == '':\n",
+   "why": "Ignoring empty values is the documented contract, because browsers submit empty form fields.",
+   "test": "decoy_blank.py"
+  }
+ ]
+}

@@ -1,0 +1,83 @@
+{
+ "repo": "peewee",
+ "title": "Add playhouse.archive for moving old rows to an archive table",
+ "description": "Adds `playhouse/archive.py` with an `Archive` helper for tables that grow without bound (orders, events, logs). `Archive(Model).archive(where)` moves every row matching `where` into an archive table with the same columns and returns how many rows it moved; `restore(ids)` moves archived rows back by primary key. The archive table is named after the model's table with an `_archive` suffix unless `table_name` is given, and any name the database accepts works. Rows move in batches of `batch_size`, and each batch is copied and deleted in one transaction, so a row is never in both tables or in neither, even when a statement fails. `dry_run=True` only counts the rows that would move and leaves the database exactly as it was. A restored row whose primary key has been reused in the model's table in the meantime stays in the archive. Includes tests in `tests/archive.py`.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "quote",
+   "class": "sql",
+   "file": "playhouse/archive.py",
+   "summary": "_quote escapes a quote character inside a table name with a backslash, which SQL identifiers do not support, so a table name containing a double quote breaks or rewrites every statement.",
+   "test": "test_quote.py",
+   "corrected": "        return start + name.replace(end, end + end) + end\n",
+   "defective": "        return start + name.replace(end, '\\\\' + end) + end\n"
+  },
+  {
+   "id": "atomic",
+   "class": "side-effect",
+   "file": "playhouse/archive.py",
+   "summary": "The INSERT into the target table runs outside the transaction, so when the DELETE fails the copied rows stay committed and are now in both tables.",
+   "test": "test_atomic.py",
+   "corrected": "        with self.database.atomic():\n            cursor = self.database.execute_sql(\n                'INSERT INTO %s SELECT * FROM %s WHERE %s' % (\n                    self._quote(target), self._quote(source), where),\n                ids)\n            self.database.execute_sql(\n",
+   "defective": "        cursor = self.database.execute_sql(\n            'INSERT INTO %s SELECT * FROM %s WHERE %s' % (\n                self._quote(target), self._quote(source), where),\n            ids)\n        with self.database.atomic():\n            self.database.execute_sql(\n"
+  },
+  {
+   "id": "dryrun",
+   "class": "side-effect",
+   "file": "playhouse/archive.py",
+   "summary": "archive(dry_run=True) creates the archive table before it returns the count, so a dry run changes the database.",
+   "test": "test_dryrun.py",
+   "corrected": "        if dry_run:\n            return query.count()\n\n        self.create_table()\n",
+   "defective": "        self.create_table()\n        if dry_run:\n            return query.count()\n\n"
+  },
+  {
+   "id": "offset",
+   "class": "logic",
+   "file": "playhouse/archive.py",
+   "summary": "Each batch is selected with an offset of the rows already moved, but moved rows are deleted, so later batches skip rows and they are never archived.",
+   "test": "test_offset.py",
+   "corrected": "            batch = query.limit(self.batch_size)\n",
+   "defective": "            batch = query.limit(self.batch_size).offset(moved)\n"
+  },
+  {
+   "id": "tablename",
+   "class": "logic",
+   "file": "playhouse/archive.py",
+   "summary": "The default archive table name is built from the model's class name instead of its table name, so a model with a custom table_name gets a wrongly named archive.",
+   "test": "test_tablename.py",
+   "corrected": "        self.table_name = table_name or model._meta.table_name + '_archive'\n",
+   "defective": "        self.table_name = table_name or model.__name__.lower() + '_archive'\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "countcreate",
+   "class": "side-effect",
+   "file": "playhouse/archive.py",
+   "summary": "count() creates the archive table when it does not exist instead of returning 0, so reading the count changes the database, even right after a dry run or against a read-only connection.",
+   "test": "test_countcreate.py",
+   "corrected": "            return 0\n        cursor = self.database.execute_sql(\n",
+   "defective": "            self.create_table()\n        cursor = self.database.execute_sql(\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "create",
+   "file": "playhouse/archive.py",
+   "anchor": "            'CREATE TABLE IF NOT EXISTS %s AS SELECT * FROM %s LIMIT 0' % (\n",
+   "why": "Both names are quoted by _quote, and DDL takes no parameters; LIMIT 0 copies the columns without rows.",
+   "test": "decoy_create.py"
+  },
+  {
+   "id": "skip",
+   "file": "playhouse/archive.py",
+   "anchor": "        wanted = [i for i in ids if i not in present]\n",
+   "why": "Leaving archived rows whose primary key was reused is the documented contract; restoring them would fail or overwrite the new row.",
+   "test": "decoy_skip.py"
+  }
+ ]
+}

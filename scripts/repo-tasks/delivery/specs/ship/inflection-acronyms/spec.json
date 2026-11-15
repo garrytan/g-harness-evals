@@ -1,0 +1,60 @@
+{
+ "repo": "inflection",
+ "module": "inflection/__init__.py",
+ "summary": "Acronym support, as in Rails: register an acronym once and camelize, underscore, humanize and titleize keep it spelled the way it was registered.",
+ "behaviour": [
+  "`inflection.acronym(word)` registers an acronym such as `API`, `SSL` or `PhD`, spelled as it should appear. A word matches an acronym whatever its case.",
+  "`camelize` writes each underscore-separated word that matches an acronym in the acronym's spelling and capitalizes the other words as it does on main (`api_key` becomes `APIKey`). With `uppercase_first_letter=False`, a leading acronym is written all in lowercase (`api_key` becomes `apiKey`).",
+  "`underscore` treats an acronym, spelled as registered, inside a CamelCase word as one word (`PhDThesis` becomes `phd_thesis`). When registered acronyms overlap, the longest one wins: with `HTTP` and `HTTPS` registered, `HTTPSProxy` becomes `https_proxy`.",
+  "`humanize` and `titleize` write acronyms in their registered spelling: `humanize(\"ssl_error\")` is `SSL error` and `titleize(\"api_key\")` is `API Key`.",
+  "With no acronyms registered, every function behaves as it does on main."
+ ],
+ "version": "0.5.1",
+ "history": [
+  "- Fixed: Type hints for every public function."
+ ],
+ "release": {
+  "version": "0.6.0",
+  "entries": [
+   "- Changed: camelize lowercases the rest of each word, like Rails, so DEVICE_type becomes DeviceType. (feature/c4d21b)",
+   "- Added: __all__ lists the public functions, so from inflection import * brings in only those. (feature/7e2a90)"
+  ]
+ },
+ "teammate_entry": "- Acronyms!! (camelize/underscore/humanize/titleize)",
+ "entry": "- Added: Acronym support: acronym() registers an acronym that camelize, underscore, humanize and titleize keep spelled as registered. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add acronym support",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Make camelize lowercase the rest of each word",
+   "dir": "main1"
+  },
+  {
+   "message": "Declare the public functions in __all__",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "test_inflection.py"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "inflection/__init__.py",
+  "tests_feature/test_acronyms.py"
+ ],
+ "repo_tests_min": 465,
+ "repo_skips_max": 0,
+ "checks": [
+  "lowercamel",
+  "overlap",
+  "capitalize",
+  "dropmain",
+  "r61stale"
+ ]
+}

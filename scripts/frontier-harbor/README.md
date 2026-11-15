@@ -17,7 +17,7 @@
 |---|---|
 | [pin.json](pin.json) | Harbor wheel and its hashed lock, TB2.1 commit, the 52 tasks with digests, the shared order, the kept sample, harness versions, model limits, the blocklist, licences |
 | [harbor-requirements.txt](harbor-requirements.txt) | every package Harbor installs with, by version and sha256 (`uv pip install --require-hashes`) |
-| [materialize.ts](materialize.ts) | copies the pinned tasks into a run root with each image pinned by digest (`tb21`, or `swerebench` for the second source) |
+| [materialize.ts](materialize.ts) | copies the pinned tasks into a run root with each image pinned by digest (`tb21`, or `swerebench` for the second source); `repo` copies a gstack-native repo task split instead ([Repo tasks and delivery arms](#repo-tasks-and-delivery-arms-harn-61)) |
 | [pin-swe-rebench-07-2026.json](pin-swe-rebench-07-2026.json) | the second task source: 111 SWE-rebench July 2026 tasks with digests, base images by digest and size, the Harbor hub dataset version, its blocklist and licences |
 | [swe_rebench_fetch.py](swe_rebench_fetch.py) | fetches the second source's tasks from the Harbor hub by content hash and checks them |
 | [egress_blocklist.py](egress_blocklist.py) | a source's blocklist (pin.json's plus the source's hosts) and the sidecar build context with it |
@@ -36,13 +36,15 @@
 | [subset.ts](subset.ts) | a copy of merged results without some trials (tasks, a Harbor exception, first runs in a time window, or a trial list), or with one harness's infra errors on one task scored as fails, for the sensitivity lines |
 | [refusals.ts](refusals.ts) | lists the trials with a provider safety refusal, read the same way in every harness from each harness's own refusal marker |
 | [recognition.ts](recognition.ts) | the recognition and compaction scan of `fable-5-2-coding-cc322-2026-11`: per trial, Claude Code `unrecognized_model` lines, compaction points and peak context, read from finished results or a running shard's raw Harbor trials (`--jobs`); exits 1 on an unrecognized model, a compaction below `--min-pre-tokens`, an unreadable compaction record or a trial with no agent log |
-| [fake-upstream.ts](fake-upstream.ts) | keyless model upstream for the install check |
+| [fake-upstream.ts](fake-upstream.ts) | keyless model upstream for the install check and, with `--tool-call`, the delivery smoke |
 | [web-tools-check.ts](web-tools-check.ts) | after the smoke, before any counted trial: fails the shard (exit 4) when a cell's captured tool list holds a web search or web fetch tool ([Web tools off](#web-tools-off)) |
 | [install-check.sh](install-check.sh), [install-check.json](install-check.json) | the one-VM install check and its receipt |
 | [install-check-prereg.json](install-check-prereg.json) | the install check's own preregistration (one cell per agent class and model) |
 | [egress-probe/](egress-probe/) | a do-nothing task whose verifier checks the blocklist from inside a task container (install check step 3) |
 | [audit.ts](audit.ts), [answer-keys/](answer-keys/) | the contamination audit over captured requests: the benchmark canary, Harness Leaderboard answer-key fingerprints (Apache-2.0, see its NOTICE.md), benchmark-fetch requests and gstack file reads |
 | [../canary/gstack/](../canary/gstack/README.md) | the gstack regression canary rig: release arm builder, tier spec, exposure, install check and tier runner |
+| [delivery.py](delivery.py), [delivery-pin.json](delivery-pin.json), [delivery/](delivery/) | the internal-task delivery arms (none, skill, hook, startup, placebo): each arm's files, commands and before-ready health checks per harness, and the hook, plugin and extension files they install |
+| [delivery-smoke.sh](delivery-smoke.sh), [delivery_smoke.py](delivery_smoke.py) | the keyless smoke of every harness and arm on a repo task, and its checks |
 | [analyze.ts](analyze.ts) | the harness x model analysis: pass rates with intervals, the noise view, paired comparisons and cost per solve (uses `runner/stats/frontier.ts`), the particle-1 against frontier model-swap contrast when the spec has a `model_swap` block ([../model-swap.ts](../model-swap.ts)), and per gstack arm the exposure counts, open rate per skill and token means |
 | [gstack-arm.ts](gstack-arm.ts), [gstack-build.ts](gstack-build.ts), [gstack-builder/](gstack-builder/), [gstack-runtime.json](gstack-runtime.json) | the gstack arms (internal-task): spec parsing, the docker builder that installs pinned gstack the way a user does, the lock check, and each cell's install manifest |
 | [gstack-names.ts](gstack-names.ts) | which skills a gstack lock holds and the name each host lists them under |
@@ -273,6 +275,19 @@ Since 2026-11-14 the OpenAI organization behind the shared key enforces zero dat
 - **How:** Harbor's sidecar (gost and nftables) only knows allowlists. Ours adds a blocklist service; public mode sends every TCP connection through it. gost matches the TLS SNI or the HTTP Host.
 - **Blocked:** the Terminal-Bench site and the Harbor hub, the leaderboard Space, the Hugging Face dataset viewer API, `api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com` and the Vertex AI hosts, `cursor.sh`, `*.cursor.sh` and `downloads.cursor.com`. Cursor cells get their own list ([Cursor](#cursor)).
 - **Limit:** a host-name list cannot block one path of a shared host. github.com, raw.githubusercontent.com and huggingface.co stay open because tasks download from them; the audit of captured requests covers fetches of benchmark sources there.
+
+## Repo tasks and delivery arms (internal-task)
+
+**The five harnesses run gstack-native repo tasks through agents.py, and a job's `delivery` kwarg picks one delivery arm per cell. A job without the kwarg runs exactly as before.**
+
+- **Repo tasks:** `bun scripts/frontier-harbor/materialize.ts repo --src tasks/repo/<set>/dev --out <run>` reuses gstack-laneb's native materialization (separate offline verifier, `/work` restored as the artifact) without the Lane B runtime layer, and writes `kinds.json` for the kwarg.
+- **The preregistration:** `repo_tasks` (`dir`, `cards` with a review and a ship card, and optional `card_sha256`, `placebo` and `placebo_sha256`) in place of `task_list`. Every cell names its `arm`, a model and harness may have one cell per arm, a cell's `tasks` may be `{ "ids": [...] }` (such a cell can't be in a stage), and there is no kept sample. plan.ts writes the kwarg into each Harbor job from it and the run root's `kinds.json`, and vm-run.sh runs `materialize.ts repo` in place of `tb21`, so `--tb21` is not needed.
+- **The kwarg:** `{"arm": "hook", "cards": {"review": "harnesses/routes/gstack-cards/review.md", "ship": "harnesses/routes/gstack-cards/ship.md"}, "card_sha256": {...}, "placebo": "harnesses/routes/placebo.md", "kinds": <kinds.json>}`. The cards, the gstack line each one quotes and their extractor: [harnesses/routes/gstack-cards/](../../harnesses/routes/gstack-cards/README.md).
+- **Arms:** none (nothing written; gstack must be absent), skill (gstack's own install at the pinned commit, unattended, plus one told sentence per host; Pi's is "manual install, not a gstack route"), hook (the card on request 1 and every tool follow-up), startup (the card in the harness's global startup file), placebo (the hook route carrying placebo.md).
+- **Outside /work:** every delivery and skill file. A route that could only write into the workspace is refused: OpenClaw startup is "can't run" (HE-DELIVERY-004).
+- **Before ready:** each route's health checks run at setup or right before the agent command, and a failure stops the trial before the agent starts (HE-DELIVERY-005). A gstack skill file in a control arm refuses the trial (HE-DELIVERY-006).
+- **Per harness:** `python3 scripts/frontier-harbor/delivery.py plan <harness> <arm> <kind> <card>` prints the plan with the pinned file and line each route rests on; `delivery.py cant-run` prints the refusals.
+- **Keyless smoke:** `bash scripts/frontier-harbor/delivery-smoke.sh <out> [--local]` runs every harness and arm against `fake-upstream.ts --tool-call`, which answers the first agent request with one shell tool call so each session sends a follow-up. `--local` is for a machine without nftables fib inet support (agent phase only, verifier off).
 
 ## A lost VM
 

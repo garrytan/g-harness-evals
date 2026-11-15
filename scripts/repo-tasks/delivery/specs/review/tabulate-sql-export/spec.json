@@ -1,0 +1,92 @@
+{
+ "repo": "tabulate",
+ "title": "Add an SQL export",
+ "description": "Adds `tabulate.sql` with `to_sql(tabular_data, table, headers=\"keys\", replace=False, disable_numparse=False)` and `write_sql(path, tabular_data, table, headers=\"keys\", replace=False)`, so a table can be loaded into SQLite or another SQL database. The output is one CREATE TABLE statement followed by INSERT statements of at most 500 rows each, and every row of the data is inserted. The data and headers are anything `tabulate()` accepts; every column needs a header, which becomes the column's name, and the column types follow the types tabulate finds: INTEGER, REAL or TEXT. Table and column names are always quoted, so any name works, including ones with spaces or quotes, and text values are written as standard SQL string literals, so any text loads back exactly as given. A row shorter than the headers gets NULL for its missing cells, and NaN and infinities, which SQL has no literal for, are written as NULL. With `replace=True` an existing table of the same name is dropped first. `write_sql` writes the same statements to a file; if the data cannot be converted it raises and the file is left as it was. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "quote",
+   "class": "sql",
+   "file": "tabulate/sql.py",
+   "summary": "_quote_name strips double quotes from the ends instead of doubling embedded ones, so a name containing a double quote breaks or rewrites the statement.",
+   "test": "test_quote.py",
+   "corrected": "    return '\"' + str(name).replace('\"', '\"\"') + '\"'\n",
+   "defective": "    return '\"' + str(name).strip('\"') + '\"'\n"
+  },
+  {
+   "id": "literal",
+   "class": "sql",
+   "file": "tabulate/sql.py",
+   "summary": "Single quotes in text are escaped with a backslash, which standard SQL and SQLite do not understand, so text with a quote breaks the statement or injects SQL.",
+   "test": "test_literal.py",
+   "corrected": "    return \"'\" + str(value).replace(\"'\", \"''\") + \"'\"\n",
+   "defective": "    return \"'\" + str(value).replace(\"'\", \"\\\\'\") + \"'\"\n"
+  },
+  {
+   "id": "drop",
+   "class": "sql",
+   "file": "tabulate/sql.py",
+   "summary": "The DROP TABLE statement for replace=True puts the table name into the SQL unquoted, so a name with a space or SQL in it breaks or rewrites the statement.",
+   "test": "test_drop.py",
+   "corrected": "        statements.append(\"DROP TABLE IF EXISTS \" + _quote_name(table) + \";\")\n",
+   "defective": "        statements.append(\"DROP TABLE IF EXISTS \" + table + \";\")\n"
+  },
+  {
+   "id": "chunk",
+   "class": "logic",
+   "file": "tabulate/sql.py",
+   "summary": "Each INSERT takes rows[start:500] instead of rows[start:start + 500], so every statement after the first has no rows and a table of more than 500 rows gives invalid SQL.",
+   "test": "test_chunk.py",
+   "corrected": "            for row in rows[start : start + _ROWS_PER_INSERT]\n",
+   "defective": "            for row in rows[start : _ROWS_PER_INSERT]\n"
+  },
+  {
+   "id": "short",
+   "class": "logic",
+   "file": "tabulate/sql.py",
+   "summary": "Short rows are not padded with None, so the column types and the CREATE TABLE lose columns and the INSERT does not match them.",
+   "test": "test_short.py",
+   "corrected": "    rows = [list(row) + [None] * (ncols - len(row)) for row in rows]\n",
+   "defective": "    rows = [list(row) for row in rows]\n"
+  },
+  {
+   "id": "write",
+   "class": "side-effect",
+   "file": "tabulate/sql.py",
+   "summary": "write_sql opens (and truncates) the file before to_sql runs, so a conversion error destroys the existing file.",
+   "test": "test_write.py",
+   "corrected": "    script = to_sql(tabular_data, table, headers=headers, replace=replace)\n    with open(path, \"w\", encoding=\"utf-8\") as f:\n        f.write(script)\n",
+   "defective": "    with open(path, \"w\", encoding=\"utf-8\") as f:\n        f.write(to_sql(tabular_data, table, headers=headers, replace=replace))\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "existing",
+   "class": "side-effect",
+   "file": "tabulate/sql.py",
+   "summary": "The table is created with CREATE TABLE IF NOT EXISTS, so with replace=False the script no longer fails on an existing table of the same name and silently inserts the rows into it.",
+   "test": "test_existing.py",
+   "corrected": "    return \"CREATE TABLE \" + _quote_name(table) + \" (\" + columns + \");\"\n",
+   "defective": "    return \"CREATE TABLE IF NOT EXISTS \" + _quote_name(table) + \" (\" + columns + \");\"\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "names",
+   "file": "tabulate/sql.py",
+   "anchor": "    prefix = \"INSERT INTO \" + _quote_name(table) + \" (\" + names + \") VALUES\\n\"\n",
+   "why": "The SQL is built by concatenation, but the table and every column name go through _quote_name, and identifiers cannot be bound as parameters.",
+   "test": "decoy_names.py"
+  },
+  {
+   "id": "nan",
+   "file": "tabulate/sql.py",
+   "anchor": "        if math.isnan(number) or math.isinf(number):\n            return \"NULL\"\n",
+   "why": "SQL has no literal for NaN or infinity; writing them as NULL is the documented behaviour.",
+   "test": "decoy_nan.py"
+  }
+ ]
+}

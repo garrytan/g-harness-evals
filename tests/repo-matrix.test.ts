@@ -43,3 +43,18 @@ describe('repo task matrix', () => {
     }
   });
 });
+
+describe('repo task matrix --set', () => {
+  test('a task whose worker produces no matrix fails the set and loses its earlier passing row', () => {
+    const set = mkdtempSync(join(tmpdir(), 'matrix-set-'));
+    const task = join(set, 'dev', 'broken-task');
+    mkdirSync(task, { recursive: true });
+    writeFileSync(join(task, 'task.toml'), 'kind = "review"\n');
+    writeFileSync(join(set, 'dev', 'ACCEPTANCE.json'), JSON.stringify({ set: 'x', split: 'dev', date: '2026-01-01', tasks: { 'broken-task': { kind: 'review', ok: true, runs: 1, rows: [] } } }));
+    const r = spawnSync(process.execPath, [join(import.meta.dir, '..', 'scripts', 'repo-tasks', 'matrix.ts'), '--set', set, '--split', 'dev', '--jobs', '1', '--runs', '1'], { env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: set }, encoding: 'utf8' });
+    expect(r.stdout).toContain('broken-task produced no matrix');
+    expect(r.status).toBe(1);
+    expect(JSON.parse(readFileSync(join(set, 'dev', 'ACCEPTANCE.json'), 'utf8')).tasks['broken-task'].ok).toBe(false);
+    rmSync(set, { recursive: true, force: true });
+  }, 60_000);
+});

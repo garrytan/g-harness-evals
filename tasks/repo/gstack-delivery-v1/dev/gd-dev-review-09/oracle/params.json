@@ -1,0 +1,54 @@
+{
+ "kind": "review",
+ "base": "main",
+ "branch": "feature/9f160b",
+ "env": {},
+ "findings": [
+  {
+   "file": "more_itertools/more.py",
+   "line": 5741,
+   "summary": "The run is recorded in a finally block, so a run that raises or is closed early is stored as if it were complete and later calls replay the partial result.",
+   "test": "/work/out/tests/test_partial.py",
+   "probe": "/oracle/test_partial.py",
+   "correct": false
+  },
+  {
+   "file": "more_itertools/more.py",
+   "line": 5767,
+   "summary": "cache_clear() resets the generation to 0 instead of advancing it, so a run that was under way when the cache was cleared still records its result.",
+   "test": "/work/out/tests/test_clear.py",
+   "probe": "/oracle/test_clear.py",
+   "correct": false
+  },
+  {
+   "file": "more_itertools/more.py",
+   "line": 5674,
+   "summary": "Keyword arguments are appended to the key without a marker, so f(1, ('b', 2)) and f(1, b=2) share a recording.",
+   "test": "/work/out/tests/test_keyword.py",
+   "probe": "/oracle/test_keyword.py",
+   "correct": false
+  },
+  {
+   "file": "more_itertools/more.py",
+   "line": 5724,
+   "summary": "replay() treats an empty recording as no recording, but record() stores a run that produced nothing as an empty list, so a function whose run yields no items is called again on every call instead of being replayed.",
+   "test": "/work/out/tests/test_empty_run.py",
+   "probe": "/oracle/test_empty_run.py",
+   "correct": false
+  }
+ ],
+ "decoys": [
+  {
+   "file": "more_itertools/more.py",
+   "line": 5716,
+   "probe": "/oracle/decoy_negative.py",
+   "correct": true
+  },
+  {
+   "file": "more_itertools/more.py",
+   "line": 5666,
+   "probe": "/oracle/decoy_unhashable.py",
+   "correct": true
+  }
+ ]
+}

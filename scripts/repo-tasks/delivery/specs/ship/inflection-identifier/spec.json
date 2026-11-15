@@ -1,0 +1,59 @@
+{
+ "repo": "inflection",
+ "module": "inflection/__init__.py",
+ "summary": "A to_identifier function that turns arbitrary text, such as spreadsheet column headings, into Python identifiers for generated code.",
+ "behaviour": [
+  "`inflection.to_identifier(text)` returns a snake_case identifier. Straight apostrophes are removed first (`don't` becomes `dont`). The text is then transliterated to ASCII, and characters with no ASCII approximation are dropped (`Ærøskøbing` becomes `rskbing`). CamelCase words are split as `underscore` splits them, every run of characters that are not ASCII letters or digits becomes one underscore, and the result is lowercase with no leading or trailing underscore.",
+  "`inflection.to_identifier(text, camel=True)` returns `camelize` of that snake_case form instead.",
+  "In both styles, a result that would start with a digit gets a leading underscore (`2nd line` becomes `_2nd_line`, or `_2ndLine` with `camel=True`), and a result that is a Python keyword gets a trailing underscore (`class_`, `None_`).",
+  "Text with no ASCII letters or digits left raises `ValueError`."
+ ],
+ "version": "0.5.1",
+ "history": [
+  "- Fixed: Type hints for every public function."
+ ],
+ "release": {
+  "version": "0.6.0",
+  "entries": [
+   "- Changed: transliterate replaces a character it cannot approximate with a replacement string, '?' by default, like Rails. parameterize still drops them. (feature/e07a3f)",
+   "- Changed: A ValueError from a public function now starts with the function's name, such as ordinal() for input that is not a whole number. (feature/5c2d90)"
+  ]
+ },
+ "teammate_entry": "- Added to_identifier()",
+ "entry": "- Added: A to_identifier function that turns arbitrary text into a snake_case or CamelCase Python identifier. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add to_identifier for generating Python names",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Let transliterate replace characters it cannot approximate",
+   "dir": "main1"
+  },
+  {
+   "message": "Name the function in ValueError messages",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "test_inflection.py"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "inflection/__init__.py",
+  "tests_feature/test_identifier.py"
+ ],
+ "repo_tests_min": 479,
+ "repo_skips_max": 0,
+ "checks": [
+  "question",
+  "keywordcamel",
+  "apostrophe",
+  "dropmain",
+  "r61stale"
+ ]
+}

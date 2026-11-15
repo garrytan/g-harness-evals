@@ -1,0 +1,83 @@
+{
+ "repo": "jmespath",
+ "title": "Add a library of named queries stored as files",
+ "description": "Adds `jmespath/library.py` so our tools can share saved queries instead of pasting expressions around. `QueryLibrary(root)` keeps each expression as a text file: the name `users/active` is the file `users/active.jmespath` under `root`. `save(name, expression)` checks that the expression parses, then writes it atomically, replacing any earlier query of that name; a save that fails leaves the saved query as it was. `get(name)` returns the compiled expression and caches it until the file changes on disk, so hand edits are picked up, and `search(name, data)` runs it. In a file, lines whose first non-blank character is `#` are comments, and the expression may span several lines. `names()` lists every query, sorted. A root that does not exist yet is an empty library: opening or reading a library never writes to disk, and the first save creates the root. `delete(name)` removes the file and any directories that become empty, but never the root. Names come from users, so a name that resolves to a file outside the root raises `InvalidQueryNameError`, and an unknown name raises `UnknownQueryError`. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "prefix",
+   "class": "trust",
+   "file": "jmespath/library.py",
+   "summary": "The containment check is a string prefix test, so a name like ../queries-private/secret reaches a sibling directory whose name starts with the root's name.",
+   "test": "test_prefix.py",
+   "corrected": "        if os.path.commonpath([self.root, path]) != self.root:\n",
+   "defective": "        if not path.startswith(self.root):\n"
+  },
+  {
+   "id": "order",
+   "class": "side-effect",
+   "file": "jmespath/library.py",
+   "summary": "save writes the file before checking that the expression parses, so a failed save replaces a working query with a broken one.",
+   "test": "test_failed_save.py",
+   "corrected": "        compiled = parser.Parser().parse(expression)\n        self._write(path, expression + '\\n')\n",
+   "defective": "        self._write(path, expression + '\\n')\n        compiled = parser.Parser().parse(expression)\n"
+  },
+  {
+   "id": "prune",
+   "class": "side-effect",
+   "file": "jmespath/library.py",
+   "summary": "delete prunes empty directories with os.removedirs, which keeps climbing past the root and removes the root and its empty parents.",
+   "test": "test_delete_dirs.py",
+   "corrected": "        directory = os.path.dirname(path)\n        while directory != self.root and not os.listdir(directory):\n            os.rmdir(directory)\n            directory = os.path.dirname(directory)\n",
+   "defective": "        try:\n            os.removedirs(os.path.dirname(path))\n        except OSError:\n            pass\n"
+  },
+  {
+   "id": "hash",
+   "class": "logic",
+   "file": "jmespath/library.py",
+   "summary": "Comments are cut at the first # anywhere on a line, so a # inside a string literal truncates the expression.",
+   "test": "test_hash.py",
+   "corrected": "        lines = [line for line in f.read().splitlines()\n                 if not line.lstrip().startswith('#')]\n",
+   "defective": "        lines = [line.split('#')[0] for line in f.read().splitlines()]\n"
+  },
+  {
+   "id": "mkdir",
+   "class": "side-effect",
+   "file": "jmespath/library.py",
+   "summary": "The constructor creates the root directory, so merely opening or listing a library that does not exist yet creates it (and fails where the directory cannot be created).",
+   "test": "test_no_mkdir.py",
+   "corrected": "        self.root = os.path.realpath(root)\n        self._cache = {}\n",
+   "defective": "        self.root = os.path.realpath(root)\n        os.makedirs(self.root, exist_ok=True)\n        self._cache = {}\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "tmpclean",
+   "class": "side-effect",
+   "file": "jmespath/library.py",
+   "summary": "names() deletes dot-prefixed .tmp files, which are the temporary files _write is still filling for a save in progress, so listing a library writes to disk and makes a concurrent save fail at os.replace.",
+   "test": "test_names_tmp.py",
+   "corrected": "                        relpath[:-len(EXTENSION)].replace(os.sep, '/'))\n        return sorted(found)\n",
+   "defective": "                        relpath[:-len(EXTENSION)].replace(os.sep, '/'))\n                elif filename.startswith('.') and filename.endswith('.tmp'):\n                    os.remove(os.path.join(dirpath, filename))\n        return sorted(found)\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "missing-root",
+   "file": "jmespath/library.py",
+   "anchor": "        if not os.path.isdir(self.root):\n            return []\n",
+   "why": "A root that does not exist yet is documented as an empty library; save creates it.",
+   "test": "decoy_missing_root.py"
+  },
+  {
+   "id": "cleanup",
+   "file": "jmespath/library.py",
+   "anchor": "        except BaseException:\n            os.unlink(tmp)\n            raise\n",
+   "why": "The broad except only removes the temporary file and re-raises, so nothing is swallowed.",
+   "test": "decoy_cleanup.py"
+  }
+ ]
+}

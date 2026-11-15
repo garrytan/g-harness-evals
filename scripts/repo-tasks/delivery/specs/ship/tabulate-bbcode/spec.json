@@ -1,0 +1,64 @@
+{
+ "repo": "tabulate",
+ "module": "tabulate/__init__.py",
+ "summary": "Add a bbcode table format so tables can be pasted into forums that use BBCode.",
+ "behaviour": [
+  "`tabulate(..., tablefmt=\"bbcode\")` writes `[table]` on the first line, `[/table]` on the last, and one `[tr]...[/tr]` line per row in between, the header row first.",
+  "Header cells are `[th]...[/th]` and data cells `[td]...[/td]`, with no padding inside the tags.",
+  "In cell text, `&` becomes `&amp;`, `[` becomes `&#91;` and `]` becomes `&#93;`, so no cell can open or close a tag. Every other character, including `<`, `>` and quotes, is written as it is.",
+  "A line break inside a cell is written as `[br]`.",
+  "An empty table renders as an empty string, as with the other formats."
+ ],
+ "version": "0.9.0",
+ "history": [
+  "- Changed: Maintenance release."
+ ],
+ "release": {
+  "version": "0.10.0",
+  "entries": [
+   "- Changed: The html format escapes cell text through a private helper, so htmlescape is no longer a module attribute. (feature/5d02c1)",
+   "- Changed: Multiline cells are folded into rows in every format except the ones listed in single_line_formats, so github, the outline formats and dokuwiki now fold them. (feature/c41f90)",
+   "- Added: A dokuwiki table format. (feature/a83e7b)"
+  ]
+ },
+ "teammate_entry": "- Added bbcode format",
+ "entry": "- Added: A bbcode table format for pasting tables into forums. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add a bbcode table format",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Stop exporting htmlescape from the module",
+   "dir": "main1"
+  },
+  {
+   "message": "Add a dokuwiki table format",
+   "dir": "main2"
+  },
+  {
+   "message": "Fold multiline cells in every format that is not single-line",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "test"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "tabulate/__init__.py",
+  "tests_feature/test_bbcode.py"
+ ],
+ "repo_tests_min": 290,
+ "repo_skips_max": 37,
+ "checks": [
+  "htmlesc",
+  "nobr",
+  "dropmain",
+  "r61stale"
+ ]
+}

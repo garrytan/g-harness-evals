@@ -1,0 +1,2 @@
+class InstalledAgentOptions:
+    pass

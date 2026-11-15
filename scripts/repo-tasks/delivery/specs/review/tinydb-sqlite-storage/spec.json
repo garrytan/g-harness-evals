@@ -1,0 +1,92 @@
+{
+ "repo": "tinydb",
+ "title": "Add a SQLite storage",
+ "description": "Adds `SQLiteStorage` (`tinydb/sqlite_storage.py`) for people who want their database in a single SQLite file instead of JSON. Each TinyDB table becomes an SQL table named with the storage's prefix (default `tinydb_`) plus the table name, so several databases can share one file as long as their prefixes differ. A write replaces the stored state as a whole, inside one transaction. Documents come back in the order they were inserted, as with `JSONStorage`. `readonly=True` opens an existing file without ever creating or changing it. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "quote",
+   "class": "sql",
+   "file": "tinydb/sqlite_storage.py",
+   "summary": "Table names go into SQL inside double quotes that are not escaped, so a table name containing a double quote breaks or rewrites the statement.",
+   "test": "test_quote.py",
+   "corrected": "    return '\"' + name.replace('\"', '\"\"') + '\"'\n",
+   "defective": "    return '\"' + name + '\"'\n"
+  },
+  {
+   "id": "prefix",
+   "class": "sql",
+   "file": "tinydb/sqlite_storage.py",
+   "summary": "The prefix goes into a LIKE pattern unescaped, so _ and % in it match other databases' tables, which are then read and dropped.",
+   "test": "test_prefix.py",
+   "corrected": "        pattern = (self._prefix.replace('\\\\', '\\\\\\\\')\n                   .replace('%', '\\\\%')\n                   .replace('_', '\\\\_')) + '%'\n",
+   "defective": "        pattern = self._prefix + '%'\n"
+  },
+  {
+   "id": "rollback",
+   "class": "side-effect",
+   "file": "tinydb/sqlite_storage.py",
+   "summary": "A write that fails part way still commits, so tables already dropped or emptied stay that way.",
+   "test": "test_rollback.py",
+   "corrected": "        try:\n            yield\n        except BaseException:\n            self._conn.execute('ROLLBACK')\n            raise\n        self._conn.execute('COMMIT')\n",
+   "defective": "        try:\n            yield\n        finally:\n            self._conn.execute('COMMIT')\n"
+  },
+  {
+   "id": "removed",
+   "class": "logic",
+   "file": "tinydb/sqlite_storage.py",
+   "summary": "Rows are upserted but never deleted, so removed documents come back after the next write.",
+   "test": "test_removed.py",
+   "corrected": "                self._conn.execute('DELETE FROM ' + table)\n                self._conn.executemany(\n                    'INSERT INTO ' + table",
+   "defective": "                self._conn.executemany(\n                    'INSERT OR REPLACE INTO ' + table"
+  },
+  {
+   "id": "order",
+   "class": "logic",
+   "file": "tinydb/sqlite_storage.py",
+   "summary": "Documents are read back ordered by their id as text, so ids 10 and 11 come before 2 instead of insertion order.",
+   "test": "test_order.py",
+   "corrected": "                + ' ORDER BY rowid'\n",
+   "defective": "                + ' ORDER BY doc_id'\n"
+  },
+  {
+   "id": "readonly",
+   "class": "side-effect",
+   "file": "tinydb/sqlite_storage.py",
+   "summary": "readonly=True opens the file with mode=rw, so a read-only storage can still change the file.",
+   "test": "test_readonly.py",
+   "corrected": "            uri = 'file:' + pathname2url(os.path.abspath(path)) + '?mode=ro'\n",
+   "defective": "            uri = 'file:' + pathname2url(os.path.abspath(path)) + '?mode=rw'\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "emptyprefix",
+   "class": "trust",
+   "file": "tinydb/sqlite_storage.py",
+   "summary": "An empty prefix is accepted, so the LIKE pattern becomes %, every table in the file counts as one of this database's tables, and the next write drops the tables of every other database sharing the file.",
+   "test": "test_empty_prefix.py",
+   "corrected": "        super().__init__()\n        if not prefix:\n            raise ValueError('prefix must not be empty')\n        self._prefix = prefix\n",
+   "defective": "        super().__init__()\n        self._prefix = prefix\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "empty",
+   "file": "tinydb/sqlite_storage.py",
+   "anchor": "        if not tables:\n            return None\n",
+   "why": "Returning None for an empty file is the Storage contract; TinyDB then initializes the database.",
+   "test": "decoy_empty.py"
+  },
+  {
+   "id": "drop",
+   "file": "tinydb/sqlite_storage.py",
+   "anchor": "                    self._conn.execute('DROP TABLE ' + _quote(sql_name))\n",
+   "why": "The name is quoted by _quote, and DROP TABLE takes no parameters.",
+   "test": "decoy_drop.py"
+  }
+ ]
+}

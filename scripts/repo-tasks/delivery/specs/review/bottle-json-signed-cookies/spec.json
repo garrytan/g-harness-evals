@@ -1,0 +1,83 @@
+{
+ "repo": "bottle",
+ "title": "Sign cookies as JSON instead of pickle",
+ "description": "Signed cookies no longer use pickle. `response.set_cookie(name, value, secret=...)` now stores any JSON serializable value, signed with an HMAC (`digestmod`, default SHA-256) over the cookie name and the payload, so a signed value is only valid under the name it was set with. `secret` may be a list of secrets for key rotation: the first one signs, and `request.get_cookie()` accepts a signature made with any of them. When `max_age` (seconds or a timedelta) or `expires` is set, the expiry time is signed into the cookie as well, and `get_cookie()` returns the default once it has passed, even if the browser still sends the cookie. Given a secret, `get_cookie()` never raises and returns the default for anything that is not a valid signed cookie: a missing, unsigned, tampered, expired or old pickle-format cookie. Updates the signed cookie tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "name",
+   "class": "trust",
+   "file": "bottle.py",
+   "summary": "The signature does not cover the cookie name, so a value signed for one cookie is accepted under any other cookie name.",
+   "test": "test_cookie_name.py",
+   "corrected": "    msg = tob(name) + b'.' + tob(payload)\n",
+   "defective": "    msg = tob(payload)\n"
+  },
+  {
+   "id": "rotation",
+   "class": "logic",
+   "file": "bottle.py",
+   "summary": "With a list of secrets the cookie is signed with the last one instead of the first, so readers that only know the current secret reject it.",
+   "test": "test_rotation.py",
+   "corrected": "makelist(secret)[0]",
+   "defective": "makelist(secret)[-1]"
+  },
+  {
+   "id": "verify",
+   "class": "trust",
+   "file": "bottle.py",
+   "summary": "The payload is decoded before the signature is checked, so a forged cookie whose payload is valid JSON of another shape raises TypeError instead of giving the default.",
+   "test": "test_forged_payload.py",
+   "corrected": "    if not any(_lscmp(sig, _cookie_mac(name, payload, secret, digestmod))\n               for secret in secrets):\n        raise ValueError('Signature does not match.')\n    value, expires = json_lds(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))\n",
+   "defective": "    value, expires = json_lds(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))\n    if not any(_lscmp(sig, _cookie_mac(name, payload, secret, digestmod))\n               for secret in secrets):\n        raise ValueError('Signature does not match.')\n"
+  },
+  {
+   "id": "unsigned",
+   "class": "trust",
+   "file": "bottle.py",
+   "summary": "With a secret, a cookie that is not in the signed format falls through to the unsigned return, so a client-set plain value is accepted as if it were signed.",
+   "test": "test_unsigned.py",
+   "corrected": "                except ValueError:\n                    pass\n            return default\n",
+   "defective": "                except ValueError:\n                    return default\n"
+  },
+  {
+   "id": "timedelta",
+   "class": "logic",
+   "file": "bottle.py",
+   "summary": "A timedelta max_age is converted with .seconds, which drops the days, so a cookie set for whole days expires at once.",
+   "test": "test_timedelta.py",
+   "corrected": "        max_age = max_age.total_seconds()\n",
+   "defective": "        max_age = max_age.seconds\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "expires",
+   "file": "bottle.py",
+   "anchor": "    return parse_date(http_date(expires))\n",
+   "why": "http_date() accepts a datetime, a date or a timestamp and parse_date() turns its output back into a UNIX time, so every form of expires becomes a timestamp.",
+   "test": "decoy_expires.py"
+  },
+  {
+   "id": "padding",
+   "file": "bottle.py",
+   "anchor": "    payload = touni(base64.urlsafe_b64encode(data)).rstrip('=')\n",
+   "why": "The padding is stripped to keep = out of the cookie value and restored before decoding in _cookie_verify().",
+   "test": "decoy_padding.py"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "compare",
+   "class": "trust",
+   "file": "bottle.py",
+   "summary": "_lscmp() now uses hmac.compare_digest(), which raises TypeError for a str with non-ASCII characters; the signature part of a cookie is client-controlled (a quoted cookie may carry octal escapes such as \\351), so a crafted cookie makes get_cookie() raise instead of returning the default.",
+   "test": "test_signature_type.py",
+   "corrected": "    return not sum(0 if x == y else 1\n                   for x, y in zip(a, b)) and len(a) == len(b)\n",
+   "defective": "    return hmac.compare_digest(a, b)\n"
+  }
+ ]
+}

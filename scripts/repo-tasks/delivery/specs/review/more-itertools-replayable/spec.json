@@ -1,0 +1,83 @@
+{
+ "repo": "more-itertools",
+ "title": "Add replayable, a cache for functions that produce iterables",
+ "description": "Adds `replayable` to `more_itertools/more.py`: a decorator, usable as `@replayable` or `@replayable(maxsize=...)`, for a function that returns an iterable, typically a generator function that is slow to run. The first call with some arguments calls the function and returns an iterator over its items while recording them; once that iterator has been exhausted, later calls with equal arguments replay the recorded items and do not call the function at all. Only a run that reaches the end is recorded: if the function raises, or the iterator is closed or discarded early, nothing is kept and the next call runs the function again. Arguments match by equality, and a keyword argument never matches a positional one. A call whose arguments cannot be hashed goes straight to the function and is not recorded. At most `maxsize` results (default 128) are kept, dropping the least recently used one to make room; `maxsize=None` keeps everything, and zero or a negative `maxsize` keeps nothing, as with `functools.lru_cache`. The decorated function gets `cache_info()`, which returns `(hits, misses, currsize)`, and `cache_clear()`, which drops every recorded result and resets the counts; a run that is still going when the cache is cleared records nothing when it finishes. Includes a type stub and tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "eager",
+   "class": "side-effect",
+   "file": "more_itertools/more.py",
+   "summary": "func is called before the cache is checked, so every replay still runs a function that does its work when called.",
+   "test": "test_eager.py",
+   "corrected": "        if items is None:\n            misses += 1\n            return record(key, func(*args, **kwargs), generation)\n",
+   "defective": "        iterable = func(*args, **kwargs)\n        if items is None:\n            misses += 1\n            return record(key, iterable, generation)\n"
+  },
+  {
+   "id": "partial",
+   "class": "side-effect",
+   "file": "more_itertools/more.py",
+   "summary": "The run is recorded in a finally block, so a run that raises or is closed early is stored as if it were complete and later calls replay the partial result.",
+   "test": "test_partial.py",
+   "corrected": "        for item in iterable:\n            items.append(item)\n            yield item\n        if started == generation:\n            store(key, items)\n",
+   "defective": "        try:\n            for item in iterable:\n                items.append(item)\n                yield item\n        finally:\n            if started == generation:\n                store(key, items)\n"
+  },
+  {
+   "id": "evict",
+   "class": "logic",
+   "file": "more_itertools/more.py",
+   "summary": "OrderedDict.popitem() drops the newest entry, so once the cache is full the result just stored is thrown away instead of the least recently used one.",
+   "test": "test_evict.py",
+   "corrected": "            cache.popitem(last=False)\n",
+   "defective": "            cache.popitem()\n"
+  },
+  {
+   "id": "clear",
+   "class": "side-effect",
+   "file": "more_itertools/more.py",
+   "summary": "cache_clear() resets the generation to 0 instead of advancing it, so a run that was under way when the cache was cleared still records its result.",
+   "test": "test_clear.py",
+   "corrected": "        hits = misses = 0\n        generation += 1\n",
+   "defective": "        hits = misses = generation = 0\n"
+  },
+  {
+   "id": "keyword",
+   "class": "logic",
+   "file": "more_itertools/more.py",
+   "summary": "Keyword arguments are appended to the key without a marker, so f(1, ('b', 2)) and f(1, b=2) share a recording.",
+   "test": "test_keyword.py",
+   "corrected": "        key += (_marker, *sorted(kwargs.items()))\n",
+   "defective": "        key += tuple(sorted(kwargs.items()))\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "empty",
+   "class": "side-effect",
+   "file": "more_itertools/more.py",
+   "summary": "replay() treats an empty recording as no recording, but record() stores a run that produced nothing as an empty list, so a function whose run yields no items is called again on every call instead of being replayed.",
+   "test": "test_empty_run.py",
+   "corrected": "        if items is None:\n            return None\n",
+   "defective": "        if not items:\n            return None\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "negative",
+   "file": "more_itertools/more.py",
+   "anchor": "    if maxsize is not None and maxsize < 0:\n        maxsize = 0\n",
+   "why": "A negative maxsize keeping nothing is the documented contract, the same as functools.lru_cache.",
+   "test": "decoy_negative.py"
+  },
+  {
+   "id": "unhashable",
+   "file": "more_itertools/more.py",
+   "anchor": "    except Exception:\n        return False\n",
+   "why": "Any failure of hash() means the call cannot be recorded, and such calls are documented to go straight to func; the try covers hash() only, never func.",
+   "test": "decoy_unhashable.py"
+  }
+ ]
+}

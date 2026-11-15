@@ -1,0 +1,83 @@
+{
+ "repo": "tabulate",
+ "title": "Export tables as a small HTML site",
+ "description": "Adds `tabulate.export.export_html(directory, tables, captions=None, title=\"Tables\", headers=\"keys\")`, which writes a set of named tables as a small static site: one `<name>.html` page per table and an `index.html` that links them in the order given. `tables` maps each name to anything `tabulate()` accepts, and `headers` is used for every table. A table's caption (from `captions`, defaulting to its name) is the heading of its page and the tooltip of its link in the index, and each link also shows the table's number of data rows. Cell text, captions and the title are escaped, as with tabulate's `html` format, so the pages are safe to publish whatever the data holds. A name may only contain letters, digits, `_`, `-` and `.` and must start with a letter or a digit, so every page lands directly inside `directory`; if any name is invalid, `export_html` raises ValueError before it creates or writes anything. Returns the paths it wrote, the index last. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "name",
+   "class": "trust",
+   "file": "tabulate/export.py",
+   "summary": "Names are checked with re.match, which only anchors the start, so a name like a/../../x passes and the page is written outside the directory.",
+   "test": "test_name.py",
+   "corrected": "    if not isinstance(name, str) or not _NAME.fullmatch(name):\n",
+   "defective": "    if not isinstance(name, str) or not _NAME.match(name):\n"
+  },
+  {
+   "id": "tooltip",
+   "class": "trust",
+   "file": "tabulate/export.py",
+   "summary": "The caption is escaped with quote=False and then used inside the title attribute, so a caption with a double quote breaks out of the attribute and can add event handlers.",
+   "test": "test_tooltip.py",
+   "corrected": "        heading = html.escape(caption)\n",
+   "defective": "        heading = html.escape(caption, quote=False)\n"
+  },
+  {
+   "id": "cells",
+   "class": "trust",
+   "file": "tabulate/export.py",
+   "summary": "Tables are rendered with the unsafehtml format, so cell text is written as raw HTML and data can inject scripts into the pages.",
+   "test": "test_cells.py",
+   "corrected": "    table = tabulate(data, headers, tablefmt=\"html\")\n",
+   "defective": "    table = tabulate(data, headers, tablefmt=\"unsafehtml\")\n"
+  },
+  {
+   "id": "validate",
+   "class": "side-effect",
+   "file": "tabulate/export.py",
+   "summary": "The names are checked lazily in a generator, so the directory is created and earlier tables are written before an invalid name raises.",
+   "test": "test_validate.py",
+   "corrected": "    names = [_check_name(name) for name in tables]\n",
+   "defective": "    names = (_check_name(name) for name in tables)\n"
+  },
+  {
+   "id": "count",
+   "class": "logic",
+   "file": "tabulate/export.py",
+   "summary": "The index counts rows with the default headers instead of the export's headers, so with headers='firstrow' the header row is counted as a data row.",
+   "test": "test_count.py",
+   "corrected": "    count = _row_count(data, headers)\n",
+   "defective": "    count = _row_count(data)\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "markup",
+   "class": "trust",
+   "file": "tabulate/export.py",
+   "summary": "The name pattern only refuses path separators and a leading dot, so a name such as <img src=x onerror=alert(1)> passes the check and is written unescaped into the index page's link, which injects markup; names may only hold letters, digits, _, - and . and must start with a letter or a digit.",
+   "test": "test_markup.py",
+   "corrected": "# Letters, digits, \"_\", \"-\" and \".\", starting with a letter or a digit.\n_NAME = re.compile(r\"[A-Za-z0-9][A-Za-z0-9_.-]*\")\n",
+   "defective": "# No path separators and no leading dot, so every page lands in the directory.\n_NAME = re.compile(r\"[^./\\\\][^/\\\\]*\")\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "links",
+   "file": "tabulate/export.py",
+   "anchor": "    return '<li><a href=\"{0}.html\" title=\"{1}\">{0}</a> ({2})</li>'.format(\n",
+   "why": "The name is not escaped, but every name has passed _check_name, which allows only letters, digits, _, - and ., so it cannot hold markup or quotes.",
+   "test": "decoy_links.py"
+  },
+  {
+   "id": "body",
+   "file": "tabulate/export.py",
+   "anchor": "        f.write(_PAGE.format(title=html.escape(title), body=body))\n",
+   "why": "The body is HTML built by tabulate's html format and the escaped heading, so escaping it again would break the page.",
+   "test": "decoy_body.py"
+  }
+ ]
+}

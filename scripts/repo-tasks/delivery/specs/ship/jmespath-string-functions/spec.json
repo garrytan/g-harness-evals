@@ -1,0 +1,64 @@
+{
+ "repo": "jmespath",
+ "module": "jmespath/functions.py",
+ "summary": "Add lower, upper, trim and split string functions, with optional trailing arguments for trim and split.",
+ "behaviour": [
+  "`lower(s)` and `upper(s)` return the string `s` in lower or upper case, non-ASCII letters included (`upper('ä')` is `'Ä'`).",
+  "`trim(s)` removes whitespace from both ends of `s`. `trim(s, chars)` instead removes every leading and trailing character that appears in `chars`; an empty `chars` trims whitespace, as if it were left out.",
+  "`split(s, sep)` returns the parts of `s` between the occurrences of `sep`. `split(s, sep, count)` splits at the first `count` occurrences only, so the last part keeps the rest of `s`, and a `count` of 0 returns `[s]`. An empty `sep` splits `s` into its characters, and `count` limits that the same way: `split('abc', '', 1)` is `['a', 'bc']`.",
+  "Leaving out a required argument or passing too many raises `ArityError`, and an argument of the wrong type (such as a number for `s`, `chars` or `sep`, or a string for `count`) raises `JMESPathTypeError`, as for the built-in functions."
+ ],
+ "version": "1.1.0",
+ "history": [
+  "- Added: Python 3.14 support."
+ ],
+ "release": {
+  "version": "1.2.0",
+  "entries": [
+   "- Changed: Function arity is worked out once, when the function table is built. (feature/7c2a90)",
+   "- Fixed: Every argument of a variadic function is type checked, so merge() with a non-object argument raises JMESPathTypeError. (feature/e4d815)",
+   "- Fixed: contains() with a string subject and a search value that is not a string returns false instead of raising a Python TypeError. (feature/5b9d13)"
+  ]
+ },
+ "teammate_entry": "- Added: string functions",
+ "entry": "- Added: The lower, upper, trim and split string functions. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add lower, upper, trim and split",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Work out each function's arity when the function table is built",
+   "dir": "main1"
+  },
+  {
+   "message": "Type check every argument of a variadic function",
+   "dir": "main2"
+  },
+  {
+   "message": "Return false from contains() for a string and a search value that is not a string",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "tests"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "jmespath/functions.py",
+  "tests_feature/test_string_functions.py"
+ ],
+ "repo_tests_min": 1001,
+ "repo_skips_max": 1,
+ "checks": [
+  "emptysep",
+  "trimempty",
+  "unadapted",
+  "dropmain",
+  "r61stale"
+ ]
+}

@@ -1,4 +1,4 @@
-"""Harbor 0.24.0 installed-agent classes for the frontier Harbor path (internal-task plan, Implementation step 2).
+"""Harbor 0.24.0 installed-agent classes for the frontier Harbor path (HARN-50 plan, Implementation step 2).
 
 Claude Code, Codex, Hermes and OpenClaw wrap our own pinned adapter settings; Pi and mini-swe-agent are Harbor's stock
 classes with overrides. frontier_settings.py renders every value; this file only plugs them into Harbor.
@@ -46,6 +46,7 @@ from harbor.agents.options import InstalledAgentOptions
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
+import delivery as dl
 import frontier_settings as fs
 
 
@@ -67,17 +68,22 @@ def bind_slot(broker_url: str, trial: str, harness: str, model: str, cell: str |
 
 
 class _Frontier:
-    """Mixin: per-trial slot from the broker, the rendered environment, harness_settings.json, no host environment."""
+    """Mixin: per-trial slot from the broker, the rendered environment, harness_settings.json, no host environment.
+
+    The kwarg delivery (delivery.py, HARN-61) sets the cell's delivery arm; without it nothing here changes. With it the
+    arm's files and commands run at the end of setup, its health checks run at setup or right before the agent starts
+    (LAUNCH, a substring of the class's agent command), and a failed check stops the trial before the agent starts."""
 
     HARNESS = ""
-    KWARGS = ("broker_url", "cell", "attempt", "gstack")
+    LAUNCH = ""
+    KWARGS = ("broker_url", "cell", "attempt", "gstack", "delivery")
     GSTACK_REMOTE_TAR = "/tmp/gstack-arm.tar.gz"
 
     @classmethod
     def parse_options(cls, kwargs: Mapping[str, Any] | None = None, env: Mapping[str, str] | None = None) -> Any:
         return super().parse_options({k: v for k, v in (kwargs or {}).items() if k not in cls.KWARGS}, env)
 
-    def __init__(self, *args: Any, broker_url: str | None = None, cell: str | None = None, attempt: int | None = None, gstack: dict[str, Any] | None = None, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, broker_url: str | None = None, cell: str | None = None, attempt: int | None = None, gstack: dict[str, Any] | None = None, delivery: dict[str, Any] | None = None, **kwargs: Any) -> None:
         model = cell_model(kwargs.get("model_name"))
         kwargs.update(fs.harbor_kwargs(self.HARNESS, model))
         release = gstack is not None and fs.is_gstack_release(gstack)
@@ -87,6 +93,14 @@ class _Frontier:
         self._frontier_gstack = None if release else fs.gstack_manifest(gstack, self.HARNESS)
         if self._frontier_gstack and self._frontier_gstack["layout"]:
             kwargs["skills_dir"] = self._frontier_gstack["layout"]["skills_dir"]
+        self._frontier_delivery = dl.resolve(self.HARNESS, delivery) if delivery is not None else None
+        if self._frontier_delivery is not None:
+            kwargs.update(dl.harbor_kwargs(self.HARNESS, self._frontier_delivery))
+            if self.HARNESS == "claude-code":
+                kwargs["config"] = dl.claude_settings(kwargs["config"], self._frontier_delivery)
+        self._frontier_kind: str | None = None
+        self._frontier_launched = False
+        self._frontier_delivery_record: dict[str, Any] = {}
         self._frontier_model = model
         self._frontier_cell = cell
         self._frontier_attempt = attempt
@@ -118,6 +132,8 @@ class _Frontier:
         settings["install_checks"] = self._frontier_checks
         if self._frontier_gstack_release is None:
             settings["gstack"] = fs.gstack_settings(self._frontier_gstack)
+        if self._frontier_delivery is not None:
+            settings["delivery"] = self._frontier_delivery_record
         Path(self.logs_dir).mkdir(parents=True, exist_ok=True)
         (Path(self.logs_dir) / "harness_settings.json").write_text(json.dumps(settings, indent=2) + "\n")
 
@@ -133,6 +149,8 @@ class _Frontier:
             await self._frontier_gstack_install(environment)
             if self._frontier_gstack_release is not None:
                 await self._frontier_install_gstack(environment)
+            if self._frontier_delivery is not None:
+                await self._frontier_deliver(environment)
         finally:
             self._write_settings()
 
@@ -140,7 +158,7 @@ class _Frontier:
         return None
 
     async def _frontier_gstack_install(self, environment: BaseEnvironment) -> None:
-        """A gstack cell's arm (internal-task): the none arm is checked clean; any other arm gets the built runtime and tree
+        """A gstack cell's arm (HARN-62): the none arm is checked clean; any other arm gets the built runtime and tree
         uploaded, handed to the agent user, and every file checked against the lock. A failure fails the trial at agent
         setup, so it is recorded as an infra_error (to-trials.ts infra class gstack_contaminated when the none arm's
         container held gstack, else gstack_install_failed), never scored."""
@@ -190,9 +208,84 @@ class _Frontier:
         if not self._frontier_checks["gstack"]["matches"]:
             raise RuntimeError(f"HE-FRONTIER-002 the gstack arm did not install as built: {facts} (expected {want})")
 
+    async def _frontier_sh(self, environment: BaseEnvironment, command: str, code: str, what: str) -> str:
+        try:
+            res = await self.exec_as_agent(environment, command=command)
+        except Exception as e:
+            raise dl.DeliveryRefused(code, f"{what} failed: {str(e)[-400:]}") from None
+        return (res.stdout or "").strip()
+
+    async def _frontier_gstack_probe(self, environment: BaseEnvironment, when: str) -> list[str]:
+        found = sorted(set((await self._frontier_sh(environment, dl.gstack_probe(), "HE-DELIVERY-006", "the gstack probe")).split()))
+        self._frontier_delivery_record["gstack_found_" + when] = found
+        if found and self._frontier_delivery["arm"] != "skill":
+            raise dl.DeliveryRefused("HE-DELIVERY-006", f"a {self._frontier_delivery['arm']} arm found gstack in the task container {when}: {found[:5]}")
+        return found
+
+    async def _frontier_health(self, environment: BaseEnvironment, checks: list[dict[str, str]]) -> None:
+        for check in checks:
+            got = await self._frontier_sh(environment, check["command"], "HE-DELIVERY-005", check["name"])
+            ok = got == check["expect"] or got.splitlines()[-1:] == [check["expect"]]
+            self._frontier_delivery_record.setdefault("health", []).append({"name": check["name"], "when": check["when"], "ok": ok, "got": got[-300:]})
+            if not ok:
+                raise dl.DeliveryRefused("HE-DELIVERY-005", f"{self.HARNESS} {self._frontier_delivery['arm']}: {check['name']}: got {got[-300:]!r}, want {check['expect']!r}; the route is not loaded and healthy, so the trial stops before the agent starts")
+
+    async def _frontier_deliver(self, environment: BaseEnvironment) -> None:
+        """The arm at the end of setup: the clean-arm probe, its files and commands, the setup-time health checks, the
+        /work tree hash."""
+        kind = dl.kind_of(self._frontier_delivery, self.frontier_trial)
+        self._frontier_kind = kind
+        plan = dl.plan(self.HARNESS, self._frontier_delivery, kind)
+        self._frontier_delivery_record = {**plan["record"], "files": [{k: f[k] for k in ("path", "mode", "sha256", "bytes")} for f in plan["files"]]}
+        await self._frontier_gstack_probe(environment, "before")
+        for f in plan["files"]:
+            await self._frontier_sh(environment, f["command"], "HE-DELIVERY-002", "writing " + f["path"])
+        if self._frontier_delivery["arm"] == "skill":
+            await self.ensure_system_dependencies(environment, ("curl", "git"))
+            await self.exec_as_root(environment, command="command -v unzip >/dev/null || { apt-get update -qq && apt-get install -y -qq unzip >/dev/null; }")
+        for i, command in enumerate(plan["commands"]):
+            out = await self._frontier_sh(environment, command, "HE-DELIVERY-006" if self._frontier_delivery["arm"] == "skill" else "HE-DELIVERY-005", f"arm command {i + 1}")
+            self._frontier_delivery_record.setdefault("command_output", []).append(out[-300:])
+        if self._frontier_delivery["arm"] == "skill":
+            found = await self._frontier_gstack_probe(environment, "after_install")
+            for name in ("review", "ship"):
+                if not any(p.endswith("/" + name + "/SKILL.md") for p in found):
+                    raise dl.DeliveryRefused("HE-DELIVERY-006", f"gstack's {name} skill is not installed for {self.HARNESS} after setup")
+            self._extra_env.update(plan["env"])
+        await self._frontier_health(environment, [c for c in plan["health"] if c["when"] == "setup"])
+        self._frontier_delivery_record["launch_health"] = [c for c in plan["health"] if c["when"] == "launch"]
+        self._frontier_delivery_record["work_tree_sha256_setup"] = await self._frontier_sh(environment, dl.WORK_HASH, "HE-DELIVERY-005", "hashing /work")
+
+    async def _frontier_at_launch(self, environment: BaseEnvironment) -> None:
+        """Right before the agent command: the launch-time health checks, the /work tree hash at agent start, and the
+        clean-arm probe again (Harbor's own run() steps have run by now)."""
+        self._frontier_launched = True
+        try:
+            await self._frontier_health(environment, self._frontier_delivery_record.pop("launch_health", []))
+            await self._frontier_gstack_probe(environment, "at_launch")
+            self._frontier_delivery_record["work_tree_sha256_at_launch"] = await self._frontier_sh(environment, dl.WORK_HASH, "HE-DELIVERY-005", "hashing /work")
+        finally:
+            self._write_settings()
+
+    async def _exec(self, environment: BaseEnvironment, command: str, *args: Any, **kwargs: Any) -> Any:
+        if self._frontier_delivery is not None and not self._frontier_launched and self.LAUNCH and self.LAUNCH in command:
+            await self._frontier_at_launch(environment)
+        return await super()._exec(environment, command, *args, **kwargs)
+
+    def _frontier_instruction(self, instruction: str) -> str:
+        if self._frontier_delivery is None:
+            return instruction
+        out = dl.instruction(self.HARNESS, self._frontier_delivery, self._frontier_kind, instruction)
+        self._frontier_delivery_record["instruction"] = {"told": out != instruction, "sha256": dl.sha256(out.encode()), "task_sha256": dl.sha256(instruction.encode())}
+        return out
+
+    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
+        return await super().run(self._frontier_instruction(instruction), environment, context)
+
 
 class FrontierClaudeCode(_Frontier, ClaudeCode):
     HARNESS = "claude-code"
+    LAUNCH = "claude --verbose --output-format=stream-json"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         gstack = kwargs.get("gstack")
@@ -214,7 +307,8 @@ class FrontierClaudeCode(_Frontier, ClaudeCode):
         try:
             await super().run(instruction, environment, context)
         finally:
-            if fs.drops_skill_links(self._frontier_gstack_release, self._frontier_gstack):
+            skill_arm = self._frontier_delivery is not None and self._frontier_delivery["arm"] == "skill"
+            if skill_arm or fs.drops_skill_links(self._frontier_gstack_release, self._frontier_gstack):
                 try:
                     res = await environment.exec(command=fs.drop_skill_links_command(), timeout_sec=60)
                     words = (res.stdout or "").split()
@@ -225,6 +319,7 @@ class FrontierClaudeCode(_Frontier, ClaudeCode):
 
 class FrontierCodex(_Frontier, Codex):
     HARNESS = "codex"
+    LAUNCH = "codex exec "
 
     def _build_effective_config(self, openai_base_url: str | None = None) -> dict[str, Any]:
         return fs.codex_config(self._frontier_model, self._frontier_url)
@@ -268,7 +363,8 @@ class FrontierHermes(_Frontier, Hermes):
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         spec = fs.model_spec(self._frontier_model)
-        config = fs.hermes_config(self._frontier_model)
+        instruction = self._frontier_instruction(instruction)
+        config = dl.hermes_config(fs.hermes_config(self._frontier_model), self._frontier_delivery)
         provider = config["model"]["provider"]
         env = {"HERMES_HOME": "/tmp/hermes", "TERMINAL_ENV": "local", "HARBOR_INSTRUCTION": instruction}
         config_yaml = yaml.safe_dump(config, sort_keys=False)
@@ -276,6 +372,8 @@ class FrontierHermes(_Frontier, Hermes):
         skills_command = self._build_register_skills_command()
         if skills_command:
             await self.exec_as_agent(environment, command=skills_command, env=env, timeout_sec=60)
+        if self._frontier_delivery is not None:
+            await self._frontier_at_launch(environment)
         try:
             await self.exec_as_agent(environment, env=env, command=(
                 'export PATH="$HOME/.local/bin:$PATH" && '
@@ -289,6 +387,21 @@ class FrontierHermes(_Frontier, Hermes):
                     "[ -s /logs/agent/hermes-session.jsonl ] || hermes sessions export /logs/agent/hermes-session.jsonl --source cli 2>/dev/null) || true"))
             except Exception:
                 pass
+            if self._frontier_delivery is not None:
+                await self._frontier_tirith(environment)
+
+    async def _frontier_tirith(self, environment: BaseEnvironment) -> None:
+        """Tirith would-flag counts (d10), descriptive: Hermes's own scanner over the session's terminal commands."""
+        script = (dl.ASSETS / "tirith-would-flag.py").read_bytes()
+        try:
+            await self.exec_as_agent(environment, env={"HERMES_HOME": "/tmp/hermes"}, timeout_sec=120, command=(
+                dl._write(dl.ROOT + "/tirith-would-flag.py", script, "0644") + f" && cd {self.SRC} && "
+                f"{self.SRC}/venv/bin/python {dl.ROOT}/tirith-would-flag.py /logs/agent/hermes-session.jsonl /logs/agent/tirith-would-flag.json"))
+            res = await environment.exec(command="cat /logs/agent/tirith-would-flag.json")
+            self._frontier_delivery_record["tirith"] = json.loads(res.stdout or "{}")
+        except Exception as e:
+            self._frontier_delivery_record["tirith"] = {"readable": False, "reason": str(e)[-300:]}
+        self._write_settings()
 
 
 class FrontierOpenClaw(_Frontier, OpenClaw):
@@ -299,6 +412,7 @@ class FrontierOpenClaw(_Frontier, OpenClaw):
     provider and not OpenClaw's bundled openrouter provider."""
 
     HARNESS = "openclaw"
+    LAUNCH = "openclaw agent --local"
     NODE = str(fs.PIN["harnesses"]["openclaw"]["node_major"])
     _SUPPORTED_PROVIDERS = OpenClaw._SUPPORTED_PROVIDERS | {"particle", "openrouter-proxy"}
 
@@ -327,11 +441,14 @@ class FrontierOpenClaw(_Frontier, OpenClaw):
         deny = overlay["tools"].pop("deny")
         self._deep_merge(cfg, overlay)
         cfg["tools"]["deny"] += [d for d in deny if d not in cfg["tools"]["deny"]]
+        if self._frontier_delivery is not None:
+            self._deep_merge(cfg, dl.openclaw_config(self._frontier_delivery))
         return cfg
 
 
 class FrontierPi(_Frontier, Pi):
     HARNESS = "pi"
+    LAUNCH = "pi --print --mode json"
 
     def build_cli_flags(self) -> str:
         """Harbor's Pi puts these flags right before the instruction, which it passes as an argument. Pi 1.5.0 reads an

@@ -1,0 +1,92 @@
+{
+ "repo": "jmespath",
+ "title": "Run JMESPath filters inside SQLite",
+ "description": "Adds `jmespath/sqlite.py` so services that keep JSON documents in SQLite can filter them in the database instead of loading every row into Python. `where(condition, column='data')` compiles a filter condition (the part between `[?` and `]`) into a WHERE clause plus its parameters, for documents stored as JSON text in `column`. A row matches exactly when `jmespath.search('[?' + condition + ']', [document])` would keep its document. Supported: a comparison of a field or dotted path with a literal (string, number, `true`, `false` or `null`) on either side, `starts_with` and `ends_with` with a string literal, and `&&`, `||`, `!` and parentheses; a comparison only matches values of the literal's JSON type, and anything else raises `UnsupportedExpressionError`. Everything that comes from the expression reaches SQLite as a bound parameter, and table and column names are quoted, so any name works. `select(conn, table, condition, column='data')` runs the query on the caller's connection and returns the matching documents in rowid order. It only reads: committing or rolling back stays with the caller. Needs SQLite's JSON functions, built in since 3.38. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "param",
+   "class": "sql",
+   "file": "jmespath/sqlite.py",
+   "summary": "The JSON path is pasted into the SQL inside single quotes instead of being bound, so a field name with a quote breaks or rewrites the statement.",
+   "test": "test_param.py",
+   "corrected": "        self.params.append(path)\n        return '%s(%s, ?)' % (function, self.column)\n",
+   "defective": "        return \"%s(%s, '%s')\" % (function, self.column, path)\n"
+  },
+  {
+   "id": "glob",
+   "class": "sql",
+   "file": "jmespath/sqlite.py",
+   "summary": "The GLOB pattern for starts_with and ends_with does not escape '[', so a literal bracket starts a character class and matches the wrong rows.",
+   "test": "test_glob.py",
+   "corrected": "        text = ''.join('[%s]' % c if c in '*?[' else c\n",
+   "defective": "        text = ''.join('[%s]' % c if c in '*?' else c\n"
+  },
+  {
+   "id": "quote",
+   "class": "sql",
+   "file": "jmespath/sqlite.py",
+   "summary": "Identifiers are wrapped in double quotes without doubling the quotes inside them, so a table or column name containing a double quote breaks or rewrites the statement.",
+   "test": "test_quote.py",
+   "corrected": "    return '\"' + name.replace('\"', '\"\"') + '\"'\n",
+   "defective": "    return '\"' + name + '\"'\n"
+  },
+  {
+   "id": "commit",
+   "class": "side-effect",
+   "file": "jmespath/sqlite.py",
+   "summary": "select wraps its query in 'with conn:', which commits whatever the caller had pending on the connection.",
+   "test": "test_transaction.py",
+   "corrected": "    rows = conn.execute(query, params).fetchall()\n",
+   "defective": "    with conn:\n        rows = conn.execute(query, params).fetchall()\n"
+  },
+  {
+   "id": "swapped",
+   "class": "logic",
+   "file": "jmespath/sqlite.py",
+   "summary": "Swapping the sides of an ordering negates it instead of mirroring it, so `5` < n compiles to n >= 5.",
+   "test": "test_swapped.py",
+   "corrected": "    'lt': 'gt',\n    'lte': 'gte',\n    'gt': 'lt',\n    'gte': 'lte',\n",
+   "defective": "    'lt': 'gte',\n    'lte': 'gt',\n    'gt': 'lte',\n    'gte': 'lt',\n"
+  },
+  {
+   "id": "boolean",
+   "class": "logic",
+   "file": "jmespath/sqlite.py",
+   "summary": "True and false literals are classified as numbers because bool is checked after int, so on == `true` matches 1 and never matches true.",
+   "test": "test_boolean.py",
+   "corrected": "        elif isinstance(value, bool):\n            kind = 'true' if value else 'false'\n        elif isinstance(value, (int, float)):\n            kind = 'number'\n",
+   "defective": "        elif isinstance(value, (int, float)):\n            kind = 'number'\n        elif isinstance(value, bool):\n            kind = 'true' if value else 'false'\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "pathquote",
+   "class": "sql",
+   "file": "jmespath/sqlite.py",
+   "summary": "The double-quote check only looks at a plain field, so a key with a double quote inside a dotted path goes into the JSON path unescaped and reads another field (team.\"a\\\".\\\"b\" reads team.a.b).",
+   "test": "test_path_quote.py",
+   "corrected": "        if any('\"' in key for key in keys):\n",
+   "defective": "        if '\"' in node.get('value', ''):\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "operators",
+   "file": "jmespath/sqlite.py",
+   "anchor": "            sql = 'IFNULL(%s IN %s AND %s %s ?, 0)' % (\n                type_sql, types, value_sql, _OPERATORS[op])\n",
+   "why": "The SQL is built with % formatting, but every piece is a constant from this module (the operator table, the type list, and json_type or json_extract with a ? placeholder); the value itself is bound.",
+   "test": "decoy_operators.py"
+  },
+  {
+   "id": "null",
+   "file": "jmespath/sqlite.py",
+   "anchor": "            sql = \"IFNULL(%s, 'null') = '%s'\" % (\n                self._json('json_type', path), kind)\n",
+   "why": "Treating a missing field as null is JMESPath's own rule: a missing field evaluates to null, so field == `null` keeps documents without the field.",
+   "test": "decoy_null.py"
+  }
+ ]
+}

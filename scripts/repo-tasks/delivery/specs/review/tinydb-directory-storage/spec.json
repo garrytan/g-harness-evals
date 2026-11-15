@@ -1,0 +1,83 @@
+{
+ "repo": "tinydb",
+ "title": "Add a storage that keeps each table in its own file",
+ "description": "Adds `DirectoryStorage` (`tinydb/directory_storage.py`), which keeps a database as a directory with one JSON file per table instead of one big file, so a database under version control gets small diffs. A table's file is its name with every character that is not safe in a file name percent-encoded, plus `.json`, so any table name works and every file stays inside the directory; reading decodes the name back exactly. Each file is replaced through a temporary file in the same directory, and a write that fails (for example because a document cannot be serialized) leaves every file as it was. Tables that are gone from the database have their files removed; other files in the directory are not the storage's and are left alone. The directory is created when missing, unless `create_dirs=False`, and `read_only=True` never creates or changes anything on disk. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "quote",
+   "class": "trust",
+   "file": "tinydb/directory_storage.py",
+   "summary": "quote() keeps / unescaped by default, so a table name containing ../ writes its file outside the database directory.",
+   "test": "test_quote.py",
+   "corrected": "    return quote(name, safe='') + SUFFIX\n",
+   "defective": "    return quote(name) + SUFFIX\n"
+  },
+  {
+   "id": "suffix",
+   "class": "logic",
+   "file": "tinydb/directory_storage.py",
+   "summary": "rstrip removes any trailing characters from the set '.json', not the suffix, so a table named 'session' reads back as 'sessi' and its file is then deleted as a dropped table.",
+   "test": "test_suffix.py",
+   "corrected": "    return unquote(entry[:-len(SUFFIX)])\n",
+   "defective": "    return unquote(entry.rstrip(SUFFIX))\n"
+  },
+  {
+   "id": "readonly",
+   "class": "side-effect",
+   "file": "tinydb/directory_storage.py",
+   "summary": "read_only=True still creates a missing directory, because only create_dirs is checked before os.makedirs.",
+   "test": "test_readonly.py",
+   "corrected": "            if read_only or not create_dirs:\n",
+   "defective": "            if not create_dirs:\n"
+  },
+  {
+   "id": "partial",
+   "class": "side-effect",
+   "file": "tinydb/directory_storage.py",
+   "summary": "Each table is serialized just before its file is replaced, so a table that cannot be serialized fails the write after earlier tables' files were already changed.",
+   "test": "test_partial.py",
+   "corrected": "        serialized = {name: json.dumps(docs, **self.kwargs)\n                      for name, docs in data.items()}\n        for name, text in serialized.items():\n",
+   "defective": "        for name, docs in data.items():\n            text = json.dumps(docs, **self.kwargs)\n"
+  },
+  {
+   "id": "stray",
+   "class": "side-effect",
+   "file": "tinydb/directory_storage.py",
+   "summary": "Every file not starting with a dot counts as a table, so other files in the directory are parsed as JSON and deleted by the next write.",
+   "test": "test_stray.py",
+   "corrected": "            if entry.endswith(SUFFIX):\n",
+   "defective": "            if not entry.startswith('.'):\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "cleanup",
+   "class": "side-effect",
+   "file": "tinydb/directory_storage.py",
+   "summary": "_replace removes its temporary file only when the failure is an OSError, so a write that fails for another reason, such as a document the configured encoding cannot represent, leaves a stray temporary file in the database directory.",
+   "test": "test_encoding.py",
+   "corrected": "        except BaseException:\n            os.remove(tmp)\n",
+   "defective": "        except OSError:\n            os.remove(tmp)\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "tmp",
+   "file": "tinydb/directory_storage.py",
+   "anchor": "        fd, tmp = tempfile.mkstemp(dir=self._path, prefix='.', suffix='.tmp')\n",
+   "why": "The temporary file must be in the same directory for os.replace to be atomic, and it is removed on every failure.",
+   "test": "decoy_tmp.py"
+  },
+  {
+   "id": "sync",
+   "file": "tinydb/directory_storage.py",
+   "anchor": "        except OSError:\n            pass\n",
+   "why": "Syncing the directory is best effort by design: some platforms cannot open or fsync a directory, and the files themselves were already synced.",
+   "test": "decoy_sync.py"
+  }
+ ]
+}

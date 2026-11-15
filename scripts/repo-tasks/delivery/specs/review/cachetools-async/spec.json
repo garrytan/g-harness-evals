@@ -1,0 +1,83 @@
+{
+ "repo": "cachetools",
+ "title": "Add memoizing decorators for coroutine functions",
+ "description": "Adds `cachetools.aio` with `cached` and `cachedmethod` for `async def` functions, which the existing decorators cannot cache (they would store the coroutine object). Concurrent calls with the same key share one call of the wrapped function instead of each starting their own, and a call that joins a call in progress counts as a hit in `cache_info()`. Exceptions are not cached: if the shared call raises, every caller waiting on it gets the exception and the next call tries again. Cancelling one waiting caller does not cancel the shared call for the others. `cachedmethod` takes `cache` as a function of the instance, as in cachetools 5, and keeps each instance's results and calls in progress to that instance, so objects that serve different users (one session per user, say) never see each other's results. The wrappers expose `cache`, `cache_key`, `cache_clear` and, with `info=True`, `cache_info`, like `cachetools.cached`. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "errors",
+   "class": "side-effect",
+   "file": "src/cachetools/aio.py",
+   "summary": "The call in progress is forgotten only when it succeeds, so after a call raises every later call with that key awaits the same failed task and gets the old exception forever.",
+   "test": "test_errors.py",
+   "corrected": "    try:\n        value = await func(*args, **kwargs)\n    finally:\n        del calls[key]\n",
+   "defective": "    value = await func(*args, **kwargs)\n    del calls[key]\n"
+  },
+  {
+   "id": "cancel",
+   "class": "side-effect",
+   "file": "src/cachetools/aio.py",
+   "summary": "Callers await the shared task directly, so cancelling one caller cancels the shared call and every other caller waiting on it gets CancelledError.",
+   "test": "test_cancel.py",
+   "corrected": "    return await asyncio.shield(task)\n",
+   "defective": "    return await task\n"
+  },
+  {
+   "id": "joinhit",
+   "class": "logic",
+   "file": "src/cachetools/aio.py",
+   "summary": "A call that joins a call in progress is counted as a miss, not a hit, so cache_info() reports one miss per caller.",
+   "test": "test_join_hit.py",
+   "corrected": "            if k in calls:\n                hits += 1\n            else:\n                misses += 1\n",
+   "defective": "            misses += 1\n"
+  },
+  {
+   "id": "instances",
+   "class": "trust",
+   "file": "src/cachetools/aio.py",
+   "summary": "Calls in progress are grouped by the id of the cache accessor, which every instance shares, and methodkey leaves out self, so a concurrent call on one instance gets another instance's result (one user's data served to another).",
+   "test": "test_instances.py",
+   "corrected": "            calls = pending.setdefault(id(c), {})\n",
+   "defective": "            calls = pending.setdefault(id(cache), {})\n"
+  },
+  {
+   "id": "stacked",
+   "class": "logic",
+   "file": "src/cachetools/aio.py",
+   "summary": "update_wrapper runs after the cache attributes are set, so it copies the wrapped function's __dict__ over them and a stacked decorator reports the inner decorator's cache, cache_key and cache_clear.",
+   "test": "test_stacked.py",
+   "corrected": "        # update first, so func.__dict__ cannot override wrapper state,\n        # e.g. when stacking decorators\n        functools.update_wrapper(wrapper, func)\n        wrapper.cache = cache\n        wrapper.cache_key = key\n        wrapper.cache_clear = cache_clear\n        if info:\n            wrapper.cache_info = cache_info\n        return wrapper\n",
+   "defective": "        wrapper.cache = cache\n        wrapper.cache_key = key\n        wrapper.cache_clear = cache_clear\n        if info:\n            wrapper.cache_info = cache_info\n        return functools.update_wrapper(wrapper, func)\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "clear",
+   "class": "side-effect",
+   "file": "src/cachetools/aio.py",
+   "summary": "cache_clear() also empties the table of calls in progress, so a call that is running when the cache is cleared fails with KeyError (when _run deletes its entry) for every caller waiting on it.",
+   "test": "test_clear_running.py",
+   "corrected": "            cache.clear()\n            hits = misses = 0\n",
+   "defective": "            cache.clear()\n            calls.clear()\n            hits = misses = 0\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "counters",
+   "file": "src/cachetools/aio.py",
+   "anchor": "            nonlocal hits, misses\n            k = key(*args, **kwargs)\n",
+   "why": "The counters are only touched between awaits on one event loop, so the unlocked += cannot race.",
+   "test": "decoy_counters.py"
+  },
+  {
+   "id": "methodkey",
+   "file": "src/cachetools/aio.py",
+   "anchor": "def cachedmethod(cache, key=keys.methodkey):\n",
+   "why": "methodkey leaves self out of the key on purpose: each instance has its own cache through cache(self), as in the synchronous cachedmethod.",
+   "test": "decoy_methodkey.py"
+  }
+ ]
+}

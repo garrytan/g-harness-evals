@@ -1,0 +1,63 @@
+{
+ "repo": "inflection",
+ "module": "inflection/__init__.py",
+ "summary": "Public functions for adding inflection rules, irregular words and uncountable words at runtime, so applications stop editing the module's tables by hand.",
+ "behaviour": [
+  "`inflection.plural(rule, replacement)` and `inflection.singular(rule, replacement)` add a pluralization or singularization rule. `rule` is a regular expression string and `replacement` its `re.sub` replacement, as in the built-in tables. The newest rule is tried first, before rules added earlier and before the built-in rules.",
+  "`inflection.irregular(singular, plural)` registers an irregular word in both directions and keeps the case of its first letter (`Octopus` becomes `Octopuses`). A word registered as irregular, in either form, is no longer uncountable.",
+  "`inflection.uncountable(*words)` makes each word uncountable: `pluralize` and `singularize` return it unchanged, whatever case it is written in and whatever case it was registered in.",
+  "The built-in rules and words keep working as they do on main."
+ ],
+ "version": "0.5.1",
+ "history": [
+  "- Fixed: Type hints for every public function."
+ ],
+ "release": {
+  "version": "0.6.0",
+  "entries": [
+   "- Added: `__all__` lists the public functions, so `from inflection import *` imports only those. (feature/c3f58a)",
+   "- Added: The irregular noun goose. (feature/2b7d10)",
+   "- Changed: The rule tables hold compiled patterns, so pluralize and singularize no longer compile a pattern on every call. (feature/91c4ae)"
+  ]
+ },
+ "teammate_entry": "- add rule api (plural/singular/irregular/uncountable)",
+ "entry": "- Added: Public plural, singular, irregular and uncountable functions for adding inflection rules at runtime. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add a public API for inflection rules",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Compile the inflection rules once",
+   "dir": "main1"
+  },
+  {
+   "message": "Add goose as an irregular noun",
+   "dir": "main2"
+  },
+  {
+   "message": "List the public functions in __all__",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "test_inflection.py"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "inflection/__init__.py",
+  "tests_feature/test_rules.py"
+ ],
+ "repo_tests_min": 467,
+ "repo_skips_max": 0,
+ "checks": [
+  "keepcase",
+  "stilluncountable",
+  "dropgoose",
+  "r61stale"
+ ]
+}

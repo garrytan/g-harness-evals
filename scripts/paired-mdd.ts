@@ -32,7 +32,7 @@
 // A side of a --pair may join several cells of one harness with + (the v0.4 frozen-dev read keeps one cell per family and
 // level, so one harness's told-live side is its frozen families' told-live cells); their tasks are pooled into that side.
 //
-// The v0.4 power gate (internal-task, plan decision 9(c)): a target-design projection of the minimum detectable difference for
+// The v0.4 power gate (HARN-12, plan decision 9(c)): a target-design projection of the minimum detectable difference for
 // told-live against none, per harness, from fresh frozen-dev rows. The estimator is named in PROJECTION_ESTIMATOR and in the
 // output: per task, the difference of the two arms' pass rates; the task-clustered variance of those differences is split by
 // the method of moments into a between-task part (the variance of the true per-task differences, floored at 0) and a
@@ -45,8 +45,12 @@
 //
 //   bun scripts/paired-mdd.ts --h10 --task-set v0.3 --tasks <id,...> [options]
 //
-// H10 (internal-task): family A's minimum detectable difference by simulation on the preregistered tasks' session structure (9
+// H10 (HARN-18): family A's minimum detectable difference by simulation on the preregistered tasks' session structure (9
 // repetition clusters and 10 placement clusters on the 10 H10 tasks), from stated assumed rates; see simulateMdd below.
+//
+//   bun scripts/paired-mdd.ts --delivery --headroom <rows.jsonl> [--probes <probes.jsonl>] [--pairs 8] [--reps 2] [options]
+//
+// HARN-61: the gstack delivery eval's minimum detectable difference from its headroom check; see deliveryMdd below.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -76,7 +80,7 @@ export function designMdd(p: number, design: { tasks: number; reps: number } = L
   return { se_null: se, mdd: (normalQuantile(1 - alpha / 2) + normalQuantile(power)) * se };
 }
 
-// internal-task (H10): the minimum detectable difference of family A (and, from a stated control rate, of a family B contrast) on the
+// HARN-18 (H10): the minimum detectable difference of family A (and, from a stated control rate, of a family B contrast) on the
 // real session structure of the preregistered tasks, by simulation, because no data exists for the one-time hook at frontier.
 //
 //   bun scripts/paired-mdd.ts --h10 --task-set v0.3 --tasks <id,...> [--split dev] [--reps 1] [--repetition-pairs 4]
@@ -195,7 +199,7 @@ export function pairedMdd(rows: TrialRecord[], cells: Array<{ id: string; harnes
   });
 }
 
-/** internal-task: the estimator of the target-design projection, printed with every projection. */
+/** HARN-12: the estimator of the target-design projection, printed with every projection. */
 export const PROJECTION_ESTIMATOR = 'task-clustered variance of per-task paired differences (told-live minus none), split by the method of moments into a between-task part and a within-task binomial part, scaled to the target design';
 export const PROJECTION_DEFAULTS = { tasks: 36, reps: 3, alpha: 0.025, holmFamily: 2, power: 0.8, threshold: 0.15 } as const;
 export type ProjectionOptions = { [K in keyof typeof PROJECTION_DEFAULTS]?: number };
@@ -265,6 +269,54 @@ export function projectMdd(harness: string, outcomes: PairedTaskOutcomes[], opti
     reps_needed: slack <= 0 ? null : Math.max(1, Math.ceil(within / slack - 1e-9)),
     tasks_needed: Math.max(2, Math.ceil(variance / target - 1e-9)),
   };
+}
+
+// HARN-61: the gstack delivery eval's minimum detectable difference, from its headroom check (the none arm on two cells, one
+// try per task; plan decision 7).
+//
+//   bun scripts/paired-mdd.ts --delivery --headroom <rows.jsonl> [--probes <probes.jsonl>] [--pairs 8] [--reps 2]
+//     [--alpha 0.05] [--holm-family 4] [--power 0.8]
+//
+// rows.jsonl: one line per headroom trial, {trial_id, task, kind, grade, consent_violation, termination} (a trial record with
+// kind added) or {task, kind, pass}; --probes adds each trial's compliance (scripts/gstack-delivery/probes.ts share). The
+// design is scripts/gstack-delivery/analyze.ts's: per pair and task each arm's mean over its reps, one item per pair and task,
+// clustered on the task. Under the null that delivery changes nothing, each task's headroom rate v stands in for both arms,
+// arms and pairs independent given the task, so a pair's paired difference on the task has variance 2 v (1 - v) / reps and the
+// task's cluster sum pairs times that (for compliance, a share in [0, 1], v (1 - v) is the largest variance a value with mean v
+// can have, so the MDD is an upper bound). SE = sqrt(g / (g - 1) * sum of the cluster variances) / (g * pairs), and the MDD is
+// (z_{1 - alpha / (2 * holm family)} + z_{power}) times SE, Holm's first step. It ignores heterogeneity of the effect across
+// pairs, so it is the design's floor, not a promise. Beside it, the fewest tasks that must all move one way for the exact
+// sign-flip test to reach Holm's first-step alpha.
+
+export interface DeliveryHeadroomRow { trial_id?: string; task: string; kind?: string; pass?: number; grade?: string; consent_violation?: boolean; termination?: string; compliance?: number | null }
+export interface DeliveryMdd { scope: string; endpoint: 'pass' | 'compliance'; tasks: number; tasks_flat: number; rate: number | null; pairs: number; reps: number; alpha: number; holm_family: number; power: number; se_null: number | null; mdd: number | null; min_one_sided_clusters: number }
+
+export function deliveryMdd(rows: readonly DeliveryHeadroomRow[], design: { pairs: number; reps: number } = { pairs: 8, reps: 2 }, options: { alpha?: number; holmFamily?: number; power?: number } = {}): DeliveryMdd[] {
+  const alpha = options.alpha ?? 0.05, holm = options.holmFamily ?? 4, power = options.power ?? 0.8;
+  const z = normalQuantile(1 - alpha / (2 * holm)) + normalQuantile(power);
+  const minK = minimumDiscordantForSignificance(alpha / holm);
+  const kept = rows.filter((r) => !['model_error', 'infra_error', 'exam_fault'].includes(r.termination ?? ''));
+  const value = (r: DeliveryHeadroomRow, endpoint: 'pass' | 'compliance') => endpoint === 'compliance' ? (typeof r.compliance === 'number' ? r.compliance : null)
+    : typeof r.pass === 'number' ? r.pass : r.grade === undefined ? null : r.grade === 'pass' && !r.consent_violation ? 1 : 0;
+  const kinds = [...new Set(kept.map((r) => r.kind).filter((k): k is string => !!k))].sort();
+  const out: DeliveryMdd[] = [];
+  for (const endpoint of ['pass', 'compliance'] as const) for (const scope of ['all', ...kinds]) {
+    const byTask = new Map<string, number[]>();
+    for (const r of kept) {
+      if (scope !== 'all' && r.kind !== scope) continue;
+      const v = value(r, endpoint);
+      if (v === null) continue;
+      const key = (r.kind ?? '') + ':' + r.task;
+      byTask.set(key, [...(byTask.get(key) ?? []), v]);
+    }
+    if (!byTask.size) continue;
+    const rates = [...byTask.values()].map((vs) => vs.reduce((s, v) => s + v, 0) / vs.length);
+    const g = rates.length;
+    const variance = rates.reduce((s, v) => s + design.pairs * 2 * v * (1 - v) / design.reps, 0);
+    const se = g > 1 && variance > 0 ? Math.sqrt((g / (g - 1)) * variance) / (g * design.pairs) : null;
+    out.push({ scope, endpoint, tasks: g, tasks_flat: rates.filter((v) => v === 0 || v === 1).length, rate: rates.reduce((s, v) => s + v, 0) / g, pairs: design.pairs, reps: design.reps, alpha, holm_family: holm, power, se_null: se, mdd: se === null ? null : z * se, min_one_sided_clusters: minK });
+  }
+  return out;
 }
 
 if (import.meta.main && process.argv.includes('--project')) {
@@ -343,7 +395,7 @@ if (import.meta.main && process.argv.includes('--project')) {
   function pct(x: number) { return `${(100 * x).toFixed(0)}%`; }
   const pts = (x: number | null) => (x === null ? 'none up to the ceiling' : `${(100 * x).toFixed(0)} points`);
   console.log([
-    `Minimum detectable difference for H10 (internal-task), simulated on the session structure of ${tasks.length} tasks (${arg('task-set') ?? 'v0.1'} ${arg('split', 'dev')}) at ${reps} repetition(s): ${common.sims} simulations per effect, seed ${common.seed}, power ${common.power}; per task the mean over pairs of each pair's mean difference, exact two-sided sign-flip test over tasks; turns independent given the arm (an assumption).`,
+    `Minimum detectable difference for H10 (HARN-18), simulated on the session structure of ${tasks.length} tasks (${arg('task-set') ?? 'v0.1'} ${arg('split', 'dev')}) at ${reps} repetition(s): ${common.sims} simulations per effect, seed ${common.seed}, power ${common.power}; per task the mean over pairs of each pair's mean difference, exact two-sided sign-flip test over tasks; turns independent given the arm (an assumption).`,
     '',
     '| Task | Member turns | Repeat turns |', '|---|---|---|',
     ...structure.map((s) => `| ${s.task} | ${s.turns} | ${s.repeat_turns} |`),
@@ -389,12 +441,34 @@ if (import.meta.main && process.argv.includes('--project')) {
   }
   const minK = minimumDiscordantForSignificance(options.alpha);
   console.log([
-    `Minimum detectable difference for the install ladder (internal-task): ${LADDER_DESIGN.tasks} tasks by ${options.designReps ?? LADDER_DESIGN.reps} repetitions${options.designReps ? ' (--reps: a design at that many repetitions at each task\'s measured rate)' : ''}, paired and task-clustered, two-sided alpha ${options.alpha}, power ${options.power}, arms independent given the task; the sign-flip bar is ${minK} task clusters all one way.`,
+    `Minimum detectable difference for the install ladder (HARN-5): ${LADDER_DESIGN.tasks} tasks by ${options.designReps ?? LADDER_DESIGN.reps} repetitions${options.designReps ? ' (--reps: a design at that many repetitions at each task\'s measured rate)' : ''}, paired and task-clustered, two-sided alpha ${options.alpha}, power ${options.power}, arms independent given the task; the sign-flip bar is ${minK} task clusters all one way.`,
     `Rates from ${table.some((r) => r.source === 'measured') ? `the gbrain arm's Haiku trials at ${arm}` : `the committed Haiku sensitivity run for pass (no gbrain, so use and cross-scope are 0 there by construction) and a stated assumption for use and cross-scope; run again once ${GBRAIN_ARM_RESULTS} holds the arm's trials`}.`,
     '',
     '| Endpoint | Source | Cell | Rate | Tasks (at 0 or all of their repetitions) | Trials | Null SE | Minimum detectable difference | Receipt |',
     '|---|---|---|---|---|---|---|---|---|',
     ...table.map((r) => `| ${ENDPOINT_LABEL[r.endpoint]} | ${r.source} | ${r.cell} | ${r.rate === null ? 'n/a' : (100 * r.rate).toFixed(0) + '%'} | ${r.tasks} | ${r.trials} | ${pct(r.se_null)} | ${pct(r.mdd)} | ${r.receipt} |`),
+  ].join('\n'));
+} else if (import.meta.main && process.argv.includes('--delivery')) {
+  const arg = (name: string, fallback?: string): string | undefined => { const i = process.argv.indexOf('--' + name); return i >= 0 ? process.argv[i + 1] : fallback; };
+  const file = arg('headroom');
+  if (!file || !existsSync(file)) { console.error('usage: bun scripts/paired-mdd.ts --delivery --headroom <rows.jsonl> [--probes <probes.jsonl>] [--pairs 8] [--reps 2] [--alpha 0.05] [--holm-family 4] [--power 0.8]'); process.exit(2); }
+  const jsonl = <T>(f: string) => readFileSync(f, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as T);
+  const rows = jsonl<DeliveryHeadroomRow>(file);
+  const probesFile = arg('probes');
+  if (probesFile) {
+    const share = new Map(jsonl<{ trial_id: string; status: string; compliance?: { share: number | null } }>(probesFile).map((p) => [p.trial_id, p.status === 'scored' ? p.compliance?.share ?? null : null]));
+    for (const r of rows) if (r.trial_id && share.has(r.trial_id)) r.compliance = share.get(r.trial_id)!;
+  }
+  const design = { pairs: Number(arg('pairs', '8')), reps: Number(arg('reps', '2')) };
+  const options = { alpha: Number(arg('alpha', '0.05')), holmFamily: Number(arg('holm-family', '4')), power: Number(arg('power', '0.8')) };
+  const pts = (x: number | null) => (x === null ? 'n/a' : (100 * x).toFixed(1) + ' points');
+  const table = deliveryMdd(rows, design, options);
+  console.log([
+    'Minimum detectable difference for the gstack delivery eval (HARN-61), from ' + file + ': ' + design.pairs + ' pooled pairs by ' + design.reps + ' reps per arm, items per pair and task clustered on the task, two-sided alpha ' + options.alpha + ' with Holm over ' + options.holmFamily + ' (first step), power ' + options.power + '; arms and pairs independent given the task (the design\'s floor). Compliance uses v (1 - v), an upper bound for a share.',
+    '',
+    '| Endpoint | Scope | Tasks (at 0 or 1) | Headroom rate | Null SE | Minimum detectable difference | Sign-flip bar |',
+    '|---|---|---|---|---|---|---|',
+    ...table.map((m) => '| ' + m.endpoint + ' | ' + m.scope + ' | ' + m.tasks + ' (' + m.tasks_flat + ') | ' + (m.rate === null ? 'n/a' : (100 * m.rate).toFixed(0) + '%') + ' | ' + pts(m.se_null) + ' | ' + pts(m.mdd) + ' | ' + m.min_one_sided_clusters + ' tasks all one way |'),
   ].join('\n'));
 } else if (import.meta.main) {
   const arg = (name: string, fallback?: string): string | undefined => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : fallback; };

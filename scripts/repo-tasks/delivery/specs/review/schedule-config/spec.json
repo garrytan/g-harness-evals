@@ -1,0 +1,83 @@
+{
+ "repo": "schedule",
+ "title": "Load jobs from a config file",
+ "description": "Adds `schedule.config.load_jobs(text, allowed, scheduler=None)`, so operators can list jobs in a text file in the same words as the Python API, one per line, for example `every monday at 09:00 do tasks.reports:weekly tags reports,mail` or `every 5 to 10 seconds do tasks.queue:poll`. Blank lines and `#` comments are skipped. The config file is edited by operators, not developers, so it can only reach code the application chose: the module must be one of `allowed` or a submodule of one, and the function must be defined in that module (not imported into it) and must not start with an underscore. Any invalid line raises `ScheduleValueError` whose message starts with `line <n>:`, numbered as an editor numbers lines, and then no job from the text is scheduled. Jobs go to `scheduler`, or to the default scheduler when it is None. Includes tests.",
+ "planted": [
+  3,
+  4
+ ],
+ "defects": [
+  {
+   "id": "private",
+   "class": "trust",
+   "file": "schedule/config.py",
+   "summary": "The function name pattern accepts a leading underscore, so a config line can schedule a module's private helpers.",
+   "test": "test_private.py",
+   "corrected": "    r\"\\s+do\\s+([\\w.]+):([A-Za-z]\\w*)(?:\\s+tags\\s+(\\S+))?\"\n",
+   "defective": "    r\"\\s+do\\s+([\\w.]+):(\\w+)(?:\\s+tags\\s+(\\S+))?\"\n"
+  },
+  {
+   "id": "prefix",
+   "class": "trust",
+   "file": "schedule/config.py",
+   "summary": "A module is allowed when its name merely starts with an allowed name, so allowing \"tasks\" also allows \"tasks_admin\" or \"tasksx\".",
+   "test": "test_prefix.py",
+   "corrected": "    return any(module == name or module.startswith(name + \".\") for name in allowed)\n",
+   "defective": "    return any(module.startswith(name) for name in allowed)\n"
+  },
+  {
+   "id": "imported",
+   "class": "trust",
+   "file": "schedule/config.py",
+   "summary": "Any callable attribute of an allowed module is accepted, including functions it imported (shutil.rmtree, os.system), not only functions defined there.",
+   "test": "test_imported.py",
+   "corrected": "    if not callable(func) or getattr(func, \"__module__\", None) != module:\n",
+   "defective": "    if not callable(func):\n"
+  },
+  {
+   "id": "atomic",
+   "class": "side-effect",
+   "file": "schedule/config.py",
+   "summary": "Each job is added to the scheduler as soon as its line is read, so when a later line is invalid the jobs before it stay scheduled.",
+   "test": "test_atomic.py",
+   "corrected": "        entries.append((job, func))\n    return [job.do(func) for job, func in entries]\n",
+   "defective": "        entries.append(job.do(func))\n    return entries\n"
+  },
+  {
+   "id": "lineno",
+   "class": "logic",
+   "file": "schedule/config.py",
+   "summary": "Lines are numbered from 0, so every error names the line before the one that is wrong.",
+   "test": "test_line_number.py",
+   "corrected": "    for number, line in enumerate(text.splitlines(), 1):\n",
+   "defective": "    for number, line in enumerate(text.splitlines()):\n"
+  }
+ ],
+ "ceiling": [
+  {
+   "id": "zero",
+   "class": "trust",
+   "file": "schedule/config.py",
+   "summary": "A zero interval is accepted, and schedule's Job._schedule_next_run then adds a zero period forever, so one config line such as 'every 0 seconds do ...' hangs load_jobs and the application.",
+   "test": "test_zero_interval.py",
+   "corrected": "    job = Job(int(interval or 1), scheduler)\n    if job.interval < 1:\n        raise ScheduleValueError(\"the interval must be at least 1\")\n",
+   "defective": "    job = Job(int(interval or 1), scheduler)\n"
+  }
+ ],
+ "decoys": [
+  {
+   "id": "import",
+   "file": "schedule/config.py",
+   "anchor": "        func = getattr(importlib.import_module(module), name)\n",
+   "why": "The module name comes from the config text, but it is imported only after _allowed() has accepted it.",
+   "test": "decoy_import.py"
+  },
+  {
+   "id": "unit",
+   "file": "schedule/config.py",
+   "anchor": "    job = getattr(job, unit)\n",
+   "why": "unit has already been checked against _UNITS, so getattr can only reach the unit properties.",
+   "test": "decoy_unit.py"
+  }
+ ]
+}

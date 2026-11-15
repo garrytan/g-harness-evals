@@ -18,9 +18,15 @@
 // --log: path, model, stream, the tool names and effort fields the request declared, whether a credential header came
 // in and whether it equals the canary (--canary-env names the variable holding the fake provider key the proxy was
 // given), whether it chained on previous_response_id and its store field, the body's sha256, and on the OpenRouter route which reasoning fields each replayed assistant message carried. With --bodies it also writes each body to that file, for the canary and token scans.
+// With --tool-call (the delivery checks, internal-task d12) an agent-loop request (one that declares a shell tool) whose
+// conversation holds no tool result yet gets one call of that shell tool, running `echo he-delivery-probe-$((6*7))`, instead of
+// the text reply, so the harness sends a tool follow-up request; the follow-up gets the text reply and the turn ends.
+// Codex 0.165.0 declares its tools inside a Responses input item (additional_tools) and its shell is the freeform code-mode
+// tool exec, so Codex gets a custom_tool_call whose JavaScript runs the command through tools.exec_command.
+// Without the flag every reply is the text reply, as before.
 //
 //   bun scripts/frontier-harbor/fake-upstream.ts --listen 127.0.0.1:8799 --log <requests.jsonl> [--bodies <bodies.jsonl>]
-//       [--canary-env FAKE_UPSTREAM_CANARY]
+//       [--canary-env FAKE_UPSTREAM_CANARY] [--tool-call]
 import { appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { chatBody, chatStream, DEEPSEEK_REPLAY_ERROR, errorBody, replayedAssistants } from '../../tests/fixtures/openrouter/fake-openrouter.ts';
@@ -76,10 +82,105 @@ export function placeholderArgs(schema: any): Record<string, unknown> {
   return out;
 }
 
-export function reply(path: string, body: Record<string, any>, n: number): Response {
+/** The shell tools the five frontier harnesses declare, and the arguments each takes for one command. */
+export const SHELL_TOOLS: Record<string, (command: string) => Record<string, unknown>> = {
+  Bash: (command) => ({ command, description: 'Print a probe line' }),
+  bash: (command) => ({ command }),
+  exec_command: (command) => ({ cmd: command }),
+  shell: (command) => ({ command: ['bash', '-c', command] }),
+  terminal: (command) => ({ command }),
+  exec: (command) => ({ command }),
+};
+/** The probe command and its output; the output is not a substring of the command, so a body holding it holds the tool result. */
+export const PROBE_COMMAND = 'echo he-delivery-probe-$((6*7))';
+export const PROBE_OUTPUT = 'he-delivery-probe-42';
+
+/** Codex 0.165.0's shell in code mode: the freeform custom tool exec runs JavaScript whose nested tools.exec_command runs the command. */
+export const CODEX_EXEC_SOURCE = 'const r = await tools.exec_command({ cmd: ' + JSON.stringify(PROBE_COMMAND) + ' });\ntext(r);\n';
+
+/** Every tool the request declares: body.tools, and the namespaces Codex 0.165.0 sends as a Responses input item of type additional_tools. */
+export function declaredTools(body: Record<string, any>): { name: string; type: string | null }[] {
+  const flat = (ts: any[]): { name: string; type: string | null }[] => ts.flatMap((t: any) => t?.type === 'namespace' && Array.isArray(t.tools) ? flat(t.tools)
+    : [{ name: t?.name ?? t?.function?.name ?? t?.type ?? null, type: t?.type ?? null }]).filter((t) => t.name);
+  const extra = Array.isArray(body.input) ? body.input.filter((i: any) => i?.type === 'additional_tools' && Array.isArray(i.tools)).flatMap((i: any) => i.tools) : [];
+  return flat([...(Array.isArray(body.tools) ? body.tools : []), ...extra]);
+}
+
+/** The first shell tool the request declares (custom: Codex's freeform exec), or null. */
+export function shellTool(body: Record<string, any>): { name: string; custom: boolean } | null {
+  const t = declaredTools(body).find((t) => t.name in SHELL_TOOLS);
+  return t ? { name: t.name, custom: t.type === 'custom' } : null;
+}
+
+/** True when the conversation already holds a tool result (Messages tool_result, Chat Completions role tool, Responses *_call_output). */
+export function hasToolResult(body: Record<string, any>): boolean {
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  if (messages.some((m: any) => m?.role === 'tool' || (Array.isArray(m?.content) && m.content.some((b: any) => b?.type === 'tool_result')))) return true;
+  return Array.isArray(body.input) && body.input.some((i: any) => typeof i?.type === 'string' && i.type.endsWith('_call_output'));
+}
+
+function toolReply(path: string, body: Record<string, any>, n: number, tool: { name: string; custom: boolean }): Response | null {
+  const model = body.model ?? 'fake';
+  const stream = body.stream === true;
+  const name = tool.name;
+  const args = SHELL_TOOLS[name]!(PROBE_COMMAND);
+  const json = JSON.stringify(args);
+  if (path.endsWith('/v1/messages')) {
+    const usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    const id = 'msg_fake_' + n;
+    const use = { type: 'tool_use', id: 'toolu_fake_' + n, name, input: args };
+    if (!stream) return Response.json({ id, type: 'message', role: 'assistant', model, content: [use], stop_reason: 'tool_use', stop_sequence: null, usage });
+    return sse([
+      ['message_start', { type: 'message_start', message: { id, type: 'message', role: 'assistant', model, content: [], stop_reason: null, stop_sequence: null, usage: { ...usage, output_tokens: 1 } } }],
+      ['content_block_start', { type: 'content_block_start', index: 0, content_block: { ...use, input: {} } }],
+      ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: json } }],
+      ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+      ['message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 5 } }],
+      ['message_stop', { type: 'message_stop' }],
+    ]);
+  }
+  if (path.endsWith('/v1/responses')) {
+    const id = 'resp_fake_' + n;
+    const item: Record<string, unknown> = tool.custom
+      ? { type: 'custom_tool_call', id: 'ctc_fake_' + n, call_id: 'call_fake_' + n, name, input: CODEX_EXEC_SOURCE, status: 'completed' }
+      : { type: 'function_call', id: 'fc_fake_' + n, call_id: 'call_fake_' + n, name, arguments: json, status: 'completed' };
+    const response = { id, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', model, output: [item], usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
+    if (!stream) return Response.json(response);
+    const pending = { ...response, status: 'in_progress', output: [], usage: null };
+    return sse([
+      ['response.created', { type: 'response.created', sequence_number: 0, response: pending }],
+      ['response.in_progress', { type: 'response.in_progress', sequence_number: 1, response: pending }],
+      ['response.output_item.added', { type: 'response.output_item.added', sequence_number: 2, output_index: 0, item: { ...item, status: 'in_progress', ...(tool.custom ? { input: '' } : { arguments: '' }) } }],
+      ...(tool.custom ? [
+        ['response.custom_tool_call_input.delta', { type: 'response.custom_tool_call_input.delta', sequence_number: 3, item_id: item.id, output_index: 0, delta: CODEX_EXEC_SOURCE }],
+        ['response.custom_tool_call_input.done', { type: 'response.custom_tool_call_input.done', sequence_number: 4, item_id: item.id, output_index: 0, input: CODEX_EXEC_SOURCE }],
+      ] : [
+        ['response.function_call_arguments.delta', { type: 'response.function_call_arguments.delta', sequence_number: 3, item_id: item.id, output_index: 0, delta: json }],
+        ['response.function_call_arguments.done', { type: 'response.function_call_arguments.done', sequence_number: 4, item_id: item.id, output_index: 0, arguments: json }],
+      ]) as [string, unknown][],
+      ['response.output_item.done', { type: 'response.output_item.done', sequence_number: 5, output_index: 0, item }],
+      ['response.completed', { type: 'response.completed', sequence_number: 6, response }],
+    ]);
+  }
+  if (path.endsWith('/v1/chat/completions')) {
+    const id = 'chatcmpl_fake_' + n;
+    const echoed = path.startsWith('/particle/') ? 'particle-ai/' + model : model;
+    const call = { id: 'call_fake_' + n, type: 'function', function: { name, arguments: json } };
+    const usage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
+    if (!stream) return Response.json({ id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: echoed, choices: [{ index: 0, finish_reason: 'tool_calls', message: { role: 'assistant', content: null, tool_calls: [call] } }], usage });
+    const chunk = (delta: unknown, finish: string | null) => ({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: echoed, choices: [{ index: 0, delta, finish_reason: finish }] });
+    return sse([[null, chunk({ role: 'assistant', content: null, tool_calls: [{ index: 0, ...call }] }, null)], [null, chunk({}, 'tool_calls')], [null, { id, object: 'chat.completion.chunk', model: echoed, choices: [], usage }], [null, '[DONE]']]);
+  }
+  return null;
+}
+
+export function reply(path: string, body: Record<string, any>, n: number, opts: { toolCall?: boolean } = {}): Response {
   const model = body.model ?? 'fake';
   const stream = body.stream === true;
   if (path.endsWith('/v1/models')) return Response.json({ object: 'list', data: [] });
+  const tool = opts.toolCall && !hasToolResult(body) ? shellTool(body) : null;
+  const called = tool ? toolReply(path, body, n, tool) : null;
+  if (called) return called;
   if (path.endsWith('/v1/messages')) {
     const usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     const id = 'msg_fake_' + n;
@@ -157,6 +258,7 @@ if (import.meta.main) {
   const log = flag('--log') ?? (console.error('fake-upstream.ts needs --log'), process.exit(2));
   const bodies = flag('--bodies');
   const canary = flag('--canary-env') ? process.env[flag('--canary-env')!] ?? null : null;
+  const toolCall = argv.includes('--tool-call');
   let n = 0;
   Bun.serve({ hostname: host, port: Number(port), async fetch(req) {
     const path = new URL(req.url).pathname;
@@ -167,7 +269,7 @@ if (import.meta.main) {
     const cred = req.headers.get('x-api-key') ?? (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
     appendFileSync(log, JSON.stringify({ at: new Date().toISOString(), n, method: req.method, ...requestFacts(path, body), credential_present: !!cred, credential_is_canary: canary ? cred === canary : null, body_sha256: createHash('sha256').update(raw).digest('hex'), ...(path.startsWith('/openrouter/') ? { replayed: replayedAssistants(body) } : {}) }) + '\n');
     if (bodies && raw) appendFileSync(bodies, JSON.stringify({ n, path, body: raw }) + '\n');
-    return reply(path, body, n);
+    return reply(path, body, n, { toolCall });
   } });
-  console.log('fake upstream on ' + host + ':' + port);
+  console.log('fake upstream on ' + host + ':' + port + (toolCall ? ' (one shell tool call per session)' : ''));
 }

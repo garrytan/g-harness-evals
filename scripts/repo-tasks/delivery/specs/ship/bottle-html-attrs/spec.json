@@ -1,0 +1,60 @@
+{
+ "repo": "bottle",
+ "module": "bottle.py",
+ "summary": "Add html_attrs() to render a dict as HTML attributes, for templates that build tags from data. It is also available inside SimpleTemplate templates.",
+ "behaviour": [
+  "`bottle.html_attrs(attrs)` renders the dict `attrs` as HTML attributes in the dict's order, each written as a space, the name, `=\"`, the escaped value and `\"`: `html_attrs({'title': 'Hi', 'id': 'go'})` gives ` title=\"Hi\" id=\"go\"`. An empty dict gives an empty string.",
+  "Names lose their trailing underscores and the remaining `_` become `-`: `class_` is written as `class`, `data_user_id` as `data-user-id`.",
+  "`True` writes the bare name (` disabled`); `False` and `None` leave the attribute out. Every other value, `0` and `''` included, is written.",
+  "A list or tuple value is joined with single spaces (`{'class_': ['btn', 'big']}` gives ` class=\"btn big\"`); other values are converted with `str()`. Values are escaped with `html_escape()`, so `&`, `<`, `>`, `\"` and `'` are replaced and everything else, line breaks and tabs included, is written as it is.",
+  "A name that is empty after the conversion, or contains whitespace, a quote, `<`, `>`, `/`, `=` or a control character, raises `ValueError`.",
+  "Inside SimpleTemplate templates `html_attrs` is available without an import, as in `<input{{!html_attrs(attrs)}}>`."
+ ],
+ "version": "0.14.0",
+ "history": [
+  "- Changed: Maintenance release."
+ ],
+ "release": {
+  "version": "0.15.0",
+  "entries": [
+   "- Changed: html_escape() takes quote=False to leave quotes alone and converts non-string values with str(), and html_quote() is removed. (feature/5b70e2)",
+   "- Added: bottle.__all__ lists the public API, so `from bottle import *` brings in only public names. (feature/c3a18e)"
+  ]
+ },
+ "teammate_entry": "- Added: html_attrs helper",
+ "entry": "- Added: html_attrs() renders a dict as HTML attributes, also inside SimpleTemplate templates. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add html_attrs()",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Replace html_quote() with html_escape(quote=...)",
+   "dir": "main1"
+  },
+  {
+   "message": "Declare the public API in __all__",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "test"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "bottle.py",
+  "tests_feature/test_html_attrs.py"
+ ],
+ "repo_tests_min": 372,
+ "repo_skips_max": 0,
+ "checks": [
+  "falsy",
+  "names",
+  "dropmain",
+  "r61stale"
+ ]
+}

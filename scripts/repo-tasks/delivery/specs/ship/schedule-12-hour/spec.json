@@ -1,0 +1,59 @@
+{
+ "repo": "schedule",
+ "module": "schedule/__init__.py",
+ "summary": "12-hour clock times for daily and weekly jobs: a to_24_hour function that `Job.at()` runs those jobs' times through, so `every().day.at(\"7:30pm\")` works.",
+ "behaviour": [
+  "`schedule.to_24_hour(text)` converts a 12-hour time: an hour from 1 to 12, optionally followed by `:MM` and then `:SS`, then `am` or `pm` in any case, with optional whitespace before it. The result is `HH:MM`, or `HH:MM:SS` when seconds were given, with a two-digit hour.",
+  "`12am` is midnight (`00:00`) and `12pm` is noon (`12:00`); every other pm hour adds 12.",
+  "A 24-hour time, in any form that `Job.at()` on main accepts for a daily job, is returned with a two-digit hour (`9:30` becomes `09:30`, `21:05:09` is unchanged).",
+  "Anything else, including an hour of 0 or above 12 before am or pm, raises `ScheduleValueError`."
+ ],
+ "version": "1.2.2",
+ "history": [
+  "- Fixed: Jobs scheduled with until() and a time zone are cancelled on time."
+ ],
+ "release": {
+  "version": "1.3.0",
+  "entries": [
+   "- Added: Daily and weekly jobs accept a single-digit hour in at(), such as 9:30. (feature/4b8e21)",
+   "- Added: The schedule module lists its public API in __all__. (feature/7d20c5)"
+  ]
+ },
+ "teammate_entry": "- Added: 12h times (7:30pm) in at()",
+ "entry": "- Added: Daily and weekly jobs accept 12-hour times such as 7:30pm, converted by the new to_24_hour function. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Accept 12-hour times for daily jobs",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Accept single-digit hours in daily at() times",
+   "dir": "main1"
+  },
+  {
+   "message": "List the public API in __all__",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "test_schedule.py"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "schedule/__init__.py",
+  "tests_feature/test_12_hour.py"
+ ],
+ "repo_tests_min": 102,
+ "repo_skips_max": 41,
+ "checks": [
+  "midnight",
+  "hourrange",
+  "passthrough",
+  "dropmain",
+  "r61stale"
+ ]
+}

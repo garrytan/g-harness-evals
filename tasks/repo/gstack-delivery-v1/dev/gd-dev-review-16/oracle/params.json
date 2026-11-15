@@ -1,0 +1,62 @@
+{
+ "kind": "review",
+ "base": "main",
+ "branch": "feature/95a963",
+ "env": {},
+ "findings": [
+  {
+   "file": "more_itertools/more.py",
+   "line": 5692,
+   "summary": "The limit is compared with the size of one part instead of the running total, so a user can name any amount of numbers by splitting them over several parts.",
+   "test": "/work/out/tests/test_limit.py",
+   "probe": "/oracle/test_limit.py",
+   "correct": false
+  },
+  {
+   "file": "more_itertools/more.py",
+   "line": 5751,
+   "summary": "Values are converted with int(), so strings and floats are silently accepted (and floats truncated) instead of raising TypeError.",
+   "test": "/work/out/tests/test_types.py",
+   "probe": "/oracle/test_types.py",
+   "correct": false
+  },
+  {
+   "file": "more_itertools/more.py",
+   "line": 5677,
+   "summary": "A range whose end equals its start, such as 3-3, is rejected as ending before it starts.",
+   "test": "/work/out/tests/test_single.py",
+   "probe": "/oracle/test_single.py",
+   "correct": false
+  },
+  {
+   "file": "more_itertools/more.py",
+   "line": 5759,
+   "summary": "Runs of two consecutive integers are written as start-end, although only runs of three or more should be.",
+   "test": "/work/out/tests/test_pairs.py",
+   "probe": "/oracle/test_pairs.py",
+   "correct": false
+  },
+  {
+   "file": "more_itertools/more.py",
+   "line": 5731,
+   "summary": "The limit is converted with int() instead of operator.index like format_ranges' values, so a float limit is silently truncated and a string limit such as '10' is accepted instead of raising TypeError.",
+   "test": "/work/out/tests/test_limit_type.py",
+   "probe": "/oracle/test_limit_type.py",
+   "correct": false
+  }
+ ],
+ "decoys": [
+  {
+   "file": "more_itertools/more.py",
+   "line": 5706,
+   "probe": "/oracle/decoy_limit.py",
+   "correct": true
+  },
+  {
+   "file": "more_itertools/more.py",
+   "line": 5686,
+   "probe": "/oracle/decoy_empty.py",
+   "correct": true
+  }
+ ]
+}

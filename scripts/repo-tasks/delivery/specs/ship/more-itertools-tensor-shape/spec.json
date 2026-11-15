@@ -1,0 +1,57 @@
+{
+ "repo": "more-itertools",
+ "module": "more_itertools/recipes.py",
+ "summary": "Add shape(), which reports the dimensions of a nested list or tuple, the counterpart of reshape().",
+ "behaviour": [
+  "`shape(tensor)` returns a tuple with the size of each dimension of a nested list or tuple, outermost first: `shape([[1, 2, 3], [4, 5, 6]]) == (2, 3)`. A scalar has shape `()`.",
+  "Scalars are exactly what reshape treats as scalars on main: strings, bytes, mappings such as dicts, and anything that is not iterable. So `shape(['ab', 'cd']) == (2,)` and `shape([{'a': 1}, {'b': 2}]) == (2,)`.",
+  "All arrays in one dimension must have the same size; otherwise shape raises ValueError.",
+  "Within one dimension the items must be all arrays or all scalars; any mix, in any order, raises ValueError.",
+  "An empty array has size 0 and nothing below it: `shape([]) == (0,)` and `shape([[], []]) == (2, 0)`."
+ ],
+ "version": "11.2.1",
+ "history": [
+  "- Fixed: Type stubs for the running statistics recipes."
+ ],
+ "release": {
+  "version": "11.3.0",
+  "entries": [
+   "- Changed: reshape treats mappings such as dicts as scalars instead of flattening their keys. (feature/9c14d3)"
+  ]
+ },
+ "teammate_entry": "- shape() recipe",
+ "entry": "- Added: A shape recipe that reports the dimensions of a nested list or tuple. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add a shape recipe",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Treat mappings as scalars in reshape",
+   "dir": "main1"
+  },
+  {
+   "message": "Fix a README link and test that every public function is listed",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "tests"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "more_itertools/recipes.py",
+  "tests_feature/test_shape.py"
+ ],
+ "repo_tests_min": 780,
+ "repo_skips_max": 0,
+ "checks": [
+  "mixed",
+  "oldscalar",
+  "r61stale"
+ ]
+}

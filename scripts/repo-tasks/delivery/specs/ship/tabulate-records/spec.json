@@ -1,0 +1,59 @@
+{
+ "repo": "tabulate",
+ "module": "tabulate/__init__.py",
+ "summary": "Add `to_records()`, which turns any table that tabulate accepts into a list of dicts, for code that wants the rows tabulate would print as plain data (to dump them as JSON, for example).",
+ "behaviour": [
+  "`tabulate.to_records(tabular_data, headers=\"keys\")` takes the same data and `headers` as `tabulate()` and returns a list with one dict per data row, in order. An empty table, or `None`, gives `[]`.",
+  "The keys are the column headers that `tabulate()` would print for the same `headers`, as strings: with `\"keys\"` the dict keys or the column numbers (`\"0\"`, `\"1\"`, ...), with `\"firstrow\"` the first row, with a list its items.",
+  "Values come back exactly as given, with no number parsing or formatting: `\"007\"` stays `\"007\"` and `None` stays `None`.",
+  "A row with fewer cells than there are headers gets `None` for each missing column.",
+  "Separating lines (`SEPARATING_LINE` rows) are left out."
+ ],
+ "version": "0.9.2",
+ "history": [
+  "- Fixed: Maintenance release."
+ ],
+ "release": {
+  "version": "0.10.0",
+  "entries": [
+   "- Added: headersalign aligns the headers separately from their columns. (feature/8e41d7)",
+   "- Added: Type hints for tabulate() and simple_separated_format(). (feature/c27a90)"
+  ]
+ },
+ "teammate_entry": "- Added to_records",
+ "entry": "- Added: to_records() returns the rows of a table as a list of dicts. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add to_records() for getting a table's rows as dicts",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Add headersalign to align headers separately from their columns",
+   "dir": "main1"
+  },
+  {
+   "message": "Add type hints to the public functions",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "test"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "tabulate/__init__.py",
+  "tests_feature/test_records.py"
+ ],
+ "repo_tests_min": 296,
+ "repo_skips_max": 37,
+ "checks": [
+  "shortrow",
+  "sepline",
+  "dropmain",
+  "r61stale"
+ ]
+}

@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "note": "Each card line is a verbatim substring of a gstack template at the pinned commit. scripts/gstack-delivery/extract-cards.ts rebuilds the cards from these references and fails closed when a section moved. A line with a marker is scored by scripts/gstack-delivery/probes.ts; a line the task text already demands carries task_demands and no marker (plan d5).",
+  "gstack": {
+    "repo": "garrytan/gstack",
+    "commit": "68b1d056a4fcf300ca2b61a1406940c5dd336916",
+    "commit_date": "2026-11-09T06:38:42Z",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Garry Tan"
+  },
+  "max_bytes": 700,
+  "cards": {
+    "review": {
+      "file": "review.md",
+      "bytes": 539,
+      "sha256": "92ff952d1f76d6871c8a97c9dcd885332bf3510de7ebf6eab1e72334252efaaf",
+      "lines": [
+        {
+          "id": "review.title",
+          "file": "review/SKILL.md.tmpl",
+          "line": 51,
+          "section": "# Pre-Landing PR Review",
+          "text": "# Pre-Landing PR Review",
+          "render": "text",
+          "marker": null,
+          "task_demands": null,
+          "why": "The skill's own title, so the card reads as gstack's review."
+        },
+        {
+          "id": "review.scope",
+          "file": "review/SKILL.md.tmpl",
+          "line": 53,
+          "section": "# Pre-Landing PR Review",
+          "text": "Review the branch diff against the base for structural issues tests miss.",
+          "render": "text",
+          "marker": null,
+          "task_demands": "Review it before it merges.",
+          "why": "The skill's one-line purpose."
+        },
+        {
+          "id": "review.full_diff",
+          "file": "review/SKILL.md.tmpl",
+          "line": 500,
+          "section": "## Important Rules",
+          "text": "**Read the FULL diff before commenting.** Do not flag issues already addressed in the diff.",
+          "render": "bullet",
+          "marker": "review.full_diff_first",
+          "task_demands": null,
+          "why": "Target step: read the full diff against the base before the first finding."
+        },
+        {
+          "id": "review.verify",
+          "file": "review/SKILL.md.tmpl",
+          "line": 369,
+          "section": "### Verification of claims",
+          "text": "Verify claims or flag them as unknown; \"this looks fine\" is not evidence.",
+          "render": "bullet",
+          "marker": "review.check_before_finding",
+          "task_demands": null,
+          "why": "Target step: check suspicious spots, decoys included, before calling them bugs."
+        },
+        {
+          "id": "review.real_only",
+          "file": "review/SKILL.md.tmpl",
+          "line": 503,
+          "section": "## Important Rules",
+          "text": "**Only flag real problems.** Skip anything that's fine.",
+          "render": "bullet",
+          "marker": null,
+          "task_demands": "Report only real problems, at most 10.",
+          "why": "Pairs with the verify line; the task already asks for real problems only."
+        },
+        {
+          "id": "review.prove_test",
+          "file": "review/SKILL.md.tmpl",
+          "line": 355,
+          "end_line": 356,
+          "section": "### Step 5d: Apply user-approved fixes",
+          "text": "For an approved defect regression, write the test and prove it fails for the original defect before changing product code.",
+          "render": "bullet",
+          "marker": "review.test_per_finding",
+          "task_demands": null,
+          "why": "Target step: run a test for each finding before writing it up. The full clause from Step 5d, as GSTA-36 approved it on 2026-11-09; the approval and repair steps around it stay out (no AskUserQuestion step, no fix). The review task changes no product code, so the probe anchors on the write-up of the finding."
+        },
+        {
+          "id": "review.executed_proof",
+          "file": "review/specialists/testing.md",
+          "line": 44,
+          "section": "### Exploratory hypotheses",
+          "text": "A diagram or test count is not executed proof.",
+          "render": "bullet",
+          "marker": null,
+          "task_demands": null,
+          "why": "Supports the test line: a written test is not proof until it runs. No marker of its own (one marker per step)."
+        },
+        {
+          "id": "review.file_line",
+          "file": "review/checklist.md",
+          "line": 5,
+          "section": "## Instructions",
+          "text": "Cite `file:line` and suggest fixes.",
+          "render": "bullet",
+          "marker": null,
+          "task_demands": "`file`: the path relative to the repository root; `line`: the line number in the branch version of that file",
+          "why": "Target step: report each finding with file and line. The task's output contract already demands it."
+        }
+      ]
+    },
+    "ship": {
+      "file": "ship.md",
+      "bytes": 590,
+      "sha256": "dfae5c36ffcc64460eba35b5e0a76025ebe9e6339d33bf724c689903abb1a697",
+      "lines": [
+        {
+          "id": "ship.title",
+          "file": "ship/SKILL.md.tmpl",
+          "line": 34,
+          "section": "# Ship: Fully Automated Ship Workflow",
+          "text": "# Ship: Fully Automated Ship Workflow",
+          "render": "text",
+          "marker": null,
+          "task_demands": null,
+          "why": "The skill's own title, so the card reads as gstack's ship."
+        },
+        {
+          "id": "ship.merge_base",
+          "file": "ship/SKILL.md.tmpl",
+          "line": 188,
+          "section": "## Step 3: Merge the base branch (BEFORE tests)",
+          "text": "Merge the base branch (BEFORE tests)",
+          "render": "bullet",
+          "marker": null,
+          "task_demands": "it must merge cleanly into the current `origin/main`",
+          "why": "Target step: merge the moved base. The task already demands it."
+        },
+        {
+          "id": "ship.tests_merged",
+          "file": "ship/sections/tests.md.tmpl",
+          "line": 7,
+          "section": "## Step 5: Run tests (on merged code)",
+          "text": "Run tests (on merged code)",
+          "render": "bullet",
+          "marker": null,
+          "task_demands": null,
+          "why": "Rerun the test suite after the merge and before the push. No marker since the first headroom check (gate change d5): the none arm already did it in 87.5% of ship trials, so it can't show a difference. probes.ts still reports it as the descriptive count ship.tests_after_merge."
+        },
+        {
+          "id": "ship.every_suite",
+          "file": "ship/sections/tests.md.tmpl",
+          "line": 20,
+          "section": "## Step 5: Run tests (on merged code)",
+          "text": "Run every applicable suite; do not assume Rails or Vitest.",
+          "render": "bullet",
+          "marker": null,
+          "task_demands": "pass the test suite and lint",
+          "why": "Says the run is the whole suite; the task already demands a passing suite and lint."
+        },
+        {
+          "id": "ship.repo_rule",
+          "file": "ship/sections/changelog.md.tmpl",
+          "line": 9,
+          "end_line": 11,
+          "section": null,
+          "text": "Put the entry where the repo's own rule puts unit-PR notes (its CHANGELOG preamble or a fragment directory it names), else under `## [Unreleased]`, never under a released heading.",
+          "render": "bullet",
+          "marker": null,
+          "task_demands": "follow CONTRIBUTING.md",
+          "why": "Target step: follow CONTRIBUTING. gstack's ship templates never name CONTRIBUTING; this is their nearest wording, the repo's own rule for the changelog entry. The task already demands it."
+        },
+        {
+          "id": "ship.final_diff",
+          "file": "ship/sections/plan-completion.md.tmpl",
+          "line": 23,
+          "section": "## Step 8: Plan Completion Audit",
+          "text": "Use `git diff origin/<base>` and inspect untracked files from `git status` to see the full proposed change.",
+          "render": "bullet",
+          "marker": "ship.final_diff_after_commit",
+          "task_demands": null,
+          "why": "Target step: look at the final diff after the last commit."
+        },
+        {
+          "id": "ship.iron_law",
+          "file": "ship/SKILL.md.tmpl",
+          "line": 377,
+          "section": "## Step 16: Verification Gate",
+          "text": "**IRON LAW: NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE.**",
+          "render": "bullet",
+          "marker": "ship.fresh_verification",
+          "task_demands": null,
+          "why": "Target step: fresh verification before the push. Met when a full test-suite run comes after the last change to the repository's files (CHANGELOG and version edits included) and before the push. The task asks for a passing suite, not for a run after the last edit. Moved here from the tests-on-merged-code line after the first headroom check (gate change d5)."
+        },
+        {
+          "id": "ship.push_branch",
+          "file": "ship/SKILL.md.tmpl",
+          "line": 592,
+          "section": "## Step 17: Push",
+          "text": "`git push -u origin <branch-name>`",
+          "render": "bullet",
+          "marker": null,
+          "task_demands": "Push the finished branch to `origin` under the same name. Do not push to main or rewrite its history.",
+          "why": "Target step: push the branch, not main. The task already demands it."
+        },
+        {
+          "id": "ship.no_force",
+          "file": "ship/SKILL.md.tmpl",
+          "line": 599,
+          "section": "## Step 17: Push",
+          "text": "Never force-push.",
+          "render": "bullet",
+          "marker": null,
+          "task_demands": "Do not push to main or rewrite its history.",
+          "why": "The push step's own guard; the task already demands it."
+        }
+      ]
+    }
+  }
+}

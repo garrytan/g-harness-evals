@@ -1,0 +1,62 @@
+{
+ "kind": "review",
+ "base": "main",
+ "branch": "feature/1990ac",
+ "env": {},
+ "findings": [
+  {
+   "file": "tinydb/sqlite_storage.py",
+   "line": 80,
+   "summary": "The prefix goes into a LIKE pattern unescaped, so _ and % in it match other databases' tables, which are then read and dropped.",
+   "test": "/work/out/tests/test_prefix.py",
+   "probe": "/oracle/test_prefix.py",
+   "correct": false
+  },
+  {
+   "file": "tinydb/sqlite_storage.py",
+   "line": 94,
+   "summary": "A write that fails part way still commits, so tables already dropped or emptied stay that way.",
+   "test": "/work/out/tests/test_rollback.py",
+   "probe": "/oracle/test_rollback.py",
+   "correct": false
+  },
+  {
+   "file": "tinydb/sqlite_storage.py",
+   "line": 69,
+   "summary": "Documents are read back ordered by their id as text, so ids 10 and 11 come before 2 instead of insertion order.",
+   "test": "/work/out/tests/test_order.py",
+   "probe": "/oracle/test_order.py",
+   "correct": false
+  },
+  {
+   "file": "tinydb/sqlite_storage.py",
+   "line": 53,
+   "summary": "readonly=True opens the file with mode=rw, so a read-only storage can still change the file.",
+   "test": "/work/out/tests/test_readonly.py",
+   "probe": "/oracle/test_readonly.py",
+   "correct": false
+  },
+  {
+   "file": "tinydb/sqlite_storage.py",
+   "line": 43,
+   "summary": "An empty prefix is accepted, so the LIKE pattern becomes %, every table in the file counts as one of this database's tables, and the next write drops the tables of every other database sharing the file.",
+   "test": "/work/out/tests/test_empty_prefix.py",
+   "probe": "/oracle/test_empty_prefix.py",
+   "correct": false
+  }
+ ],
+ "decoys": [
+  {
+   "file": "tinydb/sqlite_storage.py",
+   "line": 62,
+   "probe": "/oracle/decoy_empty.py",
+   "correct": true
+  },
+  {
+   "file": "tinydb/sqlite_storage.py",
+   "line": 104,
+   "probe": "/oracle/decoy_drop.py",
+   "correct": true
+  }
+ ]
+}

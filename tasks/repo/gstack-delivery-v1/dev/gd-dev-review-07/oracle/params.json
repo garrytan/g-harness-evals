@@ -1,0 +1,62 @@
+{
+ "kind": "review",
+ "base": "main",
+ "branch": "feature/92c5b4",
+ "env": {},
+ "findings": [
+  {
+   "file": "playhouse/query_args.py",
+   "line": 79,
+   "summary": "sort looks names up among all of the model's fields instead of the allowed ones, so a client can sort on a field the view did not list, such as a password hash, and learn its values from the order.",
+   "test": "/work/out/tests/test_sortfield.py",
+   "probe": "/oracle/test_sortfield.py",
+   "correct": false
+  },
+  {
+   "file": "playhouse/query_args.py",
+   "line": 87,
+   "summary": "max_per_page only caps the default page size, so a client-supplied per_page is used as given and can fetch any number of rows.",
+   "test": "/work/out/tests/test_cap.py",
+   "probe": "/oracle/test_cap.py",
+   "correct": false
+  },
+  {
+   "file": "playhouse/query_args.py",
+   "line": 40,
+   "summary": "The lte operator maps to operator.lt, so __lte excludes rows equal to the value.",
+   "test": "/work/out/tests/test_lte.py",
+   "probe": "/oracle/test_lte.py",
+   "correct": false
+  },
+  {
+   "file": "playhouse/query_args.py",
+   "line": 100,
+   "summary": "isnull passes the string to is_null, and the string 'false' is truthy, so __isnull=false selects the rows that are null.",
+   "test": "/work/out/tests/test_isnull.py",
+   "probe": "/oracle/test_isnull.py",
+   "correct": false
+  },
+  {
+   "file": "playhouse/query_args.py",
+   "line": 111,
+   "summary": "_positive only rejects 0, so a negative per_page gets through. min() keeps it below max_per_page and SQLite treats LIMIT -1 as no limit, so a client can fetch every row.",
+   "test": "/work/out/tests/test_negative.py",
+   "probe": "/oracle/test_negative.py",
+   "correct": false
+  }
+ ],
+ "decoys": [
+  {
+   "file": "playhouse/query_args.py",
+   "line": 93,
+   "probe": "/oracle/decoy_value.py",
+   "correct": true
+  },
+  {
+   "file": "playhouse/query_args.py",
+   "line": 67,
+   "probe": "/oracle/decoy_blank.py",
+   "correct": true
+  }
+ ]
+}

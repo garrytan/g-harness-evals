@@ -1,0 +1,63 @@
+{
+ "repo": "bottle",
+ "module": "bottle.py",
+ "summary": "Add `% raw` ... `% endraw` blocks to SimpleTemplate, so a template can contain text that looks like template code (Vue or Handlebars snippets, docs about stpl) without escaping every line.",
+ "behaviour": [
+  "A line holding only `% raw` opens a raw block and the next line holding only `% endraw` closes it. As with other code lines, either line may be indented and may have spaces after the word, the space after `%` is optional, and with a custom `syntax` the configured line-start token takes the place of `%`.",
+  "Everything between the two lines is written to the output exactly as it is, line breaks included: `{{ }}` expressions, `%` lines and `<% %>` blocks inside are not run. The `% raw` and `% endraw` lines write nothing themselves, not even their line break.",
+  "A raw block inside a code block, such as between `% if show:` and `% end`, is written only when that code runs.",
+  "Only the word `raw` on its own opens a block: lines such as `% raw = 5` or `% raw_html = \"<b>\"` stay ordinary Python code lines.",
+  "A `% raw` with no `% endraw` line after it raises `bottle.StplSyntaxError` when the template is compiled (for example on the first `template()` call)."
+ ],
+ "version": "0.14.0",
+ "history": [
+  "- Changed: Maintenance release."
+ ],
+ "release": {
+  "version": "0.15.0",
+  "entries": [
+   "- Fixed: An empty {{ }} expression raises StplSyntaxError instead of IndexError. (feature/c4d917)",
+   "- Changed: SimpleTemplate writes each text block with a single _write() call. (feature/91be3a)"
+  ]
+ },
+ "teammate_entry": "- raw blocks for templates",
+ "entry": "- Added: SimpleTemplate raw blocks (% raw ... % endraw) write their content without running it. ({branch})",
+ "branch_commits": [
+  {
+   "message": "Add raw blocks to SimpleTemplate",
+   "dir": "branch1"
+  }
+ ],
+ "main_commits": [
+  {
+   "message": "Write template text with one _write() call per block",
+   "dir": "main1"
+  },
+  {
+   "message": "Raise StplSyntaxError for empty inline expressions",
+   "dir": "main2"
+  },
+  {
+   "message": "Test that StplParser builds its patterns once per syntax",
+   "dir": "main_r61"
+  }
+ ],
+ "repo_tests": [
+  "test"
+ ],
+ "feature_tests": [
+  "tests_feature"
+ ],
+ "lint_paths": [
+  "bottle.py",
+  "tests_feature/test_raw.py"
+ ],
+ "repo_tests_min": 369,
+ "repo_skips_max": 0,
+ "checks": [
+  "rawprefix",
+  "unclosed",
+  "dropmain",
+  "r61stale"
+ ]
+}
