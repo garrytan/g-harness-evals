@@ -16,7 +16,7 @@
 # --tasks-src ~/<source name> in place of --tb21 and fetches that source's pinned tasks there. With --install-check the lane is the keyless install check and nothing else:
 # scripts/frontier-harbor/install-check.sh ~/shard/results with every key unset (fake upstream, no spend), its output in
 # ~/shard/results/run.stdout.log and its exit code the shard's. Otherwise the smoke is that same keyless install check
-# into ~/shard/smoke (--no-smoke skips it; exit 4 when it fails), then the web-tools check on the smoke's captured
+# into ~/shard/smoke (--no-smoke skips it; retried only after an AgentSetupTimeoutError; exit 4 when it fails), then the web-tools check on the smoke's captured
 # requests (scripts/frontier-harbor/web-tools-check.ts; exit 4 when a cell offers a web tool or has no captured tool list,
 # so a counted shard needs the smoke), then scripts/frontier-harbor/vm-run.sh for the shard
 # under its lease with --out ~/shard/results and the arguments after -- passed through (--stage <name>, --done <file>),
@@ -173,8 +173,24 @@ if [ "$workload" = frontier-harbor ]; then
     mkdir -p "$shard/smoke/results"
     phase smoke_start
     log "smoke: scripts/frontier-harbor/install-check.sh (keyless, fake upstream)"
-    "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
-    rc=$?
+    # A harness install that stalls in its download ends in Harbor's AgentSetupTimeoutError (hermes-opus-none at 1200 s,
+    # 2026-11-15), and since #461 one missing none-arm request fails the whole gstack check. Only that failure is retried,
+    # with the qm-driver smoke's tries and backoff (HE_SMOKE_TRIES, HE_RETRY_BASE_S doubling up to 120 s), from an empty
+    # results directory, keeping each try's logs and install-check.json as ~/shard/smoke/try<n>.*; the installed runtime/
+    # trees are not read. A try whose install-check.json also fails egress, canary or zdr is never retried, and a results
+    # directory that cannot be cleared ends the retries, so the shard stops on that try's report.
+    smoke_tries=${HE_SMOKE_TRIES:-4} wait_s=${HE_RETRY_BASE_S:-30}
+    for ((try = 1; ; try++)); do
+      "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
+      rc=$?
+      [ "$rc" -ne 0 ] && [ "$try" -lt "$smoke_tries" ] && grep -rqs --exclude-dir=runtime --include='*.log' --include=result.json AgentSetupTimeoutError "$shard/smoke/results" &&
+        ! grep -Eqs '"(egress|canary|zdr): ' "$shard/smoke/results/install-check.json" || break
+      cp "$shard/smoke/results/run.stdout.log" "$shard/smoke/try$try.run.stdout.log"
+      for f in install-check.log install-check.json; do [ ! -f "$shard/smoke/results/$f" ] || cp "$shard/smoke/results/$f" "$shard/smoke/try$try.$f"; done
+      log "smoke try $try of $smoke_tries: an agent setup timed out (AgentSetupTimeoutError); next try in ${wait_s}s"
+      rm -rf "$shard/smoke/results" && mkdir -p "$shard/smoke/results" || { log "smoke: could not clear smoke/results after try $try; no more tries"; break; }
+      sleep "$wait_s"; wait_s=$(( wait_s * 2 > 120 ? 120 : wait_s * 2 ))
+    done
     phase smoke_end
     [ "$rc" -eq 0 ] || { tail -5 "$shard/smoke/results/run.stdout.log"; log "smoke failed (exit $rc); the counted run does not start"; finish 4; }
   fi

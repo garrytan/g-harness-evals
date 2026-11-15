@@ -215,3 +215,100 @@ describe('harnesses/qm/Dockerfile: npm fetch retries, the lockfile still decides
     }
   });
 });
+
+/** vm-shard.sh --workload frontier-harbor with stand-ins for install-check.sh, web-tools-check.ts and vm-run.sh in the
+ *  checkout: the keyless smoke fails failSmoke times, writing failText to where failAt names and running onFail, then passes. */
+function frontierShardHome(failSmoke: number, failText: string, failAt = 'install-check.log', onFail = '') {
+  const h = temp('he-vm-frontier-retry-');
+  const repo = join(h, 'work', 'harness-evals');
+  const tb = join(h, 'tb-src');
+  for (const d of [join(repo, 'scripts/frontier-harbor'), tb]) mkdirSync(d, { recursive: true });
+  const g = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
+  writeFileSync(join(tb, 'README.md'), 'tb\n');
+  g(tb, 'init', '-q'); g(tb, 'config', 'user.email', 't@t'); g(tb, 'config', 'user.name', 't'); g(tb, 'add', '.'); g(tb, 'commit', '-q', '-m', 'tb');
+  writeFileSync(join(repo, 'scripts/frontier-harbor/pin.json'), JSON.stringify({ terminal_bench: { repo: tb, commit: g(tb, 'rev-parse', 'HEAD').trim() } }));
+  writeFileSync(join(repo, 'x.json'), JSON.stringify({ shards: [{ name: 'opus-b1', cells: ['hermes-opus'] }] }));
+  writeFileSync(join(repo, 'scripts/frontier-harbor/install-check.sh'), [
+    'out=$1; n=$(cat "$HOME/smokes" 2>/dev/null || echo 0); echo $((n + 1)) > "$HOME/smokes"',
+    '[ -e "$out/stale" ] && echo stale >> "$HOME/stale.log"',
+    'mkdir -p "$out/gstack/agents/run/jobs/hermes-opus-none__a1/t1" "$out/gstack/agents/run/gstack/hermes/runtime"; touch "$out/stale"',
+    'if [ "$n" -lt ' + failSmoke + ' ]; then printf "%s\\n" ' + JSON.stringify(failText) + ' > "$out/' + failAt + '"; ' + onFail + '\n echo "install check failed"; exit 1; fi',
+    'exit 0',
+  ].join('\n') + '\n');
+  writeFileSync(join(repo, 'scripts/frontier-harbor/vm-run.sh'), 'echo "$*" >> "$HOME/driver.log"\nexit 0\n');
+  g(repo, 'init', '-q'); g(repo, 'config', 'user.email', 't@t'); g(repo, 'config', 'user.name', 't'); g(repo, 'add', '.'); g(repo, 'commit', '-q', '-m', 'x');
+  mkdirSync(join(h, '.bun', 'bin'), { recursive: true });
+  const bun = join(h, '.bun', 'bin', 'bun');
+  writeFileSync(bun, '#!/usr/bin/env bash\ncase $1 in --version) echo 1.0 ;; esac\nexit 0\n');
+  chmodSync(bun, 0o755);
+  const r = spawnSync('bash', [join(ROOT, 'scripts', 'ubicloud', 'vm-shard.sh'), '--commit', g(repo, 'rev-parse', 'HEAD').trim(), '--prereg', 'x.json', '--name', 'opus-b1', '--cells', 'hermes-opus', '--lease-usd', '20', '--workload', 'frontier-harbor'],
+    { cwd: h, encoding: 'utf8', timeout: 60_000, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: h, USER: 'nobody', HE_SHARD_IN_DOCKER_GROUP: '1', HE_RETRY_BASE_S: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  return { code: r.status, out: r.stdout + r.stderr, smokes: Number(read(join(h, 'smokes')) || 0), driver: read(join(h, 'driver.log')), stale: read(join(h, 'stale.log')), shard: join(h, 'shard') };
+}
+
+describe('vm-shard.sh --workload frontier-harbor: the keyless smoke is retried only for an agent setup timeout', () => {
+  const TIMEOUT = 'agents: hermes-opus-none: AgentSetupTimeoutError: Agent setup timed out after 1200.0 seconds';
+  test('two agent setup timeouts (a stalled harness download) and then a pass: the counted run starts after the third smoke', () => {
+    const r = frontierShardHome(2, TIMEOUT);
+    expect(r.code, r.out).toBe(0);
+    expect(r.smokes).toBe(3);
+    expect(r.out).toContain('smoke try 2 of 4: an agent setup timed out (AgentSetupTimeoutError); next try in 0s');
+    expect(r.stale).toBe('');
+    expect(read(join(r.shard, 'smoke', 'try1.install-check.log'))).toContain('AgentSetupTimeoutError');
+    expect(r.driver).toContain('--name opus-b1');
+  }, 60_000);
+
+  test('the timeout recorded only in a Harbor trial result.json is retried too', () => {
+    const r = frontierShardHome(1, JSON.stringify({ exception_info: { exception_type: 'AgentSetupTimeoutError' } }), 'gstack/agents/run/jobs/hermes-opus-none__a1/t1/result.json');
+    expect(r.code, r.out).toBe(0);
+    expect(r.smokes).toBe(2);
+  }, 60_000);
+
+  test('an agent setup that never finishes: four smokes, then exit 4 and no counted run', () => {
+    const r = frontierShardHome(99, TIMEOUT);
+    expect(r.code, r.out).toBe(4);
+    expect(r.smokes).toBe(4);
+    expect(r.driver).toBe('');
+  }, 60_000);
+
+  test('a smoke failure that is not an agent setup timeout is not retried', () => {
+    const r = frontierShardHome(1, 'agents: cell hermes-opus has effort flag mismatch');
+    expect(r.code, r.out).toBe(4);
+    expect(r.smokes).toBe(1);
+    expect(r.driver).toBe('');
+  }, 60_000);
+
+  test('a timeout text only inside an installed runtime/ is not read as the smoke failing that way', () => {
+    const r = frontierShardHome(1, 'AgentSetupTimeoutError', 'gstack/agents/run/gstack/hermes/runtime/notes.log');
+    expect(r.code, r.out).toBe(4);
+    expect(r.smokes).toBe(1);
+  }, 60_000);
+
+  for (const gate of ['egress', 'canary', 'zdr'] as const) {
+    test('a timeout beside a failed ' + gate + ' check is not retried, and that report is kept', () => {
+      const report = JSON.stringify({ pass: false, reasons: ['gstack: no none-baseline request for hermes', gate + ': failed'] }, null, 2);
+      const r = frontierShardHome(1, TIMEOUT, 'install-check.log', 'printf "%s\\n" ' + JSON.stringify(report) + ' > "$out/install-check.json"');
+      expect(r.code, r.out).toBe(4);
+      expect(r.smokes).toBe(1);
+      expect(r.driver).toBe('');
+      expect(read(join(r.shard, 'smoke', 'results', 'install-check.json'))).toContain(gate + ': failed');
+    }, 60_000);
+  }
+
+  test('a timeout whose report fails only other checks is retried, and each try keeps its install-check.json', () => {
+    const report = JSON.stringify({ pass: false, reasons: ['gstack: no none-baseline request for hermes'] }, null, 2);
+    const r = frontierShardHome(1, TIMEOUT, 'install-check.log', 'printf "%s\\n" ' + JSON.stringify(report) + ' > "$out/install-check.json"');
+    expect(r.code, r.out).toBe(0);
+    expect(r.smokes).toBe(2);
+    expect(read(join(r.shard, 'smoke', 'try1.install-check.json'))).toContain('no none-baseline request');
+  }, 60_000);
+
+  test.skipIf(process.getuid?.() === 0)('smoke results that cannot be cleared end the retries on that try\'s report', () => {
+    const r = frontierShardHome(99, TIMEOUT, 'install-check.log', 'mkdir -p "$out/locked" && touch "$out/locked/f" && chmod 555 "$out/locked"');
+    chmodSync(join(r.shard, 'smoke', 'results', 'locked'), 0o755);
+    expect(r.code, r.out).toBe(4);
+    expect(r.smokes).toBe(1);
+    expect(r.out).toContain('smoke: could not clear smoke/results after try 1; no more tries');
+    expect(r.driver).toBe('');
+  }, 60_000);
+});

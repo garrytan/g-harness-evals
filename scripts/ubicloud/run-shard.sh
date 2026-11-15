@@ -397,9 +397,11 @@ pull_results() {
 # frontier-harbor shard's mirror also leaves out every proxy-capture/ directory and results/run/ (Harbor's job tree, which
 # vm-run.sh writes as records at finish(); mid-run, each finished trial's record reaches the mirror through
 # results/trials.journal.jsonl, which vm-run.sh's to-trials.ts journal appends): a full run's request bodies do
-# not fit a 2 GB Capy drive (internal-task stage 0). It also leaves out the gstack smoke's copies of gstack's own tests
-# (smoke/results/gstack/agents/run/gstack/<host>/runtime/root/.local/share/gstack/test, key-shaped test text); the rest
-# of that run tree, its Harbor jobs included, is still mirrored and scanned. The pull
+# not fit a 2 GB Capy drive (internal-task stage 0). It also leaves out each host's installed gstack runtime from the gstack
+# check (smoke/results/gstack/agents/run/gstack/<host>/runtime, and the same under results/gstack/, where an
+# --install-check shard's own check writes it): about 3.5 GB per shard, node_modules hard links the drive mount refuses,
+# and gstack's own key-shaped test text. The rest of that run tree, each host's home and the Harbor jobs included, is
+# still mirrored and scanned. The pull
 # into <dest> still brings them back, and so does the teardown pull.
 key_shapes='sk-''ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}|sk-''(proj|svcacct|admin)-[A-Za-z0-9_-]{16,}'
 # cursor_scan <dir>: how many files under <dir> hold the literal CURSOR_API_KEY value (whole, first 16, last 12
@@ -435,7 +437,7 @@ mirror() {
   [ -n "$replicate_to" ] || return 0
   if [ -e "$dest/CURSOR-KEY-FOUND" ]; then log "WARNING: replicate: $dest/CURSOR-KEY-FOUND exists (the Cursor key scan hit); no mirror to $replicate_to"; return 1; fi
   local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits skip=()
-  [ "$workload" != frontier-harbor ] || skip=(--exclude=proxy-capture --exclude=./results/run --exclude='./smoke/results/gstack/agents/run/gstack/*/runtime/root/.local/share/gstack/test')
+  [ "$workload" != frontier-harbor ] || skip=(--exclude=proxy-capture --exclude=./results/run --exclude='./smoke/results/gstack/agents/run/gstack/*/runtime' --exclude='./results/gstack/agents/run/gstack/*/runtime')
   rm -rf "$stage" && mkdir -p "$stage" &&
     tar -C "$dest" -cf - --exclude='./.pull*' --exclude='./results.partial-*' --exclude=./.mirror --exclude=./smoke/work/gstack-edition --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} . | tar -C "$stage" -xf - ||
     { log "WARNING: replicate: staging $dest for $to failed; the previous mirror stays"; rm -rf "$stage"; return 1; }
