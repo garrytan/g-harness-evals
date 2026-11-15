@@ -133,11 +133,14 @@ finish() {
   if [ -n "$budget_run" ]; then bun "$here/lease.ts" close --ledger "$ledger" --budget-run "$budget_run" >/dev/null 2>>"$out/run.log" || true; fi
   local ledger_args=()
   [ -z "$ledger" ] || [ ! -f "$ledger" ] || ledger_args=(--ledger "$ledger" --ledger-name "$ledger_name")
-  local published=1
-  receipts publish --run-id "$run_id" --dir "$out" --history "$lines" "${ledger_args[@]}" 2>>"$work/publish.log" || published=0
-  if [ $published -eq 0 ]; then
+  local publish_rc=0
+  receipts publish --run-id "$run_id" --dir "$out" --history "$lines" "${ledger_args[@]}" 2>>"$work/publish.log" || publish_rc=$?
+  if [ $publish_rc -ne 0 ]; then
     worst=INCOMPLETE
-    printf -- '- Receipts push failed (%s); the next run repeats this one. Check first: %s\n' "$(tail -1 "$work/publish.log" 2>/dev/null)" "the canary-receipts remote" >> "$out/alert.md"
+    local why check="the canary-receipts remote"
+    why=$(sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$work/publish.log" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1)
+    [ $publish_rc -ne 8 ] || check="free disk space on this machine"
+    printf -- '- Receipts push failed (%s); the next run repeats this one. Check first: %s\n' "${why:-no reason in publish.log}" "$check" >> "$out/alert.md"
     if [ ${#ledger_args[@]} -eq 0 ] || receipts put-lease --run-id "$run_id" "${ledger_args[@]}" 2>>"$work/publish.log"; then
       [ $locked -eq 0 ] || receipts unlock --run-id "$run_id" 2>/dev/null || true
     else

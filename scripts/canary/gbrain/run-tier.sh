@@ -147,8 +147,34 @@ run_arm() { # <arm> <lease usd>: one arm's shard; writes <out>/shards/<arm>.rc a
   echo "$rc" > "$out/shards/$arm.rc"; echo "${usd:-0}" > "$out/shards/$arm.usd"
 }
 declare -A arm_lease=()
+# stop_arms <signal>: a TERM or INT while the arms run at once sends TERM to every process under each arm's subshell, not
+# only to its shard: scripts/run-shard.sh runs bun runner/run.ts in the foreground, and its own TERM trap acts only once
+# that runner exits, so the runner has to be signalled itself. It waits up to 10 minutes, kills whatever still runs and
+# exits non-zero, so no shard or runner keeps running after the tier is stopped. It removes the tier's trials.jsonl,
+# which may hold only some of the shards' rows, so run.sh settles the tier at its whole reservation instead of $0 or a
+# subtotal. The handler stays set until every arm's rows are in the tier's trials.jsonl.
+running() { case $(ps -o stat= -p "$1" 2>/dev/null) in ""|Z*) return 1 ;; esac; }
+proc_tree() { local p; for p in "$@"; do echo "$p"; proc_tree $(pgrep -P "$p" || true); done; }
+stop_arms() {
+  trap '' TERM INT
+  log "stopped by SIG$1: stopping the arm shards"
+  local p procs=() alive=() waited=0
+  procs=($(proc_tree "${pids[@]}"))
+  kill -TERM "${procs[@]}" 2>/dev/null || true
+  for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done
+  for p in ${procs[@]+"${procs[@]}"}; do
+    while [ "$waited" -lt 600 ] && running "$p"; do sleep 1; waited=$(( waited + 1 )); done
+    ! running "$p" || alive+=("$p")
+  done
+  if [ ${#alive[@]} -gt 0 ]; then kill -KILL "${alive[@]}" 2>/dev/null || true; log "WARNING: shard processes ${alive[*]} still ran after 10 minutes; killed them"; else log "the arm shards stopped"; fi
+  rm -f "$out/trials.jsonl"; log "removed the tier's trials.jsonl: the shards may have spent money it does not record, so the lease charges the whole reservation"
+  if [ "$1" = INT ]; then exit 130; fi
+  exit 143
+}
 if [ "$together" -eq 1 ]; then
   pids=()
+  trap 'stop_arms TERM' TERM
+  trap 'stop_arms INT' INT
   for i in "${!run_arms[@]}"; do
     arm_lease[${run_arms[$i]}]=${shares[$i]}
     log "shard ${run_arms[$i]}: \$${shares[$i]} of \$$lease, run at the same time as the other arms"
@@ -185,6 +211,7 @@ for arm in "${run_arms[@]}"; do
   if [ "$rc" -eq 3 ]; then lease_stop=1; [ "$together" -eq 1 ] || break; continue; fi
   if [ "$rc" -ne 0 ]; then [ "$infra_rc" -ne 0 ] || infra_rc=$rc; [ "$together" -eq 1 ] || break; fi
 done
+trap - TERM INT
 [ "$lease_stop" -eq 0 ] || end 20
 [ "$infra_rc" -eq 0 ] || end "$infra_rc"
 end 0

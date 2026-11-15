@@ -17,7 +17,7 @@ Status: written 2026-10-30 (America/Los_Angeles), before any trial of this run. 
 |---|---|---|---|---|---|---|---|
 | `laneb-tb2-replication-2026-10` | [prereg-tb2.json](prereg-tb2.json) | Lane B's 20 TB2 tasks | Haiku 5.5 | none, gstack, placebo | 3 | 180 | $11.00 |
 
-- **Tasks:** the 20 tasks of Lane B's pinned `quick/laneb/tasks/final.json` (sha256 `1b424348...` in pin.json), in its order.
+- **Tasks:** the 20 tasks of Lane B's pinned `quick/laneb/tasks/final.json` (sha256 `1b424348...` in [pin.json](../../../scripts/gstack-laneb/pin.json)), in its order.
   - Terminal-Bench 2 at commit `69671fba`.
   - The materializer checks each task's source digest against the pinned `tasks.json` (`d3224e22...`).
 - **Agent side:** Lane B's pinned agent at gstack-evals `443d582c` (tag `laneb-quick-2-runner`), unchanged: the agent, the prompt wrapper, the skill map (`/investigate` invoked by slash command on every task, as in quick look 2), Claude Code 2.1.312, claude-agent-sdk 0.2.174, Harbor `f3a5a923` and its `verifier_timeout_multiplier`.

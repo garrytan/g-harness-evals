@@ -1,4 +1,4 @@
-"""Harbor 0.24.0 installed-agent classes for the frontier Harbor path (HARN-50 plan, Implementation step 2).
+"""Harbor 0.24.0 installed-agent classes for the frontier Harbor path (internal-task plan, Implementation step 2).
 
 Claude Code, Codex, Hermes and OpenClaw wrap our own pinned adapter settings; Pi and mini-swe-agent are Harbor's stock
 classes with overrides. frontier_settings.py renders every value; this file only plugs them into Harbor.
@@ -70,7 +70,7 @@ def bind_slot(broker_url: str, trial: str, harness: str, model: str, cell: str |
 class _Frontier:
     """Mixin: per-trial slot from the broker, the rendered environment, harness_settings.json, no host environment.
 
-    The kwarg delivery (delivery.py, HARN-61) sets the cell's delivery arm; without it nothing here changes. With it the
+    The kwarg delivery (delivery.py, internal-task) sets the cell's delivery arm; without it nothing here changes. With it the
     arm's files and commands run at the end of setup, its health checks run at setup or right before the agent starts
     (LAUNCH, a substring of the class's agent command), and a failed check stops the trial before the agent starts."""
 
@@ -158,7 +158,7 @@ class _Frontier:
         return None
 
     async def _frontier_gstack_install(self, environment: BaseEnvironment) -> None:
-        """A gstack cell's arm (HARN-62): the none arm is checked clean; any other arm gets the built runtime and tree
+        """A gstack cell's arm (internal-task): the none arm is checked clean; any other arm gets the built runtime and tree
         uploaded, handed to the agent user, and every file checked against the lock. A failure fails the trial at agent
         setup, so it is recorded as an infra_error (to-trials.ts infra class gstack_contaminated when the none arm's
         container held gstack, else gstack_install_failed), never scored."""

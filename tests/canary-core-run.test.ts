@@ -4,8 +4,10 @@
 // allowlist.
 //
 // Value: protects=the orchestrator's order (lock, releases, state, T0, T1, T2, T3), its exit codes (0 OK/WATCH/REGRESSION,
-// 10 BROKEN, 30 INCOMPLETE), the alert block, the history lines and the receipts branch; fails_when=a failure path exits
-// silently, a stub crash is not INCOMPLETE, a planted regression does not reach T3, or the rig check is skipped;
+// 10 BROKEN, 30 INCOMPLETE), the alert block, the history lines, the receipts branch and the reason a failed receipts push
+// gives in the alert; fails_when=a failure path exits silently, a stub crash is not INCOMPLETE, a planted regression does
+// not reach T3, the rig check is skipped, or a failed push shows a blank or colour-coded reason ("()" on
+// baseline-2026-11-13-a3) instead of the last line that says what went wrong;
 // seam=stub suites and a bare remote; no_claim=the real rigs (scripts/canary/gstack and gbrain have their own tests).
 import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
@@ -278,6 +280,34 @@ describe('run.sh end to end with stub suites', () => {
     expect(again.code).toBe(0);
     expect(calls(r, 'again')).toBe('T1 opus,sol prev,new 1\n');
     expect(committedUsd(r)).toBeCloseTo(8, 6);
+  }, 300_000);
+
+  test('a failed receipts push names its reason in the alert: the last non-blank line of the publish log, colour codes stripped', () => {
+    const r = rig();
+    expect(baseline(r).code).toBe(0);
+    const dir = join(r.repo, 'scripts/canary');
+    copyFileSync(join(dir, 'receipts.sh'), join(dir, 'receipts-real.sh'));
+    writeFileSync(join(dir, 'receipts.sh'), '#!/usr/bin/env bash\nif [ "$1" = publish ]; then printf \'\\033[31mreceipts: stub publish refused\\033[0m\\n\\n  \\n\' >&2; exit 4; fi\nexec bash "$(dirname "$0")/receipts-real.sh" "$@"\n');
+    const n = nightly(r, 'blank', '2026-11-10T09:30:00Z');
+    expect(n.code).toBe(30);
+    expect(block(n.out)).toContain('- Receipts push failed (receipts: stub publish refused); the next run repeats this one. Check first: the canary-receipts remote\n');
+    expect(r.tree()).toContain('leases/canary-2026-11.sqlite');
+    expect(r.tree()).not.toContain('lock.json');
+  }, 300_000);
+
+  test('a run dir that cannot be staged for publishing says so and points at disk space; the lease still lands and the lock goes', () => {
+    const r = rig();
+    expect(baseline(r).code).toBe(0);
+    const bin = join(r.base, 'stub-cp-bin');
+    mkdirSync(bin, { recursive: true });
+    copyFileSync(join(FIX, 'stub-cp.sh'), join(bin, 'cp'));
+    chmodSync(join(bin, 'cp'), 0o755);
+    const n = nightly(r, 'full', '2026-11-10T09:30:00Z', { PATH: `${bin}:${r.env.PATH}`, STUB_CP_DIR: r.base, STUB_REAL_CP: Bun.which('cp', { PATH: r.env.PATH })!, STUB_CP_MODE: 'nospace' });
+    expect(n.code).toBe(30);
+    expect(block(n.out)).toMatch(/- Receipts push failed \(receipts: could not stage the run dir for publishing: cp: error writing '.*verdict\.json': No space left on device; check free disk space under \S+\); the next run repeats this one\. Check first: free disk space on this machine\n/);
+    expect(r.tree()).toContain('leases/canary-2026-11.sqlite');
+    expect(r.tree()).not.toContain('lock.json');
+    expect(r.tree().some((p) => p.startsWith('runs/full/'))).toBe(false);
   }, 300_000);
 
   test('when the lease cannot be pushed either, the run keeps its lock, and a later run stops on the stale lock with no tier until it is reconciled', () => {

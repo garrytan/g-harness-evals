@@ -1,4 +1,4 @@
-"""Settings for the frontier Harbor path (HARN-50), with no Harbor import, so keyless tests can render them.
+"""Settings for the frontier Harbor path (internal-task), with no Harbor import, so keyless tests can render them.
 
 agents.py turns these into Harbor installed-agent classes. For one harness, one cell model and one trial endpoint,
 render() returns what the agent sets in the task container (environment, Harbor options, config overlays) and the
@@ -29,7 +29,7 @@ CLAUDE_MODEL_VARS = (
     "CLAUDE_CODE_BG_CLASSIFIER_MODEL",
 )
 OPENCLAW_ANTHROPIC_HOUSEKEEPING = "claude-haiku-5-5"
-# Web search and web fetch are off in every codegen cell (Captain ruling 2026-11-09, after HARN-63). Hermes v2026.9.24:
+# Web search and web fetch are off in every codegen cell (Captain ruling 2026-11-09, after internal-task). Hermes v2026.9.24:
 # web.keyless_fallback false turns off the keyless Exa, Parallel, Firecrawl and Keenable ring behind web_search and
 # web_extract (plugins/web/keyless_mcp.py; website/docs/user-guide/features/web-search.md, which also turns keyless_rescue
 # off), and agent.disabled_toolsets removes the web toolset (web_search, web_extract) and the browser toolset at tool
@@ -680,7 +680,7 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
             tools={"hosted_web_search": "off: --disallowedTools WebSearch,WebFetch and settings permissions.deny [WebSearch, WebFetch], as our pin",
                    "disabled": ["WebSearch", "WebFetch"], "enabled": "every other built-in Claude Code tool; no MCP server"},
             effort={"requested": EFFORT, "setting": "--effort high (CLAUDE_CODE_EFFORT_LEVEL=high); on Opus 5.5 and Fable 5.1 thinking is adaptive and always on, so the canonical request is thinking adaptive plus output_config.effort high, checked on captured requests"},
-            housekeeping_model={"model": model, "note": "every model variable the CLI reads (ANTHROPIC_SMALL_FAST_MODEL included) names the cell model, as our adapter.sh pins it; a declared deviation from the shipped housekeeping default (HARN-1 exception, 2026-11-01). On Fable cells the housekeeping calls go to Fable."},
+            housekeeping_model={"model": model, "note": "every model variable the CLI reads (ANTHROPIC_SMALL_FAST_MODEL included) names the cell model, as our adapter.sh pins it; a declared deviation from the shipped housekeeping default (internal-task exception, 2026-11-01). On Fable cells the housekeeping calls go to Fable."},
             differences_from_pin=[
                 "runs through Harbor's ClaudeCode class (claude --verbose --output-format=stream-json --print, Harbor's settings file and session dir), not adapter.sh",
                 "installed with Harbor's bootstrap.sh route (native binary) instead of npm in our image; the binary's sha256 is checked against the pinned %s..." % hp["native_binary_sha256"][:8],
@@ -706,7 +706,7 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
             ])
     if harness == "hermes":
         compaction = {"threshold": "Hermes default: compression.threshold 0.50 with threshold_tokens 256,000, so compaction starts at 256,000 prompt tokens on these 1M windows", "set_by": "shipped default"}
-        tools = {"hosted_web_search": "off: web.keyless_fallback false and agent.disabled_toolsets [web, browser]. Hermes v2026.9.24's web_search and web_extract need no key: with no backend configured they use a keyless ring of public free tiers (Exa, Parallel, Firecrawl, Keenable; plugins/web/keyless_mcp.py, web.keyless_fallback default true), which HARN-63 saw return a task's solve.sh and test file", "disabled": ["web_search", "web_extract", "browser toolset"], "enabled": "toolset hermes-cli (Hermes default) less the web and browser toolsets"}
+        tools = {"hosted_web_search": "off: web.keyless_fallback false and agent.disabled_toolsets [web, browser]. Hermes v2026.9.24's web_search and web_extract need no key: with no backend configured they use a keyless ring of public free tiers (Exa, Parallel, Firecrawl, Keenable; plugins/web/keyless_mcp.py, web.keyless_fallback default true), which internal-task saw return a task's solve.sh and test file", "disabled": ["web_search", "web_extract", "browser toolset"], "enabled": "toolset hermes-cli (Hermes default) less the web and browser toolsets"}
         harbor_run = [
                     "runs Harbor's Hermes command (hermes --yolo chat -q <instruction> -Q --model --provider) instead of adapter.sh's hermes chat --query-file --oneshot",
                     "installed from the pinned commit's scripts/install.sh instead of our image's uv install of the source tree",
@@ -971,7 +971,7 @@ def gstack_verify_script(m: dict[str, Any]) -> str:
 
 def gstack_root_script(m: dict[str, Any], user: str | int | None) -> str:
     """Bash, run as root after the upload: the uploaded tree to the agent user, and Bun on every shell's PATH as a user's
-    install leaves it (the GSTA-135 overlay's /etc/profile.d line, here a /usr/local/bin link that login shells keep)."""
+    install leaves it (the internal-task overlay's /etc/profile.d line, here a /usr/local/bin link that login shells keep)."""
     lay = m["layout"]
     owned = [lay["checkout"], lay["home"] + "/.bun", lay["state"], lay["tree"], lay["skills_dir"]]
     chown = f"chown -R {shlex.quote(str(user))} " + " ".join(shlex.quote(p) for p in sorted(set(owned))) + " && " if user not in (None, "root", 0, "0") else ""

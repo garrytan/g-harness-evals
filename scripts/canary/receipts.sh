@@ -13,7 +13,8 @@
 #   scripts/canary/receipts.sh publish --run-id <id> --dir <run dir> --history <lines.jsonl> [--ledger <file> --ledger-name <name>]
 #       strips proxy-capture bodies (a sha256 manifest stays), refuses capture-shaped bodies elsewhere and any token pattern
 #       (exit 4), runs gstack-pregate sealed when it is installed (exit 4 on a finding), then commits runs/<id>/, the history
-#       lines and the ledger, drops this run's lock and pushes. Exit 5 when runs/<id>/ already exists.
+#       lines and the ledger, drops this run's lock and pushes. Exit 5 when runs/<id>/ already exists. The run dir is staged
+#       with hard links (prepare only reads it), with a plain copy of whatever could not be linked; exit 8 when staging fails.
 #
 # The branch is created as an orphan when it is missing. Every command takes --remote <url> (default: CANARY_RECEIPTS_REMOTE,
 # else https://github.com/garrytan/harness-evals.git). A push that loses a race is retried from a fresh clone, three times.
@@ -129,10 +130,18 @@ case $cmd in
   publish)
     [ -n "$run_id" ] && [ -d "$dir" ] && [ -f "$history" ] || { say "publish needs --run-id, --dir <run dir> and --history <file>"; exit 2; }
     [ -z "$ledger" ] || [ -n "$ledger_name" ] || { say "--ledger needs --ledger-name"; exit 2; }
-    mkdir -p "$work/in/runs/$run_id" "$work/in/extra"
-    cp -R "$dir/." "$work/in/runs/$run_id/"
-    cp "$history" "$work/in/extra/history.add"
-    [ -z "$ledger" ] || cp "$ledger" "$work/in/extra/$ledger_name"
+    # A gbrain baseline's run dir is about 10 GB, most of it trial trees that prepare leaves out, so a full copy can fill the
+    # disk (baseline-2026-11-13-a3). Hard links cost no space; whatever cannot be linked (another filesystem, or a file
+    # fs.protected_hardlinks refuses) is copied.
+    stage=$work/in/runs/$run_id
+    mkdir -p "$stage" "$work/in/extra"
+    if ! cp -al "$dir/." "$stage/" 2> "$work/stage.err"; then
+      say "could not hard-link every file of the run dir ($(grep -v '^[[:space:]]*$' "$work/stage.err" | tail -1)); copying the rest"
+      cp -R --update=none "$dir/." "$stage/" 2> "$work/stage.err" \
+        || { say "could not stage the run dir for publishing: $(grep -v '^[[:space:]]*$' "$work/stage.err" | tail -1); check free disk space under $(dirname "$work")"; exit 8; }
+    fi
+    { cp "$history" "$work/in/extra/history.add" && { [ -z "$ledger" ] || cp "$ledger" "$work/in/extra/$ledger_name"; }; } 2> "$work/stage.err" \
+      || { say "could not stage the history and ledger for publishing: $(grep -v '^[[:space:]]*$' "$work/stage.err" | tail -1); check free disk space under $(dirname "$work")"; exit 8; }
     bun "$here/receipts.ts" prepare --src "$work/in" --dst "$work/out" >/dev/null || { say "refused before push: see the lines above"; exit 4; }
     [ ! -f "$work/out/capture-manifest.json" ] || mv "$work/out/capture-manifest.json" "$work/out/runs/$run_id/capture-manifest.json"
     [ ! -f "$work/out/omitted-manifest.json" ] || mv "$work/out/omitted-manifest.json" "$work/out/runs/$run_id/omitted-manifest.json"
@@ -159,6 +168,6 @@ case $cmd in
     done
     exit 1 ;;
   *)
-    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2 ;;
 esac

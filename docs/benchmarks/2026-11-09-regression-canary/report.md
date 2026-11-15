@@ -20,7 +20,7 @@
 | baseline-2026-11-14-a4 | gstack | 612 | finished | re-baseline |
 
 - **Releases:** gstack 1.97.0.0 (e75a69c9) against 1.98.0.0 (91009308); gbrain 0.60.593.0 (27f8b9d6) against 0.60.613.0 (98dda48f).
-- **Rig:** the re-baselines (a3 and a4) ran from commit cb982929 (tag canary-rig-3), the canary_rig the preregistration names. The nightly will run from that commit too once it is switched on, because run.sh refuses any other. Baseline 1 ran from the rig amendment 1 named, 338406c6. The gstack suite's parallel cell lanes are in cb982929 but not yet on main.
+- **Rig:** the re-baselines (a3 and a4) ran from commit cb982929 (tag canary-rig-3), the canary_rig the preregistration named then. Baseline 1 ran from the rig amendment 1 named, 338406c6. Amendment 5 moves canary_rig to rig 4 (5462712f, built on cb982929 with four fixes to the canary's plumbing), so the nightly will run from rig 4 once it is switched on, because run.sh refuses any other commit. The gstack suite's parallel cell lanes are in both rig commits but not yet on main.
 - **Models and harnesses:** Claude Opus 5.5 in Claude Code 2.1.312 and GPT-6.1 Sol in Codex 0.165.0, plus particle-1 in Hermes Agent on gbrain, reported but never able to raise a flag.
 - **Tasks:** 30 Terminal-Bench 2.1 tasks per model for gstack; 12 (Opus) and 14 (Sol) task set v0.3 dev tasks for gbrain; plus a few harder "digest" tasks reported on their own. Every task is one the model had passed every time before, so a drop stands out.
 - **Every task ran 3 attempts per arm** (T2 at 3 attempts), on one Ubicloud VM per suite run.
@@ -144,7 +144,7 @@ A routine gstack T1 probe is leased at $10 and a gbrain one at $20; a monthly T2
 - **Flip rate.** For each arm, the share of tasks whose pass or fail differs between two attempts, averaged over the three attempt pairs. The release flip rate is the mean of the previous and new arms.
 - **Measured false alarms.** The screen rules applied to every pair of attempts inside one release arm (3 pairs, 2 arms, 2 models: 12 per suite), where nothing changed.
 - **Modelled rates.** scripts/canary/simulate.ts at the measured flip rate, 10,000 seeded draws: how often one screen flags an unchanged release, how often the screen and the confirming rerun both do, and how often a 30-point drop is confirmed.
-- **Rebuild.** `bun scripts/canary/baseline-report.ts --suite <gstack|gbrain> --trials <T2 trials.jsonl> --prev-sha <sha> --prev-version <v> --new-sha <sha> --new-version <v> --draws 10000 --out <file>`, with the release shas above. Run it from the rig commit (cb982929) for the paired rule and from commit b3a8523c, where the script first appeared, for the rule as first frozen.
+- **Rebuild.** `bun scripts/canary/baseline-report.ts --suite <gstack|gbrain> --trials <T2 trials.jsonl> --prev-sha <sha> --prev-version <v> --new-sha <sha> --new-version <v> --draws 10000 --out <file>`, with the release shas above. Run it from the baselines' rig commit (cb982929) for the paired rule and from commit b3a8523c, where the script first appeared, for the rule as first frozen.
 
 </details>
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run one shard of a frontier Harbor run (HARN-50): Harbor 0.24.0 with the agent classes of agents.py on the 52 pinned
+# Run one shard of a frontier Harbor run (internal-task): Harbor 0.24.0 with the agent classes of agents.py on the 52 pinned
 # Terminal-Bench 2.1 tasks, every model call metered by our proxy under the shard's lease, every task container behind
 # the egress blocklist. Runs on a Ubicloud VM (one standard-16 per shard) or on any Linux machine with Docker and
 # nftables; scripts/frontier-harbor/install-check.sh runs it keyless against a fake upstream.
@@ -27,7 +27,7 @@
 # refuses it unless --done or --own holds a record of the shard from an earlier rerun stage, or --no-earlier-rerun says
 # that stage ran none of the shard's trials.
 #
-# A preregistration with repo_tasks (plan.ts, HARN-61) runs gstack-native repo tasks with a delivery arm per cell:
+# A preregistration with repo_tasks (plan.ts, internal-task) runs gstack-native repo tasks with a delivery arm per cell:
 # materialize.ts repo copies the shard's tasks of that split into the run root (with its kinds.json for the delivery
 # kwarg) in place of Terminal-Bench 2.1, and --tb21 is not needed.
 #
@@ -219,7 +219,7 @@ fi
 # (step 1b) and uploaded into its own trials' containers only, and a release gstack arm installs from its tar into the task
 # container at run time
 (cd "$repo" && "${safe_env[@]}" bun scripts/v04/clean-arm-audit.ts preflight --out "$out/preflight-clean-arm.json" --host-only 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "clean-arm preflight: a Capy drive or a gstack install is reachable on this machine ($out/preflight-clean-arm.json); nothing ran"; exit 2; }
-# 1b. the gstack arms of the shard (HARN-62), before any lease: built in the docker builder at the preregistration's
+# 1b. the gstack arms of the shard (internal-task), before any lease: built in the docker builder at the preregistration's
 # gstack_pin, each lock checked against the preregistered one (HE-FRONTIER-009) and every gstack refusal passed through
 # with its arm (HE-FRONTIER-008); agents.py installs each cell from <run>/gstack/cells/<cell>.json. A shard with no gstack
 # cell builds nothing.

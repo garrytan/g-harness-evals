@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The trial slot broker of the frontier Harbor path (HARN-50). vm-run.sh runs it on 127.0.0.1 beside the metering proxy;
+// The trial slot broker of the frontier Harbor path (internal-task). vm-run.sh runs it on 127.0.0.1 beside the metering proxy;
 // it is the only process besides the proxy that holds the proxy's control token (SHOOTOUT_PROXY_CONTROL_TOKEN, from its
 // environment). At agent setup each class in agents.py posts its trial here:
 //

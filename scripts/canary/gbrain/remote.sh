@@ -74,11 +74,15 @@ for k in ${keys[@]+"${keys[@]}"}; do pass+=(--pass "$k"); done
 started=$(date +%s)
 jq -n --arg vm "$vm" --arg owner "$UBI_OWNER" --argjson ttl "$ttl" --arg commit "$commit" --arg entry "$entry" --arg args "${rest[*]+${rest[*]}}" --arg keys "${keys[*]+${keys[*]}}" \
   --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{vm: $vm, owner: $owner, size: "standard-16", ttl_hours: $ttl, commit: $commit, entry: $entry, args: $args, keys: $keys, started_at: $at}' > "$out/remote.json"
-# A VM that never leaves "waiting for capacity" ran nothing, so the next location is tried; when none has room, an empty
-# trials.jsonl records that no trial ran and the lease settles to $0.
+# A VM that never leaves "waiting for capacity" ran nothing, so the next location is tried, but only when the runner
+# confirmed that VM is gone (UBICLOUD: left=0, no "failed to destroy" or "cleanup not confirmed"); when none has room, an
+# empty trials.jsonl records that no trial ran and the lease settles to $0. Every VM name a try used or reported goes to
+# $scratch/vms, and each one still listed at the end is taken down.
 locations=("${UBI_LOCATION:-eu-central-h1}"); for l in eu-central-h1 eu-north-h1 us-east-a2; do [[ " ${locations[*]} " == *" $l "* ]] || locations+=("$l"); done
 no_room=0
+: > "$scratch/vms"
 for loc in "${locations[@]}"; do
+  echo "$vm" >> "$scratch/vms"
   log "VM $vm in $loc (TTL $ttl h) for $entry at $commit; keys: ${keys[*]+${keys[*]}}"
   jq --arg vm "$vm" --arg loc "$loc" '. + {vm: $vm, location: $loc}' "$out/remote.json" > "$out/remote.json.tmp" && mv "$out/remote.json.tmp" "$out/remote.json"
   ( while sleep 600; do bash "$runner" pull "$vm" canary/out "$out/vm-replica" || true; done ) > /dev/null 2>&1 &
@@ -89,8 +93,10 @@ for loc in "${locations[@]}"; do
   set -e
   kill "$rep_pid" 2>/dev/null || true; rep_pid=""
   cat "$scratch/try.log" >> "$out/lane.log"
+  grep -o 'UBICLOUD: left=[^ ]* owner=[^ ]* vm=[^ ]*' "$scratch/try.log" | sed 's/.* vm=//' >> "$scratch/vms" || true
   no_room=0
-  if [ "$rc" -ne 0 ] && [ ! -d "$out/vm/out" ] && grep -q 'did not reach running in .*waiting for capacity' "$scratch/try.log" && ! grep -q 'failed to destroy' "$scratch/try.log"; then
+  if [ "$rc" -ne 0 ] && [ ! -d "$out/vm/out" ] && grep -q 'did not reach running in .*waiting for capacity' "$scratch/try.log" \
+    && grep -q 'UBICLOUD: left=0 ' "$scratch/try.log" && ! grep -Eq 'UBICLOUD: left=([^0 ]|0[^ ])|failed to destroy|cleanup not confirmed' "$scratch/try.log"; then
     no_room=1; log "no capacity in $loc; nothing ran"
     vm="ubirun-$owner-$(date +%s)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' \n')-t$ttl"
     continue
@@ -98,11 +104,25 @@ for loc in "${locations[@]}"; do
   break
 done
 if [ "$no_room" -eq 1 ] && [ "$entry" = run-tier ] && [ ! -e "$out/trials.jsonl" ]; then : > "$out/trials.jsonl"; log "no location had capacity; no trial ran (empty trials.jsonl)"; fi
-[ ! -d "$out/vm/out" ] || cp -a "$out/vm/out/." "$out/"
-if bash "$runner" list --mine 2>/dev/null | grep -qF "$vm"; then log "VM $vm is still listed; destroying it"; bash "$runner" down "$vm" >> "$out/lane.log" 2>&1 || log "WARNING: down $vm failed; run: UBI_OWNER=$UBI_OWNER $runner down $vm"; fi
-left=$(bash "$runner" list --mine 2>/dev/null | grep -cF "$vm" || true)
+if [ -d "$out/vm/out" ] && ! cp -a "$out/vm/out/." "$out/" 2>> "$out/lane.log"; then
+  rm -f "$out/trials.jsonl"; [ "$rc" -ne 0 ] || rc=3
+  log "WARNING: copying the results back from $out/vm/out failed (lane.log); removed trials.jsonl so the lease charges the whole reservation; the pulled results stay in $out/vm/out"
+fi
+names=$(sort -u "$scratch/vms")
+left=0
+if listed=$(bash "$runner" list --mine 2>/dev/null); then
+  listed=$(awk '{print $2}' <<<"$listed")
+  for name in $names; do
+    grep -qxF "$name" <<<"$listed" || continue
+    log "VM $name is still listed; destroying it"
+    bash "$runner" down "$name" >> "$out/lane.log" 2>&1 || { left=$(( left + 1 )); log "WARNING: down $name failed; run: UBI_OWNER=$UBI_OWNER bash $runner down $name"; }
+  done
+else
+  left=null
+  log "WARNING: could not list VMs to check that $(echo $names) are gone; run: UBI_OWNER=$UBI_OWNER bash $runner list --mine"
+fi
 minutes=$(( ($(date +%s) - started + 59) / 60 ))
 jq --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson rc "$rc" --argjson min "$minutes" --argjson left "${left:-0}" \
   '. + {finished_at: $at, exit: $rc, vm_minutes: $min, vm_left: $left, vm_usd: (($min * 0.00831 + $min * 3 / (30 * 24 * 60)) * 10000 | round / 10000)}' "$out/remote.json" > "$out/remote.json.tmp" && mv "$out/remote.json.tmp" "$out/remote.json"
-log "$entry exited $rc after $minutes min; VM left: ${left:-0}; results in $out"
+log "$entry exited $rc after $minutes min; VM left: ${left/null/unknown}; results in $out"
 exit "$rc"
