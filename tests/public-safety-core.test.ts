@@ -243,7 +243,7 @@ test('classes refuse by default: unclassified and denied paths, formats a class 
   expect(text.includes('/home/')).toBe(false);
   const codes = JSON.parse(readFileSync(join(GATE, 'rules.json'), 'utf8')).codes;
   const allow = loadAllow();
-  expect(allow.map((e) => e.code + ' ' + e.path)).toEqual(['PS-GITLEAKS tests/dsh-adapter.test.ts']);
+  expect(allow.map((e) => e.code + ' ' + e.path)).toEqual(['PS-GITLEAKS tests/dsh-adapter.test.ts', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check-first-run.json', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check.json']);
   for (const e of allow) {
     expect(codes[e.code].allow).toBe(true);
     expect(blobId(readFileSync(join(ROOT, e.path)))).toBe(e.blob);
