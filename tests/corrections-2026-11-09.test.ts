@@ -69,7 +69,7 @@ describe('cross-member recall sizing', () => {
     const r = bun(['scripts/corrections/gbrain-cross-member-recall.ts', '--out', out]);
     expect(r.status).toBe(0);
     const cells = (JSON.parse(readFileSync(join(out, 'gbrain-sizing.json'), 'utf8')) as { cells: Array<{ run: string; n: number; affected: number; affected_failed: number }> }).cells
-      .filter((c) => c.run !== '2026-11-10-harness-zero-h2h-recall-rerun');
+      .filter((c) => c.run !== '2026-11-10-harness-zero-h2h-recall-rerun' && c.run < '2026-11-14');
     const sum = (rows: typeof cells, k: 'n' | 'affected' | 'affected_failed') => rows.reduce((s, c) => s + c[k], 0);
     expect([sum(cells, 'n'), sum(cells, 'affected'), sum(cells, 'affected_failed')]).toEqual([2230, 48, 29]);
     const h2h = cells.filter((c) => c.run === '2026-11-06-harness-zero-h2h');

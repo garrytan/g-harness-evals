@@ -288,7 +288,7 @@ describe('the audit', () => {
     const id = 'matrix-mu-2026-11/claude-code-opus-none-mu-v03-dev/sc-02-north-team-two-asks/r2';
     writeFileSync(join(dir, 'grader-audit-overrides.jsonl'), JSON.stringify({ trial_id: id, verdict: 'real_failure', reason: 'It answered only one of the two asks.', by: 'a maintainer' }) + '\n');
     const r = await runAudit({ repoRoot: tmp, runDir: dir, transport: fake((p) => record(p, p.trial_id === id ? 'grader_mistake' : 'real_failure')), cacheDir: join(dir, 'cache') });
-    expect(r.markdown).toContain('1 sampled trial was reread by a person');
+    expect(r.markdown).toContain('1 sampled trial was reread by a maintainer, whose verdict counts.');
     expect(r.markdown).toContain('**Reread by a maintainer: real failure.** It answered only one of the two asks. (The reader said grader mistake.)');
     writeFileSync(join(dir, 'grader-audit-overrides.jsonl'), JSON.stringify({ trial_id: 'not/in/the/sample', verdict: 'real_failure', reason: 'x', by: 'y' }) + '\n');
     await expect(runAudit({ repoRoot: tmp, runDir: dir, transport: fake((p) => record(p)), cacheDir: join(dir, 'cache') })).rejects.toThrow(/not in the sample/);

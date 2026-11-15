@@ -1,0 +1,20 @@
+#!/bin/sh
+# gbrain hook launcher v1, written by gbrain setup (#8424); gbrain setup rewrites it.
+# Bun reads bunfig.toml and .env from the working directory before gbrain runs,
+# so hooks start gbrain from this directory, which holds only this file, and
+# pass the session directory on in GBRAIN_HOOK_CWD.
+GBRAIN_HOOK_CWD=$PWD
+export GBRAIN_HOOK_CWD
+case $0 in
+  /*/gbrain-hook) d=${0%/*} ;;
+  *) echo "gbrain hook launcher: run it by its absolute path, not $0" >&2; exit 1 ;;
+esac
+cd "$d" || exit 1
+for f in * .*; do
+  case $f in .|..|gbrain-hook) continue ;; esac
+  if [ -e "$f" ] || [ -L "$f" ]; then
+    echo "gbrain hook launcher: refused: $d holds $f, which gbrain did not write and Bun would read. Remove it, then run: gbrain doctor --only harness_wiring" >&2
+    exit 1
+  fi
+done
+exec "$@"

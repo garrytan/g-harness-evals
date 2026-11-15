@@ -1,0 +1,27 @@
+{
+  "run": "2026-11-14-shared-bot-scope",
+  "about": "The shared-bot scope run: per-cell exposure, answers, refused reads and cost, and the preregistered paired comparisons for gbrain's two scoping fixes (the refusal of unbound reads and the installer's member keys, unlabelled and labelled), from the stored evidence of every scored trial.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/shared-bot-scope.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/shared-bot-scope.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged trial list and per-shard receipts (results/trials.jsonl, manifest.json and each shard's manifest, run-summary, ledger and proxy usage)",
+      "reason": "They were written by the run itself and merged from each VM's results; verify uses them as the run's receipts."
+    },
+    {
+      "what": "The uncounted smokes (smoke/trials.jsonl and each shard's <shard>.smoke.* and <shard>.smoke-first.* files)",
+      "reason": "They are setup checks, never counted, and no analysis reads them."
+    }
+  ]
+}

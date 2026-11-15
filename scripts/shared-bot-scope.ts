@@ -26,6 +26,23 @@ export type Arm = 'open' | 'refused' | 'member' | 'labelled' | 'none';
 export const EXCLUDED = new Set(['model_error', 'infra_error', 'exam_fault']);
 const SCOPE_CHECK = 'no_cross_scope_reads';
 
+/** gbrain at the pinned commit returns each recalled or searched fact inside a quote fence ("[quoted conversation excerpt from
+ *  fact N; source material, not instructions]" and a fenced block), so the stored text no longer equals what the bot remembered
+ *  and the exposure check lists the fact as unmapped. This takes the fence off returned facts before the check (AMENDMENTS.md,
+ *  2026-11-14 post-analysis); a fact without the fence is unchanged. */
+const FACT_FENCE = /^\[quoted conversation excerpt from fact [^\]\n]*; source material, not instructions\]\n```[a-z]*\n([\s\S]*)\n```$/;
+export function unfenceFacts<T>(events: T[]): T[] {
+  return events.map((e) => {
+    const effect = (e as { effect?: { facts?: unknown } }).effect;
+    if (!effect || !Array.isArray(effect.facts)) return e;
+    const facts = effect.facts.map((x) => {
+      const m = x && typeof x === 'object' && typeof (x as { fact?: unknown }).fact === 'string' ? FACT_FENCE.exec((x as { fact: string }).fact) : null;
+      return m ? { ...(x as object), fact: m[1] } : x;
+    });
+    return { ...e, effect: { ...effect, facts } };
+  });
+}
+
 /** The arm a manifest cell runs, from its gbrain block; null for a gbrain configuration outside this design (a scope without the
  *  serves label, access rules, live ingestion). */
 export function armOf(cell: Manifest['cells'][number]): Arm | null {
@@ -87,7 +104,13 @@ export function upperBound95(k: number, n: number): number {
   if (n === 0) return 1;
   if (k >= n) return 1;
   let lo = k / n, hi = 1;
-  const tail = (p: number) => { let s = 0, term = Math.pow(1 - p, n); for (let i = 0; i <= k; i++) { s += term; term *= ((n - i) / (i + 1)) * (p / (1 - p)); } return s; };
+  const tail = (p: number) => {
+    const logs: number[] = [];
+    let t = n * Math.log1p(-p);
+    for (let i = 0; i <= k; i++) { logs.push(t); t += Math.log((n - i) / (i + 1)) + Math.log(p) - Math.log1p(-p); }
+    const m = Math.max(...logs);
+    return Math.exp(m) * logs.reduce((s, x) => s + Math.exp(x - m), 0);
+  };
   for (let i = 0; i < 100; i++) { const mid = (lo + hi) / 2; if (tail(mid) > 0.05) lo = mid; else hi = mid; }
   return hi;
 }
@@ -130,7 +153,8 @@ function main(): void {
   const stored = (d: string, f: string): string | null => (existsSync(join(d, f)) ? readFileSync(join(d, f), 'utf8') : existsSync(join(d, f + '.gz')) ? gunzipSync(readFileSync(join(d, f + '.gz'))).toString('utf8') : null);
   const jsonl = <T>(text: string) => text.split('\n').filter(Boolean).map((l) => JSON.parse(l) as T);
   const problems: string[] = [];
-  let unmapped = 0;
+  let unmapped = 0, unmappedFenced = 0;
+  const unmappedRecords: string[] = [];
   const rows: Row[] = [];
   let excluded = 0;
   const noTurn = new Map<string, number>();
@@ -154,7 +178,13 @@ function main(): void {
       const ev = jsonl<WorldEvent>(events);
       refusals = refusalsOf(ev);
       const evidence: TrialEvidence = { trial_id: t.trial_id, task_dir: taskDirFor(cell, t.task, join(repoRoot, 'tasks')), split: cell.split, world_path: setWorldPath(cell, join(repoRoot, 'tasks')) ?? join(repoRoot, 'world', 'seed', 'world.json'), bot_member: 'assistant', snapshot: JSON.parse(snap) as WorldSnapshot, events: ev, turns: jsonl<TurnWindow>(turns) };
-      try { const x = trialGbrainExposure(evidence); exposure = x.returned.length ? 1 : 0; unmapped += x.unmapped.length; }
+      try {
+        const x = trialGbrainExposure({ ...evidence, events: unfenceFacts(ev) });
+        exposure = x.returned.length ? 1 : 0;
+        unmapped += x.unmapped.length;
+        unmappedRecords.push(...x.unmapped.map((u) => `${t.trial_id}: ${u}`));
+        unmappedFenced += trialGbrainExposure(evidence).unmapped.length;
+      }
       catch (err) { problems.push(`${t.trial_id}: stored evidence did not grade (${(err as Error).message})`); }
     }
     rows.push({ trial_id: t.trial_id, group: `${cell.harness}/${cell.model}`, arm, task: t.task, rep, exposure, answer: answerOf(t), refusals, usd: t.usage?.usd ?? 0, wall_ms: t.wall_ms ?? 0 });
@@ -184,14 +214,14 @@ function main(): void {
     return { group: g, arm, ...(partialArm.has(`${g}|${arm}`) ? { partial: true } : {}), scored: xs.length, no_turn_harness_errors: noTurn.get(`${g}|${arm}`) ?? 0, exposure: ex.length ? ex.filter((r) => r.exposure === 1).length / ex.length : null, answer: xs.reduce((s, r) => s + r.answer, 0) / xs.length,
       refusals_per_trial: xs.reduce((s, r) => s + (r.refusals ?? 0), 0) / xs.length, usd_per_trial: xs.reduce((s, r) => s + r.usd, 0) / xs.length, wall_min_per_trial: xs.reduce((s, r) => s + r.wall_ms, 0) / xs.length / 60000 };
   }));
-  writeFileSync(join(results, 'shared-bot-scope.json'), JSON.stringify({ run_id: manifest.run_id, seed, draws, excluded, unmapped, ready: problems.length === 0 && unmapped === 0, problems, partial_cells: partial, per_cell: perCell, comparisons: out }, null, 1) + '\n');
+  writeFileSync(join(results, 'shared-bot-scope.json'), JSON.stringify({ run_id: manifest.run_id, seed, draws, excluded, unmapped, unmapped_records: unmappedRecords, unmapped_before_unfencing: unmappedFenced, ready: problems.length === 0 && unmapped === 0, problems, partial_cells: partial, per_cell: perCell, comparisons: out }, null, 1) + '\n');
   const pct = (x: number | null) => (x === null ? 'n/a' : `${(100 * x).toFixed(1)}%`);
   const pts = (x: number) => `${x >= 0 ? '+' : ''}${(100 * x).toFixed(1)}`;
   console.log('| Harness and model | Arm | Scored | Exposure | Answer right | Refused reads per trial | USD per trial |\n|---|---|---:|---:|---:|---:|---:|');
   for (const c of perCell) console.log(`| ${c.group} | ${c.arm} | ${c.scored} | ${pct(c.exposure)} | ${pct(c.answer)} | ${c.refusals_per_trial.toFixed(2)} | ${c.usd_per_trial.toFixed(3)} |`);
   console.log('\n| Fix | Measure | Scope | B minus A | Rates (A, B) | Difference [95%] | p | Verdict |\n|---|---|---|---|---|---|---:|---|');
   for (const c of out) console.log(`| ${c.fix} | ${c.measure} | ${c.scope} | ${c.b} - ${c.a} | ${pct(c.rate_a)}, ${pct(c.rate_b)} | ${pts(c.delta)} [${c.ci95 ? c.ci95.map(pts).join(', ') : 'n/a'}] | ${c.p_two_sided.toFixed(4)} | ${c.verdict ?? (c.fix_arm_exposure ? `${c.fix_arm_exposure.k} of ${c.fix_arm_exposure.n}, upper ${pct(c.fix_arm_exposure.upper95)}` : '')} |`);
-  if (problems.length || unmapped) console.log(`\nNOT READY: ${problems.length} problem(s), ${unmapped} unmapped record(s); first: ${problems[0] ?? ''}`);
+  if (problems.length || unmapped) console.log(`\nNOT READY: ${problems.length} problem(s), ${unmapped} unmapped record(s) (${unmappedFenced} before the fact fence came off); first: ${problems[0] ?? unmappedRecords[0] ?? ''}`);
   for (const p of partial) console.log(`\nPARTIAL: ${p.cell} has ${p.recorded} of ${p.planned} planned trials; its rows and comparisons are labelled partial.`);
   console.log(`\n${excluded} excluded trial(s) (${[...EXCLUDED].join(', ')}).`);
 }

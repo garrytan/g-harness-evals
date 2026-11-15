@@ -1,0 +1,28 @@
+# Evaluator-owned receipts are committed, with each trial's adapter.log. Harness state, workspaces, the other harness logs and
+# every gbrain key are not: member keys (tokens.json), ingest tokens and the sidecar's own token stay on the shard.
+trials/*/*/*/state/
+trials/*/*/*/workspace/
+trials/*/*/*/gbrain/*
+!trials/*/*/*/gbrain/manifest.json.gz
+trials/*/*/*/logs/*
+!trials/*/*/*/logs/adapter.log
+trials/*/*/*/trial.json
+trials/*/*/*/compose.serve.yaml
+*.sqlite-shm
+*.sqlite-wal
+# The gbrain preflights (company, member, serves-several and labelled probes) keep their manifest only, before and after
+# merge-shards.ts prefixes them with the shard name.
+preflight-gbrain-*/*
+!preflight-gbrain-*/manifest.json
+*.preflight-gbrain-*/*
+!*.preflight-gbrain-*/manifest.json
+**/tokens.json
+**/ingest-tokens.json
+**/token
+# The repository's root rule ignores *.log; these are receipts the report cites.
+!*.run.log
+!*.proxy.log
+!*.preflight.log
+!*.plan.log
+!*.run-shard.log
+!adapter.log
