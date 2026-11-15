@@ -232,6 +232,9 @@ test('classes refuse by default: unclassified and denied paths, formats a class 
   for (const p of ['weird.bin', 'random/dir/file.txt', 'Makefile']) expect(classify(p)).toEqual({ kind: 'unclassified' });
   for (const p of ['publication/scrub-table.json', 'tasks/multiuser/v0.3/heldout/t1.json', 'a/b/x.age-key', 'docs/ledger/lanes.json', '.env', 'scripts/public-export/export.ts']) expect(classify(p)).toEqual({ kind: 'denied' });
   expect(classify('tasks/multiuser/v0.3/heldout/MANIFEST.json')).toMatchObject({ content_class: 'commitments' });
+  for (const p of ['tasks/repo/gstack-delivery-v1/dev/gd-dev-review-07/verifier/trees/base.tar', 'scripts/repo-tasks/delivery/upstream/peewee-1ad1e412b9ee.tar']) expect(classify(p)).toEqual({ kind: 'class', name: 'task-upstream-tarballs', content_class: 'third-party-MIT' });
+  expect(classify('tasks/repo/gstack-delivery-v1/dev/gd-dev-review-07/verifier/verify.py')).toMatchObject({ content_class: 'task-dev' });
+  expect(classify('scripts/repo-tasks/delivery/build.ts')).toMatchObject({ content_class: 'code' });
   for (const [name, c] of Object.entries(classes.content_classes) as [string, { formats: string[]; max_bytes: number }][]) {
     expect(c.max_bytes).toBeGreaterThan(0);
     expect(c.max_bytes).toBeLessThanOrEqual(99614720);
