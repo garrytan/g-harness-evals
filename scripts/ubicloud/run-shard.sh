@@ -112,7 +112,8 @@
 #      can name a sealed path; a failed upload prints a fixed line naming that log. On the VM, scripts/run-shard.sh runs from its own copy of ~/sealed/root.
 #   5. The provider keys scripts/ubicloud/provider-keys.sh lists (ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY,
 #      OPENROUTER_API_KEY, GEMINI_API_KEY and XAI_API_KEY, each one that is set here; the run needs the first, --embedded
-#      the second, and a Particle, OpenRouter, Google or xAI cell its own, which preflight requires) are written to ~/.ubirun-env on the
+#      the second, and a Particle, OpenRouter, Google or xAI cell its own, which preflight requires; GEMINI_API_KEY only for a
+#      shard with a gemini-cli cell on Gemini CLI's native route, shard_keys in provider-keys.sh) are written to ~/.ubirun-env on the
 #      VM with umask 077 over the multiplexed SSH connection, exactly as ubi-runner.sh run --pass writes them. The
 #      launcher reads the file into the shell and deletes it before vm-shard.sh starts, so no file on the VM holds a key
 #      while the run is live; the keys live in that process's environment (the runner's own child processes inherit it)
@@ -404,7 +405,7 @@ pull_results() {
 # and gstack's own key-shaped test text. The rest of that run tree, each host's home and the Harbor jobs included, is
 # still mirrored and scanned. The pull
 # into <dest> still brings them back, and so does the teardown pull.
-key_shapes='sk-''ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}|sk-''(proj|svcacct|admin)-[A-Za-z0-9_-]{16,}|xai''-[A-Za-z0-9]{20,}|AI''za[0-9A-Za-z_-]{35}'
+key_shapes='sk-''ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}|sk-''(proj|svcacct|admin)-[A-Za-z0-9_-]{16,}|sk-''or-v1-[0-9a-f]{64}|xai''-[A-Za-z0-9]{20,}|AI''za[0-9A-Za-z_-]{35}'
 # cursor_scan <dir>: how many files under <dir> hold the literal CURSOR_API_KEY value (whole, first 16, last 12
 # characters; gzip decoded; an unreadable file counts; regular files only, like find -type f, so a FIFO such as the
 # Cursor adapter's never blocks the read), 0 when this shell has no key. Never prints the value or a path.
@@ -763,7 +764,11 @@ else
   # reaches the VM, which gets the opened plaintext and never decrypts.
   # The frontier Harbor install check is keyless: the file is written empty.
   # A Cursor shard (only ever the keyless rehearsal, step 5) gets no key either, and CURSOR_API_KEY goes to no VM.
-  { [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || for k in "${provider_keys[@]}"; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
+  # GEMINI_API_KEY goes only to a shard with a gemini-cli cell on Gemini CLI's native route (shard_keys; the route is
+  # vm-run.sh's --gemini-cli-route after --, native unless it says openrouter-fallback).
+  gemini_route=native
+  for i in "${!extra[@]}"; do [ "${extra[$i]}" != --gemini-cli-route ] || gemini_route=${extra[$((i + 1))]:-}; done
+  { [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || for k in $(shard_keys "$shard_harnesses" "$gemini_route"); do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 
   if [ "$resume" -eq 1 ]; then
     log "resume: uploading $dest/results (without harness state and workspaces) to the VM"

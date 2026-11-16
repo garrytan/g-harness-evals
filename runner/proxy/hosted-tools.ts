@@ -12,8 +12,8 @@
  *    (web_search_preview_2025_03_11, the types runner/proxy/sections.ts maps web_search_call to);
  *  - Chat Completions `web_search_options` set to anything but null;
  *  - google (Gemini generateContent): a `tools` entry holding googleSearch, googleSearchRetrieval, enterpriseWebSearch,
- *    codeExecution or urlContext (or the snake_case spelling of each), which Google runs as grounding, code execution or
- *    URL fetches;
+ *    codeExecution, urlContext, googleMaps or fileSearch (or the snake_case spelling of each), which Google runs as search
+ *    or Maps grounding, code execution, URL fetches or file search;
  *  - xai: a `tools` entry of a server-side tool type (web_search, x_search, attachment_search, collections_search,
  *    file_search, code_execution, code_interpreter, mcp; docs.x.ai/developers/pricing, Tools Pricing), or Chat
  *    Completions `search_parameters` (Live Search) set to anything but null.
@@ -29,7 +29,8 @@ import { sseUsage } from '../ledger/budget-ledger.ts';
 import { TOOL_FEES } from '../pricing/model-pricing.ts';
 
 const HOSTED_TYPE = /^web_(search|fetch)(_|$)/;
-const GOOGLE_HOSTED = ['googleSearch', 'googleSearchRetrieval', 'enterpriseWebSearch', 'codeExecution', 'urlContext', 'google_search', 'google_search_retrieval', 'enterprise_web_search', 'code_execution', 'url_context'];
+const GOOGLE_HOSTED = ['googleSearch', 'googleSearchRetrieval', 'enterpriseWebSearch', 'codeExecution', 'urlContext', 'googleMaps', 'fileSearch',
+  'google_search', 'google_search_retrieval', 'enterprise_web_search', 'code_execution', 'url_context', 'google_maps', 'file_search'];
 const XAI_HOSTED_TYPES = new Set(['web_search', 'x_search', 'attachment_search', 'collections_search', 'file_search', 'code_execution', 'code_interpreter', 'mcp']);
 
 /** Where a request declares a hosted tool (`tools[2].type web_search_20250305`, `tools[0].googleSearch`, `web_search_options`); empty when it declares none.

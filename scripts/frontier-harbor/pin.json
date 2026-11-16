@@ -622,7 +622,7 @@
    "install": "Harbor GeminiCli.install: npm install -g @google/gemini-cli@0.68.0",
    "harbor_class": "harbor.agents.installed.gemini_cli:GeminiCli",
    "housekeeping_default": "Gemini CLI 0.68.0 DEFAULT_MODEL_CONFIGS (bundle/chunk-2OHBIZ5H.js): prompt-completion, fast-ack-helper, edit-corrector, summarizer-default and summarizer-shell on flash-lite; web-search, web-fetch, loop-detection, llm-edit-fixer, next-speaker-checker, context-snapshotter and agent-history-provider-summarizer on gemini-3-flash-preview; loop-detection-double-check and chat-compression-default on gemini-3-pro-preview; the model router's classifier is a local Gemma model",
-   "transport": "GEMINI_API_KEY (the per-trial token) and GOOGLE_GEMINI_BASE_URL at the proxy's google route, which translates to OpenRouter (pin.json models google:gemini-4-carbon api). Declared differences from a stock install: the translation layer; countTokens answered by a local estimate (four characters per token) and never forwarded; the request pinned to google-vertex/global with no fallbacks; requests the translation cannot carry refused (HE-PROXY-012); safetySettings left out (OpenRouter has no counterpart, recorded as translation_dropped)",
+   "transport": "GEMINI_API_KEY (the per-trial token) and GOOGLE_GEMINI_BASE_URL at the proxy's google route, which forwards to Google's Gemini API with GEMINI_API_KEY (pin.json models google:gemini-4-carbon api). Declared differences from a stock install: countTokens answered by a local estimate (four characters per token) and never forwarded; maxOutputTokens 65536 written when the CLI states none. On the named fallback only (vm-run.sh --gemini-cli-route openrouter-fallback, recorded as gemini_cli_route and as upstream openrouter on every usage line): the translation layer to OpenRouter; the request pinned to google-ai-studio at the standard tier (service_tier default) with no fallbacks; requests the translation cannot carry refused (HE-PROXY-012); safetySettings left out (OpenRouter has no counterpart, recorded as translation_dropped)",
    "status": "runnable: agents.py FrontierGeminiCli and a frontier_settings record (internal-task round 3); keyless checks run the real Gemini CLI against a fake OpenRouter through the proxy (tests/gemini-cli-via-openrouter.test.ts) and agents.py against Harbor 0.24.0 (tests/frontier-harbor-gemini-grok.test.ts)",
    "licence": "Apache-2.0 (package.json license field of @google/gemini-cli 0.68.0)"
   },
@@ -718,7 +718,7 @@
    "context_window": 1048576,
    "max_output_tokens": 65536,
    "source": "ai.google.dev/gemini-api/docs/models, read 2026-11-15 (Context 1M tokens, Max output 64K / 1M tokens): 65,536 is the standard output limit, and the 1M long-decode mode is not used; openrouter.ai endpoints for google/gemini-4-carbon list the same 65,536 on google-vertex/us and eu",
-   "api": "Gemini generateContent and streamGenerateContent on the metering proxy's google route, which reaches Gemini through OpenRouter (--google-via openrouter, runner/proxy/gemini-openrouter.ts): each request is translated to Chat Completions for google/gemini-4-carbon, pinned to Google's Vertex global endpoint, priced at the openrouter:google/gemini-4-carbon row and keyed with OPENROUTER_API_KEY; there is no direct Google key. Gemini CLI is the only harness that runs it",
+   "api": "Gemini generateContent and streamGenerateContent on the metering proxy's google route, forwarded to Google's Gemini API (generativelanguage.googleapis.com) with GEMINI_API_KEY and priced at the gemini:gemini-4-carbon row. On the named fallback only (vm-run.sh --gemini-cli-route openrouter-fallback, --google-via openrouter, runner/proxy/gemini-openrouter.ts) each request is translated to Chat Completions for google/gemini-4-carbon, pinned to Google AI Studio's standard endpoint at the standard tier (google-ai-studio, service_tier default), priced at the openrouter:google/gemini-4-carbon row and keyed with OPENROUTER_API_KEY. Gemini CLI is the only harness that runs it",
    "harnesses": ["gemini-cli"]
   },
   "xai:grok-4.7": {
@@ -726,24 +726,26 @@
    "context_window": 500000,
    "max_output_tokens": 128000,
    "source": "openrouter.ai/api/v1/models/x-ai/grok-4.7/endpoints, read 2026-11-15 (xAI's endpoint: context_length 500,000, max_completion_tokens 450,000). max_output_tokens is the 128,000 cap every other model here runs under, below that ceiling",
-   "api": "xAI Chat Completions and Responses on the metering proxy's xai route; Grok Build is the only harness that runs it",
-   "harnesses": ["grok-build"]
+   "api": "xAI's Responses API (POST /v1/responses) on the metering proxy's xai route, effort high, for every harness that runs it, each on its own xAI route: Grok Build, Pi (its xai catalog row chat:grok-4.7, api openai-responses), Hermes (its xai provider, api_mode codex_responses) and OpenClaw (its bundled xai provider, api openai-responses). The proxy refuses previous_response_id and forces store false (HE-PROXY-013); each harness asks for the encrypted reasoning and replays it in full on every turn, relying on no stored response (tests/frontier-harbor-replay.test.ts). Hermes at the pinned commit sends no reasoning effort for grok-4.7 (its Grok effort allowlist stops at grok-4.6), so xAI's default for the model, high, applies. Chat Completions is not used: xAI documents it as deprecated for these models, returning no reasoning content and with no field for the encrypted reasoning, so every multi-turn or tool-calling conversation through it discards the model's earlier thinking and results from it understate what Grok reasoning models can do (docs.x.ai, model-capabilities/text/comparison and the API best practices, read 2026-11-16). The proxy's xai route also forwards /v1/chat/completions, which none of these configs uses",
+   "harnesses": ["grok-build", "pi", "hermes", "openclaw"]
   },
   "openrouter:google/gemini-4-carbon": {
    "provider": "openrouter",
    "context_window": 1048576,
    "max_output_tokens": 65536,
-   "source": "openrouter.ai/api/v1/models/google/gemini-4-carbon/endpoints, read 2026-11-15: Google's Vertex global endpoint (provider Google, tag google-vertex/global) has context_length 1,048,576 and lists max_completion_tokens 943,718; max_output_tokens is Google's standard 64K output limit (ai.google.dev/gemini-api/docs/models: Max output 64K / 1M tokens), as on the google row",
-   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google's Vertex global endpoint: it adds provider {only: [google-vertex/global], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Google",
-   "harnesses": ["pi", "hermes", "openclaw"]
+   "source": "openrouter.ai/api/v1/models/google/gemini-4-carbon/endpoints, read 2026-11-16: Google AI Studio's standard endpoint (provider Google AI Studio, tag google-ai-studio, service_tier null) has context_length 1,048,576 and lists max_completion_tokens 65,536; max_output_tokens is Google's standard 64K output limit (ai.google.dev/gemini-api/docs/models: Max output 64K / 1M tokens), as on the google row",
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google AI Studio's standard endpoint (provider-terms ruling, 2026-11-16; never google-vertex/* or AI Studio's flex or priority endpoints): it adds provider {only: [google-ai-studio], allow_fallbacks: false, max_price at the price row} and service_tier default, refuses a request that sets another service_tier or speed, and refuses the trial when the response names another served provider than Google AI Studio or another tier",
+   "harnesses": ["pi", "hermes", "openclaw"],
+   "reasoning_replay": {"hermes": "drops", "openclaw": "partial"}
   },
   "openrouter:google/gemini-4-hydrogen": {
    "provider": "openrouter",
    "context_window": 1048576,
    "max_output_tokens": 65536,
-   "source": "openrouter.ai/api/v1/models/google/gemini-4-hydrogen/endpoints, read 2026-11-15: google-vertex/global has context_length 1,048,576 and lists max_completion_tokens 943,718; Google's own AI Studio and the regional Vertex endpoints list 65,536, Google's standard 64K output limit (ai.google.dev/gemini-api/docs/models: Max output 64K / 1M tokens), the limit used here",
-   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google's Vertex global endpoint: it adds provider {only: [google-vertex/global], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Google",
-   "harnesses": ["pi", "hermes", "openclaw"]
+   "source": "openrouter.ai/api/v1/models/google/gemini-4-hydrogen/endpoints, read 2026-11-16: Google AI Studio's standard endpoint (provider Google AI Studio, tag google-ai-studio, service_tier null) has context_length 1,048,576 and lists max_completion_tokens 65,536, Google's standard 64K output limit (ai.google.dev/gemini-api/docs/models: Max output 64K / 1M tokens), the limit used here",
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google AI Studio's standard endpoint (provider-terms ruling, 2026-11-16; never google-vertex/* or AI Studio's flex or priority endpoints): it adds provider {only: [google-ai-studio], allow_fallbacks: false, max_price at the price row} and service_tier default, refuses a request that sets another service_tier or speed, and refuses the trial when the response names another served provider than Google AI Studio or another tier",
+   "harnesses": ["pi", "hermes", "openclaw"],
+   "reasoning_replay": {"hermes": "drops", "openclaw": "partial"}
   },
   "openrouter:meta/muse-wonder": {
    "provider": "openrouter",
@@ -751,7 +753,8 @@
    "max_output_tokens": 128000,
    "source": "openrouter.ai/api/v1/models/meta/muse-wonder/endpoints, read 2026-11-15: Meta's own endpoint (provider Meta, tag meta) has context_length 1,048,576 and max_completion_tokens 943,718. max_output_tokens is the 128,000 cap every other model here runs under",
    "api": "OpenAI Chat Completions (POST /v1/chat/completions on the metering proxy's OpenRouter route) for Pi, Hermes and OpenClaw, and OpenRouter's Responses API (POST /v1/responses on the same route) for Muse Code. The proxy pins every request to Meta's endpoint: it adds provider {only: [meta], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Meta",
-   "harnesses": ["pi", "hermes", "openclaw", "muse-code"]
+   "harnesses": ["pi", "hermes", "openclaw", "muse-code"],
+   "reasoning_replay": {"hermes": "drops", "openclaw": "partial"}
   },
   "openrouter:moonshotai/kimi-k3.1-pro": {
    "provider": "openrouter",
@@ -759,15 +762,19 @@
    "max_output_tokens": 128000,
    "source": "openrouter.ai/api/v1/models/moonshotai/kimi-k3.1-pro/endpoints, read 2026-11-15: Moonshot AI's endpoints (moonshotai/mxfp4 at $2 / $10, moonshotai/highspeed at $4 / $20) have context_length 1,048,576 and max_completion_tokens 943,718; the max_price at the $2 / $10 row keeps requests off highspeed. max_output_tokens is the 128,000 cap every other model here runs under",
    "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Moonshot AI's endpoint: it adds provider {only: [moonshotai], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Moonshot AI",
-   "harnesses": ["pi", "hermes", "openclaw"]
+   "harnesses": ["pi", "hermes", "openclaw"],
+   "reasoning_replay": {"hermes": "drops"}
   },
   "openrouter:z-ai/glm-5.3": {
    "provider": "openrouter",
    "context_window": 1048576,
    "max_output_tokens": 128000,
-   "source": "openrouter.ai/api/v1/models/z-ai/glm-5.3/endpoints, read 2026-11-15: Z.AI's own endpoint (provider Z.AI, tag z-ai/fp8) has context_length 1,048,576 and max_completion_tokens 131,072. max_output_tokens is the 128,000 cap every other model here runs under",
-   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Z.AI's endpoint: it adds provider {only: [z-ai], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Z.AI",
-   "harnesses": ["pi", "hermes", "openclaw"]
+   "source": "openrouter.ai/api/v1/models/z-ai/glm-5.3/endpoints, read 2026-11-16: Baidu's endpoint (provider Baidu, tag baidu/fp8, quantization fp8, service_tier null) has context_length 1,048,576 and max_completion_tokens 131,072, and lists tools, tool_choice (auto and none, not required), reasoning, include_reasoning, reasoning_effort and max_tokens among its supported_parameters. max_output_tokens is the 128,000 cap every other model here runs under",
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). Served by Baidu at fp8 (host baidu, precision fp8; provider-terms ruling, 2026-11-16). The proxy pins every request to that one endpoint: it adds provider {only: [baidu/fp8], allow_fallbacks: false, max_price at the price row} and service_tier default, refuses a request that sets another service_tier or speed, and refuses the trial when the response names another served provider than Baidu or another tier",
+   "host": "baidu",
+   "precision": "fp8",
+   "harnesses": ["pi", "hermes", "openclaw"],
+   "reasoning_replay": {"hermes": "drops"}
   }
  },
  "effort": {

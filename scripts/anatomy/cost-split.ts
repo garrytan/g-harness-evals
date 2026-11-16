@@ -4,12 +4,15 @@
 // Reads the run's metering-proxy usage log(s) named in a committed manifest and splits each forwarded request's
 // actual_usd at the proxy's own list prices (runner/ledger/budget-ledger.ts chatPrice, which reads runner/pricing).
 // splitRow puts each line in exactly one kind:
-//   - a chat request (/v1/messages, /v1/responses, /v1/chat/completions) with reported usage: uncached input, cache
-//     reads, cache writes (of which 1-hour writes) and output (of which reasoning tokens);
+//   - a chat request (/v1/messages, /v1/responses, /v1/chat/completions, or a Gemini generateContent or
+//     streamGenerateContent request on the google route) with reported usage: uncached input, cache reads, cache writes
+//     (of which 1-hour writes) and output (of which reasoning tokens);
 //   - an embedding request (/v1/embeddings): its own component, tokens and dollars as the proxy recorded them;
 //   - a failed line that kept its reservation: its own component, dollars only;
 //   - a forwarded line charged its reservation with no usage: "unknown" dollars, never tokens;
 //   - a zero-dollar line on any other route (model listings, free count_tokens) gives requests 0.
+// A google route line is priced as the proxy priced it: at the openrouter:google/<model> row when it went through the
+// OpenRouter translation (upstream "openrouter"), else at the Gemini API price (gemini:<model>, then google:<model>).
 // A line that carries cache_write_tokens (and cache_write_1h_tokens) uses those measured values. An older line does
 // not separate cache writes from uncached input, so its cache writes are inferred: the tokens that make the priced
 // total equal actual_usd, assuming 5-minute cache writes. A request whose inferred writes fall outside
@@ -47,12 +50,15 @@ const ROOT = resolve(import.meta.dir, '../..');
 
 export interface UsageRow { at: string; key: string; provider: string; route: string; model: string | null; outcome: string; actual_usd?: number;
   input_tokens?: number; output_tokens?: number; cached_tokens?: number; charged_reservation?: boolean;
-  cache_write_tokens?: number; cache_write_1h_tokens?: number; reasoning_tokens?: number }
+  cache_write_tokens?: number; cache_write_1h_tokens?: number; reasoning_tokens?: number; upstream?: string }
 type Rates = { input: number; output: number; cache_read?: number; cache_write?: number };
-// Rates the proxy charged until a later price correction, so a row splits at the price it was charged. Sonnet 5.5 cache
-// reads cost $0.10 from Anthropic since 2026-10-07, but the proxy billed $0.20 until the 2026-11-15 price table.
-const CHARGED_UNTIL: Record<string, { until: string; rates: Partial<Rates> }> = {
-  'anthropic:claude-sonnet-5-5': { until: '2026-11-15', rates: { cache_read: 0.2 } },
+// Rates the proxy charged before a later price correction. Sonnet 5.5 cache reads cost $0.10 from Anthropic since
+// 2026-10-07, but the proxy billed $0.20 until #469's correction, and a runner still on older code billed $0.20 after
+// that too, so no date tells them apart. A row splits at whichever of the two rates its actual_usd was charged at: the one
+// that leaves the smaller remainder. A tie goes to the earlier rate: a row with no cache_write_tokens has its cache writes
+// inferred, so it reconciles at either rate, and such rows come from proxy code older than the correction.
+const CHARGED_BEFORE: Record<string, Partial<Rates>> = {
+  'anthropic:claude-sonnet-5-5': { cache_read: 0.2 },
 };
 export interface Components { requests: number; uncached_input_tokens: number; cache_read_tokens: number; cache_write_tokens: number;
   output_tokens: number; uncached_input_usd: number; cache_read_usd: number; cache_write_usd: number; output_usd: number;
@@ -68,6 +74,7 @@ export const empty = (): Components => ({ requests: 0, uncached_input_tokens: 0,
 
 const CHAT_ROUTE = /^\/v1\/(messages|responses|chat\/completions)$/;
 const EMBEDDING_ROUTE = /^\/v1\/embeddings$/;
+const GEMINI_ROUTE = /^\/v1(beta)?\/models\/[A-Za-z0-9._-]+:(generateContent|streamGenerateContent)$/;
 
 /**
  * One line's components; a zero-dollar line that is not a priced request (a model listing, a free count_tokens) gives
@@ -93,7 +100,8 @@ export function splitRow(row: UsageRow): Components {
     c.embedding_usd = actual;
     return c;
   }
-  if (!CHAT_ROUTE.test(row.route)) {
+  const gemini = row.provider === 'google' && GEMINI_ROUTE.test(row.route);
+  if (!CHAT_ROUTE.test(row.route) && !gemini) {
     if (actual === 0) return empty();
     throw new Error(`${row.key}: a charged line on ${row.route}, which is neither a chat nor an embedding route`);
   }
@@ -103,46 +111,53 @@ export function splitRow(row: UsageRow): Components {
     c.unknown_usd = actual;
     return c;
   }
-  const listed = row.model ? chatPrice(`${row.provider}:${row.model}`) as (Rates & { long?: Rates & { above_input_tokens: number } }) | undefined : undefined;
-  if (!listed) throw new Error(`no list price for ${row.provider}:${row.model}`);
-  const before = CHARGED_UNTIL[`${row.provider}:${row.model}`];
-  const price = before && row.at.slice(0, 10) < before.until ? { ...listed, ...before.rates } : listed;
-  const input = row.input_tokens ?? 0, read = row.cached_tokens ?? 0, out = row.output_tokens ?? 0;
-  const r: Rates = price.long && input > price.long.above_input_tokens ? price.long : price;
-  const cr = r.cache_read ?? r.input, cw = r.cache_write ?? r.input, cw1h = r.input * ANTHROPIC_CACHE_WRITE_1H_MULT;
-  const measured = typeof row.cache_write_tokens === 'number';
-  let write: number, write1h = 0, raw: number;
-  if (measured) {
-    write = raw = row.cache_write_tokens!;
-    write1h = Math.min(write, row.cache_write_1h_tokens ?? 0);
-  } else if (row.charged_reservation) {
-    write = raw = 0;
-  } else {
-    const base = (input - read) * r.input + read * cr + out * r.output;
-    raw = cw > r.input ? Math.round((actual * 1e6 - base) / (cw - r.input)) : 0;
-    write = Math.min(Math.max(raw, 0), input - read);
-  }
-  c.uncached_input_tokens = input - read - write;
-  c.cache_read_tokens = read;
-  c.cache_write_tokens = write;
-  c.cache_write_1h_tokens = write1h;
-  c.output_tokens = out;
-  c.reasoning_tokens = row.reasoning_tokens ?? 0;
-  c.uncached_input_usd = c.uncached_input_tokens * r.input / 1e6;
-  c.cache_read_usd = read * cr / 1e6;
-  c.cache_write_1h_usd = write1h * cw1h / 1e6;
-  c.cache_write_usd = (write - write1h) * cw / 1e6 + c.cache_write_1h_usd;
-  c.output_usd = out * r.output / 1e6;
-  c.measured_requests = measured ? 1 : 0;
-  c.inferred_requests = !measured && !row.charged_reservation ? 1 : 0;
-  const priced = c.uncached_input_usd + c.cache_read_usd + c.cache_write_usd + c.output_usd;
-  if (row.charged_reservation) {
-    c.unknown_requests = 1;
-    c.unknown_usd = Math.max(actual - priced, 0);
-  }
-  c.remainder_usd = actual - priced - c.unknown_usd;
-  c.clamped_requests = raw === write ? 0 : 1;
-  return c;
+  const at = new Date(row.at);
+  const lookup = (id: string) => chatPrice(id, at) as (Rates & { long?: Rates & { above_input_tokens: number } }) | undefined;
+  const listed = !row.model ? undefined : !gemini ? lookup(`${row.provider}:${row.model}`)
+    : row.upstream === 'openrouter' ? lookup(`openrouter:google/${row.model}`) : lookup(`gemini:${row.model}`) ?? lookup(`google:${row.model}`);
+  if (!listed) throw new Error(`no list price for ${row.provider}:${row.model}${row.upstream ? ` via ${row.upstream}` : ''}`);
+  const priceAt = (price: Rates & { long?: Rates & { above_input_tokens: number } }): Components => {
+    const s = { ...c };
+    const input = row.input_tokens ?? 0, read = row.cached_tokens ?? 0, out = row.output_tokens ?? 0;
+    const r: Rates = price.long && input > price.long.above_input_tokens ? price.long : price;
+    const cr = r.cache_read ?? r.input, cw = r.cache_write ?? r.input, cw1h = r.input * ANTHROPIC_CACHE_WRITE_1H_MULT;
+    const measured = typeof row.cache_write_tokens === 'number';
+    let write: number, write1h = 0, raw: number;
+    if (measured) {
+      write = raw = row.cache_write_tokens!;
+      write1h = Math.min(write, row.cache_write_1h_tokens ?? 0);
+    } else if (row.charged_reservation) {
+      write = raw = 0;
+    } else {
+      const base = (input - read) * r.input + read * cr + out * r.output;
+      raw = cw > r.input ? Math.round((actual * 1e6 - base) / (cw - r.input)) : 0;
+      write = Math.min(Math.max(raw, 0), input - read);
+    }
+    s.uncached_input_tokens = input - read - write;
+    s.cache_read_tokens = read;
+    s.cache_write_tokens = write;
+    s.cache_write_1h_tokens = write1h;
+    s.output_tokens = out;
+    s.reasoning_tokens = row.reasoning_tokens ?? 0;
+    s.uncached_input_usd = s.uncached_input_tokens * r.input / 1e6;
+    s.cache_read_usd = read * cr / 1e6;
+    s.cache_write_1h_usd = write1h * cw1h / 1e6;
+    s.cache_write_usd = (write - write1h) * cw / 1e6 + s.cache_write_1h_usd;
+    s.output_usd = out * r.output / 1e6;
+    s.measured_requests = measured ? 1 : 0;
+    s.inferred_requests = !measured && !row.charged_reservation ? 1 : 0;
+    const priced = s.uncached_input_usd + s.cache_read_usd + s.cache_write_usd + s.output_usd;
+    if (row.charged_reservation) {
+      s.unknown_requests = 1;
+      s.unknown_usd = Math.max(actual - priced, 0);
+    }
+    s.remainder_usd = actual - priced - s.unknown_usd;
+    s.clamped_requests = raw === write ? 0 : 1;
+    return s;
+  };
+  const charged = CHARGED_BEFORE[`${row.provider}:${row.model}`];
+  return (charged ? [{ ...listed, ...charged }, listed] : [listed]).map(priceAt)
+    .reduce((best, s) => Math.abs(s.remainder_usd) < Math.abs(best.remainder_usd) - USD_TOLERANCE ? s : best);
 }
 
 export function add(a: Components, b: Components): Components {

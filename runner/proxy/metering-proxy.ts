@@ -38,7 +38,7 @@
  * path segment a shim's base URL carries) to a key around each question or
  * namespace ingest and reads the key's meter afterwards, through
  * `POST /__proxy/bind {slot, key, token?, models?, ablation?, max_requests?, collect_requests?, install?}`, `POST /__proxy/unbind {slot}`,
- * `POST /__proxy/finalize {key}` and `POST /__proxy/requests {key}` (internal-task Phase B, SlotLimits). With `--control-token` (or
+ * `POST /__proxy/finalize {key}` and `POST /__proxy/requests {key}` (HARN-52 Phase B, SlotLimits). With `--control-token` (or
  * SHOOTOUT_PROXY_CONTROL_TOKEN) these need the `x-proxy-control` header, so a
  * vendor container cannot move charges.
  *
@@ -81,14 +81,14 @@
  * output cap is recorded with the lease, and `--new-run` closes a lease still
  * open in the file before opening the next one.
  *
- * Usage-line schema v1 (internal-task): every forwarded line carries cache_write_tokens, cache_write_1h_tokens and
+ * Usage-line schema v1 (HARN-21): every forwarded line carries cache_write_tokens, cache_write_1h_tokens and
  * reasoning_tokens (0 when the provider reported none), read after the request was charged. With --log-sections a
  * forwarded Anthropic /v1/messages, OpenAI /v1/responses or /v1/chat/completions line also carries `sections` (the
  * request's byte partition and digests, read before the proxy changes the body) and `tools_called`, or
  * `sections_error` when they could not be read (runner/proxy/sections.ts). Neither changes what is forwarded, reserved
  * or charged, and neither writes request or response text.
  *
- * Route copies (internal-task, H10): with `--route-texts <file.json>` ({copies: [text, ...], listing: [text, ...]}) a slot bound
+ * Route copies (HARN-18, H10): with `--route-texts <file.json>` ({copies: [text, ...], listing: [text, ...]}) a slot bound
  * with `routes: true` gets two more fields on each forwarded or failed usage line: `route_copies`, the occurrences of the
  * `copies` texts (the rule and the placebo) in the request by where they sit (routeCopies), plus `listing`, the occurrences
  * of the `listing` texts (skill descriptions) outside tool results; and `housekeeping: true` on a request for a model other
@@ -96,16 +96,16 @@
  * refused lines never carry either. Counts only: no text from the request reaches the log. Without the flag, or on a slot
  * bound without `routes`, every line is byte-identical to the proxy before this change.
  *
- * Effort (internal-task): every forwarded or failed line records the effort fields the request set, each as sent
+ * Effort (HARN-50): every forwarded or failed line records the effort fields the request set, each as sent
  * (runner/proxy/effort.ts): `reasoning_effort`, `output_config_effort`, `thinking_type`, `thinking_budget_tokens`, and
  * `unrecognized_effort_fields` for a field whose value is not a known one. Record only: no request is refused or changed
  * for its effort. `effortCounts` turns a trial's lines into calls per effort setting.
  *
- * Hosted web tools (internal-task): with `--refuse-hosted-tools` a request that declares a provider-hosted search or fetch tool
+ * Hosted web tools (HARN-50): with `--refuse-hosted-tools` a request that declares a provider-hosted search or fetch tool
  * (runner/proxy/hosted-tools.ts) is refused with HTTP 400 and HE-PROXY-006 before it is priced or forwarded, and its
  * refused line names the declarations in its reason. Without the flag nothing changes.
  *
- * Request-body capture (internal-task): a lease proxy started with `--capture-bodies <root>` accepts a bind with `capture: "<dir>"`,
+ * Request-body capture (HARN-50): a lease proxy started with `--capture-bodies <root>` accepts a bind with `capture: "<dir>"`,
  * a directory under the root (the trial's directory). Every request the proxy then sends upstream for that slot is appended to
  * `<root>/<dir>/proxy-requests.ndjson` first, hash-chained and capped at `--capture-max-bytes` (256 MiB by default), with no
  * header and no query string (runner/proxy/capture.ts). Finalizing the slot's key closes the file. A capture that cannot be
@@ -115,19 +115,22 @@
  * Output cap: `--max-output-tokens` sets the cap for one proxy start (and its lease); set it to the harness's own
  * max output, since a request naming more is refused. Without it the cap is DEFAULT_MAX_OUTPUT_TOKENS.
  *
- * Google and xAI (internal-task): `/<slot>/google/v1beta/models/<model>:generateContent` and `:streamGenerateContent?alt=sse`
+ * Google and xAI (HARN-99): `/<slot>/google/v1beta/models/<model>:generateContent` and `:streamGenerateContent?alt=sse`
  * go to the Gemini API, the model read from the path. The per-trial token arrives in x-goog-api-key (Gemini CLI's header)
  * and GEMINI_API_KEY leaves in x-goog-api-key, never as a Bearer or a `key` query parameter, which the proxy drops. The
- * output cap is `generationConfig.maxOutputTokens`; a stream settles from its last usageMetadata (budget-ledger.ts
+ * output cap is `generationConfig.maxOutputTokens`, at most the model's own limit (GEMINI_MAX_OUTPUT), and a request asking
+ * for a candidateCount other than 1 is refused (HE-PROXY-013); a stream settles from its last usageMetadata (budget-ledger.ts
  * streamUsageCost) and counts as unfinished until a candidate reports a finishReason. A stream request without alt=sse is
- * refused (HE-PROXY-013). `/<slot>/xai/v1/chat/completions` and `/v1/responses` go to api.x.ai with XAI_API_KEY as a
+ * refused (HE-PROXY-013). countTokens is answered by a local estimate (countTokensEstimate), never forwarded or charged,
+ * and logged with the outcome `estimated`, which no reader counts as a model request or response. Gemini CLI reaches
+ * Gemini this way by default (scripts/frontier-harbor/vm-run.sh). `/<slot>/xai/v1/chat/completions` and `/v1/responses` go to api.x.ai with XAI_API_KEY as a
  * Bearer; reasoning tokens bill as output beside completion tokens, and each forwarded line records xAI's own
  * `usage.cost_in_usd_ticks` (1e-10 USD) when the answer carries it. A Responses request is sent with `store: false`,
  * and one naming `previous_response_id` is refused (HE-PROXY-013). On both routes a provider-hosted tool (grounding,
  * code execution, URL context, xAI's server-side search) is refused with HE-PROXY-006 with or without
  * --refuse-hosted-tools, since the proxy cannot price its per-call fees.
  *
- * Muse Code (internal-task): `/<slot>/openrouter/v1/responses` forwards OpenRouter's Responses API for the models in
+ * Muse Code (HARN-99): `/<slot>/openrouter/v1/responses` forwards OpenRouter's Responses API for the models in
  * MUSE_CODE_CATALOG only (any other OpenRouter model there is refused 403), pinned, priced and capped
  * (`max_output_tokens`) like a Chat Completions request; one naming `previous_response_id` is refused (HE-PROXY-013). Muse
  * Code reads its model catalog from `GET /muse-code/models` at the root of its base URL's origin, outside any slot; the
@@ -135,15 +138,16 @@
  * served provider in its docs, so on that route `served_elsewhere` is set only when a body names a provider other than
  * the pinned one.
  *
- * Google via OpenRouter (internal-task): with `--google-via openrouter` the google route keeps its Gemini API face, but each
+ * Google via OpenRouter (HARN-99), Gemini CLI's named fallback (vm-run.sh --gemini-cli-route openrouter-fallback, never the
+ * default): with `--google-via openrouter` the google route keeps its Gemini API face, but each
  * generateContent or streamGenerateContent request is translated to OpenRouter's Chat Completions for `google/<model>`
  * (runner/proxy/gemini-openrouter.ts), then pinned, priced, keyed (OPENROUTER_API_KEY) and checked for its served provider
  * exactly as an OpenRouter request; the answer, streamed or not, goes back to the harness as Gemini's, thought signatures
- * included. GEMINI_API_KEY is not read. countTokens is answered by a local estimate and never forwarded, and a request the
+ * included. GEMINI_API_KEY is not read. Every google line in this mode carries `upstream: "openrouter"`, and a request the
  * translation cannot carry (cachedContent, file URIs, non-image media, multimodal tool results, other tool kinds) is refused
  * with HE-PROXY-012.
  *
- * Install slots (internal-task, the gbrain install eval): a lease-mode bind with `install: true` (it needs `token` and `models`, and
+ * Install slots (GST-2715, the gbrain install eval): a lease-mode bind with `install: true` (it needs `token` and `models`, and
  * is refused on a proxy started with --refuse-hosted-tools) writes one usage line for every request that reaches the slot,
  * forwarded or refused, with `kind: "install_slot"`, `method`, `endpoint` (endpointClass), the model it names, `token_presented`,
  * a sanitized `user_agent`, the `status` the proxy answered and `non_harness`. A request is the harness's own model call only
@@ -187,41 +191,53 @@ export type ProviderName = 'anthropic' | 'openai' | 'voyage' | 'particle' | 'ope
  * `provider.only`, `served` the name OpenRouter reports in the response's `provider` field when that endpoint answered.
  * The proxy also sends `allow_fallbacks: false` and `max_price` at the model's price-table row (`openrouter:<id>`, the
  * endpoint's peak rates), and refuses a request naming any other model, a variant suffix, a `models` list, `route` or
- * `plugins` (HE-PROXY-008). A 2xx answer that names another provider, or none, is marked `served_elsewhere`
- * (HE-PROXY-009), which makes the trial infra_error (runner/trial/trial.ts trialTermination).
+ * `plugins` (HE-PROXY-008). A pin with `service_tier` also sends that tier (`default`, OpenRouter's standard tier, which keeps
+ * the provider's flex and priority endpoints out of the pool) and refuses a request that sets another `service_tier` or
+ * `speed`. A 2xx answer that names another provider, or none, or another tier than the pinned one, is marked
+ * `served_elsewhere` (HE-PROXY-009), which makes the trial infra_error (runner/trial/trial.ts trialTermination).
  */
-export const OPENROUTER_MODELS: Record<string, { only: string; served: string }> = {
+export interface OpenRouterPin { only: string; served: string; service_tier?: 'default' }
+export const OPENROUTER_MODELS: Record<string, OpenRouterPin> = {
   'deepseek/deepseek-v4.1-flash-1017': { only: 'deepseek', served: 'DeepSeek' },
-  // openrouter.ai/api/v1/models/<id>/endpoints, read 2026-11-15: each maker's own endpoint, or Google Vertex's global one.
-  'google/gemini-4-carbon': { only: 'google-vertex/global', served: 'Google' },
-  'google/gemini-4-hydrogen': { only: 'google-vertex/global', served: 'Google' },
+  // openrouter.ai/api/v1/models/<id>/endpoints, read 2026-11-15: each maker's own endpoint. Gemini goes to Google AI Studio's
+  // standard endpoint (tag google-ai-studio, service_tier null; read 2026-11-16), never google-vertex/* or AI Studio's flex
+  // or priority endpoints, under the provider-terms ruling of 2026-11-16.
+  'google/gemini-4-carbon': { only: 'google-ai-studio', served: 'Google AI Studio', service_tier: 'default' },
+  'google/gemini-4-hydrogen': { only: 'google-ai-studio', served: 'Google AI Studio', service_tier: 'default' },
   'meta/muse-wonder': { only: 'meta', served: 'Meta' },
   'moonshotai/kimi-k3.1-pro': { only: 'moonshotai', served: 'Moonshot AI' },
-  'z-ai/glm-5.3': { only: 'z-ai', served: 'Z.AI' },
+  // GLM 5.3 goes to Baidu's fp8 endpoint (tag baidu/fp8, service_tier null; read 2026-11-16), not Z.AI's own, under the same
+  // ruling. Baidu lists tools, tool_choice auto and none (not required), reasoning, include_reasoning, reasoning_effort and
+  // max_tokens, with max_completion_tokens 131,072 at Z.AI's rates.
+  'z-ai/glm-5.3': { only: 'baidu/fp8', served: 'Baidu', service_tier: 'default' },
 };
 /**
  * Gemini CLI's housekeeping models (frontier_settings.py GEMINI_CLI_HOUSEKEEPING), each pinned to one endpoint like the
  * models above. Only the google route's via-OpenRouter mode forwards them, for a slot that lists them as google:<model>;
- * the openrouter route refuses them. openrouter.ai/api/v1/models/<id>/endpoints, read 2026-11-15: Google Vertex's global
- * endpoint serves gemini-3-flash-preview, and only Google AI Studio serves gemini-3.1-pro-preview-customtools.
+ * the openrouter route refuses them. openrouter.ai/api/v1/models/<id>/endpoints, read 2026-11-16: Google AI Studio's
+ * standard endpoint serves both (for gemini-3.1-pro-preview-customtools it is the only one), pinned at its standard tier
+ * like the cell models above.
  */
-export const GEMINI_HOUSEKEEPING_MODELS: Record<string, { only: string; served: string }> = {
-  'google/gemini-3-flash-preview': { only: 'google-vertex/global', served: 'Google' },
-  'google/gemini-3.1-pro-preview-customtools': { only: 'google-ai-studio', served: 'Google AI Studio' },
+export const GEMINI_HOUSEKEEPING_MODELS: Record<string, OpenRouterPin> = {
+  'google/gemini-3-flash-preview': { only: 'google-ai-studio', served: 'Google AI Studio', service_tier: 'default' },
+  'google/gemini-3.1-pro-preview-customtools': { only: 'google-ai-studio', served: 'Google AI Studio', service_tier: 'default' },
 };
-const OPENROUTER_PINS = { ...OPENROUTER_MODELS, ...GEMINI_HOUSEKEEPING_MODELS };
+const OPENROUTER_PINS: Record<string, OpenRouterPin> = { ...OPENROUTER_MODELS, ...GEMINI_HOUSEKEEPING_MODELS };
 /** The catalog Muse Code reads at startup (GET <origin>/muse-code/models, Meta's shape {data: [{id}]}): the one OpenRouter
  *  model it runs on here, by OpenRouter's id, which is the id it then sends. */
 export const MUSE_CODE_CATALOG = { data: [{ id: 'meta/muse-wonder' }] };
 /**
  * The output cap of a Gemini model on OpenRouter, below the run's cap: Google's standard output limit of 65,536 tokens
- * (ai.google.dev/gemini-api/docs/models). Vertex's global endpoint lists more for Gemini 4, which is its long-decode mode;
+ * (ai.google.dev/gemini-api/docs/models), which Google AI Studio's endpoint lists too. Vertex's global endpoint lists more for Gemini 4, its long-decode mode;
  * the translation does not carry long-decode continuations (gemini-openrouter.ts), so a request is held to 65,536.
  */
 export const OPENROUTER_MAX_OUTPUT: Record<string, number> = {
   'google/gemini-4-carbon': 65_536, 'google/gemini-4-hydrogen': 65_536,
   'google/gemini-3-flash-preview': 65_536, 'google/gemini-3.1-pro-preview-customtools': 65_536,
 };
+/** The same output caps on the google route's native mode, by Gemini model id: Google's standard output limit, so a request
+ *  that states none is sent with 65,536, not the run's larger cap, which Google would refuse. */
+export const GEMINI_MAX_OUTPUT: Record<string, number> = Object.fromEntries(Object.entries(OPENROUTER_MAX_OUTPUT).map(([m, n]) => [m.replace(/^google\//, ''), n]));
 type Send = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 /** Anthropic's token counter. Providers do not bill it. Only a lease proxy started with --free-count-tokens (the Lane B
@@ -233,7 +249,7 @@ export const COUNT_TOKENS_ROUTE = '/v1/messages/count_tokens';
 
 /** The Gemini generation routes; the model is the path segment before the method. */
 const GOOGLE_ROUTE = /^\/v1(beta)?\/models\/([A-Za-z0-9._-]+):(generateContent|streamGenerateContent)$/;
-/** Gemini's token counter, answered by the proxy itself in the via-OpenRouter mode (countTokensEstimate) and never forwarded. */
+/** Gemini's token counter, answered by the proxy itself on the google route (countTokensEstimate) and never forwarded. */
 const GOOGLE_COUNT_ROUTE = /^\/v1(beta)?\/models\/([A-Za-z0-9._-]+):countTokens$/;
 
 /** Lease mode forwards only these routes (and COUNT_TOKENS_ROUTE under freeCountTokens). GET model listings are free metadata reads. */
@@ -258,7 +274,7 @@ const CREDENTIAL_HEADERS = ['authorization', 'x-api-key', 'x-goog-api-key', 'api
 export const DEFAULT_MAX_OUTPUT_TOKENS = 32_768;
 /** A provider call may run this long (Bun's own 300-second fetch timeout is off; long reasoning calls exceed it). */
 export const UPSTREAM_DEADLINE_MS = 900_000;
-/** internal-task: how long an install slot waits for a token-bearing request's body before it refuses the request (408). */
+/** GST-2715: how long an install slot waits for a token-bearing request's body before it refuses the request (408). */
 export const INSTALL_BODY_DEADLINE_MS = 120_000;
 
 export interface Meter {
@@ -293,28 +309,28 @@ export interface LeasePolicy {
   usageLog?: string;
   /** Forward POST /anthropic/v1/messages/count_tokens free (COUNT_TOKENS_ROUTE); off by default. */
   freeCountTokens?: boolean;
-  /** internal-task (H10): the texts whose copies a slot bound with `routes` counts (routeCopies). Unset, nothing is counted. */
+  /** HARN-18 (H10): the texts whose copies a slot bound with `routes` counts (routeCopies). Unset, nothing is counted. */
   routeTexts?: RouteTexts;
   /** Append-only per-request layer-filter receipts (ndjson, runner/proxy/ablate.ts); a bind with an ablation map is refused without it. */
   ablationLog?: string;
-  /** internal-task: write sections and tools_called on forwarded chat lines (--log-sections); off by default. */
+  /** HARN-21: write sections and tools_called on forwarded chat lines (--log-sections); off by default. */
   logSections?: boolean;
-  /** internal-task: refuse a request that declares a provider-hosted web tool (--refuse-hosted-tools, HE-PROXY-006); off by default. */
+  /** HARN-50: refuse a request that declares a provider-hosted web tool (--refuse-hosted-tools, HE-PROXY-006); off by default. */
   refuseHostedTools?: boolean;
-  /** internal-task: the directory a bind's `capture` names a trial directory under (--capture-bodies); unset, a bind with `capture` is refused. */
+  /** HARN-50: the directory a bind's `capture` names a trial directory under (--capture-bodies); unset, a bind with `capture` is refused. */
   captureRoot?: string;
-  /** internal-task: the size cap of one capture file (--capture-max-bytes), DEFAULT_CAPTURE_MAX_BYTES when unset. */
+  /** HARN-50: the size cap of one capture file (--capture-max-bytes), DEFAULT_CAPTURE_MAX_BYTES when unset. */
   captureMaxBytes?: number;
-  /** internal-task: `openrouter` (--google-via openrouter) sends the google route's Gemini requests to OpenRouter's Chat Completions
+  /** HARN-99: `openrouter` (--google-via openrouter) sends the google route's Gemini requests to OpenRouter's Chat Completions
    *  (runner/proxy/gemini-openrouter.ts), pinned, priced and keyed as the OpenRouter route; unset, they go to the Gemini API. */
   googleVia?: typeof VIA_OPENROUTER;
 }
 
-/** internal-task (H10): `copies` are the rule and placebo bytes (harnesses/routes/instruction.md, placebo.md); `listing` the skill
+/** HARN-18 (H10): `copies` are the rule and placebo bytes (harnesses/routes/instruction.md, placebo.md); `listing` the skill
  *  descriptions a skill route lists (discovery). */
 export interface RouteTexts { copies: string[]; listing: string[] }
 
-/** internal-task Phase B, per bind: max_requests refuses the slot's request for its first model once that many were forwarded
+/** HARN-52 Phase B, per bind: max_requests refuses the slot's request for its first model once that many were forwarded
  *  (HTTP 400, error kind and usage-line reason prefix REQUEST_CAP); collect_requests keeps each forwarded body in memory for
  *  POST /__proxy/requests {key}, and apart from them the first body the request cap refused: it carries the tool calls of the
  *  agent's last step, which no forwarded body does. */
@@ -324,12 +340,14 @@ type SlotBinding = { key: string; token: string | null; models: string[] | null;
 
 export interface UsageLine {
   at: string; key: string; provider: string; route: string; model: string | null;
-  outcome: 'forwarded' | 'refused' | 'failed';
+  /** `estimated`: a countTokens request the proxy answered itself with a local estimate (HARN-99); nothing reached a provider,
+   *  so it is neither a model request nor a model response. */
+  outcome: 'forwarded' | 'refused' | 'failed' | 'estimated';
   reason?: string; status?: number; reserved_usd?: number; actual_usd?: number; input_tokens?: number; output_tokens?: number; cached_tokens?: number; charged_reservation?: boolean; streamed?: boolean;
-  /** internal-task (H10), on a slot bound with `routes` under --route-texts: copies of the rule or placebo in the forwarded request by
+  /** HARN-18 (H10), on a slot bound with `routes` under --route-texts: copies of the rule or placebo in the forwarded request by
    *  location, plus `listing`, copies of a skill description outside tool results (routeCopies). Counts only. */
   route_copies?: RouteCopies & { listing: number };
-  /** internal-task (H10), same slots: a request for a model other than the slot's first bound model, a harness housekeeping call
+  /** HARN-18 (H10), same slots: a request for a model other than the slot's first bound model, a harness housekeeping call
    *  (shipped default model, metered, never scored). It carries no route_copies. */
   housekeeping?: boolean;
   /** Usage-line schema v1, on every forwarded line: Anthropic cache_creation_input_tokens plus OpenAI input or prompt
@@ -344,38 +362,43 @@ export interface UsageLine {
   /** OpenRouter only: the provider the response names (`provider`, DeepSeek on the pinned endpoint), the generation id (`id`,
    *  gen-...) and OpenRouter's own usage.cost in USD, recorded beside actual_usd (the price-table row) for reconciliation. */
   served_provider?: string; generation_id?: string; openrouter_cost_usd?: number;
-  /** OpenRouter only: a 2xx answer that names a provider other than the pinned endpoint's, or none (HE-PROXY-009). The trial is infra_error. */
+  /** OpenRouter only: the service tier the response names (`service_tier`), when it names one. */
+  served_tier?: string;
+  /** OpenRouter only: a 2xx answer that names a provider other than the pinned endpoint's, or none, or for a tier-pinned model
+   *  a tier other than the standard one (HE-PROXY-009). The trial is infra_error. */
   served_elsewhere?: boolean;
   /** OpenRouter only, on a non-2xx answer: `error.metadata.limit_source` when OpenRouter refused the request for a spend limit
    *  (`openrouter_key_limit`, `openrouter_guardrail_budget`, `openrouter_workspace_budget`, `openrouter_in_flight_budget`), HE-PROXY-014. */
   openrouter_limit_source?: string;
-  /** internal-task (R95): the provider's safety-filter stop in the answer, `<field>:<value>` (runner/proxy/stops.ts), on forwarded lines only. */
+  /** HARN-99 (R95): the provider's safety-filter stop in the answer, `<field>:<value>` (runner/proxy/stops.ts), on forwarded lines only. */
   safety_stop?: string;
-  /** xAI only (internal-task): the answer's own `usage.cost_in_usd_ticks` (1 tick is 1e-10 USD), recorded beside actual_usd (the price-table row) for reconciliation. */
+  /** xAI only (HARN-99): the answer's own `usage.cost_in_usd_ticks` (1 tick is 1e-10 USD), recorded beside actual_usd (the price-table row) for reconciliation. */
   cost_in_usd_ticks?: number;
-  /** Usage-line schema v1 (internal-task), on every forwarded line beside cache_write_tokens: its 1-hour part and reasoning tokens, 0 when absent. */
+  /** Usage-line schema v1 (HARN-21), on every forwarded line beside cache_write_tokens: its 1-hour part and reasoning tokens, 0 when absent. */
   cache_write_1h_tokens?: number; reasoning_tokens?: number;
   /** With --log-sections, on forwarded chat lines: the request's sections and the tools the response called, or why they could not be read. */
   tools_called?: string[]; sections?: RequestSections; sections_error?: string;
   /** On a request whose usage is unknown (charged_reservation): the lease holds actual_usd, and reported_usd is what the
    *  provider's usage did report (a cut stream's partial usage, else 0). Real spend lies between the two. */
   usage_unknown?: true; reported_usd?: number;
-  /** Particle only, on a non-2xx answer: its JSON `error.code` and `error.type` when each is a short token. Nothing else from the body is logged. runner/trial/trial.ts `trialTermination` reads `error_code` (internal-task plan decision 12); `error_type` is for the reader of the log. */
+  /** Particle only, on a non-2xx answer: its JSON `error.code` and `error.type` when each is a short token. Nothing else from the body is logged. runner/trial/trial.ts `trialTermination` reads `error_code` (HARN-16 plan decision 12); `error_type` is for the reader of the log. */
   error_code?: string; error_type?: string;
-  /** internal-task, the google route in the via-OpenRouter mode: the request went to OpenRouter's Chat Completions, translated
+  /** HARN-99, the google route in the via-OpenRouter mode (Gemini CLI's fallback route): on every google line, forwarded,
+   *  failed, refused or estimated; a forwarded request went to OpenRouter's Chat Completions, translated
    *  (runner/proxy/gemini-openrouter.ts); `translation_dropped` names request fields with no Chat Completions counterpart
-   *  that were left out. `local_estimate` marks a countTokens answer the proxy computed itself, never forwarded or charged. */
+   *  that were left out. `local_estimate` marks a countTokens answer the proxy computed itself (outcome `estimated`), never
+   *  forwarded or charged. */
   upstream?: 'openrouter'; translation_dropped?: string[]; local_estimate?: true;
-  /** internal-task, on every line of an install slot and nowhere else: the request's method and endpoint class, whether it presented
+  /** GST-2715, on every line of an install slot and nowhere else: the request's method and endpoint class, whether it presented
    *  the slot's token, its user agent (sanitizeUserAgent) and whether it was not the harness's own model call (refused, HE-PROXY-010).
    *  `status` is then always the HTTP status the proxy answered (502 on a failed line). */
   kind?: 'install_slot'; method?: string; endpoint?: EndpointClass; token_presented?: boolean; user_agent?: string; non_harness?: boolean;
-  /** internal-task, on a forwarded generation line of an install slot: the provider-hosted web tool calls the response reported and
+  /** GST-2715, on a forwarded generation line of an install slot: the provider-hosted web tool calls the response reported and
    *  their fees, which are part of actual_usd (hosted-tools.ts webToolUse). */
   web_search_calls?: number; web_search_usd?: number; web_fetch_calls?: number; web_fetch_usd?: number;
 }
 
-/** internal-task: what an install-slot request is, by method and route. `probe` is a harness's startup probe of what serves its base
+/** GST-2715: what an install-slot request is, by method and route. `probe` is a harness's startup probe of what serves its base
  *  URL: Hermes's POST /api/show and its GETs of /api/tags, /props, /v1/props, /version, /models and /api/v1/models, and Claude
  *  Code's HEAD /api/hello (seen under QM). */
 export type EndpointClass = 'generation' | 'models' | 'embeddings' | 'count_tokens' | 'probe' | 'other';
@@ -392,7 +415,7 @@ export function endpointClass(method: string, route: string): EndpointClass {
   return 'other';
 }
 
-/** internal-task: a user agent fit for the usage log: printable ASCII only, the slot's token and anything token-like (an sk-, pk- or
+/** GST-2715: a user agent fit for the usage log: printable ASCII only, the slot's token and anything token-like (an sk-, pk- or
  *  rk- key, or a run of 20 or more letters, digits, -, _, + or =) replaced by [masked], at most 120 characters. */
 export function sanitizeUserAgent(ua: string | null, token: string | null): string {
   let s = (ua ?? '').replace(/[^\x20-\x7e]/g, ' ');
@@ -408,7 +431,7 @@ export interface InstallTotals {
   web_search_calls: number; web_search_usd: number; web_fetch_calls: number; web_fetch_usd: number;
 }
 
-/** internal-task: install-slot totals per usage-line key (a trial's key, or `slot:<id>` for requests without its token), from usage lines. */
+/** GST-2715: install-slot totals per usage-line key (a trial's key, or `slot:<id>` for requests without its token), from usage lines. */
 export function installTotals(lines: UsageLine[]): Record<string, InstallTotals> {
   const out: Record<string, InstallTotals> = {};
   for (const l of lines) {
@@ -422,7 +445,7 @@ export function installTotals(lines: UsageLine[]): Record<string, InstallTotals>
   return out;
 }
 
-/** The internal-task fields of a line that reported no usage worth reading (a count_tokens call). */
+/** The HARN-21 fields of a line that reported no usage worth reading (a count_tokens call). */
 const NO_EXTRAS = { cache_write_tokens: 0, cache_write_1h_tokens: 0, reasoning_tokens: 0 };
 
 /** The tail of the reason the proxy writes on a 5xx it settled at $0 (scripts/gsta-135/lease.ts reads it). Which 5xx
@@ -460,7 +483,7 @@ function occurrences(value: unknown, texts: readonly string[]): number {
 const holdsToolResult = (content: unknown) => Array.isArray(content) && content.some((b) => (b as { type?: unknown } | null)?.type === 'tool_result');
 
 /**
- * internal-task (H10): copies of the route texts in one request body, by where they sit. Anthropic Messages (`system`, `messages`),
+ * HARN-18 (H10): copies of the route texts in one request body, by where they sit. Anthropic Messages (`system`, `messages`),
  * OpenAI Responses (`instructions`, `input`) and Chat Completions (`messages`) are read; any other body counts nothing.
  *  - system: the system prompt (`system`, `instructions`, a system or developer message);
  *  - tool_result: a tool's answer anywhere in the request (Anthropic tool_result blocks, a Responses `*_output` item, a Chat
@@ -526,6 +549,9 @@ export function openrouterRefusal(body: Record<string, unknown> | undefined, mod
   if (body?.web_search_options !== undefined && body.web_search_options !== null) return 'the request sets web_search_options, which has OpenRouter run a web search on its own servers';
   if (model?.includes(':')) return `the model ${model} carries the variant suffix ${model.slice(model.indexOf(':'))}, which selects other endpoints or adds a tool`;
   if (!model || !Object.hasOwn(allowed, model)) return `the model ${model ?? '(none)'} is not on the proxy's OpenRouter allowlist (${Object.keys(allowed).join(', ')})`;
+  const tier = (allowed[model] as OpenRouterPin | undefined)?.service_tier;
+  if (tier && body?.service_tier !== undefined && body.service_tier !== tier) return `the request sets service_tier ${JSON.stringify(body.service_tier)}, but ${model} is pinned to OpenRouter's ${tier} (standard) tier`;
+  if (tier && body?.speed !== undefined) return `the request sets speed ${JSON.stringify(body.speed)}, which asks OpenRouter for the priority tier, but ${model} is pinned to its ${tier} (standard) tier`;
   return null;
 }
 
@@ -544,18 +570,21 @@ function responseFacts(prov: ProviderName, model: string | null, text: string, s
   if (prov === 'particle') return { ...(served ? { served_model: served } : {}), ...error };
   const objects = streamed ? text.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => jsonOrNull(l.slice(5).trim())) : [jsonOrNull(text)];
   const token = (v: unknown, pattern: RegExp) => (typeof v === 'string' && pattern.test(v) ? v : undefined);
-  let provider: string | undefined, generation: string | undefined, usage = false;
+  let provider: string | undefined, generation: string | undefined, tier: string | undefined, usage = false;
   for (const o of objects) {
     if (!o || typeof o !== 'object' || Array.isArray(o)) continue;
     const top = o as Record<string, unknown>;
     const r = top.response && typeof top.response === 'object' && !Array.isArray(top.response) ? top.response as Record<string, unknown> : top;
     provider = token(r.provider, /^[A-Za-z0-9 ._()-]{1,100}$/) ?? provider;
     generation = token(r.id, /^[A-Za-z0-9._:-]{1,200}$/) ?? generation;
+    tier = token(r.service_tier, /^[a-z_]{1,20}$/) ?? tier;
     usage ||= !!r.usage && typeof r.usage === 'object';
   }
-  const elsewhere = ok && provider !== OPENROUTER_PINS[model ?? '']?.served && (provider !== undefined || (usage && route !== '/v1/responses'));
+  const pin = OPENROUTER_PINS[model ?? ''];
+  const offTier = !!pin?.service_tier && tier !== undefined && tier !== 'default' && tier !== 'standard';
+  const elsewhere = ok && ((provider !== pin?.served && (provider !== undefined || (usage && route !== '/v1/responses'))) || offTier);
   const limit = ok ? undefined : token((jsonOrNull(text) as { error?: { metadata?: { limit_source?: unknown } } } | null)?.error?.metadata?.limit_source, /^openrouter_[a-z_]{1,40}$/);
-  return { ...(served ? { served_model: served } : {}), ...(provider ? { served_provider: provider } : {}), ...(generation ? { generation_id: generation } : {}), ...(elsewhere ? { served_elsewhere: true } : {}),
+  return { ...(served ? { served_model: served } : {}), ...(provider ? { served_provider: provider } : {}), ...(tier ? { served_tier: tier } : {}), ...(generation ? { generation_id: generation } : {}), ...(elsewhere ? { served_elsewhere: true } : {}),
     ...(limit ? { openrouter_limit_source: limit } : {}), ...error };
 }
 
@@ -612,12 +641,12 @@ export class MeteringProxy {
   readonly meters = new Map<string, Meter>();
   /** Slots whose provider requests are charged to a ledger allowance (slot builds), not one ledger entry each. */
   readonly allowances = new Map<string, BudgetAllowance>();
-  readonly counts = { forwarded: 0, refused: 0, failed: 0, tripwires: 0 };
+  readonly counts = { forwarded: 0, refused: 0, failed: 0, estimated: 0, tripwires: 0 };
   private bindings = new Map<string, SlotBinding>();
-  /** internal-task Phase B: forwarded request bodies per key, for slots bound with collect_requests. Memory only, never logged;
+  /** HARN-52 Phase B: forwarded request bodies per key, for slots bound with collect_requests. Memory only, never logged;
    *  `takeRequests` hands them to the runner once and drops them. */
   private collected = new Map<string, unknown[]>();
-  /** internal-task Phase B: the first body the request cap refused per key, for the same slots; never forwarded or logged. */
+  /** HARN-52 Phase B: the first body the request cap refused per key, for the same slots; never forwarded or logged. */
   private refusedBody = new Map<string, unknown>();
   private signatures = new SignatureStore();
   private captures: BodyCapture | null = null;
@@ -628,7 +657,7 @@ export class MeteringProxy {
   get port(): number { return this.server!.port as number; }
   /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it; with `models`, only requests for those provider:model ids;
    *  with `ablation` (lease mode), the bound layers are cut from every generation request (runner/proxy/ablate.ts); with
-   *  `routes` (internal-task-a), count route copies on its usage lines when the proxy has route texts; with `install` (internal-task-b, lease
+   *  `routes` (HARN-18), count route copies on its usage lines when the proxy has route texts; with `install` (GST-2715, lease
    *  mode, needs `token` and `models`), record every request and refuse the ones that are not the harness's own model call.
    *  Throws, binding nothing, when an install bind lacks one of those or the proxy refuses hosted web tools. */
   bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false, limits: SlotLimits = {}, capture: string | null = null, install = false) {
@@ -670,8 +699,10 @@ export class MeteringProxy {
   /** `install`: the request is on an install slot, so its line carries the install fields, the model the request named when the
    *  line has none, and the status the proxy answered (502 for a failed line). */
   private log(line: UsageLine, install?: InstallTag) {
+    // The fallback route is recorded on every google line, forwarded, failed, refused or estimated.
+    if (line.provider === 'google' && this.options.policy?.googleVia === VIA_OPENROUTER) line = { ...line, upstream: VIA_OPENROUTER };
     if (install) { const { model, ...fields } = install; line = { ...line, model: line.model ?? model, ...fields, status: line.status ?? 502 }; }
-    if (line.outcome === 'refused') this.counts.refused++; else if (line.outcome === 'failed') this.counts.failed++; else this.counts.forwarded++;
+    this.counts[line.outcome]++;
     if (this.options.policy?.usageLog) appendFileSync(this.options.policy.usageLog, JSON.stringify(line) + '\n');
   }
   start() {
@@ -887,11 +918,11 @@ export class MeteringProxy {
     };
     // Gemini also takes a key as ?key=; the inbound one is never the real key and the real one never rides in a URL.
     if (prov === 'google') { const q = new URLSearchParams(search); q.delete('key'); search = q.size ? `?${q}` : ''; }
-    // internal-task: in the via-OpenRouter mode a Gemini request is translated and then handled as an OpenRouter one (upProv).
+    // HARN-99: in the via-OpenRouter mode a Gemini request is translated and then handled as an OpenRouter one (upProv).
     const via = prov === 'google' && p.googleVia === VIA_OPENROUTER;
     const upProv: ProviderName = via ? 'openrouter' : prov;
     const countRoute = prov === 'anthropic' && req.method === 'POST' && route === COUNT_TOKENS_ROUTE && p.freeCountTokens === true;
-    const localCount = via && req.method === 'POST' && GOOGLE_COUNT_ROUTE.test(route);
+    const localCount = prov === 'google' && req.method === 'POST' && GOOGLE_COUNT_ROUTE.test(route);
     if (!countRoute && !localCount && !ROUTES[prov].some(r => r.method === req.method && r.path.test(route))) return refuse(403, 'invalid_request', `route ${req.method} /${prov}${route} is not allowlisted`);
     if (localCount) {
       const counted = route.match(GOOGLE_COUNT_ROUTE)![2]!;
@@ -899,7 +930,7 @@ export class MeteringProxy {
       let parsed: Record<string, any>;
       try { parsed = JSON.parse(await req.text()); } catch { return refuse(400, 'invalid_request', 'request body is not JSON', counted); }
       const estimate = countTokensEstimate(parsed);
-      this.log({ at, key, provider: prov, route, model: counted, outcome: 'forwarded', status: 200, reserved_usd: 0, actual_usd: 0, local_estimate: true,
+      this.log({ at, key, provider: prov, route, model: counted, outcome: 'estimated', status: 200, reserved_usd: 0, actual_usd: 0, local_estimate: true,
         reason: `countTokens answered by the proxy's local estimate (${estimate.totalTokens} tokens at four characters per token); never forwarded or charged`, ...NO_EXTRAS });
       return Response.json(estimate);
     }
@@ -959,7 +990,7 @@ export class MeteringProxy {
       const filter = await import('./ablate.ts');
       if (filter.GENERATION_ROUTES.includes(route)) receipt = filter.ablate(ablation, route, body);
     }
-    // internal-task: the sections are read from the body the filter left (the bytes billed), before the proxy adds stream_options or an output cap.
+    // HARN-21: the sections are read from the body the filter left (the bytes billed), before the proxy adds stream_options or an output cap.
     let request: { sections: RequestSections } | { error: string } | null = null;
     if (p.logSections && body && sectionRoute(upProv, upRoute)) {
       try { request = { sections: requestSections(body, Buffer.byteLength(receipt || via ? JSON.stringify(body) : raw!), upProv, upRoute) }; }
@@ -968,12 +999,21 @@ export class MeteringProxy {
     if (streamed && (upProv === 'openai' || upProv === 'particle' || upProv === 'openrouter' || upProv === 'xai') && upRoute === '/v1/chat/completions') body!.stream_options = { ...(body!.stream_options ?? {}), include_usage: true };
     if (prov === 'xai' && route === '/v1/responses' && body) body.store = false;
     // OpenRouter: one endpoint, no fallback, and no endpoint dearer than the price-table row the request is metered at.
-    if (pinnedRow && body && upModel) body.provider = { only: [OPENROUTER_PINS[upModel]!.only], allow_fallbacks: false, max_price: { prompt: pinnedRow.input, completion: pinnedRow.output } };
+    // A tier-pinned model also names OpenRouter's standard tier, so neither a flex nor a priority endpoint can serve it.
+    if (pinnedRow && body && upModel) {
+      const pin = OPENROUTER_PINS[upModel]!;
+      body.provider = { only: [pin.only], allow_fallbacks: false, max_price: { prompt: pinnedRow.input, completion: pinnedRow.output } };
+      if (pin.service_tier) body.service_tier = pin.service_tier;
+    }
     const fields = body ? outputFields(upProv, upRoute) : [];
-    const cap = Math.min(p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, upProv === 'openrouter' ? OPENROUTER_MAX_OUTPUT[upModel ?? ''] ?? Infinity : Infinity);
+    const cap = Math.min(p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, upProv === 'openrouter' ? OPENROUTER_MAX_OUTPUT[upModel ?? ''] ?? Infinity
+      : prov === 'google' ? GEMINI_MAX_OUTPUT[model ?? ''] ?? Infinity : Infinity);
     // Gemini's limit sits in generationConfig (or the REST snake_case generation_config).
     const gen = prov === 'google' && !via && body ? body.generationConfig ?? body.generation_config ?? (body.generationConfig = {}) : null;
     if (gen !== null && (typeof gen !== 'object' || Array.isArray(gen))) return refuse(400, 'invalid_request', 'generationConfig must be a JSON object', model);
+    // The output cap and the reservation bound one candidate; Gemini bills every candidate it generates.
+    const candidates = gen ? [gen.candidateCount, gen.candidate_count].filter((v) => v !== undefined) : [];
+    if (candidates.some((v) => v !== 1)) return refuse(400, 'invalid_request', `HE-PROXY-013 the request asks for candidateCount ${candidates.map((v) => JSON.stringify(v)).join(', ')}; the output cap and the reservation cover one candidate, and Gemini bills every candidate it generates (docs/errors.md). fix: send candidateCount 1 or leave it out`, model);
     if ((fields.length || gen) && body) {
       const stated = (gen ? [gen.maxOutputTokens, gen.max_output_tokens] : [body.max_tokens, body.max_completion_tokens, body.max_output_tokens]).filter((v): v is number => typeof v === 'number');
       if (stated.some(v => v > cap)) return refuse(400, 'invalid_request', `requested ${Math.max(...stated)} output tokens, above this cell's cap of ${cap}`, model);
@@ -991,7 +1031,7 @@ export class MeteringProxy {
     const callId = price ? (via ? `google:${model}` : `${prov}:${price.model}`) : null;
     if (callId && p.allowModels && !p.allowModels.includes(callId)) return refuse(403, 'budget', `${callId} is not on this cell's model allowlist`, model);
     if (callId && slotModels && !slotModels.includes(callId)) return refuse(403, 'budget', `${callId} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, model);
-    // internal-task Phase B: the opt-in request cap counts the slot's requests for its first model (the cell's), not its utility models.
+    // HARN-52 Phase B: the opt-in request cap counts the slot's requests for its first model (the cell's), not its utility models.
     if (price && binding?.maxRequests && callId === slotModels?.[0]) {
       if (binding.sent! >= binding.maxRequests) {
         if (binding.collect && body && !this.refusedBody.has(key)) this.refusedBody.set(key, structuredClone(body));
@@ -1001,7 +1041,7 @@ export class MeteringProxy {
     }
     if (binding?.collect && body) { const list = this.collected.get(key) ?? []; list.push(structuredClone(body)); this.collected.set(key, list); }
     const bounded = price ? { ...price, inputTokens: Math.max(price.inputTokens, Buffer.byteLength(outBody ?? '') + 64) } : null;
-    // internal-task: an install slot also reserves the most its declared hosted web tools can bill (hosted-tools.ts webToolAllowance).
+    // GST-2715: an install slot also reserves the most its declared hosted web tools can bill (hosted-tools.ts webToolAllowance).
     const reserved = bounded ? reservationUsd(bounded) + (install ? webToolAllowance(prov, body) : 0) : 0;
     let entry: string | null = null;
     if (bounded) {
@@ -1014,7 +1054,7 @@ export class MeteringProxy {
     else if (prov === 'google' && !via) headers.set('x-goog-api-key', realKey);
     else headers.set('authorization', `Bearer ${realKey}`);
     if (outBody !== undefined) headers.set('content-type', 'application/json');
-    // internal-task (H10): route copies ride with the knobs onto every forwarded or failed line of a routes slot, and only there.
+    // HARN-18 (H10): route copies ride with the knobs onto every forwarded or failed line of a routes slot, and only there.
     const named = via ? model : bounded?.model ?? model;
     const housekeeping = !!named && !!slotModels?.length && slotModels[0] !== `${prov}:${named}`;
     const routeFields = !routes || !p.routeTexts || !body ? {} : housekeeping ? { housekeeping: true } : { route_copies: routeCopies(body, p.routeTexts) };
@@ -1023,7 +1063,7 @@ export class MeteringProxy {
     /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation.
      *  `response`: the parsed body, or a stream's text, which the usage-line schema v1 fields are read from once the request is charged. */
     const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, response: unknown, cached?: number, reason?: string, unfinished = false, facts: Partial<UsageLine> = {}) => {
-      // internal-task: an install slot charges the hosted web tool fees the response reports on top of its tokens.
+      // GST-2715: an install slot charges the hosted web tool fees the response reports on top of its tokens.
       const web = install && bounded ? webToolUse(prov, route, response, isStream) : null;
       const webUsd = web ? web.web_search_usd + web.web_fetch_usd : 0;
       if (cost && webUsd > 0) cost = { ...cost, usd: cost.usd + webUsd };
@@ -1033,7 +1073,7 @@ export class MeteringProxy {
       if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost ?? (webUsd > 0 ? { usd: unknownUsd, unfinished: true } : null));
       const usd = !cost ? unknownUsd : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
       this.charge(key, prov, named ?? null, usd, charged);
-      const elsewhere = facts.served_elsewhere ? `HE-PROXY-009 OpenRouter answered from ${facts.served_provider ?? 'an unnamed provider'}, not the pinned ${OPENROUTER_PINS[upModel ?? '']?.served ?? 'endpoint'}; the trial is infra_error (docs/errors.md)` : undefined;
+      const elsewhere = facts.served_elsewhere ? `HE-PROXY-009 OpenRouter answered from ${facts.served_provider ?? 'an unnamed provider'}${facts.served_tier ? ' at its ' + facts.served_tier + ' tier' : ''}, not the pinned ${OPENROUTER_PINS[upModel ?? '']?.served ?? 'endpoint'}${OPENROUTER_PINS[upModel ?? '']?.service_tier ? ' at its standard tier' : ''}; the trial is infra_error (docs/errors.md)` : undefined;
       const limited = facts.openrouter_limit_source ? `HE-PROXY-014 OpenRouter refused the request for its spend limit (${facts.openrouter_limit_source}); no model ran, and new trials wait for the limit to reset (docs/errors.md)` : undefined;
       const why = [elsewhere, limited, reason].filter(Boolean).join('; ');
       this.log({ at, key, provider: prov, route, model: named, outcome: 'forwarded', ...(why ? { reason: why } : {}), status, reserved_usd: reserved, actual_usd: usd,
@@ -1120,7 +1160,7 @@ function geminiEvents(upstream: ReadableStream<Uint8Array>, stream: GeminiStream
   }));
 }
 
-/** internal-task: the fields a forwarded line adds, read after the request was charged so they can never change a charge;
+/** HARN-21: the fields a forwarded line adds, read after the request was charged so they can never change a charge;
  *  `request` is null without --log-sections or off the chat routes. Never throws. */
 export function lineExtrasFor(prov: string, route: string, response: unknown, request: { sections: RequestSections } | { error: string } | null): Partial<UsageLine> {
   try {
@@ -1158,13 +1198,13 @@ export interface ProxyCliArgs {
   host: string; port: number; ledger: string; leaseUsd: number; runId: string; usageLog: string | null;
   allowModels: string[] | null; maxOutputTokens: number | null; forbiddenMarkers: string[]; streaming: 'meter' | 'refuse'; upstream: Partial<Record<ProviderName, string>>; newRun: boolean;
   controlToken: string | null; freeCountTokens: boolean; ablationLog: string | null; logSections: boolean;
-  /** internal-task: --refuse-hosted-tools, off without it. */
+  /** HARN-50: --refuse-hosted-tools, off without it. */
   refuseHostedTools: boolean;
-  /** internal-task: --capture-bodies <dir> and --capture-max-bytes <n>, null without them. */
+  /** HARN-50: --capture-bodies <dir> and --capture-max-bytes <n>, null without them. */
   captureBodies: string | null; captureMaxBytes: number | null;
-  /** internal-task (H10): --route-texts <file.json>, null without it. */
+  /** HARN-18 (H10): --route-texts <file.json>, null without it. */
   routeTexts: RouteTexts | null;
-  /** internal-task: --google-via openrouter, null without it. */
+  /** HARN-99: --google-via openrouter, null without it. */
   googleVia: typeof VIA_OPENROUTER | null;
 }
 
@@ -1229,7 +1269,7 @@ if (import.meta.main) {
       const s = ledgerStatus({ ledgerPath: one('--budget-ledger'), runId: one('--run-id') });
       if (!s.run) throw new Error(`no lease ${one('--run-id')} in ${s.ledger}`);
       const requests = BudgetRun.runRequests(s.ledger, s.run.run_id);
-      // internal-task: install-slot totals from the usage log lines written while this lease was open (the log has no run id).
+      // GST-2715: install-slot totals from the usage log lines written while this lease was open (the log has no run id).
       const usageLog = one('--usage-log') ?? `${s.ledger}.usage.ndjson`;
       const { started_at: from, finished_at: until } = s.run;
       const lines = (existsSync(usageLog) ? readFileSync(usageLog, 'utf8').split('\n') : []).filter((l) => l.includes('"kind":"install_slot"'))

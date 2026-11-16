@@ -9,12 +9,22 @@
 #   1. agents: vm-run.sh on install-check-prereg.json (each agent class, Claude Code on Opus 5.5 and Fable 5.1, Codex on GPT-6.1 Sol and GPT-6
 #      Astra, Hermes, OpenClaw, Pi and mini-swe-agent on Opus 5.5 and GPT-6.1 Sol, Hermes, OpenClaw and Pi on Particle-1
 #      through the proxy's Particle route, Pi, Hermes and OpenClaw on DeepSeek V4.1 Flash 1017 through the proxy's
-#      OpenRouter route, and DeepSeek Harness (dsh) on Opus 5.5, GPT-6.1 Sol, Particle-1 and DeepSeek-V4.1-Flash-1017),
+#      OpenRouter route, DeepSeek Harness (dsh) on Opus 5.5, GPT-6.1 Sol, Particle-1 and DeepSeek-V4.1-Flash-1017, Gemini CLI
+#      on Gemini 4 Carbon through the proxy's google route, Grok Build, Pi, Hermes and OpenClaw on Grok 4.7 through its xai
+#      route (xAI's Responses API), Muse Code on Muse Wonder through its OpenRouter Responses route, Pi, OpenClaw and
+#      Hermes on Gemini 4 Carbon and Muse Wonder and Pi and OpenClaw on Gemini 4 Hydrogen and GLM 5.3 through its OpenRouter
+#      route, Gemini pinned to Google AI Studio's standard endpoint and GLM to Baidu's fp8 one, each at the standard tier),
 #      one task each, uncounted, fake
 #      upstream: every class must install its pinned version, bind its slot, reach the fake model through the proxy and
 #      finish its trial. On the OpenRouter route the fake answers with one tool call and refuses a tool-call turn replayed
 #      without its reasoning, as DeepSeek does, so an OpenRouter cell passes only when its harness sent the reasoning
-#      back on every replayed tool-call turn (the cell's reasoning_replay, from to-trials.ts).
+#      back on every replayed tool-call turn (the cell's reasoning_replay, from to-trials.ts), unless pin.json declares
+#      another verdict for that harness and model (models.<model>.reasoning_replay.<harness>: drops when no replayed turn
+#      carried reasoning, partial when some did). A declared verdict must be the one seen, and a declared partial also takes
+#      a turn-by-turn full replay, since a field the check sees carried can still be incomplete (OpenClaw sends Gemini's
+#      signature with no reasoning text). Any other verdict fails the cell and is named under "reasons". The xai route's
+#      fake answers each harness's shell tool with a call after a reasoning item carrying encrypted_content, and an xAI
+#      cell is held to the same rule: it passes only when that encrypted reasoning came back on every replayed turn.
 #   1b. zero data retention: zdr-check.ts reads the agents' captures. The fake upstream answers a Responses request that
 #      declares a function or custom tool (in a namespace too, as Codex does) with one call of it and refuses one chained
 #      on previous_response_id with OpenAI's zero-data-retention 400, so every OpenAI cell of Codex, Hermes, OpenClaw, Pi and dsh must have sent a tool-output
@@ -139,9 +149,20 @@ def jl(p):
 def marker(name):
     p = os.path.expanduser("~/.frontier-harbor/venv/" + name)
     return open(p).read() if os.path.exists(p) else None
-def replayed(a):
+def replay_seen(a):
     r = a.get("reasoning_replay")
-    return not str(a.get("model") or "").startswith("openrouter:") or bool(r and r["replaying"] >= 1 and r["with_reasoning"] == r["replaying"])
+    if not r or r["replaying"] < 1:
+        return None
+    return "replays" if r["with_reasoning"] == r["replaying"] else "drops" if r["with_reasoning"] == 0 else "partial"
+def replay_declared(a):
+    return ((pin["models"].get(a.get("model") or "") or {}).get("reasoning_replay") or {}).get(a.get("harness"), "replays")
+def replay_checked(a):
+    return str(a.get("model") or "").startswith(("openrouter:", "xai:"))
+def replayed(a):
+    if not replay_checked(a):
+        return True
+    seen, declared = replay_seen(a), replay_declared(a)
+    return seen == declared or (seen == "replays" and declared == "partial")
 def effort_flagged(a):
     return a.get("effort_flag") is not None and not (a.get("keyless_stop") and a["effort_flag"] == "unchecked")
 def rewards(jobs, job):
@@ -170,6 +191,9 @@ for t in trials:
         stopped = (t.get("error") or "").startswith("HE-CURSOR-002") and checks.get("cursor_api_key") == "absent" and "container_logs_entries" not in checks and "cursor_version" not in checks
         agents[t["cell"]].update({"expected": "HE-CURSOR-002 at agent setup, no agent command in the task container, nothing sent to Cursor",
                                   "keyless_stop": stopped, "ran": stopped, "error": t.get("error")})
+for a in agents.values():
+    if replay_checked(a):
+        a["replay_verdict"] = {"seen": replay_seen(a), "declared": replay_declared(a)}
 planned = [c["id"] for c in json.load(open(os.path.join(os.path.dirname(pin_path), "install-check-prereg.json")))["cells"]]
 for c in planned:
     agents.setdefault(c, {"ran": False, "termination": None, "note": "no trial record"})
@@ -214,6 +238,7 @@ if agents_rc != 0:
     reasons.append(f"agents: vm-run.sh exited {agents_rc}")
 reasons += [f"agents: cell {c} did not run" for c, a in agents.items() if not a.get("ran")]
 reasons += [f"agents: cell {c} has effort flag {a['effort_flag']}" for c, a in agents.items() if a.get("ran") and effort_flagged(a)]
+reasons += [f"agents: cell {c} reasoning replay {replay_seen(a) or 'not seen'}, pin.json declares {replay_declared(a)} for {a['harness']} on {a['model']}" for c, a in agents.items() if a.get("ran") and not replayed(a)]
 reasons += [f"{k}: failed" for k in ("oracle", "nop", "egress", "canary") if not report[k]["pass"]]
 reasons += [f"zdr: cell {c['cell']} {c['status']}: {c.get('note', '')}" for c in report["zdr"].get("cells", []) if c["status"] != "pass"] or ([] if report["zdr"]["pass"] else ["zdr: " + report["zdr"].get("note", "failed")])
 if gstack_rc != 0:

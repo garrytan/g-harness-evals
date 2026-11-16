@@ -31,8 +31,10 @@ export const TOKEN_PATTERNS: Record<string, RegExp> = {
   slack_app: new RegExp(p('xap', 'p-[A-Za-z0-9-]{10,}'), 'g'),
   slack_admin: new RegExp(p('wad', 'm-[A-Za-z0-9-]{10,}'), 'g'),
   anthropic: new RegExp(p('sk-', 'ant-[A-Za-z0-9_-]{10,}'), 'g'),
+  openrouter: new RegExp(p('\\bsk-', 'or-v1-[0-9a-f]{64}\\b'), 'g'),
+  xai: new RegExp(p('\\bxa', 'i-[A-Za-z0-9]{20,}'), 'g'),
   gbrain: new RegExp(p('gbrain', '_[0-9a-f]{20}'), 'g'),
-  openai_or_generic_sk: /\bsk-[A-Za-z0-9_-]{20,}/g,
+  openai_or_generic_sk: new RegExp(p('\\bsk-(?!', 'or-v1-[0-9a-f]{64}\\b)[A-Za-z0-9_-]{20,}'), 'g'),
   bearer: /\bBearer\s+[A-Za-z0-9._~+\/-]{20,}=*/g,
   github: new RegExp(p('gh', 'p_[A-Za-z0-9]{30,}|github_', 'pat_[A-Za-z0-9_]{30,}'), 'g'),
   aws: new RegExp(p('AKIA', '[0-9A-Z]{16}'), 'g'),
@@ -65,13 +67,13 @@ const textOf = (buf: Uint8Array, path: string): string => path.endsWith('.gz') ?
 
 // ---- 0. canary: the scanner must see what it is looking for -------------------------------------------------
 function canary(): { ok: boolean; detail: string } {
-  const fake = [p('xox', 'b-', '0000000000-canary0000'), p('sk-', 'ant-', 'api03-canary' + 'A'.repeat(20)), p('gbrain', '_', 'abcdef0123456789abcd'), 'Bearer ' + p('sk-', 'ant-', 'canary' + 'B'.repeat(24)), 'sk-trial-' + 'c'.repeat(24)].join('\n');
+  const fake = [p('xox', 'b-', '0000000000-canary0000'), p('sk-', 'ant-', 'api03-canary' + 'A'.repeat(20)), p('gbrain', '_', 'abcdef0123456789abcd'), 'Bearer ' + p('sk-', 'ant-', 'canary' + 'B'.repeat(24)), 'sk-trial-' + 'c'.repeat(24), p('sk-', 'or-v1-', '0'.repeat(64)), p('xa', 'i-', 'canary' + 'D'.repeat(30)), p('AI', 'za', 'canary' + 'E'.repeat(29))].join('\n');
   const hits: Hit[] = []; const counts: Record<string, number> = {};
   scanText(fake, 'canary', hits, counts);
   const gz = Buffer.from(Bun.gzipSync(Buffer.from(fake)));
   const hits2: Hit[] = []; const counts2: Record<string, number> = {};
   scanText(textOf(gz, 'canary.gz'), 'canary.gz', hits2, counts2);
-  const ok = (counts.slack_bot ?? 0) >= 1 && (counts.anthropic ?? 0) >= 2 && (counts.gbrain ?? 0) >= 1 && (counts.bearer ?? 0) >= 1 && (counts['allowlisted:openai_or_generic_sk'] ?? 0) >= 1 && JSON.stringify(counts2) === JSON.stringify(counts);
+  const ok = (counts.slack_bot ?? 0) >= 1 && (counts.anthropic ?? 0) >= 2 && (counts.gbrain ?? 0) >= 1 && (counts.bearer ?? 0) >= 1 && (counts['allowlisted:openai_or_generic_sk'] ?? 0) >= 1 && (counts.openrouter ?? 0) >= 1 && (counts.xai ?? 0) >= 1 && (counts.google ?? 0) >= 1 && JSON.stringify(counts2) === JSON.stringify(counts);
   return { ok, detail: JSON.stringify(counts) };
 }
 

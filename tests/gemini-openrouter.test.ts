@@ -8,7 +8,8 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BudgetRun, closeLedgers } from '../runner/ledger/budget-ledger.ts';
+import { BudgetRun, closeLedgers, priceRequest } from '../runner/ledger/budget-ledger.ts';
+import { canonicalLookup, priceOnDate } from '../runner/pricing/model-pricing.ts';
 import { fromChat, GeminiStream, SignatureStore, toChat } from '../runner/proxy/gemini-openrouter.ts';
 import { MeteringProxy, parseProxyArgs, type UsageLine } from '../runner/proxy/metering-proxy.ts';
 import { GEMINI_PROBE, OPENROUTER_GEMINI_SIGNATURE_ERROR, reply, SAFETY_MARKER, signatureFor } from '../scripts/frontier-harbor/fake-upstream.ts';
@@ -17,16 +18,18 @@ type Json = Record<string, any>;
 const tmp = mkdtempSync(join(tmpdir(), 'gemini-openrouter-'));
 const ENV = { OPENROUTER_API_KEY: 'placeholder-openrouter' };
 const TOKEN = 'trial-token:t.0123456789abcdef0123456789abcdef';
+/** Carbon's OpenRouter row at the rates of the UTC day of `at`, the time the proxy logged the request. */
+const carbonAt = (at: string) => priceOnDate(canonicalLookup('openrouter:google/gemini-4-carbon')!, new Date(at));
 const sent: { path: string; body: Json; auth: string | null; goog: string | null }[] = [];
 let n = 0;
-let served = 'Google';
+let served = 'Google AI Studio';
 const fake = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: async (req) => {
   const path = new URL(req.url).pathname;
   const body = await req.json() as Json;
   sent.push({ path, body, auth: req.headers.get('authorization'), goog: req.headers.get('x-goog-api-key') });
   const res = reply(path, body, ++n);
-  if (served === 'Google' || !res.ok) return res;
-  const text = (await res.text()).replaceAll('"provider":"Google"', '"provider":"' + served + '"');
+  if (served === 'Google AI Studio' || !res.ok) return res;
+  const text = (await res.text()).replaceAll('"provider":"Google AI Studio"', '"provider":"' + served + '"');
   return new Response(text, { status: res.status, headers: res.headers });
 } });
 afterAll(() => { fake.stop(true); closeLedgers(); rmSync(tmp, { recursive: true, force: true }); });
@@ -114,6 +117,36 @@ describe('the translation', () => {
     expect(toChat({ contents: [], toolConfig: { functionCallingConfig: { mode: 'NONE' } } }, 'm', store).chat.tool_choice).toBe('none');
   });
 
+  test('a schema is translated only where a schema sits: default, enum, const, example and examples values reach OpenRouter byte-identical', () => {
+    const store = new SignatureStore();
+    const literal = () => ({ type: 'CARD', nullable: true, items: { type: 'STRING' }, properties: { x: { type: 'INTEGER' } } });
+    const values = () => ({ default: literal(), enum: [literal(), 'PLAIN'], const: literal(), example: literal(), examples: [literal()] });
+    const gemini = () => ({ type: 'OBJECT', propertyOrdering: ['card', 'list'], properties: {
+      card: { type: 'OBJECT', nullable: true, ...values() },
+      list: { type: 'ARRAY', items: { type: 'STRING', ...values() }, prefixItems: [{ type: 'NUMBER', default: literal() }] },
+      any: { anyOf: [{ type: 'STRING', default: literal() }], oneOf: [{ type: 'BOOLEAN' }], allOf: [{ type: 'OBJECT' }], not: { type: 'NULL' } },
+      open: { type: 'OBJECT', additionalProperties: { type: 'STRING', nullable: true, example: literal() } },
+      closed: { type: 'OBJECT', additionalProperties: false },
+    }, required: ['card'] });
+    const translated = { type: 'object', propertyOrdering: ['card', 'list'], properties: {
+      card: { type: ['object', 'null'], ...values() },
+      list: { type: 'array', items: { type: 'string', ...values() }, prefixItems: [{ type: 'number', default: literal() }] },
+      any: { anyOf: [{ type: 'string', default: literal() }], oneOf: [{ type: 'boolean' }], allOf: [{ type: 'object' }], not: { type: 'null' } },
+      open: { type: 'object', additionalProperties: { type: ['string', 'null'], example: literal() } },
+      closed: { type: 'object', additionalProperties: false },
+    }, required: ['card'] };
+    const json = { type: 'object', properties: { card: { type: 'object', default: { type: 'CARD', nullable: true } } } };
+    const { chat } = toChat({ contents: [],
+      tools: [{ functionDeclarations: [{ name: 'f', parameters: gemini() }, { name: 'g', parametersJsonSchema: json }] }],
+      generationConfig: { responseMimeType: 'application/json', responseSchema: gemini() } }, 'm', store);
+    expect(JSON.stringify(chat.tools[0].function.parameters)).toBe(JSON.stringify(translated));
+    expect(JSON.stringify(chat.tools[1].function.parameters)).toBe(JSON.stringify(json));
+    expect(JSON.stringify(chat.response_format.json_schema.schema)).toBe(JSON.stringify(translated));
+    expect(JSON.stringify(chat.tools[0].function.parameters.properties.card.default)).toBe('{"type":"CARD","nullable":true,"items":{"type":"STRING"},"properties":{"x":{"type":"INTEGER"}}}');
+    const viaJson = toChat({ contents: [], generationConfig: { responseMimeType: 'application/json', responseJsonSchema: json } }, 'm', store).chat;
+    expect(JSON.stringify(viaJson.response_format.json_schema.schema)).toBe(JSON.stringify(json));
+  });
+
   test('what cannot be carried is refused with HE-PROXY-012', () => {
     const store = new SignatureStore();
     const bad: Json[] = [
@@ -198,7 +231,6 @@ describe('the proxy in the via-OpenRouter mode, against the fake OpenRouter', ()
         expect(u.path).toBe('/openrouter/v1/chat/completions');
         expect(u.auth).toBe('Bearer placeholder-openrouter');
         expect(u.goog).toBeNull();
-        expect(u.body.provider).toEqual({ only: ['google-vertex/global'], allow_fallbacks: false, max_price: { prompt: 2, completion: 10 } });
         expect(u.body.reasoning).toEqual({ effort: 'high' });
         expect(u.body.max_tokens).toBe(8192);
         expect(u.body.stream === true).toBe(stream);
@@ -207,8 +239,13 @@ describe('the proxy in the via-OpenRouter mode, against the fake OpenRouter', ()
       expect(third.map((m: Json) => m.reasoning_details)).toEqual(third.map((m: Json) => [{ type: 'reasoning.encrypted', data: signatureFor(m.tool_calls[0].id), id: m.tool_calls[0].id, format: 'google-gemini-v1', index: 1 }]));
       await Bun.sleep(50);
       const lines = p.usage();
-      expect(lines.map((l) => [l.provider, l.model, l.outcome, l.status, l.upstream, l.served_provider, l.thinking_level])).toEqual(Array(3).fill(['google', 'gemini-4-carbon', 'forwarded', 200, 'openrouter', 'Google', 'high']));
-      for (const l of lines) expect(l.actual_usd).toBeCloseTo((60 * 2 + 40 * 0.1 + 30 * 10) / 1e6, 12);
+      expect(lines.map((l) => [l.provider, l.model, l.outcome, l.status, l.upstream, l.served_provider, l.thinking_level])).toEqual(Array(3).fill(['google', 'gemini-4-carbon', 'forwarded', 200, 'openrouter', 'Google AI Studio', 'high']));
+      lines.forEach((l, i) => {
+        const rate = carbonAt(l.at);
+        expect(upstream[i]!.body.provider).toEqual({ only: ['google-ai-studio'], allow_fallbacks: false, max_price: { prompt: rate.input, completion: rate.output } });
+        expect(upstream[i]!.body.service_tier).toBe('default');
+        expect(l.actual_usd).toBeCloseTo((60 * rate.input + 40 * rate.cache_read! + 30 * rate.output) / 1e6, 12);
+      });
       p.stop();
     });
   }
@@ -227,31 +264,28 @@ describe('the proxy in the via-OpenRouter mode, against the fake OpenRouter', ()
       contents: [{ role: 'user', parts: [{ text: 'Fix the build.' }] }, { role: 'model', parts: [{ text: 'Running the tests.' }] }, { role: 'user', parts: [{ text: 'Recent conversation history above.' }] }],
       generationConfig: { temperature: 0, topP: 1, responseMimeType: 'application/json', responseJsonSchema: { type: 'object', properties: { unproductive_state_confidence: { type: 'number' } }, required: ['unproductive_state_confidence'] } } };
     const from = sent.length;
-    served = 'Google';
     const flash = await call('hk', 'gemini-3-flash-preview', check);
     expect(flash.status).toBe(200);
-    served = 'Google AI Studio';
     const pro = await call('hk', 'gemini-3.1-pro-preview-customtools', { ...check, generationConfig: { ...check.generationConfig, thinkingConfig: { thinkingLevel: 'HIGH' } } });
     expect(pro.status).toBe(200);
-    served = 'Google';
     expect((await call('plain', 'gemini-3-flash-preview', check)).status).toBe(403);
     const cell = await call('hk', 'gemini-4-carbon', { ...request([{ role: 'user', parts: [{ text: 'Run the probe.' }] }]), generationConfig: { thinkingConfig: { thinkingLevel: 'HIGH' } } });
     expect(cell.status).toBe(200);
+    await Bun.sleep(50);
+    const lines = readFileSync(usageLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as UsageLine);
     const upstream = sent.slice(from).map((s) => s.body);
-    expect(upstream.map((b) => [b.model, b.provider.only[0], b.provider.max_price, b.max_completion_tokens])).toEqual([
-      ['google/gemini-3-flash-preview', 'google-vertex/global', { prompt: 0.5, completion: 3 }, 65_536],
-      ['google/gemini-3.1-pro-preview-customtools', 'google-ai-studio', { prompt: 2, completion: 12 }, 65_536],
-      ['google/gemini-4-carbon', 'google-vertex/global', { prompt: 2, completion: 10 }, 65_536],
+    expect(upstream.map((b) => [b.model, b.provider.only[0], b.provider.max_price, b.max_completion_tokens, b.service_tier])).toEqual([
+      ['google/gemini-3-flash-preview', 'google-ai-studio', { prompt: 0.5, completion: 3 }, 65_536, 'default'],
+      ['google/gemini-3.1-pro-preview-customtools', 'google-ai-studio', { prompt: 2, completion: 12 }, 65_536, 'default'],
+      ['google/gemini-4-carbon', 'google-ai-studio', { prompt: carbonAt(lines[3]!.at).input, completion: carbonAt(lines[3]!.at).output }, 65_536, 'default'],
     ]);
     expect(upstream[0]!.response_format).toEqual({ type: 'json_schema', json_schema: { name: 'response', schema: check.generationConfig.responseJsonSchema } });
     expect(upstream[1]!.reasoning).toEqual({ effort: 'high' });
-    await Bun.sleep(50);
-    const lines = readFileSync(usageLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as UsageLine);
     expect(lines.map((l) => [l.model, l.outcome, l.status, l.served_provider ?? null, l.served_elsewhere ?? false])).toEqual([
-      ['gemini-3-flash-preview', 'forwarded', 200, 'Google', false],
+      ['gemini-3-flash-preview', 'forwarded', 200, 'Google AI Studio', false],
       ['gemini-3.1-pro-preview-customtools', 'forwarded', 200, 'Google AI Studio', false],
       ['gemini-3-flash-preview', 'refused', 403, null, false],
-      ['gemini-4-carbon', 'forwarded', 200, 'Google', false],
+      ['gemini-4-carbon', 'forwarded', 200, 'Google AI Studio', false],
     ]);
     expect(lines[0]!.actual_usd).toBeCloseTo((60 * 0.5 + 40 * 0.05 + 30 * 3) / 1e6, 12);
     expect(lines[1]!.actual_usd).toBeCloseTo((60 * 2 + 40 * 0.2 + 30 * 12) / 1e6, 12);
@@ -304,30 +338,73 @@ describe('the proxy in the via-OpenRouter mode, against the fake OpenRouter', ()
     expect(r.status).toBe(400);
     expect(sent.length).toBe(from);
     const [count, refused] = p.usage();
-    expect(count).toMatchObject({ outcome: 'forwarded', local_estimate: true, actual_usd: 0, model: 'gemini-4-carbon' });
+    expect(count).toMatchObject({ outcome: 'estimated', local_estimate: true, actual_usd: 0, model: 'gemini-4-carbon' });
     expect(refused).toMatchObject({ outcome: 'refused', status: 400 });
     expect(refused!.reason).toStartWith('HE-PROXY-012 cachedContent');
     p.stop();
   });
 
+  test('every google line names the fallback route, upstream "openrouter": forwarded, refused and estimated alike (internal-task, Gemini CLI\'s named fallback)', async () => {
+    const p = proxy();
+    await (await p.call('generateContent', request([{ role: 'user', parts: [{ text: 'hi' }] }]))).json();
+    await p.call('countTokens', { contents: [] });
+    await p.call('generateContent', { contents: [], cachedContent: 'cachedContents/abc' });
+    await p.call('generateContent', { ...request([]), tools: [{ googleSearch: {} }] });
+    const lines = p.usage();
+    expect(lines.map((l) => l.outcome)).toEqual(['forwarded', 'estimated', 'refused', 'refused']);
+    expect(lines.map((l) => l.upstream)).toEqual(['openrouter', 'openrouter', 'openrouter', 'openrouter']);
+    p.stop();
+  });
+
   test('an answer from another provider is marked served elsewhere (HE-PROXY-009), as on the OpenRouter route', async () => {
     const p = proxy();
-    served = 'Google AI Studio';
+    served = 'Google';
     try { await (await p.call('generateContent', request([{ role: 'user', parts: [{ text: 'hi' }] }]))).json(); }
-    finally { served = 'Google'; }
-    expect(p.usage()[0]).toMatchObject({ served_elsewhere: true, served_provider: 'Google AI Studio' });
+    finally { served = 'Google AI Studio'; }
+    expect(p.usage()[0]).toMatchObject({ served_elsewhere: true, served_provider: 'Google' });
     expect(p.usage()[0]!.reason).toContain('HE-PROXY-009');
     p.stop();
   });
 
-  test('without the mode the google route still needs GEMINI_API_KEY and countTokens is not served; --google-via takes only openrouter', async () => {
+  test('without the mode the google route still needs GEMINI_API_KEY and answers countTokens with its own estimate; --google-via takes only openrouter', async () => {
     const p = proxy(false);
     expect((await p.call('generateContent', request([{ role: 'user', parts: [{ text: 'hi' }] }]))).status).toBe(503);
-    expect((await p.call('countTokens', { contents: [] })).status).toBe(403);
+    expect((await p.call('countTokens', { contents: [] })).status).toBe(200);
     p.stop();
     const base = ['--budget-ledger', 'l', '--lease-usd', '1', '--run-id', 'r'];
     expect(parseProxyArgs([...base, '--google-via', 'openrouter']).googleVia).toBe('openrouter');
     expect(parseProxyArgs(base).googleVia).toBeNull();
     expect(() => parseProxyArgs([...base, '--google-via', 'vertex'])).toThrow('--google-via must be openrouter');
+  });
+});
+
+// internal-task follow-up: the fallback route reserves Gemini thinking on top of the output limit, as priceGemini does on the
+// direct route (B6). Value: protects=a translated Carbon request whose thinking runs past max_completion_tokens staying
+// inside its reservation; fails_when=the OpenRouter branch reserves max_completion_tokens alone; seam=toChat then
+// priceRequest, and the proxy's reserved_usd on a forwarded line; no_claim=whether OpenRouter counts Gemini's thinking
+// inside max_completion_tokens.
+describe('the fallback reservation covers Gemini thinking', () => {
+  const URL_OR = 'https://openrouter.ai/api/v1/chat/completions';
+  const NOV = new Date('2026-11-30T12:00:00Z');
+  const priced = (gen: Json) => {
+    const { chat } = toChat({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }], generationConfig: { maxOutputTokens: 1000, ...gen } }, 'google/gemini-4-carbon', new SignatureStore());
+    return priceRequest(URL_OR, { ...chat, provider: { only: ['google-ai-studio'], allow_fallbacks: false, max_price: { prompt: 2, completion: 10 } }, service_tier: 'default' }, { now: NOV })!;
+  };
+  test('a thinking level or -1 adds the 65,536-token ceiling, a positive budget adds itself, a budget of 0 adds nothing', () => {
+    expect(priced({ thinkingConfig: { thinkingLevel: 'HIGH' } }).maxOutputTokens).toBe(1000 + 65_536);
+    expect(priced({ thinkingConfig: { thinkingBudget: -1 } }).maxOutputTokens).toBe(1000 + 65_536);
+    expect(priced({}).maxOutputTokens).toBe(1000 + 65_536);
+    expect(priced({ thinkingConfig: { thinkingBudget: 2048 } }).maxOutputTokens).toBe(1000 + 2048);
+    expect(priced({ thinkingConfig: { thinkingBudget: 0 } }).maxOutputTokens).toBe(1000);
+    const other = priceRequest(URL_OR, { model: 'deepseek/deepseek-v4.1-flash-1017', messages: [], max_completion_tokens: 1000, reasoning: { effort: 'high' }, provider: { only: ['deepseek'], allow_fallbacks: false, max_price: { prompt: 0.1, completion: 0.4 } } }, { now: NOV })!;
+    expect(other.maxOutputTokens).toBe(1000);
+  });
+  test('a translated request on the proxy reserves its output limit plus the thinking ceiling at the output rate', async () => {
+    const p = proxy();
+    await (await p.call('generateContent', request([{ role: 'user', parts: [{ text: 'hi' }] }]))).json();
+    const [line] = p.usage();
+    const row = priceOnDate(canonicalLookup('openrouter:google/gemini-4-carbon')!, new Date(line!.at));
+    expect(line!.reserved_usd!).toBeGreaterThanOrEqual((8192 + 65_536) * row.output / 1e6);
+    p.stop();
   });
 });

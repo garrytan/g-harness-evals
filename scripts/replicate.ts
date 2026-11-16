@@ -30,7 +30,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../runner/errors.ts';
 import { DEFAULT_CAPS } from '../runner/archive.ts';
-import { canonicalLookup } from '../runner/pricing/model-pricing.ts';
+import { canonicalLookup, priceOnDate } from '../runner/pricing/model-pricing.ts';
 import { ledgerStatus } from '../runner/ledger/budget-ledger.ts';
 import { isCapRefusal, trialSlug } from '../runner/trial/proxy.ts';
 import type { UsageLine } from '../runner/proxy/metering-proxy.ts';
@@ -284,12 +284,14 @@ function usageLines(results: string): UsageLine[] {
 
 export interface Estimate { cell: string; reps: number; trials: number; expected_usd: number; high_usd: number; max_reservation_usd: number; min_cap_usd: number; wall_minutes: number; repriced: 'per request' | 'approximate'; price_factor: number; model: string }
 
-export function estimate(b: Loaded, cell: CellDef, reps: number): Estimate {
+/** The rerun's cost, repriced at the rates of the UTC day of `at`, the day it is estimated for. */
+export function estimate(b: Loaded, cell: CellDef, reps: number, at: Date): Estimate {
   const recs = records(b.results).filter((r) => r.cell === cell.id);
   const prefix = `${b.manifest.run_id}/${cell.id}/`;
   const lines = usageLines(b.results).filter((l) => keyTrial(l.key).startsWith(prefix) && l.outcome === 'forwarded');
-  const price = canonicalLookup(cell.model);
-  if (!price) throw new RunnerError('HE-REPL-011', `model ${cell.model} has no price at this commit (runner/pricing/model-pricing.ts); the proxy would refuse every request`);
+  const listed = canonicalLookup(cell.model);
+  if (!listed) throw new RunnerError('HE-REPL-011', `model ${cell.model} has no price at this commit (runner/pricing/model-pricing.ts); the proxy would refuse every request`);
+  const price = priceOnDate(listed, at);
   let actual = 0;
   let repriced = 0;
   let maxReserved = 0;
@@ -521,7 +523,7 @@ async function rerun(a: Args, d: Deps, sig: { interrupted: boolean; child: Child
       if (!a['accept-drift']) throw new RunnerError('HE-REPL-006', `this commit is not equivalent to the run for ${cell.id} (${eq.problems.length} problem(s), first: ${eq.problems[0]}); fix: check out the finding's rerun commit, or pass --accept-drift to run a labelled drift experiment`);
       d.out('EQUIVALENCE: --accept-drift: this rerun is a drift experiment, labelled as such in the report');
     }
-    const est = estimate(b, cell, reps);
+    const est = estimate(b, cell, reps, d.now());
     printEstimate(est, d);
     const cap = Number(a['max-usd']);
     if (cap < est.min_cap_usd && !a['allow-short-cap']) throw new RunnerError('HE-REPL-007', `--max-usd ${usd(cap)} is under ${usd(est.min_cap_usd)} (the high estimate ${usd(est.high_usd)} plus the largest single reservation ${usd(est.max_reservation_usd)}); a short cap likely ends in a cap stop. fix: --max-usd ${est.min_cap_usd}, or --allow-short-cap to run anyway`);
@@ -691,7 +693,7 @@ export async function main(argv: string[], d: Deps = realDeps): Promise<number> 
       for (const id of ids) {
         let cell: CellDef;
         try { cell = cellOf(b, id); } catch (e) { if (typeof a.cell === 'string') throw e; d.out(`ESTIMATE: ${id}: ${(e as Error).message}`); continue; }
-        const e = estimate(b, cell, Number(a.reps ?? b.manifest.rerun?.default_reps ?? 1));
+        const e = estimate(b, cell, Number(a.reps ?? b.manifest.rerun?.default_reps ?? 1), d.now());
         printEstimate(e, d);
         ests.push(e);
       }

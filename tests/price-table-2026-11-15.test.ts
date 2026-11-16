@@ -11,7 +11,8 @@ const read = (file: string) => JSON.parse(readFileSync(new URL(`../runner/pricin
 describe('prices-2026-11-15', () => {
   test('was the table model-pricing.ts read until prices-2026-11-16: every prices-2026-11-10 row and about line unchanged, plus tool_fees', () => {
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-15.json this test accepts the table it covers and the table that replaced it
-    expect(['prices-2026-11-15.json', 'prices-2026-11-16.json']).toContain(PRICE_TABLE_FILE);
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-16.json this test accepts the table it covers and the tables that replaced it
+    expect(['prices-2026-11-15.json', 'prices-2026-11-16.json', 'prices-2026-11-17.json']).toContain(PRICE_TABLE_FILE);
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json the new table is checked against the table it replaces
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-15.json this test reads the table it covers by name
     const before = read('prices-2026-11-10.json'), now = read('prices-2026-11-15.json');

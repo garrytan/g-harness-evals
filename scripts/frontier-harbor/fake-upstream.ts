@@ -12,13 +12,15 @@
 // particle-ai/<id>, reasoning_content before the content, and reasoning tokens inside completion_tokens, repeated in
 // completion_tokens_details. The proxy's OpenRouter upstream is <this>/openrouter: there /openrouter/v1/chat/completions
 // answers the way OpenRouter's DeepSeek endpoint does, from the multi-user path's fake (tests/fixtures/openrouter/
-// fake-openrouter.ts): provider DeepSeek, a gen- id, reasoning and reasoning_details beside the content, one call of the
+// fake-openrouter.ts): provider DeepSeek (for another pinned model, the provider OPENROUTER_MODELS pins it to), a gen- id, reasoning and reasoning_details beside the content, one call of the
 // first declared tool and then "ok", and DeepSeek's 400 for a tool-call turn replayed without its reasoning, so a harness
 // that drops the reasoning fails here as it would upstream. The proxy's google upstream is <this>/google and its xai upstream
 // <this>/xai (internal-task): Gemini generateContent and streamGenerateContent (Gemini's 400 for a function call replayed without
 // its thought signature), xAI Chat Completions and Responses with xAI's usage, and on both the provider's safety-filter stop
-// for a request carrying SAFETY_MARKER. A google/ model on <this>/openrouter answers as OpenRouter's Vertex Gemini endpoint
-// does, thought signatures in reasoning_details included, for the google route's via-OpenRouter mode (openrouterGeminiReply).
+// for a request carrying SAFETY_MARKER. A google/ model on <this>/openrouter answers as OpenRouter's Google AI Studio Gemini
+// endpoint does, thought signatures in reasoning_details included, for the google route's via-OpenRouter mode too
+// (openrouterGeminiReply). Every OpenRouter request must carry the proxy's pin for its model (provider.only that one
+// endpoint, allow_fallbacks false, and service_tier default where the pin names a tier), or it gets a 400 (unpinnedReason).
 // A meta/ model on <this>/openrouter/v1/responses answers as the fake for Muse Code (museReply).
 // Each request appends one line to
 // --log: path, model, stream, the tool names and effort fields the request declared, whether a credential header came
@@ -36,6 +38,7 @@
 import { appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { chatBody, chatStream, DEEPSEEK_REPLAY_ERROR, errorBody, replayedAssistants } from '../../tests/fixtures/openrouter/fake-openrouter.ts';
+import { GEMINI_HOUSEKEEPING_MODELS, OPENROUTER_MODELS, type OpenRouterPin } from '../../runner/proxy/metering-proxy.ts';
 
 const TEXT = 'Fake upstream reply: this is a keyless install check, so I am stopping here.\n\n```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```';
 const REASONING = 'The install check wants a short answer.';
@@ -227,7 +230,21 @@ function geminiTool(body: Record<string, any>, turn: number): { name: string; ar
   return tools[0] ? { name: tools[0].name, args: placeholderArgs(tools[0].parameters) } : null;
 }
 
-/** OpenRouter's Chat Completions for a google/ model, the way OpenRouter's Vertex Gemini endpoint answers (provider Google):
+const PINS: Record<string, OpenRouterPin> = { ...OPENROUTER_MODELS, ...GEMINI_HOUSEKEEPING_MODELS };
+/** Why an OpenRouter request is not on its model's pinned endpoint, or null when it is: the proxy must have set provider
+ *  {only: [the pinned endpoint], allow_fallbacks: false} and, for a tier-pinned model, service_tier default. The real
+ *  OpenRouter would route such a request elsewhere; the fake refuses it, so a proxy that drops the pin fails the check. */
+export function unpinnedReason(body: Record<string, any>): string | null {
+  const pin = PINS[String(body.model ?? '')];
+  if (!pin) return `model ${JSON.stringify(body.model ?? null)} has no pinned OpenRouter endpoint`;
+  const p = body.provider;
+  if (!p || typeof p !== 'object' || JSON.stringify(p.only) !== JSON.stringify([pin.only]) || p.allow_fallbacks !== false || p.order !== undefined || p.ignore !== undefined)
+    return `provider routing ${JSON.stringify(p ?? null)} is not the pin {only: [${pin.only}], allow_fallbacks: false}`;
+  if (pin.service_tier && body.service_tier !== pin.service_tier) return `service_tier ${JSON.stringify(body.service_tier ?? null)} is not the pinned ${pin.service_tier}`;
+  return null;
+}
+
+/** OpenRouter's Chat Completions for a google/ model, the way OpenRouter's Google AI Studio endpoint answers (provider Google AI Studio):
  *  reasoning and a google-gemini-v1 reasoning_details entry, and on a tool turn one call whose thought signature rides in a
  *  reasoning.encrypted entry keyed to the call id. Two tool turns, then text; a replayed tool-call turn whose entry is
  *  missing or changed gets OpenRouter's 400; SAFETY_MARKER gets a content_filter finish with native reason SAFETY. */
@@ -250,7 +267,7 @@ function openrouterGeminiReply(body: Record<string, any>, n: number, stream: boo
   const [finish, native] = safety ? ['content_filter', 'SAFETY'] : tool ? ['tool_calls', 'STOP'] : ['stop', 'STOP'];
   const content = safety || tool ? '' : TEXT;
   const usage = { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130, prompt_tokens_details: { cached_tokens: 40 }, completion_tokens_details: { reasoning_tokens: 20 }, cost: 0.00042 };
-  const head = { id, provider: 'Google', model: body.model, object: 'chat.completion' };
+  const head = { id, provider: PINS[String(body.model ?? '')]?.served ?? 'Google AI Studio', model: body.model, object: 'chat.completion' };
   if (!stream) return Response.json({ ...head, choices: [{ index: 0, finish_reason: finish, native_finish_reason: native, message: { role: 'assistant', content, reasoning: REASONING,
     reasoning_details: [thought, ...(signature ? [signature] : [])], ...(tool ? { tool_calls: [{ id: callId, type: 'function', function: { name: tool.name, arguments: args } }] } : {}) } }], usage });
   const chunk = (delta: unknown, f: string | null = null, nat: string | null = null) => ({ ...head, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: f, native_finish_reason: nat }] });
@@ -271,7 +288,8 @@ export const grokEncrypted = (callId: string) => Buffer.from('fake-xai-encrypted
 /** The xAI routes the proxy forwards to <this>/xai: Chat Completions and Responses replies with xAI's usage (reasoning tokens
  *  beside completion tokens, cost_in_usd_ticks), and the content-filter stop for a request carrying SAFETY_MARKER. A Responses
  *  request that declares Grok Build's shell tool gets GROK_TOOL_TURNS calls of it, each after a reasoning item with
- *  encrypted_content, before the text reply. */
+ *  encrypted_content, before the text reply; one that declares another harness's shell tool (Pi, Hermes or OpenClaw on
+ *  Grok 4.7) gets one call of it the same way, so the next request shows whether the encrypted reasoning came back. */
 function xaiReply(path: string, body: Record<string, any>, n: number, stream: boolean): Response {
   const model = body.model ?? 'fake';
   const safety = JSON.stringify(body).includes(SAFETY_MARKER);
@@ -279,10 +297,13 @@ function xaiReply(path: string, body: Record<string, any>, n: number, stream: bo
     const id = 'resp_fake_xai_' + n;
     const turn = inputItems(body).filter((i) => i.type === 'function_call_output').length;
     const shell = !safety && turn < GROK_TOOL_TURNS && (Array.isArray(body.tools) ? body.tools : []).some((t: any) => t?.type === 'function' && t.name === GROK_SHELL);
+    const other = !safety && !shell && turn < 1 ? shellTool(body) : null;
     const callId = 'call_fake_xai_' + n;
-    const item = shell
+    const call = shell ? { name: GROK_SHELL, arguments: JSON.stringify({ command: GROK_PROBE(turn + 1), description: 'probe' }) }
+      : other && !other.custom ? { name: other.name, arguments: JSON.stringify(SHELL_TOOLS[other.name]!(PROBE_COMMAND)) } : null;
+    const item = call
       ? [{ type: 'reasoning', id: 'rs_fake_xai_' + n, summary: [{ type: 'summary_text', text: REASONING }], encrypted_content: grokEncrypted(callId), status: 'completed' },
-        { type: 'function_call', id: 'fc_fake_xai_' + n, call_id: callId, name: GROK_SHELL, arguments: JSON.stringify({ command: GROK_PROBE(turn + 1), description: 'probe' }), status: 'completed' }]
+        { type: 'function_call', id: 'fc_fake_xai_' + n, call_id: callId, ...call, status: 'completed' }]
       : [{ type: 'message', id: 'msg_fake_xai_' + n, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: TEXT, annotations: [] }] }];
     const usage = { input_tokens: 10, output_tokens: 5, total_tokens: 19, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 4 }, cost_in_usd_ticks: 1000 };
     const response = { id, object: 'response', created_at: Math.floor(Date.now() / 1000), model, store: false, usage,
@@ -355,6 +376,10 @@ export function reply(path: string, body: Record<string, any>, n: number, opts: 
   if (path.endsWith('/v1/models')) return Response.json({ object: 'list', data: [] });
   if (GOOGLE_METHOD.test(path)) return googleReply(path, body, path.endsWith(':streamGenerateContent'));
   if (path.startsWith('/xai/') && (path.endsWith('/v1/chat/completions') || path.endsWith('/v1/responses'))) return xaiReply(path, body, n, stream);
+  if (path.startsWith('/openrouter/') && (path.endsWith('/v1/responses') || path.endsWith('/v1/chat/completions'))) {
+    const off = unpinnedReason(body);
+    if (off) return Response.json(errorBody(400, 'fake upstream: ' + off), { status: 400 });
+  }
   if (path.startsWith('/openrouter/') && path.endsWith('/v1/responses') && String(body.model ?? '').startsWith('meta/')) return museReply(body, n, stream);
   const tool = opts.toolCall && !hasToolResult(body) ? shellTool(body) : null;
   const called = tool ? toolReply(path, body, n, tool) : null;
@@ -418,7 +443,8 @@ export function reply(path: string, body: Record<string, any>, n: number, opts: 
   if (path.startsWith('/openrouter/') && path.endsWith('/v1/chat/completions') && String(body.model ?? '').startsWith('google/')) return openrouterGeminiReply(body, n, stream);
   if (path.startsWith('/openrouter/') && path.endsWith('/v1/chat/completions')) {
     if (replayedAssistants(body).some((a) => a.tool_calls > 0 && !a.reasoning && !a.reasoning_content && !a.reasoning_details)) return Response.json(errorBody(400, DEEPSEEK_REPLAY_ERROR), { status: 400 });
-    return stream ? new Response(chatStream(body), { headers: { 'content-type': 'text/event-stream' } }) : Response.json(chatBody(body));
+    const served = OPENROUTER_MODELS[String(body.model ?? '')]?.served ?? 'DeepSeek';
+    return stream ? new Response(chatStream(body, served), { headers: { 'content-type': 'text/event-stream' } }) : Response.json(chatBody(body, served));
   }
   if (path.endsWith('/v1/chat/completions')) {
     const id = 'chatcmpl_fake_' + n;

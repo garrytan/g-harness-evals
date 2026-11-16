@@ -40,11 +40,13 @@ HERMES_DISABLED_TOOLSETS = ["web", "browser"]
 # (docs/tools/web.md, docs/tools/web-fetch.md), which also turn off native hosted OpenAI search.
 OPENCLAW_WEB_DENY = ["group:web", "browser"]
 PROVIDERS = {"claude-code": ("anthropic",), "codex": ("openai",), "dsh": ("anthropic", "openai", "particle", "openrouter"), "cursor": ("anthropic",),
-             "gemini-cli": ("google",), "grok-build": ("xai",), "muse-code": ("openrouter",)}
+             "gemini-cli": ("google",), "grok-build": ("xai",), "muse-code": ("openrouter",),
+             **{h: ("anthropic", "openai", "particle", "openrouter", "xai") for h in ("hermes", "openclaw", "pi")}}
 # Gemini CLI 0.68.0's own calls beyond the cell model, at their shipped defaults, seen keyless against a fake Gemini API
 # (scripts/frontier-harbor/README.md, "Gemini CLI"): the loop-detection check every 30 turns on gemini-3-flash-preview, and the
 # loop double-check and chat compression on gemini-3-pro-preview, which the CLI resolves to gemini-3.1-pro-preview-customtools
-# with an API key. The proxy's google route sends each through the same OpenRouter translation as the cell model.
+# with an API key. The proxy's google route sends each to Google's Gemini API, as it does the cell model (through the same
+# OpenRouter translation on the named fallback, vm-run.sh --gemini-cli-route openrouter-fallback).
 GEMINI_CLI_HOUSEKEEPING = ("gemini-3-flash-preview", "gemini-3.1-pro-preview-customtools")
 # Grok Build 1.0.77 (binary at ~/.grok/bin/grok, a link into ~/.grok/downloads): the installed binary's sha256 must be pin.json's.
 GROK_BIN = "$HOME/.grok/bin/grok"
@@ -170,9 +172,10 @@ def hermes_config(model: str) -> dict[str, Any]:
     config.openrouter.yaml on OpenRouter) as data, effort high, the model's real window. On Particle and OpenRouter a
     custom_providers entry (custom:particle, custom:openrouter-proxy) runs Hermes's custom-endpoint provider on Chat
     Completions; Hermes sends no effort or output cap of its own there, so extra_body adds both: reasoning_effort for
-    Particle, OpenRouter's reasoning {effort} for OpenRouter."""
+    Particle, OpenRouter's reasoning {effort} for OpenRouter. On xAI it is Hermes's own xai provider (the Responses API,
+    api_mode codex_responses), whose base URL is XAI_BASE_URL (hermes_cli/providers.py)."""
     spec = model_spec(model)
-    provider = {"anthropic": "anthropic", "openai": "openai-api", "particle": "custom:particle", "openrouter": "custom:openrouter-proxy"}[spec["provider"]]
+    provider = {"anthropic": "anthropic", "openai": "openai-api", "particle": "custom:particle", "openrouter": "custom:openrouter-proxy", "xai": "xai"}[spec["provider"]]
     effort = {"particle": {"reasoning_effort": EFFORT}, "openrouter": {"reasoning": {"effort": EFFORT}}}.get(spec["provider"])
     custom = {
         "custom_providers": [{"name": provider.removeprefix("custom:"), "base_url": "${OPENAI_BASE_URL}", "key_env": "OPENAI_API_KEY",
@@ -209,7 +212,8 @@ def openclaw_config(model: str, url: str) -> dict[str, Any]:
         entry["compat"] = {"maxTokensField": "max_completion_tokens", "supportsUsageInStreaming": True}
     if spec["provider"] == "openrouter":
         entry["compat"]["thinkingFormat"] = "openrouter"
-    provider = {"baseUrl": f"{url}/v1", "apiKey": "${OPENAI_API_KEY}", "api": "openai-responses" if name == "openai" else "openai-completions", "models": [entry]}
+    provider = {"baseUrl": f"{url}/v1", "apiKey": "${XAI_API_KEY}" if name == "xai" else "${OPENAI_API_KEY}",
+                "api": "openai-responses" if name in ("openai", "xai") else "openai-completions", "models": [entry]}
     defaults = {"model": {"primary": f"{name}/{spec['name']}"}, "utilityModel": f"{name}/{spec['name']}",
                 "thinkingDefault": EFFORT, "skipBootstrap": True}
     return {"models": {"mode": "merge", "providers": {name: provider}}, "agents": {"defaults": defaults},
@@ -272,19 +276,32 @@ PI_ARGON_ROW = {
 PI_OPENROUTER_MODELS["google/gemini-4-carbon"] = PI_ARGON_ROW
 PI_OPENROUTER_MODELS["google/gemini-4-hydrogen"] = PI_ARGON_ROW
 PI_CATALOG_ROW = {"google/gemini-4-carbon": "chat:google/gemini-4-argon", "google/gemini-4-hydrogen": "chat:google/gemini-4-argon"}
+# Pi 1.5.0's own catalog row for Grok 4.7 on its xai provider (pi-ai dist/providers/data/xai.json, "chat:grok-4.7", api
+# openai-responses): its thinkingLevelMap and compat. Harbor's custom provider skips the catalog, so the entry carries them.
+PI_XAI_MODELS = {
+    "grok-4.7": {
+        "thinkingLevelMap": {"off": None, "minimal": None, "low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": None},
+        "compat": {"supportsLongCacheRetention": False},
+    },
+}
 
 
 def pi_chat_models_json(model: str, url: str) -> dict[str, Any]:
-    """Pi's models.json on Particle or OpenRouter: Harbor's harbor-endpoint provider over the trial's route, api
-    openai-completions, the per-trial token read from OPENAI_API_KEY. agents.py writes it itself because Harbor resolves a
-    custom endpoint only for providers it knows (it knows no Particle), and on OpenRouter it would point Pi at
-    OPENROUTER_BASE_URL with OPENROUTER_API_KEY, names no container here holds. On OpenRouter the model also gets Pi's
-    own catalog request shaping (PI_OPENROUTER_MODELS)."""
+    """Pi's models.json on Particle, OpenRouter or xAI: Harbor's harbor-endpoint provider over the trial's route, api
+    openai-completions (openai-responses on xAI, as Pi's own xai provider), the per-trial token read from OPENAI_API_KEY
+    (XAI_API_KEY on xAI). agents.py writes it itself because Harbor resolves a custom endpoint only for providers it knows
+    (it knows no Particle), and on OpenRouter it would point Pi at OPENROUTER_BASE_URL with OPENROUTER_API_KEY, names no
+    container here holds. On OpenRouter and xAI the model also gets Pi's own catalog request shaping (PI_OPENROUTER_MODELS,
+    PI_XAI_MODELS)."""
     spec = model_spec(model)
     entry = {"id": spec["name"], "reasoning": True, **pi_models_entry(model)}
+    xai = spec["provider"] == "xai"
     if spec["provider"] == "openrouter":
         entry.update(PI_OPENROUTER_MODELS[spec["name"]])
-    return {"providers": {"harbor-endpoint": {"baseUrl": f"{url}/v1", "apiKey": "$OPENAI_API_KEY", "api": "openai-completions", "models": [entry]}}}
+    if xai:
+        entry.update(PI_XAI_MODELS[spec["name"]])
+    return {"providers": {"harbor-endpoint": {"baseUrl": f"{url}/v1", "apiKey": "$XAI_API_KEY" if xai else "$OPENAI_API_KEY",
+                                              "api": "openai-responses" if xai else "openai-completions", "models": [entry]}}}
 
 
 def litellm_registry(model: str) -> dict[str, Any]:
@@ -347,7 +364,7 @@ def harbor_kwargs(harness: str, model: str) -> dict[str, Any]:
     if harness == "openclaw":
         return {"thinking": EFFORT, "disable_web_search": True}
     if harness == "pi":
-        return {"thinking": EFFORT, "model_api": {"anthropic": "anthropic-messages", "openai": "openai-responses", "particle": "openai-completions", "openrouter": "openai-completions"}[spec["provider"]]}
+        return {"thinking": EFFORT, "model_api": {"anthropic": "anthropic-messages", "openai": "openai-responses", "particle": "openai-completions", "openrouter": "openai-completions", "xai": "openai-responses"}[spec["provider"]]}
     if harness == "mini-swe-agent":
         return {"reasoning_effort": EFFORT, "max_tokens": spec["max_output_tokens"], "litellm_model_registry": litellm_registry(model)}
     if harness == "dsh":
@@ -452,6 +469,10 @@ def container_env(harness: str, model: str, url: str, token: str, gstack: dict[s
         raise ValueError(f"a Particle cell's endpoint must be the proxy's Particle route <proxy>/<slot>/particle, not {url}")
     if spec["provider"] == "openrouter" and not url.rstrip("/").endswith("/openrouter"):
         raise ValueError(f"an OpenRouter cell's endpoint must be the proxy's OpenRouter route <proxy>/<slot>/openrouter, not {url}")
+    if spec["provider"] == "xai":
+        if not url.rstrip("/").endswith("/xai"):
+            raise ValueError(f"an xAI cell's endpoint must be the proxy's xai route <proxy>/<slot>/xai, not {url}")
+        return {"XAI_BASE_URL": f"{url}/v1", "XAI_API_KEY": token, **((gstack or {}).get("eval_env") or {})}
     env: dict[str, str] = (
         {"ANTHROPIC_BASE_URL": url, "ANTHROPIC_API_KEY": token} if anthropic
         else {"OPENAI_BASE_URL": f"{url}/v1", "OPENAI_API_KEY": token}
@@ -651,12 +672,15 @@ def openrouter_replay(harness: str, name: str) -> dict[str, Any]:
 
 
 def direct_replay(harness: str, provider: str) -> dict[str, Any] | None:
-    """The same record on the proxy's anthropic and openai routes (Claude thinking signatures, OpenAI encrypted reasoning);
-    None on Particle, which returns no reasoning to replay on a tool-call turn here."""
+    """The same record on the proxy's anthropic, openai and xai routes (Claude thinking signatures, OpenAI and xAI encrypted
+    reasoning); None on Particle, which returns no reasoning to replay on a tool-call turn here."""
     checked = REPLAY_CHECK % harness
     if provider == "openai":
         how = {"pi": "Pi 1.5.0 (openai-responses)", "hermes": "Hermes (openai-api on the Responses API)", "openclaw": "OpenClaw (openai-responses)"}[harness]
         return {"field": "reasoning items with encrypted_content", "verdict": "replays", "how": how + " sends store false with include [reasoning.encrypted_content] and no previous_response_id, and replays each earlier reasoning item before its function_call; seen, encrypted_content byte for byte on every replayed turn", "checked": checked}
+    if provider == "xai":
+        how = {"pi": "Pi 1.5.0 (openai-responses)", "hermes": "Hermes (its xai provider, codex_responses)", "openclaw": "OpenClaw (its xai provider, openai-responses)"}[harness]
+        return {"field": "reasoning items with encrypted_content", "verdict": "replays", "how": how + " sends include [reasoning.encrypted_content] and no previous_response_id, so it never relies on a response stored at xAI (the proxy refuses previous_response_id and forces store false on this route anyway, HE-PROXY-013), and replays each earlier reasoning item before its function_call; seen, encrypted_content byte for byte on every replayed turn", "checked": checked}
     if provider != "anthropic":
         return None
     if harness == "hermes":
@@ -889,6 +913,19 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                 differences_from_pin=[*harbor_run,
                     "provider custom:openrouter-proxy, Hermes's custom-endpoint provider on Chat Completions, reading OPENAI_API_KEY and OPENAI_BASE_URL (the per-trial token and the proxy's OpenRouter route), with extra_body reasoning {effort: high} and max_completion_tokens %d, agent.reasoning_effort high and model.context_length %d: the same settings as our OpenRouter pin (harnesses/hermes/pin.json model_openrouter, config.openrouter.yaml)" % (mo, cw),
                     *harbor_env])
+        if spec["provider"] == "xai":
+            return _record(harness, model,
+                context_window={"value": cw, "set_by": "config.yaml model.context_length=%d" % cw},
+                max_output_tokens={"value": mo, "set_by": "the metering proxy caps every /v1/responses request at %d and writes that cap into one that states none" % mo},
+                compaction=compaction, tools=tools,
+                effort={"requested": EFFORT, "unsent_default": EFFORT, "setting": "agent.reasoning_effort = high, but Hermes at the pinned commit sends reasoning.effort to xAI only for the Grok models on its allowlist (agent/model_metadata.py _GROK_EFFORT_CAPABLE_PREFIXES: grok-3-mini, grok-4.20-multi-agent, grok-4.3, grok-4.5, grok-4.6), so its agent requests on grok-4.7 carry no effort field (seen keyless) and xAI applies the model's default, high (docs.x.ai reasoning: \"If not specified, reasoning_effort defaults to high\"). The effort check counts an agent request with no effort field as high for this cell (effort.unsent_default). Declared: its session-title call sends reasoning {effort: none}, a level xAI does not list for grok-4.7 (low, medium, high, xhigh); it is housekeeping, never an agent-loop call, and whether xAI refuses it is not checked keyless"},
+                reasoning_replay=direct_replay(harness, "xai"),
+                housekeeping_model={"model": model, "note": "Hermes auxiliary calls (titles, compression summaries) use provider auto, which is the main model; the title call sends reasoning off"},
+                differences_from_pin=[*harbor_run,
+                    "provider xai, Hermes's own xAI provider on the Responses API (api_mode codex_responses, hermes_cli/runtime_provider.py), reading XAI_API_KEY and XAI_BASE_URL (the per-trial token and the proxy's xai route); no Hermes pin of ours covers xAI",
+                    "no reasoning effort sent on grok-4.7, so xAI's default (high) applies; see effort",
+                    "model.context_length set (our pin: Hermes's own table)",
+                    *harbor_env])
         return _record(harness, model,
             context_window={"value": cw, "set_by": "config.yaml model.context_length=%d" % cw},
             max_output_tokens={"value": mo, "set_by": "Hermes v2026.9.24's own output table (agent/anthropic_adapter.py: 128,000 for claude-opus-5* and claude-fable*, and claude-sonnet-5 at 128,000)" if anthropic
@@ -928,6 +965,19 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                 differences_from_pin=[*harbor_run,
                     "provider openrouter-proxy on api openai-completions over the proxy's OpenRouter route, apiKey ${OPENAI_API_KEY} (the per-trial token; our pin reads HE_MODEL_API_KEY), compat maxTokensField max_completion_tokens, supportsUsageInStreaming and thinkingFormat openrouter, contextWindow %d, maxTokens %d, thinkingDefault high, utilityModel the cell model and memory.search.provider none: the same settings as our OpenRouter pin (harnesses/openclaw/pin.json model_openrouter, config/openclaw.openrouter.json)" % (cw, mo),
                     "Harbor's --model is openrouter-proxy/<model> (agents.py FrontierOpenClaw), so OpenClaw's bundled openrouter provider never runs, as in our pin",
+                    *harbor_env])
+        if spec["provider"] == "xai":
+            return _record(harness, model,
+                context_window={"value": cw, "set_by": "models.providers.xai.models[0].contextWindow=%d" % cw},
+                max_output_tokens={"value": mo, "set_by": "models.providers.xai.models[0].maxTokens=%d, sent as max_output_tokens" % mo},
+                compaction=compaction, tools=tools,
+                effort={"requested": EFFORT, "setting": "--thinking high and agents.defaults.thinkingDefault = high; reasoning true on the model, so api openai-responses sends reasoning {effort: high, summary: auto} (seen keyless)"},
+                reasoning_replay=direct_replay(harness, "xai"),
+                housekeeping_model={"model": model, "note": "utilityModel = the cell model (xai/grok-4.7)"},
+                differences_from_pin=[*harbor_run,
+                    "provider xai, OpenClaw's bundled xAI provider (its xai plugin adds include [reasoning.encrypted_content] for every reasoning model and sends tool_stream) on api openai-responses, its baseUrl the proxy's xai route and apiKey ${XAI_API_KEY} (the per-trial token); no OpenClaw pin of ours covers xAI",
+                    "contextWindow %d and maxTokens %d, the pin.json row (OpenClaw's own catalog row for grok-4.7 has maxTokens 64,000)" % (cw, mo),
+                    "thinkingDefault high, utilityModel the cell model and memory.search.provider none",
                     *harbor_env])
         return _record(harness, model,
             context_window={"value": cw, "set_by": "models.providers.%s.models[0].contextWindow=%d" % (spec["provider"], cw)},
@@ -969,6 +1019,20 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                     "the model entry carries what Pi's built-in provider applies to the %s catalog row: its thinkingLevelMap and compat (supportsDeveloperRole false, thinkingFormat openrouter, supportsStrictMode, sendSessionAffinityHeaders; pi-ai dist/providers/data/openrouter.json) plus sessionAffinityFormat openrouter, which pi-ai detects from the provider id openrouter, and maxTokensField max_completion_tokens%s" % (PI_CATALOG_ROW.get(spec["name"], "chat:" + spec["name"]), "; Pi 1.5.0's catalog has no row for this model, so the entry takes the row of Gemini 4 Argon, the same family on the same Google endpoints" if spec["name"] in PI_CATALOG_ROW else ""),
                     "contextWindow %d and maxTokens %d (the pin.json model row); no Pi pin of ours covers this model" % (cw, mo),
                     ]),
+                ])
+        if spec["provider"] == "xai":
+            return _record(harness, model,
+                context_window={"value": cw, "set_by": "models.json contextWindow=%d on the harbor-endpoint provider agents.py writes" % cw},
+                max_output_tokens={"value": mo, "set_by": "models.json maxTokens=%d, sent as max_output_tokens (pi-ai 1.5.0 openai-responses)" % mo},
+                compaction=compaction, tools=tools,
+                effort={"requested": EFFORT, "setting": "--thinking high with reasoning true and the catalog row's thinkingLevelMap (high -> high), so pi-ai 1.5.0 sends reasoning {effort: high, summary: auto} with include [reasoning.encrypted_content] (dist/api/openai-responses.js buildParams; seen keyless)"},
+                reasoning_replay=direct_replay(harness, "xai"),
+                housekeeping_model={"model": None, "note": "Pi makes no calls on another model"},
+                differences_from_pin=[
+                    "Harbor 0.24.0's stock Pi class at the Pi release our pin runs (1.5.0)",
+                    "provider harbor-endpoint, a custom provider agents.py writes, on api openai-responses as Pi's own xai provider uses, apiKey $XAI_API_KEY (the per-trial token), pointed at the proxy's xai route, instead of Pi's built-in xai provider at api.x.ai",
+                    "the model entry carries Pi's own catalog row for Grok 4.7 (pi-ai dist/providers/data/xai.json, chat:grok-4.7): its thinkingLevelMap and compat supportsLongCacheRetention false. Pi's built-in provider id would also add include [reasoning.encrypted_content] with no effort set; with --thinking high Pi sends it anyway",
+                    "contextWindow %d and maxTokens %d, the pin.json row (the catalog row's maxTokens is 500,000); no Pi pin of ours covers xAI" % (cw, mo),
                 ])
         return _record(harness, model,
             context_window={"value": cw, "set_by": "models.json contextWindow=%d on Harbor's custom provider" % cw},
@@ -1069,21 +1133,22 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
         alias = "harbor-%s-%s" % (spec["name"], EFFORT)
         return _record(harness, model, version,
             endpoint={
-                "route": "<metering proxy>/<trial slot>/google (GOOGLE_GEMINI_BASE_URL; the CLI adds /v1beta/models/<model>:streamGenerateContent?alt=sse), which the proxy translates to OpenRouter Chat Completions for google/<model> on Google's Vertex global endpoint (--google-via openrouter, runner/proxy/gemini-openrouter.ts)",
+                "route": "<metering proxy>/<trial slot>/google (GOOGLE_GEMINI_BASE_URL; the CLI adds /v1beta/models/<model>:streamGenerateContent?alt=sse), which the proxy forwards to Google's Gemini API with GEMINI_API_KEY; only on the named fallback (vm-run.sh --gemini-cli-route openrouter-fallback) does it translate them to OpenRouter Chat Completions for google/<model> on Google AI Studio's standard endpoint at the standard tier (--google-via openrouter, runner/proxy/gemini-openrouter.ts)",
                 "credential": "per-trial dummy token trial-token:<trial>.<32 hex> as GEMINI_API_KEY, bound by broker.ts; no provider key in the container",
                 "slot_models": slot_models(harness, model),
             },
             context_window={"value": cw, "set_by": "Gemini CLI %s's tokenLimit() default of 1,048,576 tokens for a model outside its table; no setting" % hp["version"]},
-            max_output_tokens={"value": mo, "set_by": "the metering proxy holds every translated Gemini request to 65,536 output tokens (OPENROUTER_MAX_OUTPUT) and writes max_completion_tokens 65536 when the CLI states none, as on agent turns"},
+            max_output_tokens={"value": mo, "set_by": "the metering proxy holds every Gemini request to 65,536 output tokens, Google's standard output limit (GEMINI_MAX_OUTPUT; OPENROUTER_MAX_OUTPUT on the fallback route), and writes maxOutputTokens 65536 (max_completion_tokens on the fallback) when the CLI states none, as on agent turns"},
             compaction={"threshold": "Gemini CLI default: chat compression at half the window (DEFAULT_COMPRESSION_TOKEN_THRESHOLD 0.5). In a one-prompt run it can split only at a user message the CLI added, such as its loop-recovery note", "set_by": "shipped default"},
             tools={"hosted_web_search": "off: tools.exclude [google_web_search, web_fetch] (Harbor's disable_web_search), and the proxy refuses any request that declares a Gemini hosted tool (HE-PROXY-006)",
                    "disabled": ["google_web_search", "web_fetch"], "enabled": "the CLI's other built-in tools (shell, file read, write and replace, grep, glob, list, skills, subagents); no MCP server"},
-            effort={"requested": EFFORT, "setting": "Harbor's alias %s (modelConfigs.customAliases: thinkingConfig thinkingLevel HIGH, includeThoughts true), selected with --model, plus our modelConfigs.customOverrides entry for %s with thinkingLevel HIGH, so every agent request sends it; the translation sends it as OpenRouter's reasoning {effort: high}" % (alias, spec["name"])},
-            reasoning_replay={"field": "thoughtSignature on functionCall parts, sent on as reasoning_details (reasoning.encrypted, format google-gemini-v1)", "how": "Gemini CLI keeps each function call's thoughtSignature in its history and sends it back on every later request; the proxy returns OpenRouter's signature on the call and sends the stored reasoning_details entry back byte for byte (checked keyless with the real CLI, tests/gemini-cli-via-openrouter.test.ts)"},
-            housekeeping_model={"model": ["google:%s" % m for m in GEMINI_CLI_HOUSEKEEPING], "note": "harness housekeeping, shipped default: the loop-detection check every 30 turns on gemini-3-flash-preview, and the loop double-check and chat compression on gemini-3-pro-preview, which the CLI resolves to gemini-3.1-pro-preview-customtools with an API key; each goes through the same translation, metered at its own price-table row and never scored. Any other model the CLI might ask for is refused by the slot. No model fallback for the cell model: a model outside Gemini 3 gets a single-model policy chain"},
+            effort={"requested": EFFORT, "setting": "Harbor's alias %s (modelConfigs.customAliases: thinkingConfig thinkingLevel HIGH, includeThoughts true), selected with --model, plus our modelConfigs.customOverrides entry for %s with thinkingLevel HIGH, so every agent request sends it; on the fallback route the translation sends it as OpenRouter's reasoning {effort: high}" % (alias, spec["name"])},
+            reasoning_replay={"field": "thoughtSignature on functionCall parts (on the fallback route sent on as reasoning_details, reasoning.encrypted, format google-gemini-v1)", "how": "Gemini CLI keeps each function call's thoughtSignature in its history and sends it back on every later request, which the proxy forwards to Google unchanged; on the fallback route the proxy returns OpenRouter's signature on the call and sends the stored reasoning_details entry back byte for byte (checked keyless with the real CLI, tests/gemini-cli-via-openrouter.test.ts)"},
+            housekeeping_model={"model": ["google:%s" % m for m in GEMINI_CLI_HOUSEKEEPING], "note": "harness housekeeping, shipped default: the loop-detection check every 30 turns on gemini-3-flash-preview, and the loop double-check and chat compression on gemini-3-pro-preview, which the CLI resolves to gemini-3.1-pro-preview-customtools with an API key; each goes to Google on the cell model's route, metered at its own price-table row and never scored. Any other model the CLI might ask for is refused by the slot. No model fallback for the cell model: a model outside Gemini 3 gets a single-model policy chain"},
             differences_from_pin=[
                 "runs through Harbor's GeminiCli class (gemini --yolo --model=%s --prompt=<instruction>, GEMINI_CLI_TRUST_WORKSPACE=true), installed with npm on Node through nvm" % alias,
-                "the proxy translates the Gemini API to OpenRouter Chat Completions (no direct Google key): countTokens is answered by a local estimate and never forwarded, safetySettings are dropped (OpenRouter has none), and a request the translation cannot carry is refused (HE-PROXY-012)",
+                "countTokens is answered by the proxy's local estimate (four characters per token) and never forwarded",
+                "only on the named fallback (vm-run.sh --gemini-cli-route openrouter-fallback, recorded as gemini_cli_route and on every usage line as upstream openrouter): the proxy translates the Gemini API to OpenRouter Chat Completions, safetySettings are dropped (OpenRouter has none), and a request the translation cannot carry is refused (HE-PROXY-012)",
                 "modelConfigs.customOverrides puts thinkingLevel HIGH on every request for the cell model (Harbor's alias alone reaches only the first request of a turn)",
                 "privacy.usageStatisticsEnabled false",
                 "no MCP server: TB2.1 tasks have none; the working directory is the task's",
@@ -1152,7 +1217,7 @@ def render(harness: str, model: str, url: str, token: str, gstack: dict[str, Any
     if harness == "openclaw":
         out["config"] = openclaw_config(model, url)
     if harness == "pi":
-        out["config"] = pi_chat_models_json(model, url) if spec["provider"] in ("particle", "openrouter") else pi_models_entry(model)
+        out["config"] = pi_chat_models_json(model, url) if spec["provider"] in ("particle", "openrouter", "xai") else pi_models_entry(model)
     if harness == "dsh":
         out["config"] = dsh_profile_patch(model, url)
     if harness == "gemini-cli":

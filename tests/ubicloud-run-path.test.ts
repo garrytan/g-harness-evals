@@ -161,6 +161,17 @@ describe('ubicloud/run-shard.sh mid-run replication', () => {
       expect(read(join(r.rep, 's1', 'results', 'trials.jsonl'))).toBe('v1\n');
     }
   }, 240_000);
+
+  // Value: protects=an OpenRouter API key in pulled results stops the mirror like the other provider keys (internal-task);
+  // fails_when=key_shapes misses sk-or-v1- keys; seam=UBI_RUNNER; no_claim=other key formats.
+  test('an OpenRouter-shaped key in the results stops the mirror too', () => {
+    const shaped = 'sk-' + 'or-v1-' + '0123456789abcdef'.repeat(4);
+    const r = shard({ pulls: ['ok:v1', 'ok:' + shaped], exitAfter: 1 });
+    expect(r.code, r.err).toBe(0);
+    expect(r.laneLog).toContain('WARNING: replicate: key-shaped text in results/trials.jsonl');
+    expect(r.laneLog).not.toContain(shaped);
+    expect(read(join(r.rep, 's1', 'results', 'trials.jsonl'))).toBe('v1\n');
+  }, 120_000);
 });
 
 describe('fanout.sh kept VMs and --resume', () => {

@@ -110,6 +110,13 @@ test('rules.json carries no private-pack rule and no thread-code rule, and every
   }
 });
 
+test('PS-KEY-SHAPE finds OpenRouter, xAI and Google API keys', () => {
+  const shape = COMPILED.filter((c) => c.rule.id === 'provider-key-shape');
+  for (const key of ['sk-' + 'or-v1-' + '0123456789abcdef'.repeat(4), 'xa' + 'i-' + 'Q7'.repeat(40), 'AI' + 'za' + 'Sy' + 'b'.repeat(33)]) {
+    expect([key.slice(0, 4), leafHits(Buffer.from('line one\nkey ' + key + '\n'), [], shape, () => true).map((h) => h.rule + ':' + h.line)]).toEqual([key.slice(0, 4), ['provider-key-shape:2']]);
+  }
+});
+
 test('the gate files, its docs and its tests never match a rule, and the fix texts pass the output boundary', () => {
   const files = [...readdirSync(GATE).map((f) => join('scripts/public-safety', f)), ...readdirSync(join(GATE, 'lib')).map((f) => join('scripts/public-safety/lib', f)), 'docs/public-safety.md', ...readdirSync(join(ROOT, 'tests')).filter((f) => f.startsWith('public-safety')).map((f) => join('tests', f))].filter((p) => !p.endsWith('/lib'));
   for (const p of files) {

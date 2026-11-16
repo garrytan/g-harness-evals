@@ -31,7 +31,8 @@ const FLOAT_NOISE_ROWS = ['anthropic:claude-sonnet-4-6', 'anthropic:claude-haiku
 
 /** Rows a later dated table added, each reviewed in its own test below; every other row is held to the fixture. prices-2026-11-07: gpt-6-astra (internal-task);
  *  prices-2026-11-08: OpenRouter's DeepSeek endpoint for deepseek/deepseek-v4.1-flash-1017 (tests/price-table-2026-11-08.test.ts); prices-2026-11-09: claude-fable-5-2;
- *  prices-2026-11-10 holds both; prices-2026-11-15 adds only tool_fees; prices-2026-11-16: the internal-task lineup's Google, xAI, Meta, Moonshot and Z.ai rows (tests/price-table-2026-11-16.test.ts). */
+ *  prices-2026-11-10 holds both; prices-2026-11-15 adds only tool_fees; prices-2026-11-16: the internal-task lineup's Google, xAI, Meta, Moonshot and Z.ai rows (tests/price-table-2026-11-16.test.ts);
+ *  prices-2026-11-17 corrects the cache-write rate of the four Gemini rows on OpenRouter (tests/price-table-2026-11-17.test.ts). */
 const ADDED_AFTER_FIXTURE = ['openai:gpt-6-astra', 'anthropic:claude-fable-5-2', 'openrouter:deepseek/deepseek-v4.1-flash-1017',
   'google:gemini-4-carbon', 'openrouter:google/gemini-4-carbon', 'openrouter:google/gemini-4-hydrogen', 'openrouter:meta/muse-wonder',
   'openrouter:moonshotai/kimi-k3.1-pro', 'openrouter:z-ai/glm-5.3', 'xai:grok-4.7', 'openrouter:google/gemini-3-flash-preview',

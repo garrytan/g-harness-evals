@@ -161,7 +161,7 @@ export function repricing(cell: string, trials: readonly TrialRecord[], excluded
       if (typeof l.actual_usd !== 'number') { problem = 'a forwarded or failed line has no actual_usd'; break; }
       if (l.charged_reservation) { chargedLines++; chargedUsd += l.actual_usd; continue; }
       if (l.outcome !== 'forwarded') continue;
-      const price = chatPrice(l.provider + ':' + l.model);
+      const price = chatPrice(l.provider + ':' + l.model, new Date(l.at));
       if (!price) { problem = 'no price for ' + l.provider + ':' + l.model; break; }
       const inTokens = l.input_tokens ?? 0;
       const rates = price.long && inTokens > price.long.above_input_tokens ? price.long : price;

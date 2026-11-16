@@ -15,6 +15,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BudgetRun, closeLedgers, geminiStreamIncomplete, ledgerStatus, priceRequest, streamUsageCost, usageCost } from '../runner/ledger/budget-ledger.ts';
+import { canonicalLookup, priceOnDate } from '../runner/pricing/model-pricing.ts';
 import { hostedWebTools } from '../runner/proxy/hosted-tools.ts';
 import { MeteringProxy, UPSTREAM, type UsageLine } from '../runner/proxy/metering-proxy.ts';
 
@@ -24,8 +25,11 @@ const TOKEN = 'trial-token:t.0123456789abcdef0123456789abcdef';
 const GEMINI = 'gemini-4-carbon';
 const GROK = 'grok-4.7';
 const GEM_USAGE = { promptTokenCount: 1000, cachedContentTokenCount: 400, candidatesTokenCount: 200, thoughtsTokenCount: 300, totalTokenCount: 1500 };
-/** $2 uncached input, $0.10 cache reads, $10 output (thinking included) per million tokens. */
+/** $2 uncached input, $0.10 cache reads, $10 output (thinking included) per million tokens, Carbon's rates through 2026-11-30. */
 const GEM_USD = (600 * 2 + 400 * 0.1 + 500 * 10) / 1e6;
+const NOV = new Date('2026-11-30T23:59:59Z');
+/** What GEM_USAGE costs at Carbon's rates on the UTC day of `at`, the time the proxy logged the request. */
+const gemUsdAt = (at: string) => { const r = priceOnDate(canonicalLookup('google:' + GEMINI)!, new Date(at)); return (600 * r.input + 400 * r.cache_read! + 500 * r.output) / 1e6; };
 const XAI_USAGE = { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1500, prompt_tokens_details: { cached_tokens: 200 }, completion_tokens_details: { reasoning_tokens: 400 }, cost_in_usd_ticks: 47_000_000 };
 /** $2 uncached input, $0.50 cache reads, $6 output (completion plus reasoning) per million tokens. */
 const XAI_USD = (800 * 2 + 200 * 0.5 + 500 * 6) / 1e6;
@@ -78,14 +82,14 @@ const contents = { contents: [{ role: 'user', parts: [{ text: 'Say ok.' }] }] };
 
 describe('Gemini prices and stream settlement in the ledger', () => {
   test('gemini-4-carbon is priced at $2 in, $10 out and $0.10 cache reads, reserving its stated output plus thinking', () => {
-    const price = priceRequest(UPSTREAM.google + '/v1beta/models/' + GEMINI + ':generateContent', { ...contents, generationConfig: { maxOutputTokens: 1000 } })!;
-    expect(price).toMatchObject({ provider: 'gemini', model: GEMINI, kind: 'chat', input: 2, output: 10, cache_read: 0.1, maxOutputTokens: 1000 });
+    const price = priceRequest(UPSTREAM.google + '/v1beta/models/' + GEMINI + ':generateContent', { ...contents, generationConfig: { maxOutputTokens: 1000 } }, { now: NOV })!;
+    expect(price).toMatchObject({ provider: 'gemini', model: GEMINI, kind: 'chat', input: 2, output: 10, cache_read: 0.1, maxOutputTokens: 1000 + 65_536 });
     expect(price.long).toBeUndefined();
     expect(usageCost(price, { usageMetadata: GEM_USAGE })!.usd).toBeCloseTo(GEM_USD, 12);
   });
 
   test('a stream settles from its last usageMetadata and is final only once a candidate reports a finishReason', () => {
-    const price = priceRequest(UPSTREAM.google + '/v1beta/models/' + GEMINI + ':streamGenerateContent', contents)!;
+    const price = priceRequest(UPSTREAM.google + '/v1beta/models/' + GEMINI + ':streamGenerateContent', contents, { now: NOV })!;
     const done = sse([{ candidates: [{}], usageMetadata: { promptTokenCount: 1000 } }, { candidates: [{ finishReason: 'STOP' }], usageMetadata: GEM_USAGE }]);
     expect(streamUsageCost(price, done)!.usd).toBeCloseTo(GEM_USD, 12);
     expect(geminiStreamIncomplete(done)).toBeNull();
@@ -96,7 +100,7 @@ describe('Gemini prices and stream settlement in the ledger', () => {
 });
 
 describe('the google route', () => {
-  test('generateContent: the trial token in x-goog-api-key, GEMINI_API_KEY sent in x-goog-api-key only, ?key= dropped, the output cap injected, settled from usageMetadata', async () => {
+  test('generateContent: the trial token in x-goog-api-key, GEMINI_API_KEY sent in x-goog-api-key only, ?key= dropped, the model\'s own output cap injected, settled from usageMetadata', async () => {
     const t = leaseProxy();
     try {
       const res = await t.google('generateContent', contents, '?key=dummy-in-url');
@@ -104,13 +108,13 @@ describe('the google route', () => {
       const [sent, ...more] = t.sent();
       expect(more).toEqual([]);
       expect(sent).toMatchObject({ path: '/v1beta/models/' + GEMINI + ':generateContent', search: '', goog: ENV.GEMINI_API_KEY, auth: null });
-      expect(sent!.body.generationConfig).toEqual({ maxOutputTokens: 128_000 });
+      expect(sent!.body.generationConfig).toEqual({ maxOutputTokens: 65_536 });
       await t.proxy.finalize('trial-token:t');
       const [line, ...rest] = t.usage();
       expect(rest).toEqual([]);
       expect(line).toMatchObject({ provider: 'google', model: GEMINI, outcome: 'forwarded', status: 200, streamed: false, charged_reservation: false, input_tokens: 1000, output_tokens: 500, cached_tokens: 400, reasoning_tokens: 300 });
-      expect(line!.actual_usd).toBeCloseTo(GEM_USD, 12);
-      expect(t.committed()).toBeCloseTo(GEM_USD, 9);
+      expect(line!.actual_usd).toBeCloseTo(gemUsdAt(line!.at), 12);
+      expect(t.committed()).toBeCloseTo(gemUsdAt(line!.at), 9);
     } finally { t.stop(); }
   });
 
@@ -126,14 +130,14 @@ describe('the google route', () => {
       expect(t.sent().map((s) => s.search)).toEqual(['?alt=sse', '?alt=sse']);
       const [done, unfinished] = t.usage();
       expect(done).toMatchObject({ provider: 'google', streamed: true, charged_reservation: false, input_tokens: 1000, output_tokens: 500, cached_tokens: 400, reasoning_tokens: 300 });
-      expect(done!.actual_usd).toBeCloseTo(GEM_USD, 12);
+      expect(done!.actual_usd).toBeCloseTo(gemUsdAt(done!.at), 12);
       expect(unfinished).toMatchObject({ streamed: true, charged_reservation: true, usage_unknown: true });
       expect(unfinished!.reason).toContain('the end of the stream came before a candidate finishReason');
       expect(unfinished!.actual_usd).toBe(unfinished!.reserved_usd!);
     } finally { t.stop(); }
   });
 
-  test('refused before any upstream: a stream without alt=sse (HE-PROXY-013), hosted tools without --refuse-hosted-tools (HE-PROXY-006), an output limit over the cap, another token', async () => {
+  test('refused before any upstream: a stream without alt=sse (HE-PROXY-013), hosted tools without --refuse-hosted-tools (HE-PROXY-006), an output limit over the model\'s cap, another token; countTokens answered locally', async () => {
     const t = leaseProxy();
     try {
       const noSse = await t.google('streamGenerateContent', contents);
@@ -144,15 +148,20 @@ describe('the google route', () => {
         expect(r.status).toBe(400);
         expect((await r.json()).error.message).toContain('HE-PROXY-006');
       }
-      const over = await t.google('generateContent', { ...contents, generationConfig: { maxOutputTokens: 200_000 } });
-      expect(over.status).toBe(400);
+      for (const limit of [200_000, 100_000]) {
+        const over = await t.google('generateContent', { ...contents, generationConfig: { maxOutputTokens: limit } });
+        expect(over.status).toBe(400);
+      }
       const wrong = await t.post('/t/google/v1beta/models/' + GEMINI + ':generateContent', contents, { 'x-goog-api-key': 'not-the-token' });
       expect(wrong.status).toBe(403);
-      const listing = await t.post('/t/google/v1beta/models/' + GEMINI + ':countTokens', contents, { 'x-goog-api-key': TOKEN });
-      expect(listing.status).toBe(403);
+      const count = await t.post('/t/google/v1beta/models/' + GEMINI + ':countTokens', contents, { 'x-goog-api-key': TOKEN });
+      expect(count.status).toBe(200);
+      expect((await count.json()).totalTokens).toBeGreaterThan(0);
       expect(t.sent()).toEqual([]);
       expect(t.committed()).toBe(0);
-      expect(t.usage().every((l) => l.outcome === 'refused')).toBe(true);
+      expect(t.usage().map((l) => l.outcome).sort()).toEqual(['estimated', ...Array(8).fill('refused')]);
+      expect(t.usage().find((l) => l.outcome === 'estimated')).toMatchObject({ provider: 'google', model: GEMINI, local_estimate: true });
+      expect(t.usage().some((l) => 'upstream' in l)).toBe(false);
     } finally { t.stop(); }
   });
 });

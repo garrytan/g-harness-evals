@@ -12,6 +12,12 @@ describe('publish-audit: the scanner', () => {
     expect(counts).toMatchObject({ slack_bot: 1, anthropic: 1, gbrain: 1, bearer: 1, github: 1, aws: 1, google: 1 });
     expect(hits.every((h) => h.sample.length < 24 && !h.sample.includes('Z'.repeat(10)))).toBe(true);
   });
+  test('names OpenRouter, xAI and Google keys by their own shapes', () => {
+    const hits: Hit[] = []; const counts: Record<string, number> = {};
+    scanText([j('sk-', 'or-v1-', '0123456789abcdef'.repeat(4)), j('xa', 'i-', 'Q7'.repeat(40)), j('AI', 'za', 'Sy', 'b'.repeat(33))].join(' '), 'unit', hits, counts);
+    expect(counts).toEqual({ openrouter: 1, xai: 1, google: 1 });
+    expect(hits.map((h) => h.pattern)).toEqual(['openrouter', 'xai', 'google']);
+  });
   test('allowlists trial tokens and the test suite placeholders, nothing else', () => {
     const hits: Hit[] = []; const counts: Record<string, number> = {};
     scanText('sk-trial-' + 'a'.repeat(32) + ' Bearer sk-trial-' + 'b'.repeat(32) + ' trial-token:' + 'c'.repeat(32) + ' Bearer trial-token:' + 'd'.repeat(32) + ' Bearer dummy-from-container Bearer container-dummy-value', 'unit', hits, counts);

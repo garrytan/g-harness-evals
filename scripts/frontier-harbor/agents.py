@@ -413,13 +413,14 @@ class FrontierOpenClaw(_Frontier, OpenClaw):
     """Harbor's OpenClaw class on Node 24: OpenClaw 2026.10.6 refuses Node 22 (engines >=24.22.1 <25), which Harbor's
     commands name; every command Harbor runs gets the pinned Node major instead. Particle and openrouter-proxy are added to
     Harbor's providers with no variable forwarded for them: the overlay's provider reads the per-trial token from
-    OPENAI_API_KEY. On OpenRouter the agent's model is openrouter-proxy/<model>, so Harbor's --model names the overlay's
+    OPENAI_API_KEY. xai is added with Harbor's own convention (XAI_API_KEY and XAI_BASE_URL forwarded), and the overlay's xai
+    provider reads XAI_API_KEY. On OpenRouter the agent's model is openrouter-proxy/<model>, so Harbor's --model names the overlay's
     provider and not OpenClaw's bundled openrouter provider."""
 
     HARNESS = "openclaw"
     LAUNCH = "openclaw agent --local"
     NODE = str(fs.PIN["harnesses"]["openclaw"]["node_major"])
-    _SUPPORTED_PROVIDERS = OpenClaw._SUPPORTED_PROVIDERS | {"particle", "openrouter-proxy"}
+    _SUPPORTED_PROVIDERS = OpenClaw._SUPPORTED_PROVIDERS | {"particle", "openrouter-proxy", "xai"}
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -462,7 +463,7 @@ class FrontierPi(_Frontier, Pi):
         return (super().build_cli_flags() + " --").strip()
 
     def _build_custom_models_json(self, access: Any, model_id: str) -> dict[str, Any] | None:
-        if fs.model_spec(self._frontier_model)["provider"] in ("particle", "openrouter"):
+        if fs.model_spec(self._frontier_model)["provider"] in ("particle", "openrouter", "xai"):
             return fs.pi_chat_models_json(self._frontier_model, self._frontier_url)
         out = super()._build_custom_models_json(access, model_id)
         if out is None:
@@ -685,7 +686,8 @@ class FrontierCursor(_Frontier, BaseInstalledAgent):
 
 
 class FrontierGeminiCli(_Frontier, GeminiCli):
-    """Harbor's GeminiCli on the proxy's google route, which reaches Gemini through OpenRouter (--google-via openrouter).
+    """Harbor's GeminiCli on the proxy's google route, which reaches Google's Gemini API directly (through OpenRouter only on
+    the named fallback, vm-run.sh --gemini-cli-route openrouter-fallback).
     Harbor writes settings.json at run time; our overlay (frontier_settings.gemini_cli_settings) is merged into it."""
 
     HARNESS = "gemini-cli"

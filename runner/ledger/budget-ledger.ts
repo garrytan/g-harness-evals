@@ -1192,6 +1192,10 @@ export const HARNESS_CHAT_PRICES: Record<string, { input: number; output: number
   'gemini:gemini-3.1-flash-lite': { input: 0.25, output: 1.5, cache_read: 0.025, max_output: 65_536 },
   'gemini:gemini-3.1-pro-preview': { input: 2, output: 12, cache_read: 0.2, max_output: 65_536, long: { above_input_tokens: 200_000, input: 4, output: 18, cache_read: 0.4 } },
   'gemini:gemini-3.1-pro-preview-customtools': { input: 2, output: 12, cache_read: 0.2, max_output: 65_536, long: { above_input_tokens: 200_000, input: 4, output: 18, cache_read: 0.4 } },
+  // Gemini CLI 0.68.0's loop-detection model, harness housekeeping on the direct Google route (internal-task). Google's pricing page
+  // no longer lists it (read 2026-11-16), so these are the rates OpenRouter lists for Google's own Vertex endpoint
+  // (openrouter.ai/api/v1/models/google/gemini-3-flash-preview/endpoints, read 2026-11-15; the openrouter: row).
+  'gemini:gemini-3-flash-preview': { input: 0.5, output: 3, cache_read: 0.05, max_output: 65_536 },
   'gemini:gemini-2.5-pro': { input: 1.25, output: 10, cache_read: 0.125, max_output: 65_536, long: { above_input_tokens: 200_000, input: 2.5, output: 15, cache_read: 0.25 } },
   'gemini:gemini-2.5-flash': { input: 0.3, output: 2.5, cache_read: 0.03, max_output: 65_536 },
   'gemini:gemini-2.5-flash-lite': { input: 0.1, output: 0.4, cache_read: 0.01, max_output: 65_536 },
@@ -1206,11 +1210,20 @@ function chatRates(row: ModelPricing, at: Date | undefined): ChatPrice {
   return { ...rates, long: { ...long, above_input_tokens: above } };
 }
 
-/** A dated API snapshot (`gpt-4o-2024-08-06`) is billed at its family's list price. */
-export const chatPrice = (id: string): ChatPrice | undefined => {
+/**
+ * xAI reasoning ceilings, tokens per request, by model. xAI's max_completion_tokens (and max_output_tokens) bound the answer
+ * but not the reasoning, which Grok 4.6 and 4.7 always do and which bills as output; nothing bounds it but the context
+ * window (docs.x.ai/developers/models/grok-4.7 and grok-4.6, read 2026-11-16: 500,000 tokens each). priceRequest adds the
+ * ceiling to an xAI request's output allowance, and refuses an xAI model with no row here.
+ */
+export const XAI_REASONING_CEILING: Record<string, number> = { 'grok-4.7': 500_000, 'grok-4.6': 500_000 };
+
+/** A dated API snapshot (`gpt-4o-2024-08-06`) is billed at its family's list price; a price-table row at its rates on the UTC day of `at` (priceOnDate). */
+export const chatPrice = (id: string, at?: Date): ChatPrice | undefined => {
   const undated = id.replace(/-\d{4}-?\d{2}-?\d{2}$/, '');
+  const listed = canonicalLookup(id) ?? canonicalLookup(undated);
   return ownRow(CHAT_PRICE_OVERRIDES, id) ?? ownRow(CHAT_PRICE_OVERRIDES, undated) ?? ownRow(HARNESS_CHAT_PRICES, id) ?? ownRow(HARNESS_CHAT_PRICES, undated)
-    ?? canonicalLookup(id) ?? canonicalLookup(undated);
+    ?? (listed && priceOnDate(listed, at));
 };
 
 export interface RequestPrice {
@@ -1300,16 +1313,22 @@ export function priceRequest(url: string, body: unknown, options: PriceOptions =
     // writes and any long-prompt tier included. max_price keeps OpenRouter off any endpoint dearer than the row, so one
     // above it would leave the reservation short.
     const listed = canonicalLookup(`openrouter:${model}`);
-    if (!listed) return { provider, model, kind: 'chat', input: maxPrice.prompt, output: maxPrice.completion, inputTokens, maxOutputTokens };
+    const thinking = model.startsWith('google/') ? openrouterGeminiThinking(b.reasoning) : 0;
+    if (!listed) return { provider, model, kind: 'chat', input: maxPrice.prompt, output: maxPrice.completion, inputTokens, maxOutputTokens: maxOutputTokens + thinking };
     const row = chatRates(listed, options.now);
     if (maxPrice.prompt > row.input || maxPrice.completion > row.output) {
       throw new BudgetExceededError(`OpenRouter request for ${model} sets provider.max_price (${maxPrice.prompt}, ${maxPrice.completion}) above its price row (${row.input}, ${row.output}); cannot bound its cost`);
     }
     return { provider, model, kind: 'chat', input: row.input, output: row.output, cache_read: row.cache_read, ...(row.cache_write !== undefined ? { cache_write: row.cache_write } : {}),
-      rowPriced: true, inputTokens, maxOutputTokens, ...(row.long ? { long: row.long } : {}) };
+      rowPriced: true, inputTokens, maxOutputTokens: maxOutputTokens + thinking, ...(row.long ? { long: row.long } : {}) };
   }
-  const price = chatPrice(`${provider}:${model}`);
+  const price = chatPrice(`${provider}:${model}`, options.now);
   if (!price) throw new BudgetExceededError(`no chat price for ${provider}:${model}; cannot reserve its cost`);
+  if (provider === 'xai') {
+    const reasoning = ownRow(XAI_REASONING_CEILING, model);
+    if (reasoning === undefined) throw new BudgetExceededError(`no reasoning ceiling for xai:${model} (XAI_REASONING_CEILING); cannot bound its reasoning tokens, which max_completion_tokens does not limit`);
+    return { provider, model, kind: 'chat', input: price.input, output: price.output, cache_read: price.cache_read, cache_write: price.cache_write, cacheWritePremium: false, inputTokens, maxOutputTokens: maxOutputTokens + reasoning, ...(price.long ? { long: price.long } : {}) };
+  }
   // OpenAI caches automatically; Anthropic writes its cache only where a request sets cache_control.
   const cacheWritePremium = price.cache_write !== undefined && price.cache_write > price.input
     && (provider !== 'anthropic' || JSON.stringify(b).includes('"cache_control"'));
@@ -1322,10 +1341,27 @@ const GEMINI_METHOD = /\/models\/([^/:]+):([A-Za-z]+)$/;
 /**
  * Price a Gemini request. The model and method come from the URL path
  * (`/v1beta/models/<model>:<method>`); countTokens and model listings are free.
- * A generateContent request with no `generationConfig.maxOutputTokens`
- * reserves the model's full output ceiling, because thinking tokens bill as
- * output; an explicit thinking budget is added on top of an explicit limit.
+ * Thinking tokens bill as output, so a generateContent request reserves its
+ * output limit (`generationConfig.maxOutputTokens`, else the model's output
+ * ceiling) plus a thinking allowance on top: the request's positive
+ * `thinkingConfig.thinkingBudget`, none for a budget of 0 (thinking off), and
+ * the model's output ceiling otherwise (a dynamic budget of -1, only a
+ * `thinkingLevel`, or no thinkingConfig, where the model thinks as much as it
+ * chooses). Settling one candidate can then never exceed the reservation.
  */
+/** Google's standard Gemini output limit (65,536 tokens), the thinking allowance when a request does not bound its thinking. */
+const GEMINI_THINKING_CEILING = 65_536;
+
+/** The thinking tokens a Gemini request through OpenRouter may spend beyond its output limit, as priceGemini reserves them on
+ *  the direct route, read from the Chat Completions reasoning object (gemini-openrouter.ts translates thinkingConfig to it):
+ *  max_tokens as stated (a thinkingBudget), effort none adds nothing (a budget of 0), and anything else (an effort level,
+ *  enabled, or no reasoning object, since Gemini 4 models think by default) adds the model's output ceiling. */
+function openrouterGeminiThinking(reasoning: unknown): number {
+  const r = (reasoning ?? {}) as { max_tokens?: unknown; effort?: unknown };
+  if (typeof r.max_tokens === 'number' && r.max_tokens >= 0) return r.max_tokens;
+  return r.effort === 'none' ? 0 : GEMINI_THINKING_CEILING;
+}
+
 function priceGemini(url: string, body: unknown, now?: Date): RequestPrice | null {
   const path = new URL(url).pathname;
   const match = path.match(GEMINI_METHOD);
@@ -1345,7 +1381,7 @@ function priceGemini(url: string, body: unknown, now?: Date): RequestPrice | nul
   if (method !== 'generateContent' && method !== 'streamGenerateContent') throw new BudgetExceededError(`cannot price the Gemini method ${method} for ${model}`);
   const row = HARNESS_CHAT_PRICES[`gemini:${model}`];
   const listed = canonicalLookup(`google:${model}`);
-  const price = row ?? chatPrice(`gemini:${model}`) ?? (listed && chatRates(listed, now));
+  const price = row ?? chatPrice(`gemini:${model}`, now) ?? (listed && chatRates(listed, now));
   if (!price) throw new BudgetExceededError(`no chat price for gemini:${model}; cannot reserve its cost`);
   const gen = (b.generationConfig ?? b.generation_config ?? {}) as Record<string, unknown>;
   const schema = gen.responseSchema ?? gen.response_schema ?? gen.responseJsonSchema ?? gen.response_json_schema;
@@ -1354,9 +1390,9 @@ function priceGemini(url: string, body: unknown, now?: Date): RequestPrice | nul
   const limit = gen.maxOutputTokens ?? gen.max_output_tokens;
   const thinking = ((gen.thinkingConfig ?? gen.thinking_config) as Record<string, unknown> | undefined);
   const thinkingBudget = thinking?.thinkingBudget ?? thinking?.thinking_budget;
-  const maxOutputTokens = typeof limit === 'number'
-    ? limit + (typeof thinkingBudget === 'number' && thinkingBudget > 0 ? thinkingBudget : 0)
-    : row?.max_output ?? 65_536;
+  const ceiling = row?.max_output ?? GEMINI_THINKING_CEILING;
+  const thinkingAllowance = typeof thinkingBudget === 'number' && thinkingBudget >= 0 ? thinkingBudget : ceiling;
+  const maxOutputTokens = (typeof limit === 'number' ? limit : ceiling) + thinkingAllowance;
   return { provider: 'gemini', model, kind: 'chat', input: price.input, output: price.output, cache_read: price.cache_read, inputTokens, maxOutputTokens, ...(price.long ? { long: price.long } : {}) };
 }
 

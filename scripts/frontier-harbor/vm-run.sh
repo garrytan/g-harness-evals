@@ -50,9 +50,13 @@
 #   the harness in a task container (only the per-trial dummy token and the proxy URL) -> the egress sidecar of its
 #   trial (gost, blocklist) -> our metering proxy (runner/proxy/metering-proxy.ts on the docker bridge gateway :8790,
 #   lease mode, one slot per trial, the only process holding the provider keys scripts/ubicloud/provider-keys.sh lists:
-#   ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY and XAI_API_KEY) -> the provider.
-#   The google route reaches Gemini through OpenRouter (--google-via openrouter: Gemini requests translated to OpenRouter's
-#   Chat Completions, pinned to Google's Vertex endpoint, keyed with OPENROUTER_API_KEY; GEMINI_API_KEY is not read).
+#   ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY and XAI_API_KEY, less the
+#   ones shard_keys leaves out: GEMINI_API_KEY only for a shard with a gemini-cli cell on the native route) -> the provider.
+#   The google route (Gemini CLI's) goes to Google's Gemini API directly, keyed with GEMINI_API_KEY. --gemini-cli-route
+#   openrouter-fallback, the named fallback and never the default, sends it through OpenRouter instead (--google-via
+#   openrouter: Gemini requests translated to OpenRouter's Chat Completions, pinned to Google AI Studio's standard endpoint, keyed with
+#   OPENROUTER_API_KEY; GEMINI_API_KEY is not read); every google line in proxy-usage.ndjson then carries
+#   upstream "openrouter", and manifest.json and run-summary.json record gemini_cli_route.
 #   The proxy refuses requests that declare a hosted web tool (--refuse-hosted-tools), caps output at the largest model
 #   max output in pin.json (128,000; Claude Code sends max_tokens 128000) and writes every forwarded body, hash-chained,
 #   to <run>/jobs/<job>/<trial>/proxy-capture/proxy-requests.ndjson (--capture-bodies), on the host, outside the task
@@ -90,7 +94,7 @@ umask 077
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 . "$repo/scripts/ubicloud/provider-keys.sh"
-prereg="" name="" lease="" out="" tb21="" tasks_src="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0 canary=0
+prereg="" name="" lease="" out="" tb21="" tasks_src="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0 canary=0 gemini_route=native
 done_files=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -108,12 +112,14 @@ while [ $# -gt 0 ]; do
     --tasks-src) tasks_src=$2; shift 2 ;;
     --fake-upstream) fake=1; shift ;;
     --uncounted) uncounted=$2; shift 2 ;;
+    --gemini-cli-route) gemini_route=$2; shift 2 ;;
     *) echo "vm-run (frontier): unknown argument $1" >&2; exit 2 ;;
   esac
 done
 [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$lease" ] && [ -n "$out" ] || { echo "vm-run (frontier): --prereg, --name, --lease-usd and --out are required" >&2; exit 2; }
 [ "$fake" -eq 0 ] || [ -n "$uncounted" ] || [ "$canary" -eq 1 ] || { echo "vm-run (frontier): --fake-upstream is for an --uncounted check or a --canary-spec only" >&2; exit 2; }
 [ "$canary" -eq 0 ] || [ -z "$uncounted" ] || { echo "vm-run (frontier): a --canary-spec run is uncounted already; --uncounted does not apply" >&2; exit 2; }
+case $gemini_route in native|openrouter-fallback) ;; *) echo "vm-run (frontier): --gemini-cli-route is native (the default) or openrouter-fallback, not $gemini_route" >&2; exit 2 ;; esac
 # Only the metering proxy holds provider keys (provider_keys, scripts/ubicloud/provider-keys.sh): they stay shell variables
 # (not exported) and are exported again inside the proxy's subshell alone.
 export -n "${provider_keys[@]}" 2>/dev/null || true
@@ -198,6 +204,10 @@ esac
 # Cursor cells: no slot models (frontier_settings.py slot_models), so a shard of Cursor cells only has none and runs no proxy.
 harnesses=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); s=next(x for x in p["shards"] if x["name"] == sys.argv[2]); print(" ".join(sorted({c["harness"] for c in p["cells"] if c["id"] in s["cells"]})))' "$prereg" "$name")
 [ -n "${models:-}" ] || metered=0
+# The proxy keeps only the keys this shard needs (shard_keys, scripts/ubicloud/provider-keys.sh): GEMINI_API_KEY only for a
+# shard with a gemini-cli cell on the native route. Every other provider key is dropped here.
+read -r -a proxy_keys <<< "$(shard_keys "$harnesses" "$gemini_route" | tr '\n' ' ')"
+for k in "${provider_keys[@]}"; do case " ${proxy_keys[*]} " in *" $k "*) ;; *) unset "$k" ;; esac; done
 case " $harnesses " in
   *" cursor "*)
     if [ "$fake" -eq 0 ]; then
@@ -217,7 +227,8 @@ if [ "$fake" -eq 0 ]; then
       openai) [ -n "${OPENAI_API_KEY:+x}" ] || { say "the shard uses openai models and OPENAI_API_KEY is not set"; exit 2; } ;;
       particle) [ -n "${PARTICLE_API_KEY:+x}" ] || { say "the shard uses particle models and PARTICLE_API_KEY is not set"; exit 2; } ;;
       openrouter) [ -n "${OPENROUTER_API_KEY:+x}" ] || { say "the shard uses openrouter models and OPENROUTER_API_KEY is not set"; exit 2; } ;;
-      google) [ -n "${OPENROUTER_API_KEY:+x}" ] || { say "the shard uses google models, which the proxy reaches through OpenRouter (--google-via openrouter), and OPENROUTER_API_KEY is not set"; exit 2; } ;;
+      google) if [ "$gemini_route" = native ]; then [ -n "${GEMINI_API_KEY:+x}" ] || { say "the shard uses google models, which the proxy reaches directly on Gemini CLI's native route, and GEMINI_API_KEY is not set (--gemini-cli-route openrouter-fallback is the named fallback)"; exit 2; }
+        else [ -n "${OPENROUTER_API_KEY:+x}" ] || { say "the shard uses google models, which the proxy reaches through OpenRouter on --gemini-cli-route openrouter-fallback, and OPENROUTER_API_KEY is not set"; exit 2; }; fi ;;
       xai) [ -n "${XAI_API_KEY:+x}" ] || { say "the shard uses xai models and XAI_API_KEY is not set"; exit 2; } ;;
     esac
   done
@@ -279,7 +290,8 @@ gw=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}'
 control_token=$(openssl rand -hex 32)
 lease_run="$run_id:$name${stage:+:$stage}"
 if [ "$metered" -eq 1 ]; then
-  upstream=()
+  upstream=() google_via=()
+  [ "$gemini_route" = native ] || google_via=(--google-via openrouter)
   if [ "$fake" -eq 1 ]; then
     canary="fake-provider-key-canary-$(openssl rand -hex 16)"
     printf '%s' "$canary" > "$out/canary.txt"
@@ -288,11 +300,11 @@ if [ "$metered" -eq 1 ]; then
   fi
   (
     cd "$repo"
-    if [ "$fake" -eq 1 ]; then for k in "${provider_keys[@]}"; do export "$k=$canary"; done; else export "${provider_keys[@]}" 2>/dev/null || true; fi
+    if [ "$fake" -eq 1 ]; then for k in "${proxy_keys[@]}"; do export "$k=$canary"; done; else export "${proxy_keys[@]}" 2>/dev/null || true; fi
     export SHOOTOUT_PROXY_CONTROL_TOKEN=$control_token
-    KEEP="${provider_keys[*]} SHOOTOUT_PROXY_CONTROL_TOKEN" run_scrubbed setsid bun runner/proxy/metering-proxy.ts --listen "$gw:8790" \
+    KEEP="${proxy_keys[*]} SHOOTOUT_PROXY_CONTROL_TOKEN" run_scrubbed setsid bun runner/proxy/metering-proxy.ts --listen "$gw:8790" \
       --budget-ledger "$out/ledger.sqlite" --lease-usd "$lease" --run-id "$lease_run" --new-run --usage-log "$out/proxy-usage.ndjson" \
-      --allow-models "$models" --refuse-hosted-tools --google-via openrouter --capture-bodies "$run/jobs" --max-output-tokens "$(python3 -c 'import json,sys; print(max(m["max_output_tokens"] for m in json.load(open(sys.argv[1]))["models"].values()))' "$here/pin.json")" ${upstream[@]+"${upstream[@]}"}
+      --allow-models "$models" --refuse-hosted-tools ${google_via[@]+"${google_via[@]}"} --capture-bodies "$run/jobs" --max-output-tokens "$(python3 -c 'import json,sys; print(max(m["max_output_tokens"] for m in json.load(open(sys.argv[1]))["models"].values()))' "$here/pin.json")" ${upstream[@]+"${upstream[@]}"}
   ) >> "$out/proxy.log" 2>&1 & pids+=($!)
   (export SHOOTOUT_PROXY_CONTROL_TOKEN=$control_token; cd "$repo"; KEEP=SHOOTOUT_PROXY_CONTROL_TOKEN run_scrubbed setsid bun scripts/frontier-harbor/broker.ts --listen 127.0.0.1:8791 \
     --proxy "http://$gw:8790" --gateway "http://$gw:8790" --models "$models" --log "$run/binds.jsonl" --capture) >> "$out/broker.log" 2>&1 & pids+=($!)
@@ -330,7 +342,7 @@ finish() {
   python3 -c 'import json,sys; ok = sys.argv[2] == "true"; json.dump({"complete": ok, "finalize_ok": ok, "undrained_requests": int(sys.argv[3])}, open(sys.argv[1], "w"))' "$out/accounting.json" "$ok" "$undrained"
   [ "$ok" = true ] || { say "accounting incomplete: the meter did not drain for every trial (undrained $undrained); open reservations stay charged in ledger.sqlite"; accounting_incomplete=1; }
   say "harbor done (last exit ${rc:-interrupted}); $(find "$run/jobs" -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l) trial result(s)"
-  (cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/to-trials.ts convert --prereg "$prereg" --out "$out" --shard "$name" --lease-run-id "$run_id:$name" ${stage_arg[@]+"${stage_arg[@]}"} 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "to-trials refused (run.log)"; rc=${rc:-0}; [ "$rc" -ne 0 ] || rc=3; }
+  (cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/to-trials.ts convert --prereg "$prereg" --out "$out" --shard "$name" --lease-run-id "$run_id:$name" ${stage_arg[@]+"${stage_arg[@]}"} --gemini-cli-route "$gemini_route" 2>>"$out/run.log") | tee -a "$out/run-shard.log" || { say "to-trials refused (run.log)"; rc=${rc:-0}; [ "$rc" -ne 0 ] || rc=3; }
   python3 - "$out/shard.json" "$name" "$(hostname)" "$(git -C "$repo" rev-parse HEAD)" <<'PY'
 import json, sys
 p, name, machine, commit = sys.argv[1:5]

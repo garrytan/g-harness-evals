@@ -1,0 +1,35 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "frontier-shootout-2026-11",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin-swe-rebench-07-2026.json"
+  },
+  "shared_order_seed": "fable52-diagnosis-2026-11-14",
+  "cap_usd": 2250,
+  "reserve_usd": 110,
+  "concurrency": 4,
+  "cells": [
+    {
+      "id": "swe-fable-pi",
+      "model": "anthropic:claude-fable-5-2",
+      "harness": "pi",
+      "attempts": 2,
+      "tasks": {
+        "subset": "docs/benchmarks/2026-11-16-frontier-shootout/swe-rebench-tasks.json",
+        "key": "all",
+        "sha256": "8506f728bc6e7e06cbc361364199da8df9afbb5e9e28af7a5332deae0fd0774f"
+      },
+      "stage": "core",
+      "priority": 1
+    }
+  ],
+  "shards": [
+    {
+      "name": "s16",
+      "cells": [
+        "swe-fable-pi"
+      ],
+      "lease_usd": 2140
+    }
+  ]
+}

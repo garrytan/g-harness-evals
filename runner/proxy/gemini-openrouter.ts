@@ -53,6 +53,10 @@ const camel = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperC
 const field = (o: Json | undefined, name: string) => o?.[name] ?? o?.[name.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase())];
 const camelKeys = (o: Json) => Object.fromEntries(Object.entries(o).map(([k, v]) => [camel(k), v]));
 
+/** Keys whose value is a schema or a list of schemas. Every other key (default, enum, const, example, propertyOrdering,
+ *  required) holds a plain value and is copied as it is, so a literal shaped like a schema is never rewritten. */
+const SCHEMA_KEYS = new Set(['items', 'prefixItems', 'anyOf', 'oneOf', 'allOf', 'not', 'additionalProperties']);
+
 /** A Gemini Schema (OpenAPI subset, upper-case type names) as JSON Schema. */
 function jsonSchema(s: unknown): unknown {
   if (Array.isArray(s)) return s.map(jsonSchema);
@@ -62,7 +66,7 @@ function jsonSchema(s: unknown): unknown {
     if (k === 'type' && typeof v === 'string') out.type = v.toLowerCase();
     else if (k === 'nullable') continue;
     else if (k === 'properties' && v && typeof v === 'object') out.properties = Object.fromEntries(Object.entries(v as Json).map(([p, ps]) => [p, jsonSchema(ps)]));
-    else out[k] = jsonSchema(v);
+    else out[k] = SCHEMA_KEYS.has(k) ? jsonSchema(v) : v;
   }
   if ((s as Json).nullable === true && typeof out.type === 'string') out.type = [out.type, 'null'];
   return out;

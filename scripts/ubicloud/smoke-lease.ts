@@ -21,9 +21,9 @@ export const SHARD_MAX_OUTPUT_TOKENS = 128_000;
 
 /** What the proxy reserves for one call to `model` (provider:model) at INPUT_ALLOWANCE_TOKENS input tokens and `maxOutputTokens`
  *  output tokens, through the ledger's own chatPrice and reservationUsd, with input at the dearest rate priceRequest can apply:
- *  the cache-write rate when it is above input, and for Anthropic the 1-hour cache write; null when the proxy has no price for the model. */
-export function callReservationUsd(ledger: Pick<typeof Ledger, 'chatPrice' | 'reservationUsd'>, model: string, maxOutputTokens: number): number | null {
-  const price = model ? ledger.chatPrice(model) : undefined;
+ *  the cache-write rate when it is above input, and for Anthropic the 1-hour cache write, at the rates of the UTC day of `at`; null when the proxy has no price for the model. */
+export function callReservationUsd(ledger: Pick<typeof Ledger, 'chatPrice' | 'reservationUsd'>, model: string, maxOutputTokens: number, at = new Date()): number | null {
+  const price = model ? ledger.chatPrice(model, at) : undefined;
   if (!price) return null;
   const [provider, ...rest] = model.split(':');
   return ledger.reservationUsd({

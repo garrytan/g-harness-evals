@@ -126,12 +126,16 @@ describe('(c, d) Cursor cells run only keyless, and no VM gets CURSOR_API_KEY', 
     expect(r.keys).toEqual(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']);
   }, 90_000);
 
-  // Value: protects=GEMINI_API_KEY and XAI_API_KEY reach the VM key file from the shared registry (internal-task gate F);
-  // fails_when=the forward loop keeps a hand list without them; seam=UBI_RUNNER; no_claim=the proxy on the VM.
-  test('GEMINI_API_KEY and XAI_API_KEY go to the VM beside the other model keys, from provider-keys.sh', () => {
-    const r = shard({ cells: [], env: { CURSOR_API_KEY: PLACEHOLDER, GEMINI_API_KEY: PLACEHOLDER, XAI_API_KEY: PLACEHOLDER } });
-    expect(r.keys).toEqual(['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY']);
-  }, 90_000);
+  // Value: protects=XAI_API_KEY reaching the VM key file from the shared registry (internal-task gate F), and GEMINI_API_KEY
+  // reaching only a shard with a Gemini CLI cell on the direct route (shard_keys); fails_when=the forward loop keeps a hand
+  // list, or forwards GEMINI_API_KEY to every shard again; seam=UBI_RUNNER; no_claim=the proxy on the VM.
+  test('XAI_API_KEY goes to the VM beside the other model keys, from provider-keys.sh; GEMINI_API_KEY only to a Gemini CLI shard on the direct route', () => {
+    const env = { CURSOR_API_KEY: PLACEHOLDER, GEMINI_API_KEY: PLACEHOLDER, XAI_API_KEY: PLACEHOLDER };
+    expect(shard({ cells: [], env }).keys).toEqual(['ANTHROPIC_API_KEY', 'XAI_API_KEY']);
+    const gemini: Cell = { id: 'carbon-gemini', harness: 'gemini-cli', model: 'google:gemini-4-carbon' };
+    expect(shard({ cells: [gemini], env }).keys).toEqual(['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY']);
+    expect(shard({ cells: [gemini], env, extra: ['--gemini-cli-route', 'openrouter-fallback'] }).keys).toEqual(['ANTHROPIC_API_KEY', 'XAI_API_KEY']);
+  }, 180_000);
 });
 
 describe('(e) the zero-data-retention gate refuses an unchecked OpenAI frontier-harbor shard', () => {

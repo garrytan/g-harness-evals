@@ -65,7 +65,7 @@ import { spawnSync } from 'node:child_process';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { GbrainCellConfig, HarnessMode } from './contracts.ts';
 import { RunnerError } from './errors.ts';
-import { canonicalLookup } from './pricing/model-pricing.ts';
+import { canonicalLookup, priceOnDate } from './pricing/model-pricing.ts';
 import { lookupEmbeddingPrice } from './pricing/embedding-pricing.ts';
 import { taskTurnCount } from './trial/task.ts';
 import { DEFAULT_GBRAIN_IMAGE, SOURCE_PROBE_QUERIES } from './trial/gbrain.ts';
@@ -590,10 +590,10 @@ function checkAblation(c: Cell): void {
   if (c.utility_models?.includes(c.model)) throw bad(`cannot run with the cell's own model ${c.model} in utility_models: the filter passes housekeeping requests through untouched`);
 }
 
-/** Price of one unit of the cell's ceiling: a trial for single-shot slices, a turn for multiuser. Scripted cells cost nothing. */
-export function ceilingUsd(cell: Cell): number {
+/** Price of one unit of the cell's ceiling: a trial for single-shot slices, a turn for multiuser, at the rates of the UTC day of `at`. Scripted cells cost nothing. */
+export function ceilingUsd(cell: Cell, at = new Date()): number {
   if (cell.harness_mode === 'scripted') return 0;
-  const price = canonicalLookup(cell.model)!;
+  const price = priceOnDate(canonicalLookup(cell.model)!, at);
   return (cell.ceiling.input_tokens * price.input + cell.ceiling.output_tokens * price.output) / 1e6;
 }
 
@@ -689,7 +689,7 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
     const tasksRoot = sealedCell ? join(opts.sealedRoot!, 'tasks') : (opts.tasksRoot ?? 'tasks');
     const stored = (p: string) => (sealedCell ? relative(opts.sealedRoot!, p) : p);
     const tasks = cellTasks(prereg, cell, tasksRoot);
-    const unit = ceilingUsd(cell);
+    const unit = ceilingUsd(cell, new Date(now));
     let cellUsd = 0;
     for (const task of tasks) {
       if (cell.slice !== 'multiuser') {

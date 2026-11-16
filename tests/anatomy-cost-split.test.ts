@@ -201,3 +201,59 @@ describe('cost split at the Sonnet 5.5 cache-read price the proxy charged', () =
     }
   });
 });
+
+describe('cost split on Gemini generateContent rows (internal-task)', () => {
+  const NOV = '2026-11-30T12:00:00.000Z', DEC = '2026-12-01T12:00:00.000Z';
+  const gemini = (o: Partial<UsageRow>) => row({ at: NOV, provider: 'google', route: '/v1beta/models/gemini-4-carbon:generateContent', model: 'gemini-4-carbon',
+    input_tokens: 1_000, cached_tokens: 400, output_tokens: 500, reasoning_tokens: 300, cache_write_tokens: 0, ...o });
+
+  test("a native Google line splits at Carbon's Gemini API rates of its own day, streamed or not", () => {
+    for (const [at, r] of [[NOV, { input: 2, read: 0.1, output: 10 }], [DEC, { input: 4, read: 0.2, output: 20 }]] as const) {
+      for (const method of ['generateContent', 'streamGenerateContent']) {
+        const usd = (600 * r.input + 400 * r.read + 500 * r.output) / 1e6;
+        const c = splitRow(gemini({ at, route: '/v1beta/models/gemini-4-carbon:' + method, actual_usd: usd }));
+        expect([c.uncached_input_tokens, c.cache_read_tokens, c.cache_write_tokens, c.output_tokens, c.reasoning_tokens, c.measured_requests]).toEqual([600, 400, 0, 500, 300, 1]);
+        expect(c.output_usd).toBeCloseTo(500 * r.output / 1e6, 12);
+        expect(Math.abs(c.remainder_usd)).toBeLessThan(1e-12);
+      }
+    }
+  });
+
+  test('a line translated to OpenRouter splits at the openrouter:google/<model> row, its cache writes included', () => {
+    const usd = (30_000 * 2 + 20_000 * 0.1 + 50_000 * 2.1875 + 1_000 * 10) / 1e6;
+    const c = splitRow(gemini({ upstream: 'openrouter', input_tokens: 100_000, cached_tokens: 20_000, cache_write_tokens: 50_000, output_tokens: 1_000, actual_usd: usd }));
+    expect([c.uncached_input_tokens, c.cache_read_tokens, c.cache_write_tokens]).toEqual([30_000, 20_000, 50_000]);
+    expect(c.cache_write_usd).toBeCloseTo(50_000 * 2.1875 / 1e6, 12);
+    expect(Math.abs(c.remainder_usd)).toBeLessThan(1e-12);
+    expect(splitRow(gemini({ route: '/v1beta/models/gemini-4-carbon:countTokens', input_tokens: 40, output_tokens: undefined, actual_usd: 0 })).requests).toBe(0);
+  });
+
+  test('a mixed run with Claude and Gemini CLI rows splits and reconciles', () => {
+    const gem = gemini({ key: 'trial-token:r/gem/t1/r1', actual_usd: (600 * 2 + 400 * 0.1 + 500 * 10) / 1e6 });
+    const claude = row({ key: 'trial-token:r/claude/t1/r1', input_tokens: 1_000, actual_usd: 0.002 });
+    const split = costSplit([gem, claude], [{ trial_id: 'r/gem/t1/r1', cell: 'gem', usage: { meter_id: gem.key, usd: gem.actual_usd } }, { trial_id: 'r/claude/t1/r1', cell: 'claude', usage: { meter_id: claude.key, usd: 0.002 } }]);
+    expect(split.refusals).toEqual([]);
+    expect(Object.keys(split.cells).sort()).toEqual(['claude', 'gem']);
+    expect(split.unallocated_share.gem).toBe(0);
+  });
+});
+
+describe('cost split at the Sonnet 5.5 cache-read price a line was charged, whatever its date', () => {
+  test('a line from after 2026-11-15 that a runner on older code charged at $0.20 splits at $0.20, measured or inferred', () => {
+    const at = '2026-11-16T09:00:00.000Z';
+    const old = (5_000 * 2 + 20_000 * 0.2 + 500 * 10) / 1e6;
+    for (const measured of [{ cache_write_tokens: 0 }, {}]) {
+      const c = splitRow(row({ at, input_tokens: 25_000, cached_tokens: 20_000, output_tokens: 500, actual_usd: old, ...measured }));
+      expect([c.cache_read_usd, c.cache_write_tokens, c.clamped_requests]).toEqual([20_000 * 0.2 / 1e6, 0, 0]);
+      expect(Math.abs(c.remainder_usd)).toBeLessThan(1e-12);
+    }
+  });
+
+  test('a measured line charged at $0.10 splits at $0.10 on any date', () => {
+    for (const at of ['2026-11-01T00:00:00.000Z', '2026-11-16T00:00:00.000Z']) {
+      const c = splitRow(row({ at, input_tokens: 25_000, cached_tokens: 20_000, output_tokens: 500, cache_write_tokens: 0, actual_usd: (5_000 * 2 + 20_000 * 0.1 + 500 * 10) / 1e6 }));
+      expect([at, c.cache_read_usd]).toEqual([at, 20_000 * 0.1 / 1e6]);
+      expect(Math.abs(c.remainder_usd)).toBeLessThan(1e-12);
+    }
+  });
+});
