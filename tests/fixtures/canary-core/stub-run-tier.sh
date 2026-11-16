@@ -39,4 +39,5 @@ jq -c -n --slurpfile t "$tasks" --arg suite "$suite" --arg tier "$tier" --arg ar
        exposure: {first_request_has_product: ($arm != "plain"), product_calls: (if $arm == "plain" then 0 else 1 end)},
        safety: (if $suite == "gbrain" then {cross_scope_reads: 0, hidden_fact_leaks: 0} else null end)}}' > "$out/trials.jsonl"
 mkdir -p "$out/shard" && cp "$out/trials.jsonl" "$out/shard/trials.jsonl"
+[ "$mode" != lost-quota-text ] || [ "$tier" != T1 ] || { echo "agent ran: grep -r quota scripts -> ubi-runner: create failed: vCPU quota exhausted" > "$out/shard/transcript.txt"; echo "ubi-runner: pull failed: canary/out" > "$out/remote.log"; rm -f "$out/trials.jsonl"; exit 3; }
 [ "$mode" != regress-quota-text ] || [ "$tier" != T1 ] || { echo "agent ran: grep -r quota scripts -> ubi-runner: create failed: vCPU quota exhausted" > "$out/shard/transcript.txt"; exit 1; }

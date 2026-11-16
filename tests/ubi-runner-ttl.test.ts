@@ -5,7 +5,7 @@
 //
 // Value: protects=the ttl rule (UBI_TTL_HOURS rounded up, else 3, 1-999), the generated name's shape as gstack's reaper
 // parses it (owner, epoch, TTL), up and run refusing without UBI_OWNER, a bad UBI_TTL_HOURS or a -n name without the suffix
-// before any API request, the UBICLOUD: left= line run ends with, list --mine and down still handling the suffix-less names
+// before any create request, the UBICLOUD: left= line run ends with (left=0 after a refused create, which made no VM), list --mine and down still handling the suffix-less names
 // live VMs carry, and run-shard.sh handing up --timeout-hours plus 1 (or a longer inherited UBI_TTL_HOURS) and refusing a
 // shorter one; fails_when=a VM can be created without a TTL or owner, the TTL can be shorter than the shard, or a legacy
 // name stops listing or going down; why_new=the TTL is new; seam=UBICLOUD_API_URL (existing) and UBI_RUNNER (existing) for
@@ -111,7 +111,7 @@ describe('ubi-runner.sh TTL', () => {
     for (const args of [['up'], ['run', '--', 'true']]) {
       const r = await runner(args, { UBI_OWNER: undefined });
       expect(r.exit).toBe(1);
-      expect(r.stderr.trimEnd()).toBe('ubi-runner: UBI_OWNER is not set: every VM must carry its owner; export UBI_OWNER=<your thread code> and rerun');
+      expect(r.stderr.trimEnd()).toBe('ubi-runner: UBI_OWNER is not set: every VM must carry its owner; export UBI_OWNER=<your thread or session code> (for example gsta164) and rerun (UBI_OWNER_REQUIRED)');
       const bad = await runner(args, { UBI_OWNER: OWNER, UBI_TTL_HOURS: '0' });
       expect(bad.exit).toBe(1);
       expect(bad.stderr.trimEnd()).toBe("ubi-runner: UBI_TTL_HOURS must be a number of hours that rounds up to 1-999 (got '0')");
@@ -131,9 +131,9 @@ describe('ubi-runner.sh TTL', () => {
     for (const bad of [`ubirun-harn7-${now}-pr5`, `my-vm-t3`]) {
       const r = await runner(['run', '-n', bad, '--', 'true'], { UBI_OWNER: OWNER });
       expect(r.exit).toBe(1);
-      expect(r.stderr.trimEnd()).toBe(`ubi-runner: invalid VM name '${bad}': a VM is named ubirun-harn7-<epoch>-<suffix>-t<hours>, so gstack's reaper can read its owner and TTL (omit -n for a generated name)`);
+      expect(r.stderr.trimEnd().split('\n')[0]).toBe(`ubi-runner: invalid VM name '${bad}': a VM is named ubirun-harn7-<epoch>-<suffix>-t<hours>, so gstack's reaper can read its owner and TTL (omit -n for a generated name)`);
     }
-    expect(api.calls).toEqual([]);
+    expect(api.calls.filter((c) => c[2] === 'create')).toEqual([]);
     const good = `ubirun-harn7-${now}-pr5-t3`;
     const r = await runner(['up', '-n', good], { UBI_OWNER: OWNER });
     expect(r.exit).toBe(1);
@@ -158,16 +158,18 @@ describe('ubi-runner.sh TTL', () => {
     expect(epoch).toBeLessThanOrEqual(after); // gstack-timing-ok: the name's epoch is the create time
     expect(Number(vm.match(GSTACK_TTL)![1])).toBe(13);
     expect(r.lines).toContain(`ubi-runner: creating eu-central-h1/${vm} (standard-16)`);
-    expect(r.lines.at(-1)).toBe(`UBICLOUD: left=0 owner=harn7 vm=${vm} others=1`);
+    expect(r.lines.at(-1)).toBe(`UBICLOUD: left=0 owner=harn7 vm=${vm} others=0`);
+    expect(api.calls.some((c) => c[2] === 'destroy' && c[1].endsWith('/' + legacy))).toBe(true);
   }, 30_000);
 
-  test('a run whose VM is still listed after teardown says left=1 and how to destroy it', async () => {
+  test('a create the API refuses made no VM, even when a VM by that name is listed afterwards: run fails with left=0', async () => {
     reset([], true);
     const r = await runner(['run', '--src', ROOT, '--', 'true'], { UBI_OWNER: OWNER });
     const vm = api.calls.find((c) => c[2] === 'create')![1].split('/')[1];
     expect(vm).toMatch(/^ubirun-harn7-\d{10}-[0-9a-f]{8}-t3$/);
     expect(r.exit).toBe(1);
-    expect(r.lines.slice(-2)).toEqual([`UBICLOUD: left=1 owner=harn7 vm=${vm} others=0`, `ubi-runner: VM cleanup not confirmed for ${vm} (left=1); destroy it with: ${RUNNER} down ${vm}`]);
+    expect(r.lines.slice(-2)).toEqual(['ubi-runner: create failed (HTTP 400); nothing was created', `UBICLOUD: left=0 owner=harn7 vm=${vm} others=0`]);
+    expect(api.calls.some((c) => c[2] === 'destroy')).toBe(false);
   }, 30_000);
 
   test('list --mine and down still handle names without the suffix (VMs made before it)', async () => {
@@ -200,7 +202,7 @@ function shard(args: string[], env: Record<string, string> = {}) {
     g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't'); g('add', '.'); g('commit', '-q', '-m', 'lane scripts');
     const calls = join(dir, 'calls');
     const fake = join(dir, 'ubi-runner.sh');
-    writeFileSync(fake, ['#!/usr/bin/env bash', `case $1 in ttl) exec bash "${RUNNER}" ttl ;; up) echo "up UBI_TTL_HOURS=\${UBI_TTL_HOURS-unset}" >> "${calls}"; exit 1 ;; owner) echo harn7 ;; *) echo "$1" >> "${calls}" ;; esac`].join('\n') + '\n');
+    writeFileSync(fake, ['#!/usr/bin/env bash', `case $1 in ttl) exec bash "${RUNNER}" ttl ;; up) echo "up UBI_TTL_HOURS=\${UBI_TTL_HOURS-unset}" >> "${calls}"; echo "quota UBI_QUOTA_VCPUS=\${UBI_QUOTA_VCPUS-unset}" >> "${calls}"; exit 1 ;; owner) echo harn7 ;; *) echo "$1" >> "${calls}" ;; esac`].join('\n') + '\n');
     chmodSync(fake, 0o755);
     writeFileSync(join(dir, 'prereg.json'), JSON.stringify({ run_id: 'ttl-test', cells: [] }));
     const r = spawnSync('bash', [join(repo, 'scripts', 'ubicloud', 'run-shard.sh'), '--commit', 'HEAD', '--prereg', join(dir, 'prereg.json'), '--name', 's1', '--cells', 'c1', '--lease-usd', '1', '--dest', join(dir, 'dest'), ...args], {
@@ -221,6 +223,14 @@ describe('ubicloud/run-shard.sh TTL', () => {
       const r = shard([...args], { ...env });
       expect(r.exit).toBe(3);
       expect(r.calls[0]).toBe(`up UBI_TTL_HOURS=${want}`);
+    }
+  }, 120_000);
+
+  test('up gets UBI_QUOTA_VCPUS=464 by default, so an eval shard leaves room for merge checks and canaries, or the caller\'s own value', () => {
+    for (const [env, want] of [[{}, '464'], [{ UBI_QUOTA_VCPUS: '400' }, '400']] as const) {
+      const r = shard([], { ...env });
+      expect(r.exit).toBe(3);
+      expect(r.calls[1]).toBe(`quota UBI_QUOTA_VCPUS=${want}`);
     }
   }, 120_000);
 

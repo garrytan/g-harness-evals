@@ -16,7 +16,7 @@
 # Money: a monthly ledger lease canary-YYYY-MM (prereg leases.monthly, $1,000) that every tier's lease is reserved from; T2,
 # T3 and bisect keep the month's T1 reserve untouched, so a used-up month runs T0 and T1 only and the verdict says so.
 # Room: before each VM step (T0 and every tier) a remote run asks ubi-runner.sh capacity whether one standard-16 VM fits
-# the Ubicloud vCPU quota, and waits while it does not, up to prereg schedule.capacity_wait_hours (4) for the whole night.
+# the Ubicloud vCPU quota, and waits while it does not, for up to prereg schedule.capacity_wait_hours (4) hours of waiting across the night.
 # A night that runs out of that wait, or whose VM is refused for quota anyway, ends INCOMPLETE with the rule
 # ubicloud_capacity, which alert.ts words as infrastructure, not a release result, and owns to internal-task.
 # --baseline runs T0, then T2 at 3 attempts for each product with the given commits, under the baseline ledger (prereg leases.baseline_ledger, default canary-baseline).
@@ -213,11 +213,17 @@ reserve() { [ -n "$budget_run" ] || return 20; bun "$here/lease.ts" reserve --le
 settle() { bun "$here/lease.ts" settle --ledger "$ledger" --budget-run "$budget_run" --entry "$1" --trials "$2" >/dev/null 2>>"$out/run.log" || log "could not settle $1"; }
 
 # ---- Ubicloud room ----------------------------------------------------------------------------------------------------
-room_deadline="" room_last=""
+room_waited=0 room_last=""
+room_pause() { # <what>: wait one poll for room, counted against the night's waiting budget; 1 when the budget is used up
+  local poll=${CANARY_ROOM_POLL_SECONDS:-600}
+  [ "$room_waited" -lt "$(P '(.schedule.capacity_wait_hours // 4) * 3600 | floor')" ] || { log "room: no room for $1 and the night's wait is used up (${room_last:-its create was refused for vCPU quota})"; return 1; }
+  log "room: $1 waits for Ubicloud room (${room_last:-its create was refused for vCPU quota})"
+  sleep "$poll" & wait $!
+  room_waited=$(( room_waited + (poll > 0 ? poll : 1) ))
+}
 room() { # <what>: 0 once one standard-16 VM fits the quota (or the probe could not tell); 1 when the night's wait is used up
   [ $local_run -eq 0 ] || return 0
   local probe rc
-  [ -n "$room_deadline" ] || room_deadline=$(( $(date +%s) + $(P '.schedule.capacity_wait_hours // 4') * 3600 ))
   while :; do
     probe=$(bash "$root/scripts/ubicloud/ubi-runner.sh" capacity -s standard-16 2>>"$out/run.log"); rc=$?
     case $rc in
@@ -225,12 +231,10 @@ room() { # <what>: 0 once one standard-16 VM fits the quota (or the probe could 
       3) room_last=${probe#UBICLOUD_CAPACITY: } ;;
       *) log "room: the capacity probe could not tell (exit $rc); $1 tries its VM anyway"; return 0 ;;
     esac
-    [ "$(date +%s)" -lt "$room_deadline" ] || { log "room: no room for $1 and the night's wait is used up ($room_last)"; return 1; }
-    log "room: $1 waits for Ubicloud room ($room_last)"
-    sleep "${CANARY_ROOM_POLL_SECONDS:-600}"
+    room_pause "$1" || return 1
   done
 }
-quota_refused() { grep -rqs 'vCPU quota exhausted' "$1"; } # <dir>: the VM step in <dir> was refused for quota; callers check it only when the step left no results, since a trial transcript can print the same words
+quota_refused() { grep -rqsE --include=remote.log --include=lane.log '^ubi-runner: create (failed|refused before any request): vCPU quota exhausted' "$1"; } # <dir>: the VM step in <dir> was refused for quota; callers check it only when the step left no results, since a trial transcript can print the same words
 no_room() { # <product> <step>
   incomplete "$1" "Ubicloud capacity: no room for the $2 VM (${room_last:-its create was refused for vCPU quota}) within the night's wait of up to $(P '.schedule.capacity_wait_hours // 4') hours; this says nothing about the release" \
     "Ubicloud usage (ubi-runner.sh usage), not $1" infra
@@ -299,8 +303,7 @@ run_product() { # <product> <kind: moved|due|baseline> <prev sha> <new sha>
     refused=$(( refused + 1 ))
     log "$p T0: Ubicloud refused its VM for vCPU quota (try $refused)"
     mv "$pd/t0" "$pd/t0-quota-$refused"
-    [ "$(date +%s)" -lt "${room_deadline:-0}" ] || { no_room "$p" T0; return; }
-    sleep "${CANARY_ROOM_POLL_SECONDS:-600}"
+    room_pause "$p T0" || { no_room "$p" T0; return; }
   done
   bun "$here/decide.ts" --suite "$p" --tier T0 --prereg "$out/prereg.json" --tasks "$(tasks_for "$p")" "${rel[@]}" --run-id "$run_id" --receipts-dir "runs/$run_id/$p" \
     --range "$pd/range.json" --t0 "$pd/t0/t0.json" --t0-exit "$t0rc" --out "$pd/T0" >/dev/null 2>>"$out/run.log" || { incomplete "$p" "decide failed at T0" "the run log"; return; }

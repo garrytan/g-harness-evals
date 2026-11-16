@@ -94,6 +94,7 @@ function roomStub(r: Rig, answers: string[]) {
     'n=$(( $(cat "$f.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$f.n"',
     'a=$(sed -n "${n}p" "$f"); [ -n "$a" ] || a=$(tail -1 "$f")',
     'if [ "$a" = no ]; then echo "UBICLOUD_CAPACITY: room=no size=standard-16 need=16 used=504 max=512 free=8"; exit 3; fi',
+    'if [ "$a" = unknown ]; then echo "UBICLOUD_CAPACITY: room=unknown size=standard-16"; exit 1; fi',
     'echo "UBICLOUD_CAPACITY: room=yes size=standard-16 location=eu-central-h1"', ''].join('\n'));
 }
 /** A nightly without --local, so run.sh asks for Ubicloud room before each VM step (the stub suites ignore --remote). */
@@ -268,6 +269,38 @@ describe('run.sh end to end with stub suites', () => {
     expect(log).toContain('gstack T0: Ubicloud refused its VM for vCPU quota (try 1)');
     expect(existsSync(join(r.base, 'work/wait/out/gstack/t0-quota-1/remote.log'))).toBe(true);
     expect(readFileSync(join(r.base, 'room.n'), 'utf8').trim()).toBe('5');
+  }, 300_000);
+
+  test('the wait is a budget of time spent waiting, so a tier that finds no room after T0 ran still gets its wait', () => {
+    const r = rig({ prereg: (p) => { p.schedule.capacity_wait_hours = 0.001; } });
+    expect(baseline(r).code).toBe(0);
+    roomStub(r, ['yes', 'no', 'no', 'yes']);
+    const n = remoteNight(r, 'budget', '2026-11-10T09:30:00Z', { CANARY_ROOM_POLL_SECONDS: '1' });
+    expect(n.code).toBe(0);
+    expect(r.history().at(-1)).toMatchObject({ run_id: 'budget', product: 'gstack', status: 'OK', tiers: ['T0', 'T1'] });
+    expect(readFileSync(join(r.base, 'work/budget/out/run.log'), 'utf8').split('\n').filter((l) => l.includes('room: gstack T1 waits for Ubicloud room')).length).toBe(2);
+  }, 300_000);
+
+  test('a tier whose results were lost is not called a quota refusal because a transcript printed the quota words', () => {
+    const r = rig({ prereg: (p) => { p.schedule.capacity_wait_hours = 0; } });
+    expect(baseline(r).code).toBe(0);
+    roomStub(r, ['yes']);
+    const n = remoteNight(r, 'lost', '2026-11-10T09:30:00Z', { CANARY_STUB_MODE: 'lost-quota-text', CANARY_STUB_SUITE: 'gstack' });
+    expect(n.code).toBe(30);
+    const alert = block(n.out)!;
+    expect(alert).toStartWith('Harness Evals canary: INCOMPLETE in gstack stable');
+    expect(alert).not.toContain('infrastructure only');
+    expect(JSON.parse(readFileSync(join(r.base, 'work/lost/out/gstack/verdict.json'), 'utf8')).reasons.map((x: any) => x.rule)).not.toContain('ubicloud_capacity');
+  }, 300_000);
+
+  test('a capacity probe that cannot tell lets the step try its VM, and the night goes on', () => {
+    const r = rig({ prereg: (p) => { p.schedule.capacity_wait_hours = 0; } });
+    expect(baseline(r).code).toBe(0);
+    roomStub(r, ['unknown']);
+    const n = remoteNight(r, 'unsure', '2026-11-10T09:30:00Z');
+    expect(n.code).toBe(0);
+    expect(r.history().at(-1)).toMatchObject({ run_id: 'unsure', product: 'gstack', status: 'OK', tiers: ['T0', 'T1'] });
+    expect(readFileSync(join(r.base, 'work/unsure/out/run.log'), 'utf8')).toContain('room: the capacity probe could not tell (exit 1); gstack T0 tries its VM anyway');
   }, 300_000);
 
   test('a tier VM refused for quota is INCOMPLETE as infrastructure, not a release result', () => {

@@ -61,8 +61,8 @@
 # Quota: before launching, ubi-runner.sh usage is read for the project's vCPUs in use. With --max-vcpus (or UBI_MAX_VCPUS)
 # the fan-out is refused when not one VM fits and batched to as many VMs as fit otherwise, printing the needed, used and
 # maximum vCPUs. Without it the maximum is unknown (the project token cannot read it; only a refused create reports it), so
-# every shard is launched (or --parallel of them at a time) and a shard refused for quota ("quota refused" in its lane
-# log) or whose VM never left "waiting for capacity" ("did not reach running" in its lane
+# every shard is launched (or --parallel of them at a time) and a shard refused for quota ("quota refused", or "quota preflight refused" when its
+# VM would take the project past UBI_QUOTA_VCPUS, in its lane log) or whose VM never left "waiting for capacity" ("did not reach running" in its lane
 # log) is queued again after the next shard finishes, up to three times. A shard whose lane log for that try also says
 # "failed to destroy" is not queued again: its VM may still be running, so it keeps its failing exit.
 #
@@ -76,6 +76,10 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
+# Eval fan-outs leave 48 of the shared project's 512 vCPUs free for merge checks and release canaries (org rule R15,
+# 2026-11-16): ubi-runner.sh's quota preflight refuses a VM that would take the project past UBI_QUOTA_VCPUS, and
+# UBI_QUOTA_WAIT=<seconds> waits for room instead. A caller's own value wins.
+export UBI_QUOTA_VCPUS=${UBI_QUOTA_VCPUS:-464}
 manifest="" max_vcpus=${UBI_MAX_VCPUS:-} parallel="" dry=0 workload=harness rep_to=${UBI_REPLICATE_TO:-} rep_s=${UBI_REPLICATE_SECONDS:-}
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -366,7 +370,7 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
   line=${pid_of[$done_pid]}; unset 'pid_of[$done_pid]'; running=$(( running - 1 ))
   IFS=$'\t' read -r name cells lease _ <<<"$line"
   try_log=$(tail -c +$(( ${log_start[$name]:-0} + 1 )) "$dest/$name/lane.log" 2>/dev/null || true)
-  if [ "$rc" -eq 3 ] && [ "$stopping" -eq 0 ] && grep -qE 'quota refused|did not reach running in .*waiting for capacity' <<<"$try_log" && ! grep -q 'failed to destroy' <<<"$try_log" && [ "${tries_of[$name]}" -lt 3 ]; then
+  if [ "$rc" -eq 3 ] && [ "$stopping" -eq 0 ] && grep -qE 'quota refused|quota preflight refused|did not reach running in .*waiting for capacity' <<<"$try_log" && ! grep -q 'failed to destroy' <<<"$try_log" && [ "${tries_of[$name]}" -lt 3 ]; then
     log "shard $name was refused for vCPU quota or found no VM capacity; queued again (after the next shard finishes)"
     queue+=("$line"); [ "$running" -gt 0 ] || sleep 60
     continue

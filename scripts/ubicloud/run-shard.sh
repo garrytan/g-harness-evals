@@ -160,6 +160,13 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
 . "$here/provider-keys.sh"
+# Eval fan-outs leave 48 of the shared project's 512 vCPUs free for merge checks and release canaries (org rule R15,
+# 2026-11-16): ubi-runner.sh's quota preflight refuses a VM that would take the project past UBI_QUOTA_VCPUS, and
+# UBI_QUOTA_WAIT=<seconds> waits for room instead. A caller's own value wins.
+export UBI_QUOTA_VCPUS=${UBI_QUOTA_VCPUS:-464}
+# The runner kills an ssh command that prints nothing for UBI_IDLE_TIMEOUT seconds (1800 by default). Bootstrap and the
+# pre-smoke trial can stay quiet longer than that, so a shard allows two hours unless the caller sets its own value.
+export UBI_IDLE_TIMEOUT=${UBI_IDLE_TIMEOUT:-7200}
 
 # cursor_check: a shard with Cursor cells runs only Cursor cells, and only keyless (step 5).
 cursor_check() {

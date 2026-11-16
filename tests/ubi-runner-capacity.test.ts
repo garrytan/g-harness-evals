@@ -16,7 +16,7 @@ import { join } from 'node:path';
 
 const RUNNER = join(import.meta.dir, '..', 'scripts', 'ubicloud', 'ubi-runner.sh');
 const tmp = mkdtempSync(join(tmpdir(), 'ubi-capacity-'));
-let mode: 'quota' | 'user' | 'other' | 'created' = 'quota';
+let mode: 'quota' | 'user' | 'other' | 'created' | 'created-then-error' = 'quota';
 let calls: string[][] = [];
 let live = new Set<string>();
 let server: ReturnType<typeof Bun.serve>;
@@ -33,6 +33,7 @@ beforeAll(() => {
         if (mode === 'quota') return new Response('! Unexpected response status: 400\nDetails: Validation failed for following fields: size\n  size: Insufficient quota for requested size. Requested vCPU count: 16, currently used vCPU count: 504, maximum allowed vCPU count: 512, remaining vCPU count: 8\n', { status: 400 });
         if (mode === 'user') return new Response('! Unexpected response status: 400\nDetails: Validation failed for following fields: user\n  user: OS user name must only contain lowercase letters, numbers, hyphens and underscore and cannot start with a number or hyphen. It also have max length of 32.\n', { status: 400 });
         if (mode === 'created') { live.add(name); return new Response('VM created with id: vm0000\n'); }
+        if (mode === 'created-then-error') { live.add(name); return new Response('gateway timeout\n', { status: 504 }); }
         return new Response('internal error\n', { status: 500 });
       }
       if (argv[0] === 'vm' && argv[1] === 'list') return new Response('');
@@ -78,6 +79,16 @@ describe('ubi-runner.sh capacity', () => {
     expect(r.code).toBe(1);
     expect(r.out).toBe('UBICLOUD_CAPACITY: room=unknown size=standard-16');
     expect(r.err).toContain('internal error');
+    expect(r.err).not.toContain('not confirmed gone');
+  });
+  test('an unclear answer after the create made a VM still takes that VM down', async () => {
+    mode = 'created-then-error';
+    live = new Set();
+    const r = await capacity();
+    expect(r.code).toBe(1);
+    expect(r.out).toBe('UBICLOUD_CAPACITY: room=unknown size=standard-16');
+    expect(calls.some((c) => c[2] === 'destroy')).toBe(true);
+    expect(live.size).toBe(0);
   });
   test('a probe that created a VM destroys it at once and reports room', async () => {
     mode = 'created';
