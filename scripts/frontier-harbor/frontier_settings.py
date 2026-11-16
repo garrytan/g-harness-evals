@@ -21,7 +21,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 PIN = json.loads((HERE / "pin.json").read_text())
 EFFORT = PIN["effort"]["level"]
-HARNESSES = ("claude-code", "codex", "hermes", "openclaw", "pi", "mini-swe-agent", "dsh", "cursor")
+HARNESSES = ("claude-code", "codex", "hermes", "openclaw", "pi", "mini-swe-agent", "dsh", "cursor", "gemini-cli", "grok-build", "muse-code")
 CLAUDE_MODEL_VARS = (
     "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL",
@@ -39,7 +39,22 @@ HERMES_DISABLED_TOOLSETS = ["web", "browser"]
 # (docs/gateway/config-tools/tool-policy.md), plus tools.web.search.enabled and tools.web.fetch.enabled false
 # (docs/tools/web.md, docs/tools/web-fetch.md), which also turn off native hosted OpenAI search.
 OPENCLAW_WEB_DENY = ["group:web", "browser"]
-PROVIDERS = {"claude-code": ("anthropic",), "codex": ("openai",), "dsh": ("anthropic", "openai", "particle", "openrouter"), "cursor": ("anthropic",)}
+PROVIDERS = {"claude-code": ("anthropic",), "codex": ("openai",), "dsh": ("anthropic", "openai", "particle", "openrouter"), "cursor": ("anthropic",),
+             "gemini-cli": ("google",), "grok-build": ("xai",), "muse-code": ("openrouter",)}
+# Gemini CLI 0.68.0's own calls beyond the cell model, at their shipped defaults, seen keyless against a fake Gemini API
+# (scripts/frontier-harbor/README.md, "Gemini CLI"): the loop-detection check every 30 turns on gemini-3-flash-preview, and the
+# loop double-check and chat compression on gemini-3-pro-preview, which the CLI resolves to gemini-3.1-pro-preview-customtools
+# with an API key. The proxy's google route sends each through the same OpenRouter translation as the cell model.
+GEMINI_CLI_HOUSEKEEPING = ("gemini-3-flash-preview", "gemini-3.1-pro-preview-customtools")
+# Grok Build 1.0.77 (binary at ~/.grok/bin/grok, a link into ~/.grok/downloads): the installed binary's sha256 must be pin.json's.
+GROK_BIN = "$HOME/.grok/bin/grok"
+# Grok Build 1.0.77's session-title model at its shipped default (models.session_summary in its built-in catalog), on the
+# proxy's xai route through its own [model.<id>] block; seen keyless as a forced session_title call at the start of a run.
+GROK_HOUSEKEEPING = "grok-4.6"
+# Muse Code 1.4.20 (agents.py FrontierMuseCode): the pinned binary, downloaded straight to ~/.local/bin/muse, whose sha256 must
+# be pin.json's. It reaches Muse Wonder through OpenRouter's Responses API on the proxy's OpenRouter route, so the model id it
+# sends is OpenRouter's (meta/muse-wonder), the id the proxy's synthetic /muse-code/models catalog lists.
+MUSE_BIN = "$HOME/.local/bin/muse"
 # DeepSeek Harness 0.2.2-rc.1 (agents.py FrontierDsh): its install, home and agents roots in the task container, all fresh at
 # setup, and the plugins our multi-user adapter's base.patch.yml turns off (the DeepSeek-hosted model adapters and package
 # inventory, web search and web fetch, auto-loaded instruction files), which the composed profile must show off.
@@ -104,6 +119,10 @@ def housekeeping_models(harness: str, model: str) -> list[str]:
     """provider:model ids, beyond the cell model, that a harness may call on its own (metered, never scored)."""
     if harness == "openclaw" and model.startswith("anthropic:"):
         return [f"anthropic:{OPENCLAW_ANTHROPIC_HOUSEKEEPING}"]
+    if harness == "gemini-cli":
+        return [f"google:{m}" for m in GEMINI_CLI_HOUSEKEEPING]
+    if harness == "grok-build":
+        return [f"xai:{GROK_HOUSEKEEPING}"]
     return []
 
 
@@ -118,7 +137,7 @@ def base_url(gateway: str, slot: str, provider: str) -> str:
     """The proxy route for one trial slot, without the API version suffix."""
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", slot):
         raise ValueError(f"slot {slot!r} must be letters, digits, dot, underscore or dash")
-    if provider not in ("anthropic", "openai", "particle", "openrouter"):
+    if provider not in ("anthropic", "openai", "particle", "openrouter", "google", "xai"):
         raise ValueError(f"provider {provider!r} has no proxy route on this path")
     return f"{gateway.rstrip('/')}/{slot}/{provider}"
 
@@ -227,7 +246,32 @@ PI_OPENROUTER_MODELS = {
         "compat": {"supportsDeveloperRole": False, "thinkingFormat": "openrouter", "supportsStrictMode": True, "sendSessionAffinityHeaders": True,
                    "sessionAffinityFormat": "openrouter", "requiresReasoningContentOnAssistantMessages": True, "maxTokensField": "max_completion_tokens"},
     },
+    "meta/muse-wonder": {
+        "thinkingLevelMap": {"off": None, "minimal": "minimal", "low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"},
+        "compat": {"supportsDeveloperRole": False, "thinkingFormat": "openrouter", "supportsStrictMode": True, "sendSessionAffinityHeaders": True,
+                   "sessionAffinityFormat": "openrouter", "maxTokensField": "max_completion_tokens"},
+    },
+    "moonshotai/kimi-k3.1-pro": {
+        "thinkingLevelMap": {"off": "none", "minimal": None, "low": "low", "medium": None, "high": "high", "xhigh": None, "max": "max"},
+        "compat": {"supportsDeveloperRole": False, "thinkingFormat": "openrouter", "supportsStrictMode": True, "sendSessionAffinityHeaders": True,
+                   "sessionAffinityFormat": "openrouter", "maxTokensField": "max_completion_tokens"},
+    },
+    "z-ai/glm-5.3": {
+        "thinkingLevelMap": {"off": None, "minimal": None, "low": "low", "medium": None, "high": "high", "xhigh": None, "max": "max"},
+        "compat": {"supportsDeveloperRole": False, "thinkingFormat": "openrouter", "supportsStrictMode": True, "sendSessionAffinityHeaders": True,
+                   "sessionAffinityFormat": "openrouter", "maxTokensField": "max_completion_tokens"},
+    },
 }
+# Pi 1.5.0's catalog has no Gemini 4 Carbon or Hydrogen row; both take its Gemini 4 Argon row ("chat:google/gemini-4-argon"),
+# the same family on the same Google endpoints.
+PI_ARGON_ROW = {
+    "thinkingLevelMap": {"off": None, "minimal": None, "low": "low", "medium": "medium", "high": "high", "xhigh": None, "max": None},
+    "compat": {"supportsDeveloperRole": False, "thinkingFormat": "openrouter", "supportsStrictMode": True, "sendSessionAffinityHeaders": True,
+               "sessionAffinityFormat": "openrouter", "maxTokensField": "max_completion_tokens"},
+}
+PI_OPENROUTER_MODELS["google/gemini-4-carbon"] = PI_ARGON_ROW
+PI_OPENROUTER_MODELS["google/gemini-4-hydrogen"] = PI_ARGON_ROW
+PI_CATALOG_ROW = {"google/gemini-4-carbon": "chat:google/gemini-4-argon", "google/gemini-4-hydrogen": "chat:google/gemini-4-argon"}
 
 
 def pi_chat_models_json(model: str, url: str) -> dict[str, Any]:
@@ -310,7 +354,76 @@ def harbor_kwargs(harness: str, model: str) -> dict[str, Any]:
         return {}
     if harness == "cursor":
         return {}
+    if harness in ("gemini-cli", "grok-build"):
+        return {"reasoning_effort": EFFORT, "disable_web_search": True}
+    if harness == "muse-code":
+        return {"reasoning_effort": EFFORT}
     raise ValueError(f"unknown harness {harness}")
+
+
+def grok_config(model: str, url: str) -> dict[str, Any]:
+    """Our overlay on Harbor's ~/.grok/config.toml for a Grok Build cell: a [model.<id>] block for the cell model on the
+    proxy's xai route, the custom-endpoint block Harbor documents (grok_build.py). It names Grok Build's own wire for xAI
+    models (Responses: its built-in catalog sets api_backend responses for every xAI model), the model's window and our
+    output cap, and the effort menu the CLI otherwise reads from api.x.ai's /v1/models row, which the egress blocklist
+    refuses; without a menu entry --reasoning-effort high sends no effort. A second block sends the CLI's session-title model
+    (GROK_HOUSEKEEPING, its shipped default, whose built-in endpoint is api.x.ai) to the same route, on the wire its catalog
+    names. The key is read from XAI_API_KEY."""
+    spec = check_cell("grok-build", model)
+    if url.rstrip("/").rsplit("/", 1)[-1] != "xai":
+        raise ValueError(f"a Grok Build cell's endpoint must be the proxy's xai route <proxy>/<slot>/xai, not {url}")
+    return {"model": {spec["name"]: {
+        "name": spec["name"], "model": spec["name"], "base_url": f"{url.rstrip('/')}/v1", "env_key": "XAI_API_KEY",
+        "api_backend": "responses", "context_window": spec["context_window"], "max_completion_tokens": spec["max_output_tokens"],
+        "reasoning_efforts": [{"value": EFFORT, "default": True}],
+    }, GROK_HOUSEKEEPING: {"base_url": f"{url.rstrip('/')}/v1", "env_key": "XAI_API_KEY", "api_backend": "responses"}}}
+
+
+def gemini_cli_settings(model: str) -> dict[str, Any]:
+    """Our overlay on the settings.json Harbor writes for Gemini CLI. Harbor's effort alias (harbor-<model>-high) reaches only
+    the first request of a turn: the CLI then sets the bare model as its active model, whose config carries no thinking level,
+    so every follow-up after a tool result asked for none (seen keyless with 0.68.0). A customOverrides entry matching the
+    bare model puts thinkingLevel on every request for it, housekeeping models untouched. Usage statistics are off, as every
+    other harness's telemetry is (they would go to play.googleapis.com, which the egress blocklist refuses anyway)."""
+    name = check_cell("gemini-cli", model)["name"]
+    return {"privacy": {"usageStatisticsEnabled": False}, "modelConfigs": {"customOverrides": [
+        {"match": {"model": name}, "modelConfig": {"generateContentConfig": {"thinkingConfig": {"thinkingLevel": EFFORT.upper()}}}}]}}
+
+
+def muse_settings(model: str, url: str) -> dict[str, Any]:
+    """Our Muse Code settings.json for a cell: the endpoint on the proxy's OpenRouter route with the per-trial token as the
+    bearer (a settings pin is the only way Muse sends its key to a base URL other than api.meta.ai; a --base-url flag alone
+    withholds it), web search and web fetch off, telemetry off, and the model's window as the compaction limit."""
+    spec = check_cell("muse-code", model)
+    if url.rstrip("/").rsplit("/", 1)[-1] != "openrouter":
+        raise ValueError(f"a Muse Code cell's endpoint must be the proxy's OpenRouter route <proxy>/<slot>/openrouter, not {url}")
+    return {"schema_version": 1, "endpoint_transport": {"base_url": f"{url.rstrip('/')}/v1", "auth": "bearer"},
+            "tools": {"web_search": {"mode": "off"}, "web_fetch": {"enabled": False}}, "telemetry": {"enabled": False},
+            "context_compaction": {"provider_context_limit_tokens": spec["context_window"]}}
+
+
+def muse_install_command(version: str | None = None) -> str:
+    """Downloads the pinned Muse Code binary (pin.json binary_url) to ~/.local/bin/muse. Meta's install.sh would fetch a launcher
+    that installs the newest stable release and updates itself, which Harbor's own class accepts and a pinned run cannot."""
+    hp = harness_pin("muse-code", version)
+    return ("set -euo pipefail; mkdir -p \"$HOME/.local/bin\" && "
+            f"curl -fsSL {shlex.quote(hp['binary_url'])} -o \"$HOME/.local/bin/muse.part\" && chmod 755 \"$HOME/.local/bin/muse.part\" && "
+            "mv \"$HOME/.local/bin/muse.part\" \"$HOME/.local/bin/muse\" && MUSE_NO_AUTO_UPDATE=1 \"$HOME/.local/bin/muse\" --version")
+
+
+def binary_check_command(path: str) -> str:
+    """The shell command that prints the sha256 of an installed harness binary (a link is followed to its file)."""
+    return f'sha256sum "$(readlink -f "{path}")"'
+
+
+def binary_check(harness: str, stdout: str | None, version: str | None = None) -> dict[str, Any]:
+    """binary_check_command's output against pin.json's binary_sha256 for the harness, or HE-FRONTIER-014."""
+    want = harness_pin(harness, version)["binary_sha256"]
+    words = (stdout or "").split()
+    got = words[0] if words and re.fullmatch(r"[0-9a-f]{64}", words[0]) else None
+    if got != want:
+        raise RuntimeError(f"HE-FRONTIER-014 the installed {harness} binary's sha256 is {got or 'unreadable'}, not pin.json's {want}; the trial stops before the agent starts (docs/errors.md)")
+    return {"binary_sha256": got, "matches_pin": True}
 
 
 def container_env(harness: str, model: str, url: str, token: str, gstack: dict[str, Any] | None = None) -> dict[str, str]:
@@ -323,6 +436,14 @@ def container_env(harness: str, model: str, url: str, token: str, gstack: dict[s
         return {}
     spec = model_spec(model)
     anthropic = spec["provider"] == "anthropic"
+    if harness == "muse-code":
+        muse_settings(model, url)
+        return {"META_API_KEY": token}
+    if harness in ("gemini-cli", "grok-build"):
+        route = check_cell(harness, model)["provider"]
+        if url.rstrip("/").rsplit("/", 1)[-1] != route:
+            raise ValueError(f"a {harness} cell on {model} runs on the proxy's {route} route <proxy>/<slot>/{route}, not {url}")
+        return {"GEMINI_API_KEY": token, "GOOGLE_GEMINI_BASE_URL": url} if harness == "gemini-cli" else {"XAI_API_KEY": token}
     if harness == "dsh":
         if url.rstrip("/").rsplit("/", 1)[-1] != spec["provider"]:
             raise ValueError(f"a dsh cell on {model} runs on the proxy's {spec['provider']} route <proxy>/<slot>/{spec['provider']}, not {url}")
@@ -499,9 +620,49 @@ def _record(harness: str, model: str, version: str | None = None, endpoint: dict
     }
 
 
-OPENROUTER_REPLAY_CHECK = ("keyless, against scripts/frontier-harbor/fake-upstream.ts, which refuses a tool-call turn replayed without its "
-                           "reasoning as DeepSeek does: the install check's %s-deepseek cell (frontier.reasoning_replay in its trial record) "
-                           "and tests/frontier-harbor-deepseek.test.ts with the real harness binary")
+REPLAY_CHECK = ("keyless, tests/frontier-harbor-replay.test.ts (internal-task round 3): the real %s binary at the pinned version, on this "
+                "config, through broker.ts and the metering proxy to a fake upstream that answers two shell tool calls with "
+                "reasoning in the provider's shape and compares what comes back on each replayed tool-call turn byte for byte")
+OPENROUTER_DEEPSEEK = "deepseek/deepseek-v4.1-flash-1017"
+HERMES_HOST_RULE = ("Hermes drops reasoning_details from the wire copy unless the base URL's host is openrouter.ai or nousresearch.com "
+                    "(agent/transports/chat_completions.py _route_replays_reasoning_details at the pinned commit), and the proxy's route is neither")
+
+
+def openrouter_replay(harness: str, name: str) -> dict[str, Any]:
+    """How a harness sends an OpenRouter model's earlier reasoning back on a replayed tool-call turn, as the real binary did
+    keyless (tests/frontier-harbor-replay.test.ts), with the source that explains it. verdict is replays, partial or drops;
+    a drop is the result, recorded as can't replay, never patched."""
+    deepseek = name == OPENROUTER_DEEPSEEK
+    gemini = name.startswith("google/")
+    muse = name.startswith("meta/")
+    checked = REPLAY_CHECK % harness
+    if harness == "hermes":
+        if deepseek:
+            return {"field": "reasoning_content", "verdict": "replays", "how": "Hermes echoes an earlier assistant turn's reasoning as reasoning_content on every replayed tool-call turn for a model id naming deepseek (agent/message_sanitization.py needs_reasoning_echo at the pinned commit); OpenRouter takes reasoning_content as an alias of reasoning, and DeepSeek thinking mode refuses a tool-call turn replayed without it. Seen: the text came back exact on every replayed turn", "checked": checked}
+        gem = (" It keeps a tool call's extra_content for a model id naming gemini (_model_consumes_thought_signature), but OpenRouter's Chat Completions carry Gemini's thought signature in reasoning_details, not extra_content, so the signature is lost too; OpenRouter's Gemini endpoint refuses a function call replayed without it" if gemini else "")
+        return {"field": None, "verdict": "drops", "how": "can't replay %s in Hermes behind the proxy: seen, no replayed tool-call turn carried any reasoning. Hermes echoes reasoning_content only for deepseek, Kimi's own hosts (api.kimi.com, moonshot.ai, moonshot.cn; an OpenRouter-served Kimi is left out on purpose) and mimo (agent/message_sanitization.py _REASONING_ECHO_RULES), and %s.%s" % (name, HERMES_HOST_RULE, gem), "checked": checked}
+    if harness == "openclaw":
+        if gemini:
+            return {"field": "reasoning_details", "verdict": "partial", "how": "OpenClaw sends the Gemini thought signature back byte for byte as a reasoning.encrypted entry, but no reasoning text, and it rewrites every tool call id to letters and digits (dist/tool-call-id-*.mjs sanitizeToolCallId, strict mode) while the signature entry keeps the id OpenRouter gave it, so the entry no longer names its call. Whether OpenRouter still matches the signature to the renamed call can't be checked keyless; its Gemini endpoint refuses a function call whose signature is missing or invalid", "checked": checked}
+        if muse:
+            return {"field": "reasoning", "verdict": "partial", "how": "can't replay Muse Wonder's encrypted reasoning in OpenClaw: compat.thinkingFormat openrouter sends the earlier reasoning text back as the message's reasoning field, exact, but drops reasoning_details, so the reasoning.encrypted entry (format meta-responses-v1) never returns. It also rewrites tool call ids to letters and digits (sanitizeToolCallId, strict mode)", "checked": checked}
+        return {"field": "reasoning", "verdict": "replays", "how": "compat.thinkingFormat openrouter: OpenClaw replays an earlier assistant turn's reasoning as the message's reasoning field, OpenRouter's own field, on every replayed tool-call turn; seen exact. It rewrites tool call ids to letters and digits (sanitizeToolCallId, strict mode), consistently in the call and its result" + ("; DeepSeek thinking mode refuses a tool-call turn replayed without the reasoning" if deepseek else ""), "checked": checked}
+    return {"field": "reasoning_details", "verdict": "replays", "how": "pi-ai 1.5.0 keeps the reasoning_details OpenRouter streams with each assistant message and sends them back on that message in every later request, the tool-call turn included (dist/api/openai-completions.js convertMessages); seen exact, " + ("the Gemini signature entry still keyed to its unchanged call id" if gemini else "the encrypted entry included" if muse else "the reasoning text included") + ("; compat.requiresReasoningContentOnAssistantMessages adds an empty reasoning_content beside them, as Pi's catalog row for the model asks; DeepSeek thinking mode refuses a tool-call turn replayed without its reasoning" if deepseek else ""), "checked": checked}
+
+
+def direct_replay(harness: str, provider: str) -> dict[str, Any] | None:
+    """The same record on the proxy's anthropic and openai routes (Claude thinking signatures, OpenAI encrypted reasoning);
+    None on Particle, which returns no reasoning to replay on a tool-call turn here."""
+    checked = REPLAY_CHECK % harness
+    if provider == "openai":
+        how = {"pi": "Pi 1.5.0 (openai-responses)", "hermes": "Hermes (openai-api on the Responses API)", "openclaw": "OpenClaw (openai-responses)"}[harness]
+        return {"field": "reasoning items with encrypted_content", "verdict": "replays", "how": how + " sends store false with include [reasoning.encrypted_content] and no previous_response_id, and replays each earlier reasoning item before its function_call; seen, encrypted_content byte for byte on every replayed turn", "checked": checked}
+    if provider != "anthropic":
+        return None
+    if harness == "hermes":
+        return {"field": None, "verdict": "drops", "how": "can't replay Claude thinking in Hermes behind the proxy: seen, every replayed tool-use turn came back without its thinking block. Hermes strips all thinking blocks for any base URL that does not contain anthropic.com, because signatures are Anthropic's own (agent/anthropic_message_convert.py with _is_third_party_anthropic_endpoint, agent/anthropic_endpoints.py, at the pinned commit), and the proxy's route is such a URL", "checked": checked}
+    how = {"pi": "Pi 1.5.0 (anthropic-messages)", "openclaw": "OpenClaw (anthropic-messages)"}[harness]
+    return {"field": "thinking blocks with signature", "verdict": "replays", "how": how + " sends each earlier thinking block back with its signature on the replayed tool-use turn; seen, thinking text and signature byte for byte", "checked": checked}
 
 
 def harness_settings(harness: str, model: str, gstack: dict[str, Any] | None = None, version: str | None = None) -> dict[str, Any]:
@@ -723,18 +884,19 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                 max_output_tokens={"value": mo, "set_by": "custom_providers[openrouter-proxy].extra_body max_completion_tokens=%d on the agent's requests (Hermes states no cap on a custom endpoint); its title call states none, so the proxy fills %d" % (mo, mo)},
                 compaction=compaction, tools=tools,
                 effort={"requested": EFFORT, "setting": "custom_providers[openrouter-proxy].extra_body reasoning {effort: high} (OpenRouter's field) and agent.reasoning_effort = high, which Hermes sends as top-level reasoning_effort high beside it, on every agent request (with agent.reasoning_effort unset, its custom-endpoint profile would send medium). Declared: its session-title call carries no extra_body and sends reasoning_effort none, a shipped default; it is housekeeping, never an agent-loop call"},
-                reasoning_replay={"field": "reasoning_content", "how": "Hermes echoes an earlier assistant turn's reasoning as reasoning_content on every replayed tool-call turn for a model id naming deepseek (agent/message_sanitization.py needs_reasoning_echo at the pinned commit); OpenRouter takes reasoning_content as an alias of reasoning, and DeepSeek thinking mode refuses a tool-call turn replayed without it", "checked": OPENROUTER_REPLAY_CHECK % harness},
+                reasoning_replay=openrouter_replay(harness, spec["name"]),
                 housekeeping_model={"model": model, "note": "Hermes auxiliary calls (titles, compression summaries) use provider auto, which is the main model; the title call sends reasoning off"},
                 differences_from_pin=[*harbor_run,
                     "provider custom:openrouter-proxy, Hermes's custom-endpoint provider on Chat Completions, reading OPENAI_API_KEY and OPENAI_BASE_URL (the per-trial token and the proxy's OpenRouter route), with extra_body reasoning {effort: high} and max_completion_tokens %d, agent.reasoning_effort high and model.context_length %d: the same settings as our OpenRouter pin (harnesses/hermes/pin.json model_openrouter, config.openrouter.yaml)" % (mo, cw),
                     *harbor_env])
         return _record(harness, model,
             context_window={"value": cw, "set_by": "config.yaml model.context_length=%d" % cw},
-            max_output_tokens={"value": mo, "set_by": "Hermes v2026.9.24's own output table (agent/anthropic_adapter.py: 128,000 for claude-opus-5* and claude-fable*)" if anthropic
+            max_output_tokens={"value": mo, "set_by": "Hermes v2026.9.24's own output table (agent/anthropic_adapter.py: 128,000 for claude-opus-5* and claude-fable*, and claude-sonnet-5 at 128,000)" if anthropic
                                else "custom_providers[particle].extra_body max_completion_tokens=%d on the agent's requests (Hermes states no cap on a custom endpoint); its title call states none, so the proxy fills %d" % (mo, mo) if particle
                                else "Hermes default on the openai-api provider (no output cap sent); the proxy caps at %d" % mo},
             compaction=compaction,
             tools=tools,
+            **({"reasoning_replay": direct_replay(harness, spec["provider"])} if direct_replay(harness, spec["provider"]) else {}),
             effort={"requested": EFFORT, "setting": ("custom_providers[particle].extra_body reasoning_effort = high on every agent request (on a custom endpoint Hermes sends no reasoning field of its own; agent.reasoning_effort = high is set too). Declared: its session-title call carries no extra_body and sends reasoning_effort none, a shipped default; it is housekeeping, never an agent-loop call" if particle else "agent.reasoning_effort = high; Hermes sends thinking adaptive plus output_config.effort on Claude adaptive models and reasoning_effort on its OpenAI chat route. Declared: its session-title call (agent/title_generator.py generate_title: call_llm task title_generation, no tools, max_tokens 512, reasoning_config enabled false) asks for reasoning off (reasoning_effort none on OpenAI), a shipped default; it is housekeeping, never an agent-loop call")},
             housekeeping_model={"model": model, "note": "Hermes auxiliary calls (titles, compression summaries) use provider auto, which is the main model; the title call sends reasoning off"},
             differences_from_pin=[
@@ -761,7 +923,7 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                 max_output_tokens={"value": mo, "set_by": "models.providers.openrouter-proxy.models[0].maxTokens=%d, sent as max_completion_tokens (compat.maxTokensField)" % mo},
                 compaction=compaction, tools=tools,
                 effort={"requested": EFFORT, "setting": "--thinking high and agents.defaults.thinkingDefault = high; reasoning true with compat.thinkingFormat openrouter on the model, so api openai-completions sends OpenRouter's reasoning {effort: high}"},
-                reasoning_replay={"field": "reasoning", "how": "compat.thinkingFormat openrouter: OpenClaw replays an earlier assistant turn's reasoning as the message's reasoning field, OpenRouter's own field, on every replayed tool-call turn; DeepSeek thinking mode refuses a tool-call turn replayed without it", "checked": OPENROUTER_REPLAY_CHECK % harness},
+                reasoning_replay=openrouter_replay(harness, spec["name"]),
                 housekeeping_model={"model": model, "note": "utilityModel = the cell model (openrouter-proxy/<model>), as our OpenRouter pin's config sets it"},
                 differences_from_pin=[*harbor_run,
                     "provider openrouter-proxy on api openai-completions over the proxy's OpenRouter route, apiKey ${OPENAI_API_KEY} (the per-trial token; our pin reads HE_MODEL_API_KEY), compat maxTokensField max_completion_tokens, supportsUsageInStreaming and thinkingFormat openrouter, contextWindow %d, maxTokens %d, thinkingDefault high, utilityModel the cell model and memory.search.provider none: the same settings as our OpenRouter pin (harnesses/openclaw/pin.json model_openrouter, config/openclaw.openrouter.json)" % (cw, mo),
@@ -772,6 +934,7 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
             max_output_tokens={"value": mo, "set_by": "models.providers.%s.models[0].maxTokens=%d" % (spec["provider"], mo)},
             compaction=compaction,
             tools=tools,
+            **({"reasoning_replay": direct_replay(harness, spec["provider"])} if direct_replay(harness, spec["provider"]) else {}),
             effort={"requested": EFFORT, "setting": "--thinking high and agents.defaults.thinkingDefault = high" + ("; reasoning true on the model, so api openai-completions sends reasoning_effort high" if particle else "")},
             housekeeping_model=(
                 {"model": f"anthropic:{OPENCLAW_ANTHROPIC_HOUSEKEEPING}", "note": "OpenClaw's shipped utility model on an Anthropic provider, kept as our pin keeps it (utilityModel unset); metered as harness housekeeping, shipped default, never scored"}
@@ -793,20 +956,26 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                 max_output_tokens={"value": mo, "set_by": "models.json maxTokens=%d, sent as max_completion_tokens (compat.maxTokensField; pi-ai 1.5.0 openai-completions)" % mo},
                 compaction=compaction, tools=tools,
                 effort={"requested": EFFORT, "setting": "--thinking high with reasoning true, thinkingLevelMap high -> high and compat.thinkingFormat openrouter on the model, so pi-ai 1.5.0 sends OpenRouter's reasoning {effort: high} (dist/api/openai-completions.js)"},
-                reasoning_replay={"field": "reasoning_details", "how": "pi-ai 1.5.0 keeps the reasoning_details OpenRouter streams with each assistant message and sends them back on that message in every later request, the tool-call turn included (dist/api/openai-completions.js convertMessages); compat.requiresReasoningContentOnAssistantMessages adds an empty reasoning_content beside them, as Pi's catalog row for the model asks; DeepSeek thinking mode refuses a tool-call turn replayed without its reasoning", "checked": OPENROUTER_REPLAY_CHECK % harness},
+                reasoning_replay=openrouter_replay(harness, spec["name"]),
                 housekeeping_model={"model": None, "note": "Pi makes no calls on another model"},
                 differences_from_pin=[
                     "Harbor 0.24.0's stock Pi class at the Pi release our pin runs (1.5.0)",
                     "provider harbor-endpoint, a custom provider agents.py writes (Harbor would point an openrouter model at OPENROUTER_BASE_URL with OPENROUTER_API_KEY, which no container holds), instead of our pin's built-in openrouter provider with its baseUrl and apiKey replaced; apiKey $OPENAI_API_KEY (the per-trial token), api openai-completions on the proxy's OpenRouter route",
+                    *([
                     "the model entry carries what Pi's built-in provider applies to this model: its catalog row's thinkingLevelMap and compat (supportsDeveloperRole false, thinkingFormat openrouter, supportsStrictMode, sendSessionAffinityHeaders, requiresReasoningContentOnAssistantMessages; pi-ai dist/providers/data/openrouter.json) plus sessionAffinityFormat openrouter, which pi-ai detects from the provider id openrouter, and maxTokensField max_completion_tokens",
                     "contextWindow %d (the catalog row's) and maxTokens %d (our pin's modelOverrides value, below the catalog's 393,216)" % (cw, mo),
                     "--thinking high (our pin passes --thinking medium, which Pi clamps to high on this model, since its catalog maps medium to none)",
+                    ] if spec["name"] == OPENROUTER_DEEPSEEK else [
+                    "the model entry carries what Pi's built-in provider applies to the %s catalog row: its thinkingLevelMap and compat (supportsDeveloperRole false, thinkingFormat openrouter, supportsStrictMode, sendSessionAffinityHeaders; pi-ai dist/providers/data/openrouter.json) plus sessionAffinityFormat openrouter, which pi-ai detects from the provider id openrouter, and maxTokensField max_completion_tokens%s" % (PI_CATALOG_ROW.get(spec["name"], "chat:" + spec["name"]), "; Pi 1.5.0's catalog has no row for this model, so the entry takes the row of Gemini 4 Argon, the same family on the same Google endpoints" if spec["name"] in PI_CATALOG_ROW else ""),
+                    "contextWindow %d and maxTokens %d (the pin.json model row); no Pi pin of ours covers this model" % (cw, mo),
+                    ]),
                 ])
         return _record(harness, model,
             context_window={"value": cw, "set_by": "models.json contextWindow=%d on Harbor's custom provider" % cw},
             max_output_tokens={"value": mo, "set_by": "models.json maxTokens=%d" % mo + (", sent as max_completion_tokens (pi-ai 1.5.0 openai-completions)" if particle else "")},
             compaction=compaction,
             tools=tools,
+            **({"reasoning_replay": direct_replay(harness, spec["provider"])} if direct_replay(harness, spec["provider"]) else {}),
             effort={"requested": EFFORT, "setting": ("--thinking high with reasoning true and compat.forceAdaptiveThinking true on the model, so Pi 1.5.0 sends thinking adaptive plus output_config.effort high (packages/ai/src/api/anthropic-messages.ts); without the flag Harbor's custom provider gets budget thinking (thinking enabled, no effort)" if anthropic else "--thinking high with reasoning true on the model; sent as reasoning_effort high on Chat Completions (pi-ai 1.5.0 openai-completions)" if particle else "--thinking high with reasoning true on the model; sent as reasoning.effort")},
             housekeeping_model={"model": None, "note": "Pi makes no calls on another model"},
             differences_from_pin=[
@@ -896,6 +1065,70 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                 "instruction files in the task's own working directory are recorded, not refused",
                 "egress: Harbor's sidecar blocklist profile for Cursor cells (pin.json egress.cursor_cells) instead of the CONNECT allowlist; downloads.cursor.com stays reachable for the install, and a cursor.sh host the network-configuration page does not name is not refused",
             ])
+    if harness == "gemini-cli":
+        alias = "harbor-%s-%s" % (spec["name"], EFFORT)
+        return _record(harness, model, version,
+            endpoint={
+                "route": "<metering proxy>/<trial slot>/google (GOOGLE_GEMINI_BASE_URL; the CLI adds /v1beta/models/<model>:streamGenerateContent?alt=sse), which the proxy translates to OpenRouter Chat Completions for google/<model> on Google's Vertex global endpoint (--google-via openrouter, runner/proxy/gemini-openrouter.ts)",
+                "credential": "per-trial dummy token trial-token:<trial>.<32 hex> as GEMINI_API_KEY, bound by broker.ts; no provider key in the container",
+                "slot_models": slot_models(harness, model),
+            },
+            context_window={"value": cw, "set_by": "Gemini CLI %s's tokenLimit() default of 1,048,576 tokens for a model outside its table; no setting" % hp["version"]},
+            max_output_tokens={"value": mo, "set_by": "the metering proxy holds every translated Gemini request to 65,536 output tokens (OPENROUTER_MAX_OUTPUT) and writes max_completion_tokens 65536 when the CLI states none, as on agent turns"},
+            compaction={"threshold": "Gemini CLI default: chat compression at half the window (DEFAULT_COMPRESSION_TOKEN_THRESHOLD 0.5). In a one-prompt run it can split only at a user message the CLI added, such as its loop-recovery note", "set_by": "shipped default"},
+            tools={"hosted_web_search": "off: tools.exclude [google_web_search, web_fetch] (Harbor's disable_web_search), and the proxy refuses any request that declares a Gemini hosted tool (HE-PROXY-006)",
+                   "disabled": ["google_web_search", "web_fetch"], "enabled": "the CLI's other built-in tools (shell, file read, write and replace, grep, glob, list, skills, subagents); no MCP server"},
+            effort={"requested": EFFORT, "setting": "Harbor's alias %s (modelConfigs.customAliases: thinkingConfig thinkingLevel HIGH, includeThoughts true), selected with --model, plus our modelConfigs.customOverrides entry for %s with thinkingLevel HIGH, so every agent request sends it; the translation sends it as OpenRouter's reasoning {effort: high}" % (alias, spec["name"])},
+            reasoning_replay={"field": "thoughtSignature on functionCall parts, sent on as reasoning_details (reasoning.encrypted, format google-gemini-v1)", "how": "Gemini CLI keeps each function call's thoughtSignature in its history and sends it back on every later request; the proxy returns OpenRouter's signature on the call and sends the stored reasoning_details entry back byte for byte (checked keyless with the real CLI, tests/gemini-cli-via-openrouter.test.ts)"},
+            housekeeping_model={"model": ["google:%s" % m for m in GEMINI_CLI_HOUSEKEEPING], "note": "harness housekeeping, shipped default: the loop-detection check every 30 turns on gemini-3-flash-preview, and the loop double-check and chat compression on gemini-3-pro-preview, which the CLI resolves to gemini-3.1-pro-preview-customtools with an API key; each goes through the same translation, metered at its own price-table row and never scored. Any other model the CLI might ask for is refused by the slot. No model fallback for the cell model: a model outside Gemini 3 gets a single-model policy chain"},
+            differences_from_pin=[
+                "runs through Harbor's GeminiCli class (gemini --yolo --model=%s --prompt=<instruction>, GEMINI_CLI_TRUST_WORKSPACE=true), installed with npm on Node through nvm" % alias,
+                "the proxy translates the Gemini API to OpenRouter Chat Completions (no direct Google key): countTokens is answered by a local estimate and never forwarded, safetySettings are dropped (OpenRouter has none), and a request the translation cannot carry is refused (HE-PROXY-012)",
+                "modelConfigs.customOverrides puts thinkingLevel HIGH on every request for the cell model (Harbor's alias alone reaches only the first request of a turn)",
+                "privacy.usageStatisticsEnabled false",
+                "no MCP server: TB2.1 tasks have none; the working directory is the task's",
+            ])
+    if harness == "grok-build":
+        return _record(harness, model, version,
+            context_window={"value": cw, "set_by": "config.toml [model.%s] context_window=%d, the window the CLI's own catalog states for xAI models" % (spec["name"], cw)},
+            max_output_tokens={"value": mo, "set_by": "config.toml [model.%s] max_completion_tokens=%d, sent as max_output_tokens on every request" % (spec["name"], mo)},
+            compaction={"threshold": "Grok Build default for a model block that sets no auto_compact_threshold_percent", "set_by": "shipped default"},
+            tools={"hosted_web_search": "off: disable_web_search = true (Harbor's default) removes web search and web fetch, and the proxy refuses any request that declares an xAI hosted tool (HE-PROXY-006)",
+                   "disabled": ["web_search", "web_fetch"], "enabled": "the CLI's other built-in tools; no MCP server"},
+            effort={"requested": EFFORT, "setting": "--reasoning-effort high (Harbor) with the model block's reasoning_efforts menu [high], sent as Responses reasoning {effort: high, summary: concise}"},
+            reasoning_replay={"field": "reasoning items with encrypted_content", "how": "Grok Build sends store false with include [reasoning.encrypted_content] and replays each earlier reasoning item, encrypted_content byte for byte, in the next request's input; it never sends previous_response_id (checked keyless with the real 1.0.77 binary)"},
+            housekeeping_model={"model": [model, f"xai:{GROK_HOUSEKEEPING}"], "note": "harness housekeeping, shipped default: a session-title call (a forced session_title tool, 100 output tokens) on %s, the CLI's models.session_summary default, sent to the proxy's xai route by its own [model.%s] block and metered at its xAI row; and a turn-summary request after each turn on the session model (no tools). Never scored" % (GROK_HOUSEKEEPING, GROK_HOUSEKEEPING)},
+            binary={"sha256": hp["binary_sha256"], "check": "the installed binary (~/.grok/bin/grok, a link into ~/.grok/downloads) is hashed after Harbor's install; any other hash stops the trial before the agent starts (HE-FRONTIER-014)"},
+            differences_from_pin=[
+                "runs through Harbor's GrokBuild class (grok --no-auto-update --single <instruction> --always-approve --output-format streaming-json --model %s --reasoning-effort high), installed with xAI's install.sh at the pinned version" % spec["name"],
+                "a [model.%s] block points the cell model at the proxy's xai route on Responses (Harbor's custom-endpoint block), with the window, output cap and effort menu the CLI otherwise reads from api.x.ai's /v1/models row" % spec["name"],
+                "a [model.%s] block sends the session-title model to the same route (its built-in endpoint is api.x.ai)" % GROK_HOUSEKEEPING,
+                "the CLI's startup fetch of https://api.x.ai/v1/models (with the per-trial token) is refused by the egress blocklist",
+                "no MCP server: TB2.1 tasks have none; the working directory is the task's",
+            ])
+    if harness == "muse-code":
+        return _record(harness, model, version,
+            endpoint={
+                "route": "<metering proxy>/<trial slot>/openrouter/v1 (settings.json endpoint_transport.base_url, auth bearer), on OpenRouter's Responses API (POST /v1/responses) for %s on Meta's endpoint; the proxy answers Muse's catalog read GET /muse-code/models itself with that one model (MUSE_CODE_CATALOG)" % spec["name"],
+                "credential": "per-trial dummy token trial-token:<trial>.<32 hex> as META_API_KEY, sent as the bearer, bound by broker.ts; no provider key in the container",
+                "slot_models": slot_models(harness, model),
+            },
+            context_window={"value": cw, "set_by": "settings.json context_compaction.provider_context_limit_tokens=%d (Meta's endpoint context_length on OpenRouter)" % cw},
+            max_output_tokens={"value": mo, "set_by": "Muse Code sends max_output_tokens %d on every request (its own default, seen keyless); the proxy caps at the same value" % mo},
+            compaction={"threshold": "Muse Code default compaction strategy and thresholds against that limit", "set_by": "shipped default"},
+            tools={"hosted_web_search": "off: settings.json tools.web_search.mode off and tools.web_fetch.enabled false remove both tools (seen keyless: neither is declared), and the proxy refuses any OpenRouter server tool (HE-PROXY-008)",
+                   "disabled": ["web_search", "web_fetch"], "enabled": "Muse Code's other built-in tools in its muse namespace (bash, read, search, write and edit files, memory, todos, goals, workflows, cron, skills); no MCP server"},
+            effort={"requested": EFFORT, "setting": "--reasoning-effort high (Harbor), sent as Responses reasoning {effort: high, summary: auto} on every agent-loop request; its reminder observers set their own effort (low, minimal or high)"},
+            reasoning_replay={"field": "reasoning items with encrypted_content", "verdict": "replays", "how": "Muse Code sends store false with include [reasoning.encrypted_content] and no previous_response_id, and replays each earlier reasoning item (id and encrypted_content byte for byte, summary emptied) before its function call; it replays each function call with the namespace folded into the name (muse.bash) and no namespace field, and whether OpenRouter accepts that form is not checked keyless; seen keyless with the real 1.4.20 binary through the proxy (tests/muse-code-via-openrouter.test.ts)"},
+            housekeeping_model={"model": model, "note": "harness housekeeping, shipped default: Muse Code's reminder observers (skill, goal and verify reminders, prompt_cache_key tbh:<observer>:...) call the cell model beside the agent loop, each at its own effort, metered as the cell model and never scored; agent-loop checks count only requests whose prompt_cache_key starts tbh:main:"},
+            binary={"sha256": hp["binary_sha256"], "check": "the binary downloaded from pin.json binary_url to ~/.local/bin/muse is hashed after install; any other hash stops the trial before the agent starts (HE-FRONTIER-014)"},
+            differences_from_pin=[
+                "runs through Harbor's MuseCode class (muse exec --json --yolo --user-input-auto-resolve --model %s --reasoning-effort high), with the pinned binary downloaded straight from Meta's release URL instead of Meta's install.sh, whose launcher always installs the newest stable release and updates itself" % spec["name"],
+                "reaches Muse Wonder through OpenRouter's Responses API on Meta's endpoint (provider only meta, no fallbacks) instead of api.meta.ai, so the model id it sends is OpenRouter's %s; the proxy serves the /muse-code/models catalog Muse reads at startup, listing only that id" % spec["name"],
+                "settings.json: endpoint_transport base_url and auth bearer, web search and web fetch off, telemetry off, compaction limit at the model's window",
+                "OpenRouter's Responses API reports no served provider in the bodies its docs show, so the proxy's served-elsewhere check runs only when a body names one; the provider pin is what keeps every request on Meta's endpoint",
+                "no MCP server: TB2.1 tasks have none; the working directory is the task's",
+            ])
     raise ValueError(f"unknown harness {harness}")
 
 
@@ -922,6 +1155,12 @@ def render(harness: str, model: str, url: str, token: str, gstack: dict[str, Any
         out["config"] = pi_chat_models_json(model, url) if spec["provider"] in ("particle", "openrouter") else pi_models_entry(model)
     if harness == "dsh":
         out["config"] = dsh_profile_patch(model, url)
+    if harness == "gemini-cli":
+        out["config"] = gemini_cli_settings(model)
+    if harness == "grok-build":
+        out["config"] = grok_config(model, url)
+    if harness == "muse-code":
+        out["config"] = muse_settings(model, url)
     if harness == "cursor":
         out["config"] = cursor_cli_config()
         out["hooks"] = cursor_hooks(CURSOR_RUN_DIR + "/tool-hook.sh", CURSOR_LOG_DIR + "/" + CURSOR_HOOK_LOG)

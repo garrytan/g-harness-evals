@@ -49,6 +49,11 @@ export interface UsageRow { at: string; key: string; provider: string; route: st
   input_tokens?: number; output_tokens?: number; cached_tokens?: number; charged_reservation?: boolean;
   cache_write_tokens?: number; cache_write_1h_tokens?: number; reasoning_tokens?: number }
 type Rates = { input: number; output: number; cache_read?: number; cache_write?: number };
+// Rates the proxy charged until a later price correction, so a row splits at the price it was charged. Sonnet 5.5 cache
+// reads cost $0.10 from Anthropic since 2026-10-07, but the proxy billed $0.20 until the 2026-11-15 price table.
+const CHARGED_UNTIL: Record<string, { until: string; rates: Partial<Rates> }> = {
+  'anthropic:claude-sonnet-5-5': { until: '2026-11-15', rates: { cache_read: 0.2 } },
+};
 export interface Components { requests: number; uncached_input_tokens: number; cache_read_tokens: number; cache_write_tokens: number;
   output_tokens: number; uncached_input_usd: number; cache_read_usd: number; cache_write_usd: number; output_usd: number;
   actual_usd: number; remainder_usd: number; clamped_requests: number;
@@ -98,8 +103,10 @@ export function splitRow(row: UsageRow): Components {
     c.unknown_usd = actual;
     return c;
   }
-  const price = row.model ? chatPrice(`${row.provider}:${row.model}`) as (Rates & { long?: Rates & { above_input_tokens: number } }) | undefined : undefined;
-  if (!price) throw new Error(`no list price for ${row.provider}:${row.model}`);
+  const listed = row.model ? chatPrice(`${row.provider}:${row.model}`) as (Rates & { long?: Rates & { above_input_tokens: number } }) | undefined : undefined;
+  if (!listed) throw new Error(`no list price for ${row.provider}:${row.model}`);
+  const before = CHARGED_UNTIL[`${row.provider}:${row.model}`];
+  const price = before && row.at.slice(0, 10) < before.until ? { ...listed, ...before.rates } : listed;
   const input = row.input_tokens ?? 0, read = row.cached_tokens ?? 0, out = row.output_tokens ?? 0;
   const r: Rates = price.long && input > price.long.above_input_tokens ? price.long : price;
   const cr = r.cache_read ?? r.input, cw = r.cache_write ?? r.input, cw1h = r.input * ANTHROPIC_CACHE_WRITE_1H_MULT;

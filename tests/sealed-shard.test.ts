@@ -75,7 +75,7 @@ function laneRepo(dir: string) {
   const repo = join(dir, 'repo');
   mkdirSync(join(repo, 'scripts', 'ubicloud'), { recursive: true });
   copyFileSync(join(ROOT, 'scripts', 'run-shard.sh'), join(repo, 'scripts', 'run-shard.sh'));
-  for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'smoke-lease.ts']) copyFileSync(join(ROOT, 'scripts', 'ubicloud', f), join(repo, 'scripts', 'ubicloud', f));
+  for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'provider-keys.sh', 'smoke-lease.ts']) copyFileSync(join(ROOT, 'scripts', 'ubicloud', f), join(repo, 'scripts', 'ubicloud', f));
   const g = (...a: string[]) => execFileSync('git', a, { cwd: repo, stdio: 'pipe' });
   g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't'); g('add', '.'); g('commit', '-q', '-m', 'lane scripts');
   return repo;

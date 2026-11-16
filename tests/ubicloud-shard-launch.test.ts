@@ -32,7 +32,7 @@ function shard(o: { cells: Cell[]; workload?: string; args?: string[]; extra?: s
   const repo = join(dir, 'repo');
   mkdirSync(join(repo, 'scripts', 'ubicloud'), { recursive: true });
   copyFileSync(join(ROOT, 'scripts', 'run-shard.sh'), join(repo, 'scripts', 'run-shard.sh'));
-  for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'smoke-lease.ts']) copyFileSync(join(ROOT, 'scripts', 'ubicloud', f), join(repo, 'scripts', 'ubicloud', f));
+  for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'provider-keys.sh', 'smoke-lease.ts']) copyFileSync(join(ROOT, 'scripts', 'ubicloud', f), join(repo, 'scripts', 'ubicloud', f));
   const g = (...a: string[]) => execFileSync('git', a, { cwd: repo, stdio: 'pipe' });
   g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't'); g('add', '.'); g('commit', '-q', '-m', 'lane scripts');
   const calls = join(dir, 'calls'), keys = join(dir, 'keys'), offset = join(dir, 'offset');
@@ -124,6 +124,13 @@ describe('(c, d) Cursor cells run only keyless, and no VM gets CURSOR_API_KEY', 
   test('a proxied shard gets its model keys and never CURSOR_API_KEY', () => {
     const r = shard({ cells: [], env: { CURSOR_API_KEY: PLACEHOLDER, OPENAI_API_KEY: PLACEHOLDER } });
     expect(r.keys).toEqual(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']);
+  }, 90_000);
+
+  // Value: protects=GEMINI_API_KEY and XAI_API_KEY reach the VM key file from the shared registry (internal-task gate F);
+  // fails_when=the forward loop keeps a hand list without them; seam=UBI_RUNNER; no_claim=the proxy on the VM.
+  test('GEMINI_API_KEY and XAI_API_KEY go to the VM beside the other model keys, from provider-keys.sh', () => {
+    const r = shard({ cells: [], env: { CURSOR_API_KEY: PLACEHOLDER, GEMINI_API_KEY: PLACEHOLDER, XAI_API_KEY: PLACEHOLDER } });
+    expect(r.keys).toEqual(['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY']);
   }, 90_000);
 });
 

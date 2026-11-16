@@ -654,7 +654,7 @@ describe('scripts/ubicloud/run-shard.sh --pre-smoke', () => {
     const repo = join(dir, 'repo');
     mkdirSync(join(repo, 'scripts', 'ubicloud'), { recursive: true });
     for (const f of ['run-shard.sh', 'ablation-golden.sh']) writeFileSync(join(repo, 'scripts', f), readFileSync(join(ROOT, 'scripts', f)));
-    for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'smoke-lease.ts']) writeFileSync(join(repo, 'scripts', 'ubicloud', f), readFileSync(join(ROOT, 'scripts', 'ubicloud', f)));
+    for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'provider-keys.sh', 'smoke-lease.ts']) writeFileSync(join(repo, 'scripts', 'ubicloud', f), readFileSync(join(ROOT, 'scripts', 'ubicloud', f)));
     const g = (...a: string[]) => spawnSync('git', a, { cwd: repo, stdio: 'ignore' });
     g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't'); g('add', '.'); g('commit', '-q', '-m', 'lane scripts');
     const calls = join(dir, 'calls.log');

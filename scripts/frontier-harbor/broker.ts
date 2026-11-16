@@ -32,7 +32,7 @@ export const captureDir = (cell: string, attempt: number, trial: string, job?: s
 export const jobOk = (job: string, cell: string, attempt: number) => job === cell + '__a' + attempt || (job.startsWith(cell + '__a' + attempt + '__') && SLOT.test(job.slice((cell + '__a' + attempt + '__').length)));
 
 const SLOT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const MODEL = /^(anthropic|openai|particle):[A-Za-z0-9._-]+$|^openrouter:[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+const MODEL = /^(anthropic|openai|particle|google|xai):[A-Za-z0-9._-]+$|^openrouter:[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
 export function readBinds(log: string): BindLine[] {
   return existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as BindLine) : [];

@@ -60,6 +60,8 @@
 # end with every trial completed.
 set -uo pipefail
 export PATH="$HOME/.bun/bin:$PATH"
+# run-shard.sh uploads scripts/ubicloud/provider-keys.sh beside this script, so the key names come with it, not from the pinned checkout.
+. "$(cd "$(dirname "$0")" && pwd)/provider-keys.sh" || { echo "vm-shard: cannot read provider-keys.sh beside $0" >&2; mkdir -p ~/shard; echo 3 > ~/shard/exit; exit 3; }
 cd "$HOME/work"/*/ 2>/dev/null || { echo "vm-shard: no checkout under ~/work" >&2; mkdir -p ~/shard; echo 3 > ~/shard/exit; exit 3; }
 # Group membership from bootstrap.sh's usermod is not in this SSH session yet; re-enter with the docker group (as checks.sh does).
 if [ -z "${HE_SHARD_IN_DOCKER_GROUP:-}" ] && getent group docker >/dev/null && ! id -nG | grep -qw docker && id -nG "$USER" | grep -qw docker; then
@@ -125,7 +127,7 @@ if [ "$workload" = gstack-laneb ]; then
   if [ "$smoke" -eq 1 ]; then
     phase smoke_start
     log "smoke: scripts/gstack-laneb/smoke.sh (keyless, fake upstream)"
-    env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY -u OPENROUTER_API_KEY bash scripts/gstack-laneb/smoke.sh --laneb-root "$HOME/laneb" --out "$shard/smoke"
+    env "${keyless_unset[@]}" bash scripts/gstack-laneb/smoke.sh --laneb-root "$HOME/laneb" --out "$shard/smoke"
     rc=$?
     phase smoke_end
     [ "$rc" -eq 0 ] || { log "smoke failed (exit $rc); the counted run does not start"; finish 4; }
@@ -157,7 +159,7 @@ if [ "$workload" = frontier-harbor ]; then
     git clone --quiet --filter=blob:none "$tb_repo" "$tb21" > "$shard/tb21-clone.log" 2>&1 && git -C "$tb21" checkout --quiet "$tb_commit" || { log "cloning terminal-bench-2-1 at $tb_commit failed"; finish 3; }
   fi
   log "terminal-bench-2-1 at $(git -C "$tb21" rev-parse HEAD)"
-  keyless=(env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY -u OPENROUTER_API_KEY -u UBICLOUD_API_KEY -u CURSOR_API_KEY)
+  keyless=(env "${keyless_unset[@]}")
   if [ "$install_check" -eq 1 ]; then
     mkdir -p "$shard/results"
     phase run_start
@@ -290,7 +292,7 @@ PY
     # try keeps its log; any other smoke failure ends the shard at once.
     smoke_tries=${HE_SMOKE_TRIES:-4} wait_s=${HE_RETRY_BASE_S:-30}
     for ((try = 1; ; try++)); do
-      env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u PARTICLE_API_KEY -u OPENROUTER_API_KEY bun harnesses/qm/gstack/s1e-probe.ts --dry-run --work "$shard/smoke/work" --out "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
+      env "${keyless_unset[@]}" bun harnesses/qm/gstack/s1e-probe.ts --dry-run --work "$shard/smoke/work" --out "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
       rc=$?
       [ "$rc" -ne 0 ] && [ "$try" -lt "$smoke_tries" ] && grep -q 's1e: image build .* failed' "$shard/smoke/results/run.stdout.log" || break
       cp "$shard/smoke/results/run.stdout.log" "$shard/smoke/results/run.stdout.try$try.log"

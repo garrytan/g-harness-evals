@@ -8,14 +8,18 @@ import type { UsageLine } from './metering-proxy.ts';
  *  names the field in `unrecognized_effort_fields` instead. `ultra` is a gpt-6-astra effort (harnesses/ablation/coding/items.json). */
 export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const;
 export const THINKING_TYPES = ['enabled', 'disabled', 'adaptive'] as const;
+/** Gemini's `generationConfig.thinkingConfig.thinkingLevel` values (ai.google.dev/gemini-api/docs/thinking), recorded lower-case. */
+export const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'] as const;
 
-export type EffortFields = Pick<UsageLine, 'reasoning_effort' | 'output_config_effort' | 'thinking_type' | 'thinking_budget_tokens' | 'unrecognized_effort_fields'>;
+export type EffortFields = Pick<UsageLine, 'reasoning_effort' | 'output_config_effort' | 'thinking_type' | 'thinking_budget_tokens' | 'thinking_level' | 'unrecognized_effort_fields'>;
 
 /**
  * The effort fields a request sets, each in its own field: OpenAI Responses `reasoning.effort` or Chat Completions
  * `reasoning_effort` (both as reasoning_effort; the route tells them apart), Anthropic `output_config.effort` (how Claude
- * Code sends effort), `thinking.type` and `thinking.budget_tokens`. A field set to a value outside the known values is
- * named by its request path in unrecognized_effort_fields and its value is dropped.
+ * Code sends effort), `thinking.type` and `thinking.budget_tokens`, and Gemini `generationConfig.thinkingConfig` (or the REST
+ * snake_case spelling): `thinkingLevel` as thinking_level, in any case, and `thinkingBudget` as thinking_budget_tokens. A
+ * field set to a value outside the known values is named by its request path in unrecognized_effort_fields and its value
+ * is dropped.
  */
 export function effortFields(body: Record<string, any> | undefined): EffortFields {
   if (!body) return {};
@@ -32,16 +36,30 @@ export function effortFields(body: Record<string, any> | undefined): EffortField
   const budget = body.thinking?.budget_tokens;
   const budgetOk = Number.isSafeInteger(budget) && budget >= 0;
   if (!budgetOk && budget !== undefined && budget !== null) unrecognized.push('thinking.budget_tokens');
+  const [genKey, gen] = spelled(body, 'generationConfig', 'generation_config');
+  const [tcKey, tc] = spelled(gen, 'thinkingConfig', 'thinking_config');
+  const [levelKey, rawLevel] = spelled(tc, 'thinkingLevel', 'thinking_level');
+  const [geminiBudgetKey, geminiBudget] = spelled(tc, 'thinkingBudget', 'thinking_budget');
+  const level = pick(`${genKey}.${tcKey}.${levelKey}`, typeof rawLevel === 'string' ? rawLevel.toLowerCase() : rawLevel, THINKING_LEVELS);
+  const geminiBudgetOk = Number.isSafeInteger(geminiBudget) && geminiBudget >= 0;
+  if (!geminiBudgetOk && geminiBudget !== undefined && geminiBudget !== null) unrecognized.push(`${genKey}.${tcKey}.${geminiBudgetKey}`);
   return {
     ...(effort !== undefined ? { reasoning_effort: effort } : {}),
     ...(configEffort !== undefined ? { output_config_effort: configEffort } : {}),
     ...(thinking !== undefined ? { thinking_type: thinking } : {}),
-    ...(budgetOk ? { thinking_budget_tokens: budget as number } : {}),
+    ...(budgetOk ? { thinking_budget_tokens: budget as number } : geminiBudgetOk ? { thinking_budget_tokens: geminiBudget as number } : {}),
+    ...(level !== undefined ? { thinking_level: level } : {}),
     ...(unrecognized.length ? { unrecognized_effort_fields: unrecognized } : {}),
   };
 }
 
-const SIGNATURE_FIELDS = ['reasoning_effort', 'output_config_effort', 'thinking_type', 'thinking_budget_tokens'] as const;
+/** A key of a request object under its camelCase name, else its REST snake_case one, with its value. */
+function spelled(o: unknown, camel: string, snake: string): [string, any] {
+  const obj = o && typeof o === 'object' && !Array.isArray(o) ? o as Record<string, unknown> : {};
+  return obj[camel] !== undefined ? [camel, obj[camel]] : [snake, obj[snake]];
+}
+
+const SIGNATURE_FIELDS = ['reasoning_effort', 'output_config_effort', 'thinking_type', 'thinking_budget_tokens', 'thinking_level'] as const;
 
 /**
  * Calls per effort setting, for a trial's efforts_requested: one key per combination of a line's effort fields, written

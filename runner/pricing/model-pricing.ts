@@ -56,6 +56,34 @@ export interface ModelPricing {
    * part of the prompt). Absent when the provider publishes one flat rate.
    */
   long_prompt?: LongPromptTier;
+  /**
+   * A dated price change: from `from` (a UTC day, YYYY-MM-DD) on, the row
+   * bills these rates instead (Gemini 4 Carbon's introductory rate ends on
+   * 2026-12-01). `priceOnDate()` picks the rates for a day; the long-prompt
+   * tier, where a row has one, is unchanged.
+   */
+  rate_change?: RateChange;
+}
+
+/** The rates a row bills from `from` on (model-pricing.ts priceOnDate). */
+export interface RateChange {
+  from: string;
+  input: number;
+  output: number;
+  cache_read?: number;
+  cache_write?: number;
+}
+
+/**
+ * The rates a row bills on the UTC day of `at`: its `rate_change` rates
+ * from that change's day on, else its own. The result never carries
+ * `rate_change`, so a consumer cannot pick the other set by mistake.
+ */
+export function priceOnDate(pricing: ModelPricing, at: Date = new Date()): ModelPricing {
+  const { rate_change: change, ...base } = pricing;
+  if (!change || at.toISOString().slice(0, 10) < change.from) return change ? base : pricing;
+  const { from: _from, ...rates } = change;
+  return { ...rates, ...(base.long_prompt ? { long_prompt: base.long_prompt } : {}) };
 }
 
 /** The rates a request pays once its prompt exceeds `threshold_tokens` (strictly greater). */
@@ -106,7 +134,7 @@ export const ANTHROPIC_CACHE_WRITE_5M_MULT = 1.25;
 export const ANTHROPIC_CACHE_WRITE_1H_MULT = 2;
 
 /** The dated price table this module reads, in runner/pricing/. */
-export const PRICE_TABLE_FILE = 'prices-2026-11-15.json';
+export const PRICE_TABLE_FILE = 'prices-2026-11-16.json';
 const PRICE_TABLE_BYTES = readFileSync(new URL(`./${PRICE_TABLE_FILE}`, import.meta.url));
 
 /** The price table's repository path and the sha256 of its bytes, for a run or bundle to record. */
@@ -121,8 +149,9 @@ const isCalendarDay = (date: unknown) => typeof date === 'string' && /^\d{4}-\d{
  * order. Throws HE-PIN-004 on anything a price could silently go wrong with:
  * text that is not JSON, a row that is not an object, a missing or negative
  * rate, a duplicate or case-colliding key, a long-prompt tier without a
- * positive whole threshold or with every rate zero, or a row with no source
- * URL or a source date that is not a real calendar day.
+ * positive whole threshold or with every rate zero, a row with no source
+ * URL or a source date that is not a real calendar day, or a rate change
+ * whose day is not a real calendar day after the source date.
  * A null cache rate leaves the field absent, so consumers fall back to input.
  */
 export function parsePriceTable(text: string, file = PRICE_TABLE_FILE): Record<string, ModelPricing> {
@@ -141,7 +170,9 @@ export function parsePriceTable(text: string, file = PRICE_TABLE_FILE): Record<s
     if (folded.has(key.toLowerCase())) throw bad('duplicate key (case-insensitive)');
     folded.add(key.toLowerCase());
     if (typeof row.source_url !== 'string' || !row.source_url.startsWith('https://')) throw bad('source_url must be an https URL');
-    if (!isCalendarDay(row.source_date)) throw bad('source_date must be a real YYYY-MM-DD date');
+    const realDay = (d: unknown): d is string => isCalendarDay(d);
+    const date = row.source_date;
+    if (!realDay(date)) throw bad('source_date must be a real YYYY-MM-DD date');
     const rates = (r: Record<string, unknown>, where: string) => {
       const rate = (field: string, optional: boolean) => {
         const v = r[field];
@@ -162,6 +193,12 @@ export function parsePriceTable(text: string, file = PRICE_TABLE_FILE): Record<s
       const long = rates(tier, 'long_prompt.');
       if ([long.input, long.output, long.cache_read ?? 0, long.cache_write ?? 0].every(v => v === 0)) throw bad('long_prompt rates must not all be zero');
       pricing.long_prompt = { threshold_tokens: tier.threshold_tokens as number, ...long };
+    }
+    if (row.rate_change !== undefined && row.rate_change !== null) {
+      const change = row.rate_change as Record<string, unknown>;
+      if (typeof change !== 'object' || Array.isArray(change)) throw bad('rate_change must be an object or null');
+      if (!realDay(change.from) || change.from <= date) throw bad('rate_change.from must be a real YYYY-MM-DD date after source_date');
+      pricing.rate_change = { from: change.from, ...rates(change, 'rate_change.') };
     }
     out[key] = pricing;
   }

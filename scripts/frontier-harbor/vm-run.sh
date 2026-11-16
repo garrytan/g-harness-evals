@@ -49,8 +49,10 @@
 # The chain, every piece on this machine:
 #   the harness in a task container (only the per-trial dummy token and the proxy URL) -> the egress sidecar of its
 #   trial (gost, blocklist) -> our metering proxy (runner/proxy/metering-proxy.ts on the docker bridge gateway :8790,
-#   lease mode, one slot per trial, the only process holding ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY and
-#   OPENROUTER_API_KEY) -> the provider.
+#   lease mode, one slot per trial, the only process holding the provider keys scripts/ubicloud/provider-keys.sh lists:
+#   ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY and XAI_API_KEY) -> the provider.
+#   The google route reaches Gemini through OpenRouter (--google-via openrouter: Gemini requests translated to OpenRouter's
+#   Chat Completions, pinned to Google's Vertex endpoint, keyed with OPENROUTER_API_KEY; GEMINI_API_KEY is not read).
 #   The proxy refuses requests that declare a hosted web tool (--refuse-hosted-tools), caps output at the largest model
 #   max output in pin.json (128,000; Claude Code sends max_tokens 128000) and writes every forwarded body, hash-chained,
 #   to <run>/jobs/<job>/<trial>/proxy-capture/proxy-requests.ndjson (--capture-bodies), on the host, outside the task
@@ -87,6 +89,7 @@ set -euo pipefail
 umask 077
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
+. "$repo/scripts/ubicloud/provider-keys.sh"
 prereg="" name="" lease="" out="" tb21="" tasks_src="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0 canary=0
 done_files=()
 while [ $# -gt 0 ]; do
@@ -111,16 +114,19 @@ done
 [ -n "$prereg" ] && [ -n "$name" ] && [ -n "$lease" ] && [ -n "$out" ] || { echo "vm-run (frontier): --prereg, --name, --lease-usd and --out are required" >&2; exit 2; }
 [ "$fake" -eq 0 ] || [ -n "$uncounted" ] || [ "$canary" -eq 1 ] || { echo "vm-run (frontier): --fake-upstream is for an --uncounted check or a --canary-spec only" >&2; exit 2; }
 [ "$canary" -eq 0 ] || [ -z "$uncounted" ] || { echo "vm-run (frontier): a --canary-spec run is uncounted already; --uncounted does not apply" >&2; exit 2; }
-# Only the metering proxy holds provider keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY, OPENROUTER_API_KEY):
-# they stay shell variables (not exported) and are exported again inside the proxy's subshell alone.
-export -n ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY 2>/dev/null || true
+# Only the metering proxy holds provider keys (provider_keys, scripts/ubicloud/provider-keys.sh): they stay shell variables
+# (not exported) and are exported again inside the proxy's subshell alone.
+export -n "${provider_keys[@]}" 2>/dev/null || true
 # CURSOR_API_KEY: kept only as this unexported shell variable (a Cursor shard), never passed in any environment but the
 # key scan's; a fake-upstream run drops it.
 cursor_key=${CURSOR_API_KEY-}
 [ "$fake" -eq 0 ] || cursor_key=""
-unset UBICLOUD_API_KEY VOYAGE_API_KEY GEMINI_API_KEY GOOGLE_API_KEY CURSOR_API_KEY
+unset UBICLOUD_API_KEY VOYAGE_API_KEY GOOGLE_API_KEY CURSOR_API_KEY
 if [ "$fake" -eq 0 ]; then
-  [ -n "${ANTHROPIC_API_KEY:+x}" ] || [ -n "${OPENAI_API_KEY:+x}" ] || [ -n "${PARTICLE_API_KEY:+x}" ] || [ -n "${OPENROUTER_API_KEY:+x}" ] || [ -n "${cursor_key:+x}" ] || { echo "vm-run (frontier): none of ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY and OPENROUTER_API_KEY is set; the proxy needs the key of each provider the shard uses (or pass --fake-upstream). A shard of Cursor cells needs CURSOR_API_KEY instead: no CURSOR_API_KEY is set either" >&2; exit 2; }
+  any_key=$cursor_key
+  for k in "${provider_keys[@]}"; do [ -z "${!k:+x}" ] || any_key=x; done
+  [ -n "${any_key:+x}" ] || { echo "vm-run (frontier): none of the provider keys (${provider_keys[*]}) is set; the proxy needs the key of each provider the shard uses (or pass --fake-upstream). A shard of Cursor cells needs CURSOR_API_KEY instead: no CURSOR_API_KEY is set either" >&2; exit 2; }
+  unset any_key
 fi
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
 mkdir -p "$out/run"
@@ -211,6 +217,8 @@ if [ "$fake" -eq 0 ]; then
       openai) [ -n "${OPENAI_API_KEY:+x}" ] || { say "the shard uses openai models and OPENAI_API_KEY is not set"; exit 2; } ;;
       particle) [ -n "${PARTICLE_API_KEY:+x}" ] || { say "the shard uses particle models and PARTICLE_API_KEY is not set"; exit 2; } ;;
       openrouter) [ -n "${OPENROUTER_API_KEY:+x}" ] || { say "the shard uses openrouter models and OPENROUTER_API_KEY is not set"; exit 2; } ;;
+      google) [ -n "${OPENROUTER_API_KEY:+x}" ] || { say "the shard uses google models, which the proxy reaches through OpenRouter (--google-via openrouter), and OPENROUTER_API_KEY is not set"; exit 2; } ;;
+      xai) [ -n "${XAI_API_KEY:+x}" ] || { say "the shard uses xai models and XAI_API_KEY is not set"; exit 2; } ;;
     esac
   done
 fi
@@ -276,15 +284,15 @@ if [ "$metered" -eq 1 ]; then
     canary="fake-provider-key-canary-$(openssl rand -hex 16)"
     printf '%s' "$canary" > "$out/canary.txt"
     (export FAKE_UPSTREAM_CANARY=$canary; cd "$repo"; KEEP=FAKE_UPSTREAM_CANARY run_scrubbed setsid bun scripts/frontier-harbor/fake-upstream.ts --listen 127.0.0.1:8799 --log "$out/fake-upstream.jsonl" --bodies "$out/fake-upstream-bodies.jsonl" --canary-env FAKE_UPSTREAM_CANARY) >> "$out/fake-upstream.log" 2>&1 & pids+=($!)
-    upstream=(--upstream anthropic=http://127.0.0.1:8799 --upstream openai=http://127.0.0.1:8799 --upstream particle=http://127.0.0.1:8799/particle --upstream openrouter=http://127.0.0.1:8799/openrouter)
+    upstream=(--upstream anthropic=http://127.0.0.1:8799 --upstream openai=http://127.0.0.1:8799 --upstream particle=http://127.0.0.1:8799/particle --upstream openrouter=http://127.0.0.1:8799/openrouter --upstream google=http://127.0.0.1:8799/google --upstream xai=http://127.0.0.1:8799/xai)
   fi
   (
     cd "$repo"
-    if [ "$fake" -eq 1 ]; then export ANTHROPIC_API_KEY=$canary OPENAI_API_KEY=$canary PARTICLE_API_KEY=$canary OPENROUTER_API_KEY=$canary; else export ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY 2>/dev/null || true; fi
+    if [ "$fake" -eq 1 ]; then for k in "${provider_keys[@]}"; do export "$k=$canary"; done; else export "${provider_keys[@]}" 2>/dev/null || true; fi
     export SHOOTOUT_PROXY_CONTROL_TOKEN=$control_token
-    KEEP="ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY SHOOTOUT_PROXY_CONTROL_TOKEN" run_scrubbed setsid bun runner/proxy/metering-proxy.ts --listen "$gw:8790" \
+    KEEP="${provider_keys[*]} SHOOTOUT_PROXY_CONTROL_TOKEN" run_scrubbed setsid bun runner/proxy/metering-proxy.ts --listen "$gw:8790" \
       --budget-ledger "$out/ledger.sqlite" --lease-usd "$lease" --run-id "$lease_run" --new-run --usage-log "$out/proxy-usage.ndjson" \
-      --allow-models "$models" --refuse-hosted-tools --capture-bodies "$run/jobs" --max-output-tokens "$(python3 -c 'import json,sys; print(max(m["max_output_tokens"] for m in json.load(open(sys.argv[1]))["models"].values()))' "$here/pin.json")" ${upstream[@]+"${upstream[@]}"}
+      --allow-models "$models" --refuse-hosted-tools --google-via openrouter --capture-bodies "$run/jobs" --max-output-tokens "$(python3 -c 'import json,sys; print(max(m["max_output_tokens"] for m in json.load(open(sys.argv[1]))["models"].values()))' "$here/pin.json")" ${upstream[@]+"${upstream[@]}"}
   ) >> "$out/proxy.log" 2>&1 & pids+=($!)
   (export SHOOTOUT_PROXY_CONTROL_TOKEN=$control_token; cd "$repo"; KEEP=SHOOTOUT_PROXY_CONTROL_TOKEN run_scrubbed setsid bun scripts/frontier-harbor/broker.ts --listen 127.0.0.1:8791 \
     --proxy "http://$gw:8790" --gateway "http://$gw:8790" --models "$models" --log "$run/binds.jsonl" --capture) >> "$out/broker.log" 2>&1 & pids+=($!)

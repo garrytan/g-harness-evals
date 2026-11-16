@@ -191,3 +191,13 @@ describe('cost split on current trial records (internal-task)', () => {
     expect(existsSync(out)).toBe(false);
   });
 });
+
+describe('cost split at the Sonnet 5.5 cache-read price the proxy charged', () => {
+  test('a row from before 2026-11-15 splits cache reads at $0.20 and a row from that day on at $0.10, with no cache writes inferred', () => {
+    for (const [at, read] of [['2026-11-14T23:59:59.000Z', 0.2], ['2026-11-15T00:00:00.000Z', 0.1]] as const) {
+      const c = splitRow(row({ at, input_tokens: 25_000, cached_tokens: 20_000, output_tokens: 500, actual_usd: (5_000 * 2 + 20_000 * read + 500 * 10) / 1e6 }));
+      expect([at, c.cache_read_tokens, c.cache_write_tokens, c.clamped_requests]).toEqual([at, 20_000, 0, 0]);
+      expect(Math.abs(c.remainder_usd)).toBeLessThan(1e-9);
+    }
+  });
+});

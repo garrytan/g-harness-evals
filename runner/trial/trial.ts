@@ -184,12 +184,15 @@ export const PARTICLE_MODEL_ERROR_CODES: readonly string[] = ['invalid_value', '
  *  429, 5xx or failed request that could have caused it. Proxy refusals leave the exit classification as it is, and so
  *  does an exam_fault. Only lines from this attempt count (at or after `since`): the usage log is append-only across a
  *  --resume, and the trial key does not change. On any cell, an OpenRouter answer the proxy marked served_elsewhere (another
- *  provider than the pinned endpoint answered, HE-PROXY-009) makes the trial infra_error: the cell's model did not run. */
-export function trialTermination(o: { cellModel: string; fromExits: Termination; since: string; lines: ReadonlyArray<{ at?: string; provider: string; outcome: string; status?: number; error_code?: string; served_elsewhere?: boolean; served_provider?: string }>; capStop?: boolean; modelMismatch?: boolean; infra?: boolean }): { termination: Termination; note?: string } {
+ *  provider than the pinned endpoint answered, HE-PROXY-009) makes the trial infra_error: the cell's model did not run; so does an
+ *  OpenRouter refusal for a spend limit (openrouter_limit_source, HE-PROXY-014), where no model ran at all. */
+export function trialTermination(o: { cellModel: string; fromExits: Termination; since: string; lines: ReadonlyArray<{ at?: string; provider: string; outcome: string; status?: number; error_code?: string; served_elsewhere?: boolean; served_provider?: string; openrouter_limit_source?: string }>; capStop?: boolean; modelMismatch?: boolean; infra?: boolean }): { termination: Termination; note?: string } {
   if (o.capStop || o.modelMismatch) return { termination: 'model_error' };
   if (o.infra) return { termination: 'infra_error' };
   const lines = o.lines.filter((l) => l.at === undefined || l.at >= o.since);
   const elsewhere = lines.filter((l) => l.served_elsewhere === true);
+  const limited = lines.filter((l) => typeof l.openrouter_limit_source === 'string');
+  if (limited.length) return { termination: 'infra_error', note: `HE-PROXY-014 OpenRouter refused ${limited.length} request(s) for a spend limit (${[...new Set(limited.map((l) => l.openrouter_limit_source))].join(', ')}); no model ran, so the trial is infra_error and leaves the scored rows` };
   if (elsewhere.length) return { termination: 'infra_error', note: `HE-PROXY-009 ${elsewhere.length} OpenRouter answer(s) came from ${[...new Set(elsewhere.map((l) => l.served_provider ?? 'an unnamed provider'))].join(', ')}, not the pinned endpoint; the trial is infra_error and leaves the scored rows` };
   if (!o.cellModel.toLowerCase().startsWith('particle:') || o.fromExits === 'exam_fault') return { termination: o.fromExits };
   const answers = lines.filter((l) => l.provider === 'particle' && l.outcome === 'forwarded' && (l.status === 400 || l.status === 402));

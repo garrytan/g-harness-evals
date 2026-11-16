@@ -37,7 +37,7 @@ function shard(o: { pulls: string[]; exitAfter: number; seed?: string; seeds?: s
   const repo = join(dir, 'repo');
   mkdirSync(join(repo, 'scripts', 'ubicloud'), { recursive: true });
   copyFileSync(join(ROOT, 'scripts', 'run-shard.sh'), join(repo, 'scripts', 'run-shard.sh'));
-  for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'smoke-lease.ts', 'prune-pending.sh']) copyFileSync(join(UBI, f), join(repo, 'scripts', 'ubicloud', f));
+  for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'provider-keys.sh', 'smoke-lease.ts', 'prune-pending.sh']) copyFileSync(join(UBI, f), join(repo, 'scripts', 'ubicloud', f));
   const g = (...a: string[]) => execFileSync('git', a, { cwd: repo, stdio: 'pipe', encoding: 'utf8' });
   g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't'); g('add', '.'); g('commit', '-q', '-m', 'lane scripts');
   const commit = g('rev-parse', 'HEAD').trim();
@@ -149,6 +149,18 @@ describe('ubicloud/run-shard.sh mid-run replication', () => {
     expect(r.laneLog).not.toContain(shaped);
     expect(read(join(r.rep, 's1', 'results', 'trials.jsonl'))).toBe('v1\n');
   }, 120_000);
+
+  // Value: protects=an xAI or Google API key in pulled results stops the mirror like an Anthropic or OpenAI one (internal-task
+  // gate F); fails_when=key_shapes misses xai- or AIza keys; seam=UBI_RUNNER; no_claim=other key formats.
+  test('xAI- and Google-shaped keys in the results stop the mirror too', () => {
+    for (const shaped of ['xai' + '-' + 'Q7'.repeat(30), 'AI' + 'za' + 'Sy' + 'b'.repeat(33)]) {
+      const r = shard({ pulls: ['ok:v1', 'ok:' + shaped], exitAfter: 1 });
+      expect(r.code, r.err).toBe(0);
+      expect(r.laneLog).toContain('WARNING: replicate: key-shaped text in results/trials.jsonl');
+      expect(r.laneLog).not.toContain(shaped);
+      expect(read(join(r.rep, 's1', 'results', 'trials.jsonl'))).toBe('v1\n');
+    }
+  }, 240_000);
 });
 
 describe('fanout.sh kept VMs and --resume', () => {
@@ -337,7 +349,7 @@ describe('ubicloud/run-shard.sh launching into a dest with a kept VM', () => {
     const repo = join(dir, 'repo');
     mkdirSync(join(repo, 'scripts', 'ubicloud'), { recursive: true });
     copyFileSync(join(ROOT, 'scripts', 'run-shard.sh'), join(repo, 'scripts', 'run-shard.sh'));
-    for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'smoke-lease.ts', 'prune-pending.sh']) copyFileSync(join(UBI, f), join(repo, 'scripts', 'ubicloud', f));
+    for (const f of ['run-shard.sh', 'bootstrap.sh', 'vm-shard.sh', 'provider-keys.sh', 'smoke-lease.ts', 'prune-pending.sh']) copyFileSync(join(UBI, f), join(repo, 'scripts', 'ubicloud', f));
     const g = (...a: string[]) => execFileSync('git', a, { cwd: repo, stdio: 'pipe' });
     g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't'); g('add', '.'); g('commit', '-q', '-m', 'lane scripts');
     const upFails = join(dir, 'up-fails.sh');

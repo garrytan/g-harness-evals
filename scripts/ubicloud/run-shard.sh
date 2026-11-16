@@ -110,9 +110,9 @@
 #      --resume uploads them again to its fresh VM. The diagnostics of tar and the remote unpack (of the root, the receipt
 #      and a sealed --resume's results) go to <dest>/sealed-upload.log only (removed by scripts/sealed/cleanup.ts), since they
 #      can name a sealed path; a failed upload prints a fixed line naming that log. On the VM, scripts/run-shard.sh runs from its own copy of ~/sealed/root.
-#   5. ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY and OPENROUTER_API_KEY (each one that is set here; the run
-#      needs the first, --embedded the second, a Particle cell the third, an OpenRouter cell the fourth, which preflight
-#      requires) are written to ~/.ubirun-env on the
+#   5. The provider keys scripts/ubicloud/provider-keys.sh lists (ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY,
+#      OPENROUTER_API_KEY, GEMINI_API_KEY and XAI_API_KEY, each one that is set here; the run needs the first, --embedded
+#      the second, and a Particle, OpenRouter, Google or xAI cell its own, which preflight requires) are written to ~/.ubirun-env on the
 #      VM with umask 077 over the multiplexed SSH connection, exactly as ubi-runner.sh run --pass writes them. The
 #      launcher reads the file into the shell and deletes it before vm-shard.sh starts, so no file on the VM holds a key
 #      while the run is live; the keys live in that process's environment (the runner's own child processes inherit it)
@@ -158,6 +158,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 runner=${UBI_RUNNER:-$here/ubi-runner.sh}
+. "$here/provider-keys.sh"
 
 # cursor_check: a shard with Cursor cells runs only Cursor cells, and only keyless (step 5).
 cursor_check() {
@@ -403,7 +404,7 @@ pull_results() {
 # and gstack's own key-shaped test text. The rest of that run tree, each host's home and the Harbor jobs included, is
 # still mirrored and scanned. The pull
 # into <dest> still brings them back, and so does the teardown pull.
-key_shapes='sk-''ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}|sk-''(proj|svcacct|admin)-[A-Za-z0-9_-]{16,}'
+key_shapes='sk-''ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}|sk-''(proj|svcacct|admin)-[A-Za-z0-9_-]{16,}|xai''-[A-Za-z0-9]{20,}|AI''za[0-9A-Za-z_-]{35}'
 # cursor_scan <dir>: how many files under <dir> hold the literal CURSOR_API_KEY value (whole, first 16, last 12
 # characters; gzip decoded; an unreadable file counts; regular files only, like find -type f, so a FIFO such as the
 # Cursor adapter's never blocks the read), 0 when this shell has no key. Never prints the value or a path.
@@ -713,7 +714,7 @@ else
   t_sync0=$(now)
   prestart sync bash "$runner" sync "$vm" "$scratch/harness-evals" work/harness-evals 2> >(stamp | tee -a "$dest/lane.log" >&2) || { log "sync failed"; exit 3; }
   rm -rf "$scratch"
-  vssh 'mkdir -p ~/shard/bin'
+  vssh 'mkdir -p ~/shard/bin && cat > ~/shard/bin/provider-keys.sh' < "$here/provider-keys.sh"
   for f in bootstrap.sh vm-shard.sh smoke-lease.ts; do vssh "cat > ~/shard/bin/$f" < "$here/$f"; done
   [ -z "$scratch_prereg" ] || vssh 'cat > ~/shard/prereg.json' < "$scratch_prereg"
   t_sync1=$(now)
@@ -757,12 +758,12 @@ else
     extra+=(--skill-root "$remote_home/skill-root")
   fi
 
-  # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the model keys go (PARTICLE_API_KEY
-  # for Particle cells, OPENROUTER_API_KEY for OpenRouter cells); the custody identity (a file in the project-user drive, never in the environment) never
+  # 5. the keys, over SSH only, into a 0600 file the launcher reads and deletes. Only the model keys go (provider_keys in
+  # provider-keys.sh, each one that is set here); the custody identity (a file in the project-user drive, never in the environment) never
   # reaches the VM, which gets the opened plaintext and never decrypts.
   # The frontier Harbor install check is keyless: the file is written empty.
   # A Cursor shard (only ever the keyless rehearsal, step 5) gets no key either, and CURSOR_API_KEY goes to no VM.
-  { [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || for k in ANTHROPIC_API_KEY OPENAI_API_KEY PARTICLE_API_KEY OPENROUTER_API_KEY; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
+  { [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || for k in "${provider_keys[@]}"; do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 
   if [ "$resume" -eq 1 ]; then
     log "resume: uploading $dest/results (without harness state and workspaces) to the VM"

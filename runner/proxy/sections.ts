@@ -267,7 +267,9 @@ export function responseExtras(provider: string, route: string, response: unknow
   const input = isObj(u.input_tokens_details) ? details('input_tokens_details') : details('prompt_tokens_details');
   const cacheWrite = count(u.cache_creation_input_tokens) + count(input.cache_write_tokens);
   const oneHour = Math.min(cacheWrite, count(details('cache_creation').ephemeral_1h_input_tokens));
-  const reasoning = count(details('output_tokens_details').reasoning_tokens) + count(details('completion_tokens_details').reasoning_tokens);
+  // Gemini (internal-task) reports thinking in usageMetadata.thoughtsTokenCount, on the body or on each streamed chunk (the last is final).
+  const meta = provider !== 'google' ? null : typeof response === 'string' ? events.map((e) => e.usageMetadata).filter(isObj).at(-1) : isObj(response) ? response.usageMetadata : null;
+  const reasoning = count(details('output_tokens_details').reasoning_tokens) + count(details('completion_tokens_details').reasoning_tokens) + (isObj(meta) ? count(meta.thoughtsTokenCount) : 0);
   const known = new Set(declared);
   const called = sectionRoute(provider, route) ? calledNames(route, response, events) : [];
   return { cache_write_tokens: cacheWrite, cache_write_1h_tokens: oneHour, reasoning_tokens: reasoning, tools_called: called.map((n) => {

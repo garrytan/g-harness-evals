@@ -73,7 +73,7 @@ import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, re
 import { hostname, userInfo } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { Database } from 'bun:sqlite';
-import { ANTHROPIC_CACHE_WRITE_1H_MULT, canonicalLookup, ownRow } from '../pricing/model-pricing.ts';
+import { ANTHROPIC_CACHE_WRITE_1H_MULT, canonicalLookup, ownRow, priceOnDate, type ModelPricing } from '../pricing/model-pricing.ts';
 import { lookupEmbeddingPrice } from '../pricing/embedding-pricing.ts';
 
 export const DEFAULT_PROGRAM_CAP_USD = 500;
@@ -1085,7 +1085,7 @@ const allowanceScope = new AsyncLocalStorage<BudgetAllowance>();
 // ─── Request pricing ────────────────────────────────────────────────
 
 /** Hosts whose requests cost money. */
-const PAID_HOSTS: Record<string, 'openai' | 'anthropic' | 'voyage' | 'openrouter' | 'typesafe' | 'gemini' | 'groq' | 'particle'> = {
+const PAID_HOSTS: Record<string, 'openai' | 'anthropic' | 'voyage' | 'openrouter' | 'typesafe' | 'gemini' | 'groq' | 'particle' | 'xai'> = {
   'api.openai.com': 'openai',
   'api.anthropic.com': 'anthropic',
   'api.voyageai.com': 'voyage',
@@ -1095,6 +1095,8 @@ const PAID_HOSTS: Record<string, 'openai' | 'anthropic' | 'voyage' | 'openrouter
   'api.groq.com': 'groq',
   // Particle's Chat Completions; chatPrice reads its row from the canonical table (particle:particle-1).
   'api.particle.ai': 'particle',
+  // xAI's Chat Completions and Responses; chatPrice reads CHAT_PRICE_OVERRIDES (xai:grok-4.7).
+  'api.x.ai': 'xai',
 };
 
 /** Output-token allowance for a chat request that names no limit. */
@@ -1135,7 +1137,8 @@ export const CHAT_PRICE_OVERRIDES: Record<string, ChatPrice> = {
   'anthropic:claude-sonnet-4-5': { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 },
   'anthropic:claude-sonnet-4-6': { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 },
   'anthropic:claude-sonnet-5': { input: 2, output: 10, cache_read: 0.2, cache_write: 2.5 },
-  'anthropic:claude-sonnet-5-5': { input: 2, output: 10, cache_read: 0.2, cache_write: 2.5 },
+  // platform.claude.com/docs/en/about-claude/pricing (checked 2026-11-15): cache hits bill 0.05x input, as on Opus 5.5.
+  'anthropic:claude-sonnet-5-5': { input: 2, output: 10, cache_read: 0.1, cache_write: 2.5 },
   'anthropic:claude-opus-4-6': { input: 5, output: 25, cache_read: 0.5, cache_write: 6.25 },
   'anthropic:claude-opus-5': { input: 5, output: 25, cache_read: 0.5, cache_write: 6.25 },
   'anthropic:claude-opus-5-5': { input: 4, output: 20, cache_read: 0.2, cache_write: 5 },
@@ -1163,6 +1166,9 @@ export const CHAT_PRICE_OVERRIDES: Record<string, ChatPrice> = {
   'openai:gpt-6.1-sol': { input: 2, output: 10, cache_read: 0.1, cache_write: 2.5, long: { above_input_tokens: 272_000, input: 4, output: 15, cache_read: 0.2, cache_write: 5 } },
   'openai:gpt-6-luna': { input: 0.1, output: 0.5, cache_read: 0.01, cache_write: 0.125, long: { above_input_tokens: 272_000, input: 0.2, output: 0.75, cache_read: 0.02, cache_write: 0.25 } },
   'openai:gpt-6-astra': { input: 10, output: 50, cache_read: 1, cache_write: 12.5, long: { above_input_tokens: 272_000, input: 20, output: 75, cache_read: 2, cache_write: 25 } },
+  // docs.x.ai/developers/pricing (checked 2026-11-15), global endpoint: once a prompt reaches 200,000 tokens every token in
+  // the request bills at the long-context rates, so the tier starts above 199,999. Reasoning tokens bill as output.
+  'xai:grok-4.7': { input: 2, output: 6, cache_read: 0.5, long: { above_input_tokens: 199_999, input: 4, output: 12, cache_read: 1 } },
 };
 
 /**
@@ -1191,6 +1197,14 @@ export const HARNESS_CHAT_PRICES: Record<string, { input: number; output: number
   'gemini:gemini-2.5-flash-lite': { input: 0.1, output: 0.4, cache_read: 0.01, max_output: 65_536 },
   'groq:openai/gpt-oss-120b': { input: 0.15, output: 0.6, cache_read: 0.075, max_output: 65_536 },
 };
+
+/** A price-table row as the ledger's chat rates on the UTC day of `at` (its rate change applied from its day on). */
+function chatRates(row: ModelPricing, at: Date | undefined): ChatPrice {
+  const { long_prompt: tier, ...rates } = priceOnDate(row, at);
+  if (!tier) return rates;
+  const { threshold_tokens: above, ...long } = tier;
+  return { ...rates, long: { ...long, above_input_tokens: above } };
+}
 
 /** A dated API snapshot (`gpt-4o-2024-08-06`) is billed at its family's list price. */
 export const chatPrice = (id: string): ChatPrice | undefined => {
@@ -1233,13 +1247,15 @@ function textBytes(value: unknown): number {
 export interface PriceOptions {
   /** Context tokens a known OpenAI response carries into a request that continues it (`previous_response_id`). */
   chainContextTokens?: (responseId: string) => number | undefined;
+  /** When the request reaches the provider, for a price-table row with a dated rate change. Defaults to now. */
+  now?: Date;
 }
 
 /** Price a request from its URL and JSON body. Returns null for a free host; throws for an unpriceable paid request. */
 export function priceRequest(url: string, body: unknown, options: PriceOptions = {}): RequestPrice | null {
   const provider = PAID_HOSTS[new URL(url).hostname];
   if (!provider) return null;
-  if (provider === 'gemini') return priceGemini(url, body);
+  if (provider === 'gemini') return priceGemini(url, body, options.now);
   // Model listings are free metadata reads (providers' key probes use them).
   if (/\/models(\/[^/]+)?\/?$/.test(new URL(url).pathname) && (body === undefined || body === null)) return null;
   const b = (body ?? {}) as Record<string, unknown>;
@@ -1280,14 +1296,17 @@ export function priceRequest(url: string, body: unknown, options: PriceOptions =
     if (typeof maxPrice?.prompt !== 'number' || typeof maxPrice.completion !== 'number') {
       throw new BudgetExceededError(`OpenRouter request for ${model} sets no provider.max_price; cannot bound its cost`);
     }
-    // A model with its own row (the DeepSeek endpoint the metering proxy pins) is priced from the row. max_price keeps
-    // OpenRouter off any endpoint dearer than the row, so one above it would leave the reservation short.
-    const row = canonicalLookup(`openrouter:${model}`);
-    if (!row) return { provider, model, kind: 'chat', input: maxPrice.prompt, output: maxPrice.completion, inputTokens, maxOutputTokens };
+    // A model with its own row (an endpoint the metering proxy pins) is priced from the row on the request's day, cache
+    // writes and any long-prompt tier included. max_price keeps OpenRouter off any endpoint dearer than the row, so one
+    // above it would leave the reservation short.
+    const listed = canonicalLookup(`openrouter:${model}`);
+    if (!listed) return { provider, model, kind: 'chat', input: maxPrice.prompt, output: maxPrice.completion, inputTokens, maxOutputTokens };
+    const row = chatRates(listed, options.now);
     if (maxPrice.prompt > row.input || maxPrice.completion > row.output) {
       throw new BudgetExceededError(`OpenRouter request for ${model} sets provider.max_price (${maxPrice.prompt}, ${maxPrice.completion}) above its price row (${row.input}, ${row.output}); cannot bound its cost`);
     }
-    return { provider, model, kind: 'chat', input: row.input, output: row.output, cache_read: row.cache_read, rowPriced: true, inputTokens, maxOutputTokens };
+    return { provider, model, kind: 'chat', input: row.input, output: row.output, cache_read: row.cache_read, ...(row.cache_write !== undefined ? { cache_write: row.cache_write } : {}),
+      rowPriced: true, inputTokens, maxOutputTokens, ...(row.long ? { long: row.long } : {}) };
   }
   const price = chatPrice(`${provider}:${model}`);
   if (!price) throw new BudgetExceededError(`no chat price for ${provider}:${model}; cannot reserve its cost`);
@@ -1307,7 +1326,7 @@ const GEMINI_METHOD = /\/models\/([^/:]+):([A-Za-z]+)$/;
  * reserves the model's full output ceiling, because thinking tokens bill as
  * output; an explicit thinking budget is added on top of an explicit limit.
  */
-function priceGemini(url: string, body: unknown): RequestPrice | null {
+function priceGemini(url: string, body: unknown, now?: Date): RequestPrice | null {
   const path = new URL(url).pathname;
   const match = path.match(GEMINI_METHOD);
   if (!match) {
@@ -1325,7 +1344,8 @@ function priceGemini(url: string, body: unknown): RequestPrice | null {
   }
   if (method !== 'generateContent' && method !== 'streamGenerateContent') throw new BudgetExceededError(`cannot price the Gemini method ${method} for ${model}`);
   const row = HARNESS_CHAT_PRICES[`gemini:${model}`];
-  const price = row ?? chatPrice(`gemini:${model}`) ?? canonicalLookup(`google:${model}`);
+  const listed = canonicalLookup(`google:${model}`);
+  const price = row ?? chatPrice(`gemini:${model}`) ?? (listed && chatRates(listed, now));
   if (!price) throw new BudgetExceededError(`no chat price for gemini:${model}; cannot reserve its cost`);
   const gen = (b.generationConfig ?? b.generation_config ?? {}) as Record<string, unknown>;
   const schema = gen.responseSchema ?? gen.response_schema ?? gen.responseJsonSchema ?? gen.response_json_schema;
@@ -1355,7 +1375,12 @@ export function usageCost(price: RequestPrice, responseBody: unknown): { usd: nu
   const n = (key: string) => (typeof usage[key] === 'number' ? usage[key] as number : 0);
   const inputTokens = n('input_tokens') + n('prompt_tokens') + n('cache_creation_input_tokens') + n('cache_read_input_tokens')
     + (usage.input_tokens === undefined && usage.prompt_tokens === undefined ? n('total_tokens') : 0);
-  const outputTokens = n('output_tokens') + n('completion_tokens');
+  const answered = n('output_tokens') + n('completion_tokens');
+  // xAI reports reasoning tokens beside completion_tokens (total_tokens counts them on top) and bills them as output; a
+  // total that equals input plus answered tokens means they are already inside.
+  const xaiReasoning = price.provider !== 'xai' ? 0 : [usage.completion_tokens_details, usage.output_tokens_details]
+    .reduce<number>((s, d) => s + (typeof (d as Record<string, unknown> | undefined)?.reasoning_tokens === 'number' ? (d as Record<string, number>).reasoning_tokens : 0), 0);
+  const outputTokens = answered + (usage.total_tokens === inputTokens + answered ? 0 : xaiReasoning);
   if (inputTokens === 0 && outputTokens === 0) return null;
   const reported = price.provider === 'openrouter' && typeof usage.cost === 'number' ? usage.cost as number : null;
   if (reported !== null && !price.rowPriced) return { usd: reported, input_tokens: inputTokens, output_tokens: outputTokens };
@@ -1474,6 +1499,26 @@ export function streamUsageCost(price: RequestPrice, sse: string): { usd: number
   }
   if (price.provider === 'gemini') return gemini ? usageCost(price, gemini) : null;
   return usage ? usageCost(price, { usage }) : null;
+}
+
+/**
+ * Why a Gemini streamGenerateContent?alt=sse body cannot be settled from its usage, or null when it can. Every chunk
+ * carries usageMetadata, so the last one is final only once a candidate reported a finishReason (or the prompt was
+ * blocked, promptFeedback.blockReason); a chunk holding an `error` object is named by the error's status.
+ */
+export function geminiStreamIncomplete(text: string): string | null {
+  let finished = false;
+  let error: string | null = null;
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data:')) continue;
+    let obj: Record<string, any>;
+    try { obj = JSON.parse(line.slice(5).trim()); } catch { continue; }
+    if (!obj || typeof obj !== 'object') continue;
+    if (obj.error && typeof obj.error === 'object') error ??= typeof obj.error.status === 'string' && /^[\w.-]{1,64}$/.test(obj.error.status) ? obj.error.status : 'of an unnamed type';
+    if ((Array.isArray(obj.candidates) && obj.candidates.some((c: { finishReason?: unknown } | null) => typeof c?.finishReason === 'string')) || typeof obj.promptFeedback?.blockReason === 'string') finished = true;
+  }
+  if (error) return `stream error ${error} before final usage`;
+  return finished ? null : 'the end of the stream came before a candidate finishReason';
 }
 
 /**

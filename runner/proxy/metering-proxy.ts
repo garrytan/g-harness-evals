@@ -74,7 +74,7 @@
  *   bun runner/proxy/metering-proxy.ts --listen 172.17.0.1:8787 --budget-ledger <file> --lease-usd <n> --run-id <id>
  *     [--usage-log <file>] [--allow-models openai:gpt-4.1-mini,...] [--max-output-tokens 32768] [--free-count-tokens]
  *     [--forbidden-markers <file>] [--streaming meter|refuse] [--upstream openai=http://...] [--new-run] [--control-token <t>] [--ablation-log <file>] [--log-sections]
- *     [--route-texts <file.json>] [--refuse-hosted-tools] [--capture-bodies <dir> [--capture-max-bytes <n>]]
+ *     [--route-texts <file.json>] [--refuse-hosted-tools] [--capture-bodies <dir> [--capture-max-bytes <n>]] [--google-via openrouter]
  *   bun runner/proxy/metering-proxy.ts summary --budget-ledger <file> --run-id <id> [--usage-log <file>]
  *
  * One lease ledger can hold a cell's reruns: each run id is its own lease, the
@@ -115,6 +115,34 @@
  * Output cap: `--max-output-tokens` sets the cap for one proxy start (and its lease); set it to the harness's own
  * max output, since a request naming more is refused. Without it the cap is DEFAULT_MAX_OUTPUT_TOKENS.
  *
+ * Google and xAI (internal-task): `/<slot>/google/v1beta/models/<model>:generateContent` and `:streamGenerateContent?alt=sse`
+ * go to the Gemini API, the model read from the path. The per-trial token arrives in x-goog-api-key (Gemini CLI's header)
+ * and GEMINI_API_KEY leaves in x-goog-api-key, never as a Bearer or a `key` query parameter, which the proxy drops. The
+ * output cap is `generationConfig.maxOutputTokens`; a stream settles from its last usageMetadata (budget-ledger.ts
+ * streamUsageCost) and counts as unfinished until a candidate reports a finishReason. A stream request without alt=sse is
+ * refused (HE-PROXY-013). `/<slot>/xai/v1/chat/completions` and `/v1/responses` go to api.x.ai with XAI_API_KEY as a
+ * Bearer; reasoning tokens bill as output beside completion tokens, and each forwarded line records xAI's own
+ * `usage.cost_in_usd_ticks` (1e-10 USD) when the answer carries it. A Responses request is sent with `store: false`,
+ * and one naming `previous_response_id` is refused (HE-PROXY-013). On both routes a provider-hosted tool (grounding,
+ * code execution, URL context, xAI's server-side search) is refused with HE-PROXY-006 with or without
+ * --refuse-hosted-tools, since the proxy cannot price its per-call fees.
+ *
+ * Muse Code (internal-task): `/<slot>/openrouter/v1/responses` forwards OpenRouter's Responses API for the models in
+ * MUSE_CODE_CATALOG only (any other OpenRouter model there is refused 403), pinned, priced and capped
+ * (`max_output_tokens`) like a Chat Completions request; one naming `previous_response_id` is refused (HE-PROXY-013). Muse
+ * Code reads its model catalog from `GET /muse-code/models` at the root of its base URL's origin, outside any slot; the
+ * proxy answers that itself with MUSE_CODE_CATALOG, never forwarded or metered. OpenRouter's Responses bodies name no
+ * served provider in its docs, so on that route `served_elsewhere` is set only when a body names a provider other than
+ * the pinned one.
+ *
+ * Google via OpenRouter (internal-task): with `--google-via openrouter` the google route keeps its Gemini API face, but each
+ * generateContent or streamGenerateContent request is translated to OpenRouter's Chat Completions for `google/<model>`
+ * (runner/proxy/gemini-openrouter.ts), then pinned, priced, keyed (OPENROUTER_API_KEY) and checked for its served provider
+ * exactly as an OpenRouter request; the answer, streamed or not, goes back to the harness as Gemini's, thought signatures
+ * included. GEMINI_API_KEY is not read. countTokens is answered by a local estimate and never forwarded, and a request the
+ * translation cannot carry (cachedContent, file URIs, non-image media, multimodal tool results, other tool kinds) is refused
+ * with HE-PROXY-012.
+ *
  * Install slots (internal-task, the gbrain install eval): a lease-mode bind with `install: true` (it needs `token` and `models`, and
  * is refused on a proxy started with --refuse-hosted-tools) writes one usage line for every request that reaches the slot,
  * forwarded or refused, with `kind: "install_slot"`, `method`, `endpoint` (endpointClass), the model it names, `token_presented`,
@@ -134,7 +162,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { BudgetExceededError, BudgetRun, jsonOrNull, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, unbilledAnswer, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
+import { BudgetExceededError, BudgetRun, geminiStreamIncomplete, jsonOrNull, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, streamUsageCost, unbilledAnswer, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
 
 export { sseIncomplete, sseUsage };
 import { findLeaks } from './sanitize.ts';
@@ -143,13 +171,16 @@ import type { AblationBinding, AblationReceipt, AblationSpec } from './ablate.ts
 import { requestSections, responseExtras, sectionRoute, type RequestSections } from './sections.ts';
 import { effortFields } from './effort.ts';
 import { hostedWebTools, unpricedWebTools, webToolAllowance, webToolUse } from './hosted-tools.ts';
+import { safetyStop } from './stops.ts';
+import { countTokensEstimate, fromChat, GeminiStream, geminiError, SignatureStore, toChat, TranslationRefused, VIA_OPENROUTER } from './gemini-openrouter.ts';
 import { BodyCapture, CAPTURE_FILE, DEFAULT_CAPTURE_MAX_BYTES } from './capture.ts';
-import { canonicalLookup } from '../pricing/model-pricing.ts';
+import { canonicalLookup, priceOnDate } from '../pricing/model-pricing.ts';
 
-export { effortCounts, effortFields, REASONING_EFFORTS, THINKING_TYPES } from './effort.ts';
+export { effortCounts, effortFields, REASONING_EFFORTS, THINKING_LEVELS, THINKING_TYPES } from './effort.ts';
 
-export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com', voyage: 'https://api.voyageai.com', particle: 'https://api.particle.ai', openrouter: 'https://openrouter.ai/api' };
-export type ProviderName = 'anthropic' | 'openai' | 'voyage' | 'particle' | 'openrouter';
+export const UPSTREAM: Record<string, string> = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com', voyage: 'https://api.voyageai.com', particle: 'https://api.particle.ai', openrouter: 'https://openrouter.ai/api',
+  google: 'https://generativelanguage.googleapis.com', xai: 'https://api.x.ai' };
+export type ProviderName = 'anthropic' | 'openai' | 'voyage' | 'particle' | 'openrouter' | 'google' | 'xai';
 
 /**
  * The OpenRouter models a lease proxy forwards, each pinned to one endpoint: `only` is the provider slug the proxy sends in
@@ -161,6 +192,35 @@ export type ProviderName = 'anthropic' | 'openai' | 'voyage' | 'particle' | 'ope
  */
 export const OPENROUTER_MODELS: Record<string, { only: string; served: string }> = {
   'deepseek/deepseek-v4.1-flash-1017': { only: 'deepseek', served: 'DeepSeek' },
+  // openrouter.ai/api/v1/models/<id>/endpoints, read 2026-11-15: each maker's own endpoint, or Google Vertex's global one.
+  'google/gemini-4-carbon': { only: 'google-vertex/global', served: 'Google' },
+  'google/gemini-4-hydrogen': { only: 'google-vertex/global', served: 'Google' },
+  'meta/muse-wonder': { only: 'meta', served: 'Meta' },
+  'moonshotai/kimi-k3.1-pro': { only: 'moonshotai', served: 'Moonshot AI' },
+  'z-ai/glm-5.3': { only: 'z-ai', served: 'Z.AI' },
+};
+/**
+ * Gemini CLI's housekeeping models (frontier_settings.py GEMINI_CLI_HOUSEKEEPING), each pinned to one endpoint like the
+ * models above. Only the google route's via-OpenRouter mode forwards them, for a slot that lists them as google:<model>;
+ * the openrouter route refuses them. openrouter.ai/api/v1/models/<id>/endpoints, read 2026-11-15: Google Vertex's global
+ * endpoint serves gemini-3-flash-preview, and only Google AI Studio serves gemini-3.1-pro-preview-customtools.
+ */
+export const GEMINI_HOUSEKEEPING_MODELS: Record<string, { only: string; served: string }> = {
+  'google/gemini-3-flash-preview': { only: 'google-vertex/global', served: 'Google' },
+  'google/gemini-3.1-pro-preview-customtools': { only: 'google-ai-studio', served: 'Google AI Studio' },
+};
+const OPENROUTER_PINS = { ...OPENROUTER_MODELS, ...GEMINI_HOUSEKEEPING_MODELS };
+/** The catalog Muse Code reads at startup (GET <origin>/muse-code/models, Meta's shape {data: [{id}]}): the one OpenRouter
+ *  model it runs on here, by OpenRouter's id, which is the id it then sends. */
+export const MUSE_CODE_CATALOG = { data: [{ id: 'meta/muse-wonder' }] };
+/**
+ * The output cap of a Gemini model on OpenRouter, below the run's cap: Google's standard output limit of 65,536 tokens
+ * (ai.google.dev/gemini-api/docs/models). Vertex's global endpoint lists more for Gemini 4, which is its long-decode mode;
+ * the translation does not carry long-decode continuations (gemini-openrouter.ts), so a request is held to 65,536.
+ */
+export const OPENROUTER_MAX_OUTPUT: Record<string, number> = {
+  'google/gemini-4-carbon': 65_536, 'google/gemini-4-hydrogen': 65_536,
+  'google/gemini-3-flash-preview': 65_536, 'google/gemini-3.1-pro-preview-customtools': 65_536,
 };
 type Send = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -170,6 +230,11 @@ type Send = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
  *  request's worst case. Every other lease proxy refuses it (403) as before, so harness lanes and their receipts are
  *  unchanged. */
 export const COUNT_TOKENS_ROUTE = '/v1/messages/count_tokens';
+
+/** The Gemini generation routes; the model is the path segment before the method. */
+const GOOGLE_ROUTE = /^\/v1(beta)?\/models\/([A-Za-z0-9._-]+):(generateContent|streamGenerateContent)$/;
+/** Gemini's token counter, answered by the proxy itself in the via-OpenRouter mode (countTokensEstimate) and never forwarded. */
+const GOOGLE_COUNT_ROUTE = /^\/v1(beta)?\/models\/([A-Za-z0-9._-]+):countTokens$/;
 
 /** Lease mode forwards only these routes (and COUNT_TOKENS_ROUTE under freeCountTokens). GET model listings are free metadata reads. */
 const ROUTES: Record<ProviderName, Array<{ method: string; path: RegExp }>> = {
@@ -181,11 +246,15 @@ const ROUTES: Record<ProviderName, Array<{ method: string; path: RegExp }>> = {
   voyage: [{ method: 'POST', path: /^\/v1\/embeddings$/ }, { method: 'POST', path: /^\/v1\/rerank$/ }],
   // Particle serves OpenAI Chat Completions over HTTP and nothing else a harness needs: no Responses over HTTP, no embeddings.
   particle: [{ method: 'POST', path: /^\/v1\/chat\/completions$/ }],
-  // OpenRouter: Chat Completions only, the one API every harness on the route speaks (OPENROUTER_MODELS pins the endpoint).
-  openrouter: [{ method: 'POST', path: /^\/v1\/chat\/completions$/ }],
+  // OpenRouter: Chat Completions, and the Responses API for Muse Code's catalog only (OPENROUTER_MODELS pins the endpoint on both).
+  openrouter: [{ method: 'POST', path: /^\/v1\/chat\/completions$/ }, { method: 'POST', path: /^\/v1\/responses$/ }],
+  // Gemini: generation only; countTokens, caches, files and model listings are not forwarded.
+  google: [{ method: 'POST', path: GOOGLE_ROUTE }],
+  xai: [{ method: 'POST', path: /^\/v1\/chat\/completions$/ }, { method: 'POST', path: /^\/v1\/responses$/ }],
 };
-const KEY_ENV: Record<ProviderName, string> = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', voyage: 'VOYAGE_API_KEY', particle: 'PARTICLE_API_KEY', openrouter: 'OPENROUTER_API_KEY' };
-const CREDENTIAL_HEADERS = ['authorization', 'x-api-key', 'api-key', 'openai-organization', 'openai-project', 'cookie', 'proxy-authorization'];
+/** scripts/ubicloud/provider-keys.sh lists the same keys, VOYAGE_API_KEY aside (tests/provider-keys.test.ts). */
+export const KEY_ENV: Record<ProviderName, string> = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', voyage: 'VOYAGE_API_KEY', particle: 'PARTICLE_API_KEY', openrouter: 'OPENROUTER_API_KEY', google: 'GEMINI_API_KEY', xai: 'XAI_API_KEY' };
+const CREDENTIAL_HEADERS = ['authorization', 'x-api-key', 'x-goog-api-key', 'api-key', 'openai-organization', 'openai-project', 'cookie', 'proxy-authorization'];
 export const DEFAULT_MAX_OUTPUT_TOKENS = 32_768;
 /** A provider call may run this long (Bun's own 300-second fetch timeout is off; long reasoning calls exceed it). */
 export const UPSTREAM_DEADLINE_MS = 900_000;
@@ -236,6 +305,9 @@ export interface LeasePolicy {
   captureRoot?: string;
   /** internal-task: the size cap of one capture file (--capture-max-bytes), DEFAULT_CAPTURE_MAX_BYTES when unset. */
   captureMaxBytes?: number;
+  /** internal-task: `openrouter` (--google-via openrouter) sends the google route's Gemini requests to OpenRouter's Chat Completions
+   *  (runner/proxy/gemini-openrouter.ts), pinned, priced and keyed as the OpenRouter route; unset, they go to the Gemini API. */
+  googleVia?: typeof VIA_OPENROUTER;
 }
 
 /** internal-task (H10): `copies` are the rule and placebo bytes (harnesses/routes/instruction.md, placebo.md); `listing` the skill
@@ -264,8 +336,9 @@ export interface UsageLine {
    *  tokens detail cache_write_tokens, 0 when the provider reported none. The ablation tables read it as the cache write. */
   cache_write_tokens?: number;
   /** What the request asked for (runner/proxy/effort.ts): OpenAI `reasoning.effort` (or chat-completions `reasoning_effort`), Anthropic `output_config.effort`,
-   *  `thinking.type` and `thinking.budget_tokens`, each only when its value is a known one; `unrecognized_effort_fields` names the request paths set to anything else. */
-  reasoning_effort?: string; output_config_effort?: string; thinking_type?: string; thinking_budget_tokens?: number; unrecognized_effort_fields?: string[];
+   *  `thinking.type` and `thinking.budget_tokens`, Gemini `thinkingConfig.thinkingLevel` (thinking_level) and `thinkingBudget` (thinking_budget_tokens),
+   *  each only when its value is a known one; `unrecognized_effort_fields` names the request paths set to anything else. */
+  reasoning_effort?: string; output_config_effort?: string; thinking_type?: string; thinking_budget_tokens?: number; thinking_level?: string; unrecognized_effort_fields?: string[];
   /** Particle and OpenRouter: the model id the response echoed (particle-ai/particle-1 for a request naming particle-1). Recorded, never checked or priced. */
   served_model?: string;
   /** OpenRouter only: the provider the response names (`provider`, DeepSeek on the pinned endpoint), the generation id (`id`,
@@ -273,6 +346,13 @@ export interface UsageLine {
   served_provider?: string; generation_id?: string; openrouter_cost_usd?: number;
   /** OpenRouter only: a 2xx answer that names a provider other than the pinned endpoint's, or none (HE-PROXY-009). The trial is infra_error. */
   served_elsewhere?: boolean;
+  /** OpenRouter only, on a non-2xx answer: `error.metadata.limit_source` when OpenRouter refused the request for a spend limit
+   *  (`openrouter_key_limit`, `openrouter_guardrail_budget`, `openrouter_workspace_budget`, `openrouter_in_flight_budget`), HE-PROXY-014. */
+  openrouter_limit_source?: string;
+  /** internal-task (R95): the provider's safety-filter stop in the answer, `<field>:<value>` (runner/proxy/stops.ts), on forwarded lines only. */
+  safety_stop?: string;
+  /** xAI only (internal-task): the answer's own `usage.cost_in_usd_ticks` (1 tick is 1e-10 USD), recorded beside actual_usd (the price-table row) for reconciliation. */
+  cost_in_usd_ticks?: number;
   /** Usage-line schema v1 (internal-task), on every forwarded line beside cache_write_tokens: its 1-hour part and reasoning tokens, 0 when absent. */
   cache_write_1h_tokens?: number; reasoning_tokens?: number;
   /** With --log-sections, on forwarded chat lines: the request's sections and the tools the response called, or why they could not be read. */
@@ -282,6 +362,10 @@ export interface UsageLine {
   usage_unknown?: true; reported_usd?: number;
   /** Particle only, on a non-2xx answer: its JSON `error.code` and `error.type` when each is a short token. Nothing else from the body is logged. runner/trial/trial.ts `trialTermination` reads `error_code` (internal-task plan decision 12); `error_type` is for the reader of the log. */
   error_code?: string; error_type?: string;
+  /** internal-task, the google route in the via-OpenRouter mode: the request went to OpenRouter's Chat Completions, translated
+   *  (runner/proxy/gemini-openrouter.ts); `translation_dropped` names request fields with no Chat Completions counterpart
+   *  that were left out. `local_estimate` marks a countTokens answer the proxy computed itself, never forwarded or charged. */
+  upstream?: 'openrouter'; translation_dropped?: string[]; local_estimate?: true;
   /** internal-task, on every line of an install slot and nowhere else: the request's method and endpoint class, whether it presented
    *  the slot's token, its user agent (sanitizeUserAgent) and whether it was not the harness's own model call (refused, HE-PROXY-010).
    *  `status` is then always the HTTP status the proxy answered (502 on a failed line). */
@@ -347,13 +431,18 @@ export const PROVIDER_ERROR_NOT_BILLED = 'a provider error envelope that is not 
 const NOTHING_USED = { usd: 0, input_tokens: 0, output_tokens: 0 };
 const unbilledReason = (status: number, type?: string) => (type ? `HTTP ${status} ${type}: ${PROVIDER_ERROR_NOT_BILLED}` : undefined);
 
-/** Cache-read tokens a provider reported (Anthropic cache_read_input_tokens, OpenAI prompt/input_tokens_details.cached_tokens), for the usage line. */
+/** Cache-read tokens a provider reported (Anthropic cache_read_input_tokens, OpenAI prompt/input_tokens_details.cached_tokens,
+ *  Gemini usageMetadata cachedContentTokenCount), for the usage line. */
 function cachedTokens(usage: unknown): number | undefined {
   if (!usage || typeof usage !== 'object') return undefined;
   const u = usage as Record<string, any>;
   const n = (v: unknown) => (typeof v === 'number' ? v : 0);
-  return n(u.cache_read_input_tokens) + n(u.prompt_tokens_details?.cached_tokens) + n(u.input_tokens_details?.cached_tokens);
+  return n(u.cache_read_input_tokens) + n(u.prompt_tokens_details?.cached_tokens) + n(u.input_tokens_details?.cached_tokens) + n(u.cachedContentTokenCount);
 }
+
+/** The last usageMetadata of a Gemini SSE body (each chunk carries one; the last is final). */
+const lastUsageMetadata = (text: string): unknown => text.split('\n').filter(l => l.startsWith('data:'))
+  .map(l => (jsonOrNull(l.slice(5).trim()) as { usageMetadata?: unknown } | null)?.usageMetadata).filter(Boolean).at(-1);
 
 /** Non-overlapping occurrences of each text in every string under `value` (strings, arrays and object values, recursively). */
 function occurrences(value: unknown, texts: readonly string[]): number {
@@ -428,7 +517,7 @@ function echoedModel(text: string, streamed: boolean): string | undefined {
  *  `plugins` would let OpenRouter pick another model, endpoint or tool; an `openrouter:` server tool or `web_search_options`
  *  runs a tool on OpenRouter's servers, with or without --refuse-hosted-tools; a variant suffix (`:online`, `:nitro`, `:floor`, any
  *  `:<tag>`) selects another endpoint set or adds a tool; and only OPENROUTER_MODELS ids are forwarded. */
-export function openrouterRefusal(body: Record<string, unknown> | undefined, model: string | null): string | null {
+export function openrouterRefusal(body: Record<string, unknown> | undefined, model: string | null, allowed: Record<string, unknown> = OPENROUTER_MODELS): string | null {
   const routing = ['models', 'route', 'plugins'].filter((k) => body?.[k] !== undefined);
   if (routing.length) return `the request sets ${routing.join(', ')}, which would let OpenRouter choose another model, endpoint or tool`;
   const tools = Array.isArray(body?.tools) ? body.tools : [];
@@ -436,15 +525,19 @@ export function openrouterRefusal(body: Record<string, unknown> | undefined, mod
   if (server >= 0) return `tools[${server}] is an OpenRouter server tool, which OpenRouter runs on its own servers`;
   if (body?.web_search_options !== undefined && body.web_search_options !== null) return 'the request sets web_search_options, which has OpenRouter run a web search on its own servers';
   if (model?.includes(':')) return `the model ${model} carries the variant suffix ${model.slice(model.indexOf(':'))}, which selects other endpoints or adds a tool`;
-  if (!model || !Object.hasOwn(OPENROUTER_MODELS, model)) return `the model ${model ?? '(none)'} is not on the proxy's OpenRouter allowlist (${Object.keys(OPENROUTER_MODELS).join(', ')})`;
+  if (!model || !Object.hasOwn(allowed, model)) return `the model ${model ?? '(none)'} is not on the proxy's OpenRouter allowlist (${Object.keys(allowed).join(', ')})`;
   return null;
 }
 
-/** What a usage line records from a Particle or OpenRouter answer, read from the body or the stream's chunks. Particle: the
+/** What a usage line records from a Particle, OpenRouter or xAI answer, read from the body or the stream's chunks. xAI: its usage.cost_in_usd_ticks. Particle: the
  *  echoed model, and on a non-2xx answer its error code and type. OpenRouter: the echoed model, the provider that answered and
  *  the generation id, the same error fields, and `served_elsewhere` on a 2xx answer that names a provider other than the
  *  pinned endpoint's, or names none and still reported usage (OPENROUTER_MODELS). Nothing else from the body is kept. */
-function responseFacts(prov: ProviderName, model: string | null, text: string, streamed: boolean, ok: boolean): Partial<UsageLine> {
+function responseFacts(prov: ProviderName, model: string | null, text: string, streamed: boolean, ok: boolean, route = '/v1/chat/completions'): Partial<UsageLine> {
+  if (prov === 'xai') {
+    const ticks = (streamed ? sseUsage(text) : (jsonOrNull(text) as { usage?: Record<string, unknown> } | null)?.usage)?.cost_in_usd_ticks;
+    return typeof ticks === 'number' && Number.isSafeInteger(ticks) && ticks >= 0 ? { cost_in_usd_ticks: ticks } : {};
+  }
   if (prov !== 'particle' && prov !== 'openrouter') return {};
   const served = echoedModel(text, streamed);
   const error = ok ? {} : upstreamError(jsonOrNull(text));
@@ -454,13 +547,16 @@ function responseFacts(prov: ProviderName, model: string | null, text: string, s
   let provider: string | undefined, generation: string | undefined, usage = false;
   for (const o of objects) {
     if (!o || typeof o !== 'object' || Array.isArray(o)) continue;
-    const r = o as Record<string, unknown>;
+    const top = o as Record<string, unknown>;
+    const r = top.response && typeof top.response === 'object' && !Array.isArray(top.response) ? top.response as Record<string, unknown> : top;
     provider = token(r.provider, /^[A-Za-z0-9 ._()-]{1,100}$/) ?? provider;
     generation = token(r.id, /^[A-Za-z0-9._:-]{1,200}$/) ?? generation;
     usage ||= !!r.usage && typeof r.usage === 'object';
   }
-  const elsewhere = ok && provider !== OPENROUTER_MODELS[model ?? '']?.served && (provider !== undefined || usage);
-  return { ...(served ? { served_model: served } : {}), ...(provider ? { served_provider: provider } : {}), ...(generation ? { generation_id: generation } : {}), ...(elsewhere ? { served_elsewhere: true } : {}), ...error };
+  const elsewhere = ok && provider !== OPENROUTER_PINS[model ?? '']?.served && (provider !== undefined || (usage && route !== '/v1/responses'));
+  const limit = ok ? undefined : token((jsonOrNull(text) as { error?: { metadata?: { limit_source?: unknown } } } | null)?.error?.metadata?.limit_source, /^openrouter_[a-z_]{1,40}$/);
+  return { ...(served ? { served_model: served } : {}), ...(provider ? { served_provider: provider } : {}), ...(generation ? { generation_id: generation } : {}), ...(elsewhere ? { served_elsewhere: true } : {}),
+    ...(limit ? { openrouter_limit_source: limit } : {}), ...error };
 }
 
 /** Particle only: `error.code` and `error.type` of a non-2xx JSON answer, each kept only when it is a short token, so no message text reaches the usage line. */
@@ -483,9 +579,9 @@ export const isWildcardHost = (host: string) => {
   } catch { return true; }
 };
 
-/** The credential a request presents: x-api-key, or the bearer of Authorization. */
+/** The credential a request presents: x-api-key, x-goog-api-key (Gemini), or the bearer of Authorization. */
 function presentedCredential(req: Request): string | null {
-  const apiKey = req.headers.get('x-api-key');
+  const apiKey = req.headers.get('x-api-key') ?? req.headers.get('x-goog-api-key');
   if (apiKey) return apiKey;
   const auth = req.headers.get('authorization');
   const m = auth?.match(/^Bearer\s+(.+)$/i);
@@ -498,8 +594,8 @@ const json = (status: number, kind: string, message: string) =>
 /** The output-token fields a provider honors on a route; the first is the one the proxy injects when the request states none of them. */
 function outputFields(provider: ProviderName, route: string): string[] {
   if (provider === 'anthropic') return ['max_tokens'];
-  if ((provider === 'openai' || provider === 'particle' || provider === 'openrouter') && route === '/v1/chat/completions') return ['max_completion_tokens', 'max_tokens'];
-  if (provider === 'openai' && route === '/v1/responses') return ['max_output_tokens'];
+  if ((provider === 'openai' || provider === 'particle' || provider === 'openrouter' || provider === 'xai') && route === '/v1/chat/completions') return ['max_completion_tokens', 'max_tokens'];
+  if ((provider === 'openai' || provider === 'xai' || provider === 'openrouter') && route === '/v1/responses') return ['max_output_tokens'];
   return [];
 }
 
@@ -523,6 +619,7 @@ export class MeteringProxy {
   private collected = new Map<string, unknown[]>();
   /** internal-task Phase B: the first body the request cap refused per key, for the same slots; never forwarded or logged. */
   private refusedBody = new Map<string, unknown>();
+  private signatures = new SignatureStore();
   private captures: BodyCapture | null = null;
   private inflight = new Map<string, number>();
   private waiters = new Map<string, Array<() => void>>();
@@ -587,7 +684,8 @@ export class MeteringProxy {
         const url = new URL(req.url);
         if (url.pathname === '/__proxy/status' && req.method === 'GET') return Response.json(this.status());
         if (url.pathname.startsWith('/__proxy/') && req.method === 'POST') return this.control(url.pathname, req);
-        const m = url.pathname.match(/^\/(?:([^/]+)\/)?(anthropic|openai|voyage|particle|openrouter)(\/.*)$/);
+        if (url.pathname === '/muse-code/models' && req.method === 'GET') return Response.json(MUSE_CODE_CATALOG);
+        const m = url.pathname.match(/^\/(?:([^/]+)\/)?(anthropic|openai|voyage|particle|openrouter|google|xai)(\/.*)$/);
         if (!m) return json(404, 'invalid_request', `no provider route ${url.pathname}`);
         const [, slot = 'default', prov, rest] = m as unknown as [string, string | undefined, ProviderName, string];
         const binding = this.bindings.get(slot);
@@ -787,10 +885,26 @@ export class MeteringProxy {
       this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status }, install);
       return json(status, kind, reason);
     };
+    // Gemini also takes a key as ?key=; the inbound one is never the real key and the real one never rides in a URL.
+    if (prov === 'google') { const q = new URLSearchParams(search); q.delete('key'); search = q.size ? `?${q}` : ''; }
+    // internal-task: in the via-OpenRouter mode a Gemini request is translated and then handled as an OpenRouter one (upProv).
+    const via = prov === 'google' && p.googleVia === VIA_OPENROUTER;
+    const upProv: ProviderName = via ? 'openrouter' : prov;
     const countRoute = prov === 'anthropic' && req.method === 'POST' && route === COUNT_TOKENS_ROUTE && p.freeCountTokens === true;
-    if (!countRoute && !ROUTES[prov].some(r => r.method === req.method && r.path.test(route))) return refuse(403, 'invalid_request', `route ${req.method} /${prov}${route} is not allowlisted`);
-    const realKey = (p.env ?? process.env)[KEY_ENV[prov]];
-    if (!realKey) return refuse(503, 'budget', `${KEY_ENV[prov]} is not set in the proxy's environment`);
+    const localCount = via && req.method === 'POST' && GOOGLE_COUNT_ROUTE.test(route);
+    if (!countRoute && !localCount && !ROUTES[prov].some(r => r.method === req.method && r.path.test(route))) return refuse(403, 'invalid_request', `route ${req.method} /${prov}${route} is not allowlisted`);
+    if (localCount) {
+      const counted = route.match(GOOGLE_COUNT_ROUTE)![2]!;
+      if (slotModels && !slotModels.includes(`google:${counted}`)) return refuse(403, 'budget', `google:${counted} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, counted);
+      let parsed: Record<string, any>;
+      try { parsed = JSON.parse(await req.text()); } catch { return refuse(400, 'invalid_request', 'request body is not JSON', counted); }
+      const estimate = countTokensEstimate(parsed);
+      this.log({ at, key, provider: prov, route, model: counted, outcome: 'forwarded', status: 200, reserved_usd: 0, actual_usd: 0, local_estimate: true,
+        reason: `countTokens answered by the proxy's local estimate (${estimate.totalTokens} tokens at four characters per token); never forwarded or charged`, ...NO_EXTRAS });
+      return Response.json(estimate);
+    }
+    const realKey = (p.env ?? process.env)[KEY_ENV[upProv]];
+    if (!realKey) return refuse(503, 'budget', `${KEY_ENV[upProv]} is not set in the proxy's environment`);
     const raw = req.method === 'GET' ? undefined : await req.text();
     const markers = p.forbiddenMarkers ?? [];
     if (raw && markers.length) {
@@ -802,26 +916,43 @@ export class MeteringProxy {
       try { body = JSON.parse(raw); } catch { return refuse(400, 'invalid_request', 'request body is not JSON'); }
       if (!body || typeof body !== 'object' || Array.isArray(body)) return refuse(400, 'invalid_request', 'request body must be a JSON object');
     }
-    const model = typeof body?.model === 'string' ? body.model : null;
+    const model = prov === 'google' ? route.match(GOOGLE_ROUTE)?.[2] ?? null : typeof body?.model === 'string' ? body.model : null;
     if (countRoute) {
       if (p.allowModels && !p.allowModels.includes(`anthropic:${model}`)) return refuse(403, 'budget', `anthropic:${model} is not on this cell's model allowlist`, model);
       if (slotModels && !slotModels.includes(`anthropic:${model}`)) return refuse(403, 'budget', `anthropic:${model} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, model);
       return this.forwardCount(req, route, search, key, send, realKey, raw, model, at, install);
     }
-    const streamed = body?.stream === true;
+    const streamed = prov === 'google' ? route.endsWith(':streamGenerateContent') : body?.stream === true;
     if (streamed && (p.streaming ?? 'meter') === 'refuse') return refuse(400, 'invalid_request', 'streaming is disabled for this cell', model);
-    const hosted = p.refuseHostedTools ? hostedWebTools(body) : [];
+    const hosted = p.refuseHostedTools || prov === 'google' || prov === 'xai' ? hostedWebTools(body, prov) : [];
     if (hosted.length) {
-      const reason = `HE-PROXY-006 the request declares a provider-hosted web tool (${hosted.join(', ')}); this proxy refuses hosted search and fetch, which run outside the trial's egress rules and audit (docs/errors.md). fix: turn the harness's hosted web tools off`;
+      const reason = `HE-PROXY-006 the request declares a provider-hosted tool (${hosted.join(', ')}); this proxy refuses hosted search, fetch and code execution, which run outside the trial's egress rules and audit (docs/errors.md). fix: turn the harness's hosted tools off`;
       this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status: 400, ...effortFields(body) });
       return json(400, 'invalid_request', reason);
     }
+    if (prov === 'google' && streamed && new URLSearchParams(search).get('alt') !== 'sse') return refuse(400, 'invalid_request', 'HE-PROXY-013 streamGenerateContent without alt=sse answers one JSON array, which this proxy does not meter as a stream (docs/errors.md). fix: request ?alt=sse', model);
     const unpriced = install ? unpricedWebTools(prov, body) : [];
     if (unpriced.length) return refuse(400, 'invalid_request', `HE-PROXY-011 the request declares a provider-hosted web tool with no published per-call fee in the price table (${unpriced.join(', ')}); an install slot refuses it rather than meter it at $0 (docs/errors.md). fix: use a hosted tool the price table prices, or add its fee row to a new dated price table`, model);
-    const pinned = prov === 'openrouter' ? openrouterRefusal(body, model) : null;
+    // In the via-OpenRouter mode the effort fields come from the Gemini body the harness sent; the body sent on is its translation.
+    const geminiBody = body;
+    let translated: ReturnType<typeof toChat> | null = null;
+    if (via) {
+      try { translated = toChat(body ?? {}, model ?? '', this.signatures); }
+      catch (e) { if (e instanceof TranslationRefused) return refuse(400, 'invalid_request', e.message, model); throw e; }
+      body = translated.chat;
+      if (streamed) body.stream = true;
+    }
+    const upModel = via ? (body!.model as string) : model;
+    const upRoute = via ? '/v1/chat/completions' : route;
+    const upSearch = via ? '' : search;
+    const pinned = upProv === 'openrouter' ? openrouterRefusal(body, upModel, via ? OPENROUTER_PINS : OPENROUTER_MODELS) : null;
     if (pinned) return refuse(400, 'invalid_request', `HE-PROXY-008 ${pinned}; the metering proxy forwards an OpenRouter request only for an allowlisted model on its pinned endpoint (docs/errors.md). fix: name the bare model id and drop OpenRouter routing fields`, model);
-    const pinnedRow = prov === 'openrouter' ? canonicalLookup(`openrouter:${model}`) : undefined;
-    if (prov === 'openrouter' && !pinnedRow) return refuse(402, 'budget', `unpriced request refused: no price-table row for openrouter:${model}`, model);
+    if (prov === 'xai' && body?.previous_response_id !== undefined && body.previous_response_id !== null) return refuse(400, 'invalid_request', 'HE-PROXY-013 the request sets previous_response_id, which continues a conversation stored on xAI\'s servers that this proxy can neither see nor price; it sends every Responses request with store false (docs/errors.md). fix: send the whole conversation in input', model);
+    if (prov === 'openrouter' && route === '/v1/responses' && !MUSE_CODE_CATALOG.data.some((d) => d.id === upModel)) return refuse(403, 'invalid_request', 'route POST /openrouter/v1/responses is allowlisted only for the Muse Code catalog (' + MUSE_CODE_CATALOG.data.map((d) => d.id).join(', ') + '); every other OpenRouter model goes through /v1/chat/completions', model);
+    if (prov === 'openrouter' && route === '/v1/responses' && body?.previous_response_id !== undefined && body.previous_response_id !== null) return refuse(400, 'invalid_request', 'HE-PROXY-013 the request sets previous_response_id, which continues a conversation stored on a provider\'s servers that this proxy can neither see nor price (docs/errors.md). fix: send the whole conversation in input', model);
+    const listedRow = upProv === 'openrouter' ? canonicalLookup(`openrouter:${upModel}`) : undefined;
+    const pinnedRow = listedRow && priceOnDate(listedRow, new Date(at));
+    if (upProv === 'openrouter' && !pinnedRow) return refuse(402, 'budget', `unpriced request refused: no price-table row for openrouter:${upModel}`, model);
     // The layer filter edits the parsed body before the output cap is injected and the request is priced and reserved.
     let receipt: Omit<AblationReceipt, 'at' | 'key'> | null = null;
     if (ablation && body) {
@@ -830,31 +961,38 @@ export class MeteringProxy {
     }
     // internal-task: the sections are read from the body the filter left (the bytes billed), before the proxy adds stream_options or an output cap.
     let request: { sections: RequestSections } | { error: string } | null = null;
-    if (p.logSections && body && sectionRoute(prov, route)) {
-      try { request = { sections: requestSections(body, Buffer.byteLength(receipt ? JSON.stringify(body) : raw!), prov, route) }; }
+    if (p.logSections && body && sectionRoute(upProv, upRoute)) {
+      try { request = { sections: requestSections(body, Buffer.byteLength(receipt || via ? JSON.stringify(body) : raw!), upProv, upRoute) }; }
       catch (e) { request = { error: `request sections: ${(e as Error).message.slice(0, 200)}` }; }
     }
-    if (streamed && (prov === 'openai' || prov === 'particle' || prov === 'openrouter') && route === '/v1/chat/completions') body!.stream_options = { ...(body!.stream_options ?? {}), include_usage: true };
+    if (streamed && (upProv === 'openai' || upProv === 'particle' || upProv === 'openrouter' || upProv === 'xai') && upRoute === '/v1/chat/completions') body!.stream_options = { ...(body!.stream_options ?? {}), include_usage: true };
+    if (prov === 'xai' && route === '/v1/responses' && body) body.store = false;
     // OpenRouter: one endpoint, no fallback, and no endpoint dearer than the price-table row the request is metered at.
-    if (pinnedRow && body && model) body.provider = { only: [OPENROUTER_MODELS[model]!.only], allow_fallbacks: false, max_price: { prompt: pinnedRow.input, completion: pinnedRow.output } };
-    const fields = body ? outputFields(prov, route) : [];
-    const cap = p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
-    if (fields.length && body) {
-      const stated = [body.max_tokens, body.max_completion_tokens, body.max_output_tokens].filter((v): v is number => typeof v === 'number');
+    if (pinnedRow && body && upModel) body.provider = { only: [OPENROUTER_PINS[upModel]!.only], allow_fallbacks: false, max_price: { prompt: pinnedRow.input, completion: pinnedRow.output } };
+    const fields = body ? outputFields(upProv, upRoute) : [];
+    const cap = Math.min(p.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, upProv === 'openrouter' ? OPENROUTER_MAX_OUTPUT[upModel ?? ''] ?? Infinity : Infinity);
+    // Gemini's limit sits in generationConfig (or the REST snake_case generation_config).
+    const gen = prov === 'google' && !via && body ? body.generationConfig ?? body.generation_config ?? (body.generationConfig = {}) : null;
+    if (gen !== null && (typeof gen !== 'object' || Array.isArray(gen))) return refuse(400, 'invalid_request', 'generationConfig must be a JSON object', model);
+    if ((fields.length || gen) && body) {
+      const stated = (gen ? [gen.maxOutputTokens, gen.max_output_tokens] : [body.max_tokens, body.max_completion_tokens, body.max_output_tokens]).filter((v): v is number => typeof v === 'number');
       if (stated.some(v => v > cap)) return refuse(400, 'invalid_request', `requested ${Math.max(...stated)} output tokens, above this cell's cap of ${cap}`, model);
       if (stated.some(v => !Number.isInteger(v) || v < 1)) return refuse(400, 'invalid_request', `an output limit must be a positive whole number of tokens (got ${stated.join(', ')}); it would lower the reservation without bounding the output`, model);
+      if (gen) { if (!stated.length) gen.maxOutputTokens = cap; }
       // A limit in a field this route does not honor (max_output_tokens on chat completions) bounds nothing, so the cap is injected.
-      if (!fields.some(f => typeof body![f] === 'number')) body[fields[0]!] = cap;
+      else if (!fields.some(f => typeof body![f] === 'number')) body[fields[0]!] = cap;
     }
-    const target = `${this.options.upstream?.[prov] ?? UPSTREAM[prov]}${route}${search}`;
+    const target = `${this.options.upstream?.[upProv] ?? UPSTREAM[upProv]}${upRoute}${upSearch}`;
     const outBody = body === undefined ? undefined : JSON.stringify(body);
     let price: ReturnType<typeof priceRequest>;
-    try { price = priceRequest(`${UPSTREAM[prov]}${route}${search}`, body); }
+    try { price = priceRequest(`${UPSTREAM[upProv]}${upRoute}${upSearch}`, body, { now: new Date(at) }); }
     catch (e) { return refuse(402, 'budget', `unpriced request refused: ${(e as Error).message}`, model); }
-    if (price && p.allowModels && !p.allowModels.includes(`${prov}:${price.model}`)) return refuse(403, 'budget', `${prov}:${price.model} is not on this cell's model allowlist`, model);
-    if (price && slotModels && !slotModels.includes(`${prov}:${price.model}`)) return refuse(403, 'budget', `${prov}:${price.model} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, model);
+    // A via-OpenRouter request is the cell's google:<model> call, priced at its openrouter:google/<model> row.
+    const callId = price ? (via ? `google:${model}` : `${prov}:${price.model}`) : null;
+    if (callId && p.allowModels && !p.allowModels.includes(callId)) return refuse(403, 'budget', `${callId} is not on this cell's model allowlist`, model);
+    if (callId && slotModels && !slotModels.includes(callId)) return refuse(403, 'budget', `${callId} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, model);
     // internal-task Phase B: the opt-in request cap counts the slot's requests for its first model (the cell's), not its utility models.
-    if (price && binding?.maxRequests && `${prov}:${price.model}` === slotModels?.[0]) {
+    if (price && binding?.maxRequests && callId === slotModels?.[0]) {
       if (binding.sent! >= binding.maxRequests) {
         if (binding.collect && body && !this.refusedBody.has(key)) this.refusedBody.set(key, structuredClone(body));
         return refuse(400, REQUEST_CAP, `${REQUEST_CAP}: slot ${slot} already sent its ${binding.maxRequests} model requests`, model);
@@ -867,19 +1005,21 @@ export class MeteringProxy {
     const reserved = bounded ? reservationUsd(bounded) + (install ? webToolAllowance(prov, body) : 0) : 0;
     let entry: string | null = null;
     if (bounded) {
-      try { entry = p.lease.reserve(reserved, `${prov}:${bounded.model} ${bounded.kind} [${key}]`); }
+      try { entry = p.lease.reserve(reserved, `${upProv}:${bounded.model} ${bounded.kind} [${key}]`); }
       catch (e) { return refuse(402, 'budget', (e as Error).message, model); }
     }
     const headers = new Headers(req.headers);
     for (const h of ['host', 'content-length', 'accept-encoding', 'connection', ...CREDENTIAL_HEADERS]) headers.delete(h);
     if (prov === 'anthropic') { headers.set('x-api-key', realKey); if (!headers.has('anthropic-version')) headers.set('anthropic-version', '2023-06-01'); }
+    else if (prov === 'google' && !via) headers.set('x-goog-api-key', realKey);
     else headers.set('authorization', `Bearer ${realKey}`);
     if (outBody !== undefined) headers.set('content-type', 'application/json');
     // internal-task (H10): route copies ride with the knobs onto every forwarded or failed line of a routes slot, and only there.
-    const named = bounded?.model ?? model;
+    const named = via ? model : bounded?.model ?? model;
     const housekeeping = !!named && !!slotModels?.length && slotModels[0] !== `${prov}:${named}`;
     const routeFields = !routes || !p.routeTexts || !body ? {} : housekeeping ? { housekeeping: true } : { route_copies: routeCopies(body, p.routeTexts) };
-    const knobs = { ...effortFields(body), ...routeFields };
+    const viaFields = translated ? { upstream: VIA_OPENROUTER as typeof VIA_OPENROUTER, ...(translated.dropped.length ? { translation_dropped: translated.dropped } : {}) } : {};
+    const knobs = { ...effortFields(geminiBody), ...routeFields, ...viaFields };
     /** `unfinished`: `cost` is the partial usage of a stream that ended before its final usage, charged at no less than the reservation.
      *  `response`: the parsed body, or a stream's text, which the usage-line schema v1 fields are read from once the request is charged. */
     const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, response: unknown, cached?: number, reason?: string, unfinished = false, facts: Partial<UsageLine> = {}) => {
@@ -892,18 +1032,19 @@ export class MeteringProxy {
       const charged = !!bounded && (!cost || unfinished);
       if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost ?? (webUsd > 0 ? { usd: unknownUsd, unfinished: true } : null));
       const usd = !cost ? unknownUsd : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
-      this.charge(key, prov, bounded?.model ?? null, usd, charged);
-      const elsewhere = facts.served_elsewhere ? `HE-PROXY-009 OpenRouter answered from ${facts.served_provider ?? 'an unnamed provider'}, not the pinned ${OPENROUTER_MODELS[model ?? '']?.served ?? 'endpoint'}; the trial is infra_error (docs/errors.md)` : undefined;
-      const why = [elsewhere, reason].filter(Boolean).join('; ');
-      this.log({ at, key, provider: prov, route, model: bounded?.model ?? model, outcome: 'forwarded', ...(why ? { reason: why } : {}), status, reserved_usd: reserved, actual_usd: usd,
+      this.charge(key, prov, named ?? null, usd, charged);
+      const elsewhere = facts.served_elsewhere ? `HE-PROXY-009 OpenRouter answered from ${facts.served_provider ?? 'an unnamed provider'}, not the pinned ${OPENROUTER_PINS[upModel ?? '']?.served ?? 'endpoint'}; the trial is infra_error (docs/errors.md)` : undefined;
+      const limited = facts.openrouter_limit_source ? `HE-PROXY-014 OpenRouter refused the request for its spend limit (${facts.openrouter_limit_source}); no model ran, and new trials wait for the limit to reset (docs/errors.md)` : undefined;
+      const why = [elsewhere, limited, reason].filter(Boolean).join('; ');
+      this.log({ at, key, provider: prov, route, model: named, outcome: 'forwarded', ...(why ? { reason: why } : {}), status, reserved_usd: reserved, actual_usd: usd,
         input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged,
         ...(charged ? { usage_unknown: true as const, reported_usd: cost?.usd ?? 0 } : {}), streamed: isStream, ...knobs,
-        ...facts, ...(cost?.reported_usd !== undefined ? { openrouter_cost_usd: cost.reported_usd } : {}), ...lineExtrasFor(prov, route, response, request), ...web }, install);
+        ...facts, ...(cost?.reported_usd !== undefined ? { openrouter_cost_usd: cost.reported_usd } : {}), ...safetyStop(response), ...lineExtrasFor(upProv, upRoute, response, request), ...web }, install);
     };
     // The upstream never answered, or its non-streamed body broke off: usage is unknown, so the reservation is charged.
     const failed = (message: string) => {
       if (entry) p.lease.settle(entry, null);
-      this.charge(key, prov, bounded?.model ?? null, reserved, !!bounded);
+      this.charge(key, prov, named ?? null, reserved, !!bounded);
       this.observe(key, 'failed');
       this.log({ at, key, provider: prov, route, model, outcome: 'failed', reason: message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded,
         ...(bounded ? { usage_unknown: true as const, reported_usd: 0 } : {}), ...knobs }, install);
@@ -924,22 +1065,25 @@ export class MeteringProxy {
     for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
     if ((res.headers.get('content-type') ?? '').includes('event-stream') && res.body) {
       const done = beginStream();
-      const [client, meterBranch] = res.body.tee();
+      const [upstreamClient, meterBranch] = res.body.tee();
+      const client = translated && res.ok ? geminiEvents(upstreamClient, new GeminiStream(model ?? '', translated.includeThoughts, this.signatures)) : upstreamClient;
       this.observe(key, res.status);
       void readBody(meterBranch).then(
         ({ text, error }) => {
-          const u = sseUsage(text);
-          const cost = bounded && u ? usageCost(bounded, { usage: u }) : null;
-          const unbilled = bounded && !cost && !error ? unbilledAnswer(prov, res.status, jsonOrNull(text), text) : null;
+          // Gemini chunks carry usageMetadata, not usage: streamUsageCost reads the last one.
+          const google = prov === 'google' && !via;
+          const u = google ? null : sseUsage(text);
+          const cost = !bounded ? null : google ? streamUsageCost(bounded, text) : u ? usageCost(bounded, { usage: u }) : null;
+          const unbilled = bounded && !cost && !error ? unbilledAnswer(upProv, res.status, jsonOrNull(text), text) : null;
           if (unbilled) {
-            settle(NOTHING_USED, res.status, true, text, undefined, unbilledReason(res.status, unbilled.type), false, responseFacts(prov, model, text, true, res.ok));
+            settle(NOTHING_USED, res.status, true, text, undefined, unbilledReason(res.status, unbilled.type), false, responseFacts(upProv, upModel, text, true, res.ok, upRoute));
             return;
           }
-          const unfinished = error ? `the stream failed before its final usage: ${error.message.slice(0, 200)}` : sseIncomplete(text);
+          const unfinished = error ? `the stream failed before its final usage: ${error.message.slice(0, 200)}` : google ? geminiStreamIncomplete(text) : sseIncomplete(text);
           const over = !!unfinished && !!cost && cost.usd > reserved;
           const reason = !bounded || (cost && !unfinished) ? undefined
             : `${unfinished ?? 'the stream carried no usage'}${over ? '; charged its partial usage, which cost more than the reservation' : ''}`;
-          settle(cost, res.status, true, text, cachedTokens(u), reason, !!unfinished, responseFacts(prov, model, text, true, res.ok));
+          settle(cost, res.status, true, text, cachedTokens(google ? lastUsageMetadata(text) : u), reason, !!unfinished, responseFacts(upProv, upModel, text, true, res.ok, upRoute));
         },
       ).finally(done);
       return new Response(client, { status: res.status, headers: out });
@@ -950,17 +1094,30 @@ export class MeteringProxy {
     let parsed = true;
     try { JSON.parse(text); } catch { parsed = false; }
     this.observe(key, res.ok && !parsed ? 'unparseable' : res.status);
-    const parsedBody = parsed ? JSON.parse(text) as { usage?: unknown } : null;
+    const parsedBody = parsed ? JSON.parse(text) as { usage?: unknown; usageMetadata?: unknown } : null;
     if (bounded && parsedBody) cost = usageCost(bounded, parsedBody);
     let reason: string | undefined;
-    const unbilled = !cost && bounded ? unbilledAnswer(prov, res.status, parsedBody, text) : null;
+    const unbilled = !cost && bounded ? unbilledAnswer(upProv, res.status, parsedBody, text) : null;
     if (unbilled) {
       cost = NOTHING_USED;
       reason = unbilledReason(res.status, unbilled.type);
     } else if (!cost && bounded) reason = 'the response carried no usage';
-    settle(cost, res.status, false, parsedBody, cachedTokens(parsedBody?.usage), reason, false, responseFacts(prov, model, text, false, res.ok));
-    return new Response(text, { status: res.status, headers: out });
+    settle(cost, res.status, false, parsedBody, cachedTokens(prov === 'google' && !via ? parsedBody?.usageMetadata : parsedBody?.usage), reason, false, responseFacts(upProv, upModel, text, false, res.ok, upRoute));
+    if (!translated) return new Response(text, { status: res.status, headers: out });
+    out.set('content-type', 'application/json');
+    const answer = res.ok && parsedBody ? fromChat(parsedBody as Record<string, any>, model ?? '', translated.includeThoughts, this.signatures) : geminiError(res.ok ? 502 : res.status, text);
+    return new Response(JSON.stringify(answer), { status: res.ok && !parsedBody ? 502 : res.status, headers: out });
   }
+}
+
+/** OpenRouter's event stream, turned into Gemini's as it arrives (runner/proxy/gemini-openrouter.ts GeminiStream). */
+function geminiEvents(upstream: ReadableStream<Uint8Array>, stream: GeminiStream): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  return upstream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) { const out = stream.push(decoder.decode(chunk, { stream: true })); if (out) controller.enqueue(encoder.encode(out)); },
+    flush(controller) { const out = stream.push(decoder.decode() + '\n') + stream.end(); if (out) controller.enqueue(encoder.encode(out)); },
+  }));
 }
 
 /** internal-task: the fields a forwarded line adds, read after the request was charged so they can never change a charge;
@@ -1007,6 +1164,8 @@ export interface ProxyCliArgs {
   captureBodies: string | null; captureMaxBytes: number | null;
   /** internal-task (H10): --route-texts <file.json>, null without it. */
   routeTexts: RouteTexts | null;
+  /** internal-task: --google-via openrouter, null without it. */
+  googleVia: typeof VIA_OPENROUTER | null;
 }
 
 export function parseProxyArgs(argv: string[]): ProxyCliArgs {
@@ -1036,6 +1195,8 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
     routeTexts = { copies: t.copies!, listing: t.listing ?? [] };
   }
   const maxOutput = one('--max-output-tokens');
+  const googleVia = one('--google-via') ?? null;
+  if (googleVia !== null && googleVia !== VIA_OPENROUTER) throw new Error('--google-via must be openrouter');
   const captureMax = one('--capture-max-bytes');
   if (captureMax !== undefined && !(Number.isSafeInteger(Number(captureMax)) && Number(captureMax) > 0)) throw new Error('--capture-max-bytes must be a positive whole number of bytes');
   if (captureMax !== undefined && !one('--capture-bodies')) throw new Error('--capture-max-bytes needs --capture-bodies <dir>');
@@ -1048,13 +1209,14 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
     streaming, upstream, newRun: argv.includes('--new-run'), freeCountTokens: argv.includes('--free-count-tokens'), logSections: argv.includes('--log-sections'), refuseHostedTools: argv.includes('--refuse-hosted-tools'), captureBodies: one('--capture-bodies') ?? null, captureMaxBytes: captureMax !== undefined ? Number(captureMax) : null, controlToken: one('--control-token') ?? process.env.SHOOTOUT_PROXY_CONTROL_TOKEN ?? null,
     routeTexts,
     ablationLog: one('--ablation-log') ?? null,
+    googleVia: googleVia as typeof VIA_OPENROUTER | null,
   };
 }
 
 export function startLeaseProxy(a: ProxyCliArgs, env: Record<string, string | undefined> = process.env): MeteringProxy {
   const lease = BudgetRun.openLease({ runId: a.runId, leaseUsd: a.leaseUsd, ledgerPath: a.ledger, runner: 'metering-proxy', maxOutputTokens: a.maxOutputTokens, newRun: a.newRun });
   const proxy = new MeteringProxy({ hostname: a.host, port: a.port, upstream: a.upstream, controlToken: a.controlToken,
-    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson`, freeCountTokens: a.freeCountTokens, logSections: a.logSections, ...(a.refuseHostedTools ? { refuseHostedTools: true } : {}), ...(a.captureBodies ? { captureRoot: resolve(a.captureBodies), ...(a.captureMaxBytes ? { captureMaxBytes: a.captureMaxBytes } : {}) } : {}), ...(a.ablationLog ? { ablationLog: a.ablationLog } : {}), ...(a.routeTexts ? { routeTexts: a.routeTexts } : {}) } });
+    policy: { lease, env, allowModels: a.allowModels, maxOutputTokens: a.maxOutputTokens ?? undefined, forbiddenMarkers: a.forbiddenMarkers, streaming: a.streaming, usageLog: a.usageLog ?? `${lease.ledgerPath}.usage.ndjson`, freeCountTokens: a.freeCountTokens, ...(a.googleVia ? { googleVia: a.googleVia } : {}), logSections: a.logSections, ...(a.refuseHostedTools ? { refuseHostedTools: true } : {}), ...(a.captureBodies ? { captureRoot: resolve(a.captureBodies), ...(a.captureMaxBytes ? { captureMaxBytes: a.captureMaxBytes } : {}) } : {}), ...(a.ablationLog ? { ablationLog: a.ablationLog } : {}), ...(a.routeTexts ? { routeTexts: a.routeTexts } : {}) } });
   proxy.start();
   return proxy;
 }

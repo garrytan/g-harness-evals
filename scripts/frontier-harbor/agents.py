@@ -1,7 +1,9 @@
 """Harbor 0.24.0 installed-agent classes for the frontier Harbor path (internal-task plan, Implementation step 2).
 
 Claude Code, Codex, Hermes and OpenClaw wrap our own pinned adapter settings; Pi and mini-swe-agent are Harbor's stock
-classes with overrides. frontier_settings.py renders every value; this file only plugs them into Harbor.
+classes with overrides; Gemini CLI and Grok Build are Harbor's stock classes with our overlays, on the proxy's google and xai
+routes; Muse Code is Harbor's stock class on the proxy's OpenRouter route, with the pinned binary installed in place of
+Meta's self-updating launcher. frontier_settings.py renders every value; this file only plugs them into Harbor.
 
 Every class, at agent setup, asks broker.ts (run by vm-run.sh on 127.0.0.1) for its trial's slot: the broker binds the
 slot in the metering proxy with a fresh per-trial token and returns the token and the slot's base URL. The token goes
@@ -37,8 +39,11 @@ import yaml
 from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.agents.installed.claude_code import ClaudeCode
 from harbor.agents.installed.codex import Codex
+from harbor.agents.installed.gemini_cli import GeminiCli
+from harbor.agents.installed.grok_build import GrokBuild
 from harbor.agents.installed.hermes import Hermes
 from harbor.agents.installed.mini_swe_agent import MiniSweAgent
+from harbor.agents.installed.muse_code import MuseCode
 from harbor.agents.installed.node_install import nvm_node_install_snippet
 from harbor.agents.installed.openclaw import OpenClaw
 from harbor.agents.installed.pi import Pi
@@ -679,4 +684,66 @@ class FrontierCursor(_Frontier, BaseInstalledAgent):
         return status
 
 
-CLASSES = {c.HARNESS: c for c in (FrontierClaudeCode, FrontierCodex, FrontierHermes, FrontierOpenClaw, FrontierPi, FrontierMiniSweAgent, FrontierDsh, FrontierCursor)}
+class FrontierGeminiCli(_Frontier, GeminiCli):
+    """Harbor's GeminiCli on the proxy's google route, which reaches Gemini through OpenRouter (--google-via openrouter).
+    Harbor writes settings.json at run time; our overlay (frontier_settings.gemini_cli_settings) is merged into it."""
+
+    HARNESS = "gemini-cli"
+    LAUNCH = "gemini --yolo"
+
+    def _build_settings_config(self, model: str | None = None, auth_type: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
+        config, alias = super()._build_settings_config(model, auth_type)
+        return self._frontier_merge(config or {}, fs.gemini_cli_settings(self._frontier_model)), alias
+
+    @staticmethod
+    def _frontier_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+        for k, v in overlay.items():
+            base[k] = FrontierGeminiCli._frontier_merge(base[k], v) if isinstance(v, dict) and isinstance(base.get(k), dict) else v
+        return base
+
+
+class FrontierGrokBuild(_Frontier, GrokBuild):
+    """Harbor's GrokBuild on the proxy's xai route: the bound slot's URL goes into the grok_config overlay Harbor merges into
+    ~/.grok/config.toml (frontier_settings.grok_config), and the installed binary must hash to pin.json's sha256."""
+
+    HARNESS = "grok-build"
+    LAUNCH = "grok --no-auto-update"
+
+    async def _frontier_bind(self) -> None:
+        await super()._frontier_bind()
+        self.options.grok_config = fs.grok_config(self._frontier_model, self._frontier_url)
+
+    async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
+        res = await self.exec_as_agent(environment, command=fs.binary_check_command(fs.GROK_BIN))
+        self._frontier_checks["binary"] = fs.binary_check(self.HARNESS, getattr(res, "stdout", None), getattr(self, "_version", None))
+
+
+class FrontierMuseCode(_Frontier, MuseCode):
+    """Harbor's MuseCode on the proxy's OpenRouter route, on OpenRouter's Responses API: Harbor's settings.json gets our
+    overlay with the bound slot's URL (frontier_settings.muse_settings), the model id it sends is OpenRouter's, and the
+    pinned binary is downloaded in place of Meta's launcher and must hash to pin.json's sha256 (Harbor's own install
+    fetches the newest stable release and refuses a version pin)."""
+
+    HARNESS = "muse-code"
+    LAUNCH = "muse exec"
+
+    async def install(self, environment: BaseEnvironment) -> None:
+        await self.ensure_system_dependencies(environment, ("curl", "bash", "ca_certificates", "coreutils"))
+        await self.exec_as_agent(environment, command=fs.muse_install_command(getattr(self, "_version", None)))
+
+    def _model_slug(self) -> str | None:
+        return fs.model_spec(self._frontier_model)["name"]
+
+    def _build_effective_config(self) -> dict[str, Any]:
+        config = super()._build_effective_config()
+        if not self._frontier_url:
+            return config
+        return FrontierGeminiCli._frontier_merge(config, fs.muse_settings(self._frontier_model, self._frontier_url))
+
+    async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
+        res = await self.exec_as_agent(environment, command=fs.binary_check_command(fs.MUSE_BIN))
+        self._frontier_checks["binary"] = fs.binary_check(self.HARNESS, getattr(res, "stdout", None), getattr(self, "_version", None))
+
+
+CLASSES = {c.HARNESS: c for c in (FrontierClaudeCode, FrontierCodex, FrontierHermes, FrontierOpenClaw, FrontierPi, FrontierMiniSweAgent, FrontierDsh, FrontierCursor,
+                                  FrontierGeminiCli, FrontierGrokBuild, FrontierMuseCode)}

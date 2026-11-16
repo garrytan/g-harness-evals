@@ -31,8 +31,15 @@ const FLOAT_NOISE_ROWS = ['anthropic:claude-sonnet-4-6', 'anthropic:claude-haiku
 
 /** Rows a later dated table added, each reviewed in its own test below; every other row is held to the fixture. prices-2026-11-07: gpt-6-astra (internal-task);
  *  prices-2026-11-08: OpenRouter's DeepSeek endpoint for deepseek/deepseek-v4.1-flash-1017 (tests/price-table-2026-11-08.test.ts); prices-2026-11-09: claude-fable-5-2;
- *  prices-2026-11-10 holds both. */
-const ADDED_AFTER_FIXTURE = ['openai:gpt-6-astra', 'anthropic:claude-fable-5-2', 'openrouter:deepseek/deepseek-v4.1-flash-1017'];
+ *  prices-2026-11-10 holds both; prices-2026-11-15 adds only tool_fees; prices-2026-11-16: the internal-task lineup's Google, xAI, Meta, Moonshot and Z.ai rows (tests/price-table-2026-11-16.test.ts). */
+const ADDED_AFTER_FIXTURE = ['openai:gpt-6-astra', 'anthropic:claude-fable-5-2', 'openrouter:deepseek/deepseek-v4.1-flash-1017',
+  'google:gemini-4-carbon', 'openrouter:google/gemini-4-carbon', 'openrouter:google/gemini-4-hydrogen', 'openrouter:meta/muse-wonder',
+  'openrouter:moonshotai/kimi-k3.1-pro', 'openrouter:z-ai/glm-5.3', 'xai:grok-4.7', 'openrouter:google/gemini-3-flash-preview',
+  'openrouter:google/gemini-3.1-pro-preview-customtools', 'xai:grok-4.6'];
+
+/** Rows a later dated table repriced on purpose, each reviewed in its own test: prices-2026-11-16 bills claude-sonnet-5-5 cache hits at
+ *  0.05x input, as Anthropic's pricing page lists them (tests/price-table-2026-11-16.test.ts). Their fixture cases are skipped here. */
+const REPRICED_AFTER_FIXTURE = ['anthropic:claude-sonnet-5-5'];
 
 /** Same shape and keys; every number within `relTol` of its counterpart (0 means bit-identical). */
 function close(actual: unknown, expected: unknown, relTol: number, path = ''): string[] {
@@ -59,7 +66,7 @@ describe('the dated price table changes no effective price', () => {
 
   test('every request prices identically through the table and the ledger', () => {
     const changed: string[] = [];
-    for (const c of fixture.cases) {
+    for (const c of fixture.cases.filter(c => !REPRICED_AFTER_FIXTURE.includes(c.row ?? ''))) {
       const actual = evaluate(c.model, c.request);
       if (JSON.stringify(actual) === JSON.stringify(c.expected)) continue;
       changed.push(c.id);
@@ -73,13 +80,13 @@ describe('the dated price table changes no effective price', () => {
     const { CANONICAL_PRICING: before, ...constants } = fixture.exports;
     expect(Object.keys(CANONICAL_PRICING).filter(k => !ADDED_AFTER_FIXTURE.includes(k))).toEqual(Object.keys(before));
     for (const key of ADDED_AFTER_FIXTURE) expect(Object.hasOwn(before, key)).toBe(false);
-    for (const [key, row] of Object.entries(before)) {
+    for (const [key, row] of Object.entries(before).filter(([k]) => !REPRICED_AFTER_FIXTURE.includes(k))) {
       expect(close(CANONICAL_PRICING[key], row, FLOAT_NOISE_ROWS.includes(key) ? 1e-15 : 0, key)).toEqual([]);
     }
     const { CANONICAL_PRICING: _now, ANTHROPIC_CACHE_READ_MULT_OVERRIDES: nowOverrides, ...now } = snapshotExports();
     const { ANTHROPIC_CACHE_READ_MULT_OVERRIDES: beforeOverrides, ...beforeConstants } = constants;
     expect(now).toEqual(beforeConstants);
-    expect(Object.fromEntries(Object.entries(nowOverrides as Record<string, number>).filter(([k]) => !ADDED_AFTER_FIXTURE.includes(k)))).toEqual(beforeOverrides);
+    expect(Object.fromEntries(Object.entries(nowOverrides as Record<string, number>).filter(([k]) => !ADDED_AFTER_FIXTURE.includes(k) && !REPRICED_AFTER_FIXTURE.includes(k)))).toEqual(beforeOverrides);
   });
 });
 
@@ -103,7 +110,7 @@ describe('the price table file', () => {
   });
 
   test('every anthropic: row follows the cache multipliers, with the listed cache-read exceptions', () => {
-    const cacheReadExceptions: Record<string, number> = { 'anthropic:claude-fable-5-1': 0.025, 'anthropic:claude-fable-5-2': 0.025, 'anthropic:claude-opus-5-5': 0.05 };
+    const cacheReadExceptions: Record<string, number> = { 'anthropic:claude-fable-5-1': 0.025, 'anthropic:claude-fable-5-2': 0.025, 'anthropic:claude-opus-5-5': 0.05, 'anthropic:claude-sonnet-5-5': 0.05 };
     expect(ANTHROPIC_CACHE_READ_MULT_OVERRIDES).toEqual(cacheReadExceptions);
     for (const [key, p] of Object.entries(CANONICAL_PRICING).filter(([k]) => k.startsWith('anthropic:'))) {
       if (p.long_prompt) expect(p.long_prompt.threshold_tokens).toBe(ANTHROPIC_LONG_PROMPT_THRESHOLD_TOKENS);

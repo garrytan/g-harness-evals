@@ -13,7 +13,8 @@ const DS = 'openrouter:deepseek/deepseek-v4.1-flash-1017';
 describe('prices-2026-11-10', () => {
   test('was the table model-pricing.ts read until prices-2026-11-15: every prices-2026-11-09 row unchanged, then the prices-2026-11-08 DeepSeek row unchanged', () => {
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json this test accepts the table it covers and the table that replaced it
-    expect(['prices-2026-11-10.json', 'prices-2026-11-15.json']).toContain(PRICE_TABLE_FILE);
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-15.json this test accepts the table it covers and the tables that replaced it
+    expect(['prices-2026-11-10.json', 'prices-2026-11-15.json', 'prices-2026-11-16.json']).toContain(PRICE_TABLE_FILE);
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-09.json the new table is checked against the two tables it joins
     const fable = read('prices-2026-11-09.json'), deepseek = read('prices-2026-11-08.json'), now = read('prices-2026-11-10.json'); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json this test reads the table it covers by name
     expect(now.date).toBe('2026-11-10');
@@ -30,5 +31,7 @@ describe('prices-2026-11-10', () => {
     }
     expect(CANONICAL_PRICING[DS]).toEqual({ input: 0.3, output: 1.2, cache_read: 0.006 });
     expect(CANONICAL_PRICING['anthropic:claude-fable-5-2']).toEqual({ input: 8, output: 40, cache_read: 0.2, cache_write: 10 });
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json the old table keeps the Sonnet 5.5 cache-read price the new table corrects
+    expect(read('prices-2026-11-10.json').rows.find(r => r.model === 'claude-sonnet-5-5')?.cache_read).toBe(0.2);
   });
 });

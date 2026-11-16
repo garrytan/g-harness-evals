@@ -9,20 +9,24 @@ import { CANONICAL_PRICING, PRICE_TABLE_FILE, parsePriceTable, parseToolFees, TO
 const read = (file: string) => JSON.parse(readFileSync(new URL(`../runner/pricing/${file}`, import.meta.url), 'utf8')) as { date: string; about: string[]; rows: unknown[]; tool_fees?: Record<string, unknown>[] };
 
 describe('prices-2026-11-15', () => {
-  test('is the table model-pricing.ts reads: every prices-2026-11-10 row and about line unchanged, plus tool_fees', () => {
-    expect(PRICE_TABLE_FILE).toBe('prices-2026-11-15.json');
+  test('was the table model-pricing.ts read until prices-2026-11-16: every prices-2026-11-10 row and about line unchanged, plus tool_fees', () => {
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-15.json this test accepts the table it covers and the table that replaced it
+    expect(['prices-2026-11-15.json', 'prices-2026-11-16.json']).toContain(PRICE_TABLE_FILE);
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json the new table is checked against the table it replaces
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-15.json this test reads the table it covers by name
     const before = read('prices-2026-11-10.json'), now = read('prices-2026-11-15.json');
     expect(now.date).toBe('2026-11-15');
     expect(now.rows).toEqual(before.rows);
     expect(now.about.slice(0, before.about.length)).toEqual(before.about);
     expect(now.about).toHaveLength(before.about.length + 1);
     expect(before.tool_fees).toBeUndefined();
-    expect(CANONICAL_PRICING).toEqual(parsePriceTable(readFileSync(new URL('../runner/pricing/prices-2026-11-10.json', import.meta.url), 'utf8'), 'prices-2026-11-10.json')); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json the replaced table still parses to today's canonical pricing
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-15.json this test reads the table it covers by name
+    expect(parsePriceTable(readFileSync(new URL('../runner/pricing/prices-2026-11-15.json', import.meta.url), 'utf8'), 'prices-2026-11-15.json')).toEqual(parsePriceTable(readFileSync(new URL('../runner/pricing/prices-2026-11-10.json', import.meta.url), 'utf8'), 'prices-2026-11-10.json')); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json the replaced table still parses to today's canonical pricing
   });
 
   test('prices Anthropic web search at $10 and web fetch at $0, and OpenAI web search at $10, per 1,000 calls, each with its source', () => {
     expect(TOOL_FEES).toEqual({ 'anthropic:web_search': 0.01, 'anthropic:web_fetch': 0, 'openai:web_search': 0.01 });
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-15.json this test reads the table it covers by name
     const sources = Object.fromEntries(read('prices-2026-11-15.json').tool_fees!.map((r) => [`${r.provider}:${r.tool}`, [r.source_url, r.source_date, r.source_basis]]));
     expect(sources).toEqual({
       'anthropic:web_search': ['https://platform.claude.com/docs/en/about-claude/pricing', '2026-11-15', 'fetched'],

@@ -610,6 +610,52 @@
    "transport": "cursor-backend: every model call goes from the CLI to Cursor's servers with CURSOR_API_KEY (agent --help, --api-key: 'can also use CURSOR_API_KEY env var'; default endpoint https://api2.cursor.sh). No metering-proxy slot, no broker bind, no lease spend; cost comes from the account's usage export, attributed by trial time window, reported per cell, unreconciled and left out of the rankings (plan item E1)",
    "plan_tier": "Premium (harnesses/cursor/pin.json plan_tier)",
    "licence": "proprietary (Cursor). Cursor's terms 1.5(vii): a published benchmark result ships with everything needed to replicate it (harnesses/cursor/README.md, \"Terms\" and \"Harbor codegen cell\")"
+  },
+  "gemini-cli": {
+   "kind": "stock",
+   "version": "0.68.0",
+   "package": "@google/gemini-cli",
+   "npm_integrity": "sha512-eq7AWY+YCijNGKVwyiRjN+GuOdXU/djuOZhX18p+HDmNyUqFdqH7C5V6vDJLl1uffhRPhGijePV+YvY8lymrbQ==",
+   "published": "2026-11-10T21:22:49Z",
+   "repo": "https://github.com/google-gemini/gemini-cli",
+   "why": "latest npm release on 2026-11-15; Google's own coding harness, the own-harness row for Gemini 4 Carbon",
+   "install": "Harbor GeminiCli.install: npm install -g @google/gemini-cli@0.68.0",
+   "harbor_class": "harbor.agents.installed.gemini_cli:GeminiCli",
+   "housekeeping_default": "Gemini CLI 0.68.0 DEFAULT_MODEL_CONFIGS (bundle/chunk-2OHBIZ5H.js): prompt-completion, fast-ack-helper, edit-corrector, summarizer-default and summarizer-shell on flash-lite; web-search, web-fetch, loop-detection, llm-edit-fixer, next-speaker-checker, context-snapshotter and agent-history-provider-summarizer on gemini-3-flash-preview; loop-detection-double-check and chat-compression-default on gemini-3-pro-preview; the model router's classifier is a local Gemma model",
+   "transport": "GEMINI_API_KEY (the per-trial token) and GOOGLE_GEMINI_BASE_URL at the proxy's google route, which translates to OpenRouter (pin.json models google:gemini-4-carbon api). Declared differences from a stock install: the translation layer; countTokens answered by a local estimate (four characters per token) and never forwarded; the request pinned to google-vertex/global with no fallbacks; requests the translation cannot carry refused (HE-PROXY-012); safetySettings left out (OpenRouter has no counterpart, recorded as translation_dropped)",
+   "status": "runnable: agents.py FrontierGeminiCli and a frontier_settings record (internal-task round 3); keyless checks run the real Gemini CLI against a fake OpenRouter through the proxy (tests/gemini-cli-via-openrouter.test.ts) and agents.py against Harbor 0.24.0 (tests/frontier-harbor-gemini-grok.test.ts)",
+   "licence": "Apache-2.0 (package.json license field of @google/gemini-cli 0.68.0)"
+  },
+  "grok-build": {
+   "kind": "stock",
+   "version": "1.0.77",
+   "binary": "grok-1.0.77-linux-x86_64",
+   "binary_sha256": "b702950aa5827d855e493278ab6215a4e0f5bceb5bba6c6243a9f55cdd143b0a",
+   "binary_bytes": 201655392,
+   "source": "https://x.ai/cli/stable names 1.0.77 (read 2026-11-15); the binary is served from storage.googleapis.com/grok-build-public-artifacts/cli, GCS md5 N4VneZg3ldpQExSxUOVH6g==",
+   "install": "Harbor GrokBuild.install: curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.77; a wrapper must then require the installed binary sha256 to equal binary_sha256",
+   "harbor_class": "harbor.agents.installed.grok_build:GrokBuild",
+   "housekeeping_default": "Grok Build 1.0.77 built-in catalog puts models.default, session_summary, web_search and image_description on grok-4.6. Harbor 0.24.0 GrokBuild pins those keys to the cell model only for its openrouter, openai and anthropic prefixes, so on the xai prefix the shipped grok-4.6 default stands; Harbor also writes [features] telemetry = false and turns web search off",
+   "status": "runnable: agents.py FrontierGrokBuild and a frontier_settings record (internal-task round 3); the wrapper checks the installed binary against binary_sha256 before the agent starts (HE-FRONTIER-014), and a keyless check runs the real binary against a fake xAI through the proxy (tests/grok-build-via-xai.test.ts)",
+   "licence": "Apache-2.0 (as the internal-task plan records; not rechecked against the binary's own notices)"
+  },
+  "muse-code": {
+   "kind": "stock",
+   "version": "1.4.20-R8619.1",
+   "channel": "https://api.meta.ai/muse-code/channels/muse-stable (read 2026-11-15: version 1.4.20-R8619.1, state public)",
+   "manifest": "https://lookaside.facebook.com/lookaside/muse/download/?channel=muse&version=1.4.20-R8619.1&file=manifest.json",
+   "binary": "muse-x86-linux",
+   "binary_url": "https://lookaside.facebook.com/lookaside/muse/download/?channel=muse&version=1.4.20-R8619.1&file=muse-x86-linux",
+   "binary_sha256": "3685b023d45a1a07c8c559da00088bdf59564920b13a85adad11e13ad6f4d181",
+   "binary_bytes": 480565592,
+   "version_output": "Muse Code 1.4.20 (1.4.20-R8619.1)",
+   "wire": "keyless probe 2026-11-15: GET <origin>/muse-code/models (a root path, catalog {data: [{id}]}), then POST <base>/v1/responses (OpenAI Responses shape, developer and user input items, headers x-client-id and x-tbh-session-id); its first call is a reminder-observer housekeeping call on the cell model",
+   "install": "agents.py FrontierMuseCode: curl binary_url to ~/.local/bin/muse, then require its sha256 to equal binary_sha256 (Meta's install.sh fetches a self-updating launcher that installs the newest stable release, and Harbor's MuseCode refuses a version pin)",
+   "harbor_class": "harbor.agents.installed.muse_code:MuseCode",
+   "housekeeping_default": "reminder observers (skill, goal and verify reminders) on the cell model, each at its own reasoning effort, seen keyless",
+   "status": "runnable: agents.py FrontierMuseCode and a frontier_settings record (internal-task round 3). Muse Wonder is reached through OpenRouter's Responses API on the proxy's OpenRouter route, pinned to Meta's endpoint; the proxy serves the /muse-code/models catalog itself, listing meta/muse-wonder. Checked keyless with the real binary through the proxy (tests/muse-code-via-openrouter.test.ts)",
+   "binary_policy": "the binary is proprietary and never enters the repository or its public export",
+   "licence": "proprietary (Meta)"
   }
  },
  "models": {
@@ -658,6 +704,70 @@
    "source": "openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash-1017/endpoints, read 2026-11-09: DeepSeek's own endpoint (provider DeepSeek, tag deepseek) has context_length 1,048,576 and max_completion_tokens 393,216. max_output_tokens is the 128,000 cap every other model here runs under, below that ceiling",
    "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route), the one API the proxy forwards to OpenRouter. The proxy pins every request to DeepSeek's endpoint: it adds provider {only: [deepseek], allow_fallbacks: false, max_price at the price row} and refuses a models list, route, plugins or a variant suffix (HE-PROXY-008); a 2xx answer from another provider is infra_error (HE-PROXY-009)",
    "harnesses": ["pi", "hermes", "openclaw", "dsh"]
+  },
+  "anthropic:claude-sonnet-5-5": {
+   "provider": "anthropic",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "source": "openrouter.ai/api/v1/models/anthropic/claude-sonnet-5.5/endpoints, read 2026-11-15 (Anthropic's own endpoint: context_length 1,000,000, max_completion_tokens 128,000)",
+   "note": "near-frontier tier of the internal-task shootout, Terminal-Bench only, in the near-frontier harnesses; Garry approved it on 2026-11-15 as a one-eval exception to R54, which otherwise keeps Sonnet out of model tests",
+   "harnesses": ["pi", "hermes", "openclaw"]
+  },
+  "google:gemini-4-carbon": {
+   "provider": "google",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "source": "ai.google.dev/gemini-api/docs/models, read 2026-11-15 (Context 1M tokens, Max output 64K / 1M tokens): 65,536 is the standard output limit, and the 1M long-decode mode is not used; openrouter.ai endpoints for google/gemini-4-carbon list the same 65,536 on google-vertex/us and eu",
+   "api": "Gemini generateContent and streamGenerateContent on the metering proxy's google route, which reaches Gemini through OpenRouter (--google-via openrouter, runner/proxy/gemini-openrouter.ts): each request is translated to Chat Completions for google/gemini-4-carbon, pinned to Google's Vertex global endpoint, priced at the openrouter:google/gemini-4-carbon row and keyed with OPENROUTER_API_KEY; there is no direct Google key. Gemini CLI is the only harness that runs it",
+   "harnesses": ["gemini-cli"]
+  },
+  "xai:grok-4.7": {
+   "provider": "xai",
+   "context_window": 500000,
+   "max_output_tokens": 128000,
+   "source": "openrouter.ai/api/v1/models/x-ai/grok-4.7/endpoints, read 2026-11-15 (xAI's endpoint: context_length 500,000, max_completion_tokens 450,000). max_output_tokens is the 128,000 cap every other model here runs under, below that ceiling",
+   "api": "xAI Chat Completions and Responses on the metering proxy's xai route; Grok Build is the only harness that runs it",
+   "harnesses": ["grok-build"]
+  },
+  "openrouter:google/gemini-4-carbon": {
+   "provider": "openrouter",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "source": "openrouter.ai/api/v1/models/google/gemini-4-carbon/endpoints, read 2026-11-15: Google's Vertex global endpoint (provider Google, tag google-vertex/global) has context_length 1,048,576 and lists max_completion_tokens 943,718; max_output_tokens is Google's standard 64K output limit (ai.google.dev/gemini-api/docs/models: Max output 64K / 1M tokens), as on the google row",
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google's Vertex global endpoint: it adds provider {only: [google-vertex/global], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Google",
+   "harnesses": ["pi", "hermes", "openclaw"]
+  },
+  "openrouter:google/gemini-4-hydrogen": {
+   "provider": "openrouter",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "source": "openrouter.ai/api/v1/models/google/gemini-4-hydrogen/endpoints, read 2026-11-15: google-vertex/global has context_length 1,048,576 and lists max_completion_tokens 943,718; Google's own AI Studio and the regional Vertex endpoints list 65,536, Google's standard 64K output limit (ai.google.dev/gemini-api/docs/models: Max output 64K / 1M tokens), the limit used here",
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google's Vertex global endpoint: it adds provider {only: [google-vertex/global], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Google",
+   "harnesses": ["pi", "hermes", "openclaw"]
+  },
+  "openrouter:meta/muse-wonder": {
+   "provider": "openrouter",
+   "context_window": 1048576,
+   "max_output_tokens": 128000,
+   "source": "openrouter.ai/api/v1/models/meta/muse-wonder/endpoints, read 2026-11-15: Meta's own endpoint (provider Meta, tag meta) has context_length 1,048,576 and max_completion_tokens 943,718. max_output_tokens is the 128,000 cap every other model here runs under",
+   "api": "OpenAI Chat Completions (POST /v1/chat/completions on the metering proxy's OpenRouter route) for Pi, Hermes and OpenClaw, and OpenRouter's Responses API (POST /v1/responses on the same route) for Muse Code. The proxy pins every request to Meta's endpoint: it adds provider {only: [meta], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Meta",
+   "harnesses": ["pi", "hermes", "openclaw", "muse-code"]
+  },
+  "openrouter:moonshotai/kimi-k3.1-pro": {
+   "provider": "openrouter",
+   "context_window": 1048576,
+   "max_output_tokens": 128000,
+   "source": "openrouter.ai/api/v1/models/moonshotai/kimi-k3.1-pro/endpoints, read 2026-11-15: Moonshot AI's endpoints (moonshotai/mxfp4 at $2 / $10, moonshotai/highspeed at $4 / $20) have context_length 1,048,576 and max_completion_tokens 943,718; the max_price at the $2 / $10 row keeps requests off highspeed. max_output_tokens is the 128,000 cap every other model here runs under",
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Moonshot AI's endpoint: it adds provider {only: [moonshotai], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Moonshot AI",
+   "harnesses": ["pi", "hermes", "openclaw"]
+  },
+  "openrouter:z-ai/glm-5.3": {
+   "provider": "openrouter",
+   "context_window": 1048576,
+   "max_output_tokens": 128000,
+   "source": "openrouter.ai/api/v1/models/z-ai/glm-5.3/endpoints, read 2026-11-15: Z.AI's own endpoint (provider Z.AI, tag z-ai/fp8) has context_length 1,048,576 and max_completion_tokens 131,072. max_output_tokens is the 128,000 cap every other model here runs under",
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Z.AI's endpoint: it adds provider {only: [z-ai], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Z.AI",
+   "harnesses": ["pi", "hermes", "openclaw"]
   }
  },
  "effort": {
@@ -681,6 +791,10 @@
    "generativelanguage.googleapis.com",
    "aiplatform.googleapis.com",
    "*-aiplatform.googleapis.com",
+   "api.x.ai",
+   "openrouter.ai",
+   "api.meta.ai",
+   "play.googleapis.com",
    "cursor.sh",
    "*.cursor.sh",
    "downloads.cursor.com"
@@ -694,6 +808,10 @@
    "api.openai.com": "direct provider host",
    "generativelanguage.googleapis.com": "direct provider host (Gemini API; approved delta 2026-11-07)",
    "aiplatform.googleapis.com": "direct provider host (Vertex AI; approved delta), with its regional *-aiplatform.googleapis.com hosts",
+   "api.x.ai": "direct provider host (xAI's API, internal-task): every model call must go through the metering proxy",
+   "openrouter.ai": "direct provider host (OpenRouter, internal-task)",
+   "api.meta.ai": "direct provider host (Meta's Muse API, internal-task), also Muse Code's default base URL",
+   "play.googleapis.com": "Gemini CLI's usage-statistics upload (CLEARCUT_URL https://play.googleapis.com/log in @google/gemini-cli 0.68.0, internal-task)",
    "cursor.sh": "Cursor's API hosts, with every *.cursor.sh host (https://cursor.com/docs/enterprise/network-configuration): reachable from Cursor cells only (cursor_cells below), so no other cell can reach Cursor's backend",
    "downloads.cursor.com": "Cursor's package host (network-configuration page: client updates); a Cursor cell installs the pinned CLI package from it, no other cell needs it"
   },
@@ -711,6 +829,10 @@
     "generativelanguage.googleapis.com",
     "aiplatform.googleapis.com",
     "*-aiplatform.googleapis.com",
+    "api.x.ai",
+    "openrouter.ai",
+    "api.meta.ai",
+    "play.googleapis.com",
     "api3.cursor.sh",
     "api4.cursor.sh",
     "*.gcpp.cursor.sh",

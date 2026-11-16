@@ -1,17 +1,25 @@
 /**
- * Provider-hosted web tools (internal-task, HE-PROXY-006 in docs/errors.md). A lease proxy started with --refuse-hosted-tools
+ * Provider-hosted tools (internal-task, HE-PROXY-006 in docs/errors.md). A lease proxy started with --refuse-hosted-tools
  * refuses a request that declares one, because the provider runs the search or fetch on its own servers: outside the
  * trial's egress rules and the captured-request audit, and billed per use outside the token prices the proxy meters.
+ * On the google and xai routes (internal-task) the proxy refuses them with or without the flag, since it cannot price their
+ * per-call fees.
  *
  * Covered shapes:
  *  - Anthropic Messages server tools: a `tools` entry whose type starts with web_search_ or web_fetch_ (web_search_20250305,
  *    web_fetch_20250910);
  *  - OpenAI Responses hosted tools: a `tools` entry of type web_search, web_search_preview or a dated variant
  *    (web_search_preview_2025_03_11, the types runner/proxy/sections.ts maps web_search_call to);
- *  - Chat Completions `web_search_options` set to anything but null.
+ *  - Chat Completions `web_search_options` set to anything but null;
+ *  - google (Gemini generateContent): a `tools` entry holding googleSearch, googleSearchRetrieval, enterpriseWebSearch,
+ *    codeExecution or urlContext (or the snake_case spelling of each), which Google runs as grounding, code execution or
+ *    URL fetches;
+ *  - xai: a `tools` entry of a server-side tool type (web_search, x_search, attachment_search, collections_search,
+ *    file_search, code_execution, code_interpreter, mcp; docs.x.ai/developers/pricing, Tools Pricing), or Chat
+ *    Completions `search_parameters` (Live Search) set to anything but null.
  *
  * A harness's own function tool named web_search (Hermes declares one) runs in the trial's container and is not hosted:
- * only a tool's `type` is read, never its name.
+ * only a tool's `type` (or, on google, its hosted-tool key) is read, never its name.
  *
  * Install slots (internal-task) allow these tools and meter their fees instead: unpricedWebTools names the declarations with no
  * fee row in the price table, which an install slot refuses (HE-PROXY-011), and webToolUse counts the calls a response
@@ -21,18 +29,23 @@ import { sseUsage } from '../ledger/budget-ledger.ts';
 import { TOOL_FEES } from '../pricing/model-pricing.ts';
 
 const HOSTED_TYPE = /^web_(search|fetch)(_|$)/;
+const GOOGLE_HOSTED = ['googleSearch', 'googleSearchRetrieval', 'enterpriseWebSearch', 'codeExecution', 'urlContext', 'google_search', 'google_search_retrieval', 'enterprise_web_search', 'code_execution', 'url_context'];
+const XAI_HOSTED_TYPES = new Set(['web_search', 'x_search', 'attachment_search', 'collections_search', 'file_search', 'code_execution', 'code_interpreter', 'mcp']);
 
-/** Where a request declares a hosted web tool (`tools[2].type web_search_20250305`, `web_search_options`); empty when it declares none. */
-export function hostedWebTools(body: Record<string, any> | undefined): string[] {
+/** Where a request declares a hosted tool (`tools[2].type web_search_20250305`, `tools[0].googleSearch`, `web_search_options`); empty when it declares none.
+ *  `provider` (the proxy route) adds that provider's own shapes; without it only the Anthropic and OpenAI shapes are read. */
+export function hostedWebTools(body: Record<string, any> | undefined, provider?: string): string[] {
   if (!body) return [];
   const found: string[] = [];
   if (Array.isArray(body.tools)) {
     body.tools.forEach((tool: unknown, i: number) => {
       const type = (tool as { type?: unknown } | null)?.type;
-      if (typeof type === 'string' && HOSTED_TYPE.test(type)) found.push(`tools[${i}].type ${/^[A-Za-z0-9._-]{1,64}$/.test(type) ? type : '(unreadable)'}`);
+      if (typeof type === 'string' && (HOSTED_TYPE.test(type) || (provider === 'xai' && XAI_HOSTED_TYPES.has(type)))) found.push(`tools[${i}].type ${/^[A-Za-z0-9._-]{1,64}$/.test(type) ? type : '(unreadable)'}`);
+      if (provider === 'google' && tool && typeof tool === 'object') for (const k of GOOGLE_HOSTED) if (Object.hasOwn(tool, k)) found.push(`tools[${i}].${k}`);
     });
   }
   if (body.web_search_options !== undefined && body.web_search_options !== null) found.push('web_search_options');
+  if (provider === 'xai' && body.search_parameters !== undefined && body.search_parameters !== null) found.push('search_parameters');
   return found;
 }
 

@@ -109,12 +109,17 @@ export function readCapture(file: string): { requests: CapturedRequest[]; trunca
 export const readCaptureFile = (file: string): CapturedRequest[] | null => readCapture(file)?.requests ?? null;
 
 /** Agent-loop requests: on the cell model, not a count_tokens call, declaring at least one tool (every cell-model request
- *  when none declares a tool). */
+ *  when none declares a tool). A Gemini cell's capture holds the proxy's OpenRouter translation, whose model is google/<model>.
+ *  Muse Code's reminder observers call the cell model with tools too; its requests carry prompt_cache_key tbh:<role>:..., so
+ *  when any does, only tbh:main: requests count. */
 export function agentLoopRequests(requests: CapturedRequest[], cellModel: string): Array<{ route?: string; body: Body }> {
   const name = cellModel.split(':').slice(1).join(':');
-  const onModel = requests.filter((r): r is { route?: string; body: Body; bytes: number } => r.body !== null && !r.route?.endsWith('/count_tokens') && r.body.model === name);
+  const names = cellModel.startsWith('google:') ? [name, 'google/' + name] : [name];
+  const onModel = requests.filter((r): r is { route?: string; body: Body; bytes: number } => r.body !== null && !r.route?.endsWith('/count_tokens') && names.includes(r.body.model));
   const withTools = onModel.filter((r) => Array.isArray(r.body.tools) && r.body.tools.length > 0);
-  return (withTools.length ? withTools : onModel).map(({ route, body }) => ({ route, body }));
+  const roles = withTools.filter((r) => typeof r.body.prompt_cache_key === 'string' && r.body.prompt_cache_key.startsWith('tbh:'));
+  const loop = roles.length ? roles.filter((r) => (r.body.prompt_cache_key as string).startsWith('tbh:main:')) : withTools;
+  return (loop.length ? loop : onModel).map(({ route, body }) => ({ route, body }));
 }
 
 export const readLock = (path: string): Lock => JSON.parse(readFileSync(path, 'utf8')) as Lock;
