@@ -122,6 +122,18 @@ describe('decide: the rule', () => {
     expect(v.models.opus!.screen!.tier).toBe('T2');
     expect(v.reasons.find((r) => r.rule === 'pass_confirm')).toBeDefined();
   });
+  test('a T3 that could not run keeps the T2 screen flag in the verdict and names the flagged model in the alert', () => {
+    for (const [who, name] of [['opus', 'Opus 5.5 in Claude Code'], ['sol', 'GPT-6.1 Sol in Codex']] as const) {
+      const t2 = decide(input('gstack', 'T2', trials('gstack', 'T2', ['plain', 'prev', 'new'], ['opus', 'sol'], 1, regress(BAD6, who))));
+      for (const failure of [{ detail: 'no Ubicloud room for the T3 VM', check_first: 'Ubicloud usage', infra: true }, { detail: 'T3 could not be decided', check_first: 'the run log' }]) {
+        const v = decide(input('gstack', 'T3', [], { earlier: t2, failure }));
+        expect(v.status).toBe('INCOMPLETE');
+        expect(v.reasons.map((r) => [r.rule, r.model ?? null])).toContainEqual(['pass_screen', who]);
+        expect(v.cleared.map((r) => r.rule)).not.toContain('pass_screen');
+        expect(renderAlert(v)).toContain(`- What moved: ${name}: pass`);
+      }
+    }
+  });
   test('a T3 that does not repeat the drop clears the screen flag', () => {
     const t2 = decide(input('gstack', 'T2', trials('gstack', 'T2', ['plain', 'prev', 'new'], ['opus', 'sol'], 1, regress(BAD6))));
     const v = decide(input('gstack', 'T3', trials('gstack', 'T3', ['prev', 'new'], ['opus'], 2), { earlier: t2, expected: { arms: ['prev', 'new'], models: ['opus'] } }));
@@ -293,6 +305,21 @@ describe('alert', () => {
       '- Receipts: canary-receipts:runs/canary-test/gbrain, drive canary/runs/canary-test/',
       "- Suggested owner: internal-task; what to check first: gbrain's scope defaults: a cross-scope read or hidden-fact leak the previous release did not have",
     ].join('\n'));
+  });
+  test('a tier with no Ubicloud room after a flagged earlier tier keeps the product headline and owner', () => {
+    const rows = trials('gbrain', 'T1', ['prev', 'new'], ['opus', 'sol'], 1, { patch: (t) => { if (t.canary.arm === 'new' && t.canary.model_key === 'sol' && t.task === 'task-01') t.canary.safety = { cross_scope_reads: 1, hidden_fact_leaks: 1 }; } });
+    const t1 = decide(input('gbrain', 'T1', rows, { install_route: null }));
+    const room = { detail: 'no Ubicloud room for the T2 VM', check_first: 'Ubicloud usage', infra: true };
+    const t2 = decide(input('gbrain', 'T2', [], { earlier: t1, install_route: null, failure: room }));
+    expect(t2.reasons.map((x) => x.status)).toContain('WATCH');
+    const late = renderAlert(t2);
+    expect(late).toStartWith('Harness Evals canary: INCOMPLETE in gbrain stable');
+    expect(late).not.toContain('infrastructure only');
+    expect(late).toContain('- Why: no Ubicloud room for the T2 VM');
+    expect(late).toContain('- Suggested owner: internal-task;');
+    const first = renderAlert(decide(input('gbrain', 'T1', [], { tier: 'T0', install_route: null, failure: room })));
+    expect(first).toStartWith('Harness Evals canary: INCOMPLETE, infrastructure only, not a gbrain result:');
+    expect(first).toContain('- Suggested owner: internal-task;');
   });
   test('an INCOMPLETE with no trials keeps only the lines that apply', () => {
     const f = decide(input('gstack', 'T1', [], { tier: 'T0', failure: { detail: 'another canary run holds the lock', check_first: 'lock.json' }, release: { prev: { sha: 'unknown', version: 'unknown' }, new: { sha: 'unknown', version: 'unknown' }, range: [] } }));

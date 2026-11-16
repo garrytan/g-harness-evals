@@ -15,6 +15,10 @@
 # history line and exits 30.
 # Money: a monthly ledger lease canary-YYYY-MM (prereg leases.monthly, $1,000) that every tier's lease is reserved from; T2,
 # T3 and bisect keep the month's T1 reserve untouched, so a used-up month runs T0 and T1 only and the verdict says so.
+# Room: before each VM step (T0 and every tier) a remote run asks ubi-runner.sh capacity whether one standard-16 VM fits
+# the Ubicloud vCPU quota, and waits while it does not, up to prereg schedule.capacity_wait_hours (4) for the whole night.
+# A night that runs out of that wait, or whose VM is refused for quota anyway, ends INCOMPLETE with the rule
+# ubicloud_capacity, which alert.ts words as infrastructure, not a release result, and owns to internal-task.
 # --baseline runs T0, then T2 at 3 attempts for each product with the given commits, under the baseline ledger (prereg leases.baseline_ledger, default canary-baseline).
 # Suites are scripts/canary/<suite>/t0.sh and run-tier.sh (docs/canary.md); --fake passes through to them, and without
 # --local t0.sh and run-tier.sh get --remote (one Ubicloud VM per tier; UBI_OWNER must be set by the caller).
@@ -76,18 +80,23 @@ release_args() { # <product>: decide's release flags from $out/<p>/release.json,
   if [ -f "$f" ]; then jq -r '["--prev-sha", .prev.sha, "--prev-version", .prev.version, "--new-sha", .new.sha, "--new-version", .new.version] | .[]' "$f"
   else printf '%s\n' --prev-sha unknown --prev-version unknown --new-sha unknown --new-version unknown; fi
 }
-incomplete() { # <product> <detail> <check first>: an INCOMPLETE verdict for a product that has none yet
-  local p=$1 earlier=()
+incomplete() { # <product> <detail> <check first> [infra]: an INCOMPLETE verdict for a product that has none yet
+  local p=$1 earlier=() infra=()
+  [ "${4:-}" != infra ] || infra=(--infra)
   [ ! -f "$out/$p/verdict.json" ] || return 0
   mkdir -p "$out/$p/failed"
   [ -z "${last_verdict[$p]:-}" ] || earlier=(--earlier "${last_verdict[$p]}")
   mapfile -t rel < <(release_args "$p")
   bun "$here/decide.ts" --suite "$p" --tier T0 --prereg "$out/prereg.json" --tasks "$(tasks_for "$p")" "${rel[@]}" --run-id "$run_id" \
-    --receipts-dir "runs/$run_id/$p" --failure "$2" --check-first "$3" "${earlier[@]}" --out "$out/$p/failed" >/dev/null 2>>"$out/run.log" \
+    --receipts-dir "runs/$run_id/$p" --failure "$2" --check-first "$3" "${infra[@]}" "${earlier[@]}" --out "$out/$p/failed" >/dev/null 2>>"$out/run.log" \
     || printf '{"schema":"canary-verdict/1","suite":"%s","run_id":"%s","tier":"T0","tiers_run":[],"status":"INCOMPLETE","next":"none","release":{"prev":{"sha":"unknown","version":"unknown"},"new":{"sha":"unknown","version":"unknown"},"range":[],"bisect":null},"install_route":null,"receipts_dir":"runs/%s/%s","reasons":[{"rule":"run_failed","status":"INCOMPLETE","tier":"T0","detail":"decide could not run","check_first":"the run log","sticky":false}],"cleared":[],"models":{},"particle_flags":[],"digest":[],"notes":[]}\n' "$p" "$run_id" "$run_id" "$p" > "$out/$p/failed/verdict.json"
   [ -f "$out/$p/failed/alert.md" ] || printf 'Harness Evals canary: INCOMPLETE in %s stable unknown (unknown), previous unknown (unknown)\n- Suggested owner: internal-task; what to check first: the run log\n' "$p" > "$out/$p/failed/alert.md"
   cp "$out/$p/failed/verdict.json" "$out/$p/verdict.json"
   cp "$out/$p/failed/alert.md" "$out/$p/alert.md"
+  product_spend "$p"
+}
+product_spend() { # <product>: what the product's tiers cost tonight, from their trials, for its history line
+  spend[$1]=$(find "$out/$1" -mindepth 2 -maxdepth 2 -name trials.jsonl -exec cat {} + 2>/dev/null | jq -s 'map(.usage.usd // 0) | add // 0')
 }
 tasks_for() { local t; t=$(jq -r --arg p "$1" '.suites[$p].tasks.path // empty' "$out/prereg.json" 2>/dev/null); echo "$root/${t:-$prereg_path}"; }
 
@@ -203,6 +212,30 @@ t1_keep=$(P '.leases.monthly.t1_reserve_usd // 0'); [ "$mode" = baseline ] && t1
 reserve() { [ -n "$budget_run" ] || return 20; bun "$here/lease.ts" reserve --ledger "$ledger" --budget-run "$budget_run" --usd "$1" --what "$2" --keep-usd "$3" 2>>"$out/run.log"; }
 settle() { bun "$here/lease.ts" settle --ledger "$ledger" --budget-run "$budget_run" --entry "$1" --trials "$2" >/dev/null 2>>"$out/run.log" || log "could not settle $1"; }
 
+# ---- Ubicloud room ----------------------------------------------------------------------------------------------------
+room_deadline="" room_last=""
+room() { # <what>: 0 once one standard-16 VM fits the quota (or the probe could not tell); 1 when the night's wait is used up
+  [ $local_run -eq 0 ] || return 0
+  local probe rc
+  [ -n "$room_deadline" ] || room_deadline=$(( $(date +%s) + $(P '.schedule.capacity_wait_hours // 4') * 3600 ))
+  while :; do
+    probe=$(bash "$root/scripts/ubicloud/ubi-runner.sh" capacity -s standard-16 2>>"$out/run.log"); rc=$?
+    case $rc in
+      0) room_last=""; return 0 ;;
+      3) room_last=${probe#UBICLOUD_CAPACITY: } ;;
+      *) log "room: the capacity probe could not tell (exit $rc); $1 tries its VM anyway"; return 0 ;;
+    esac
+    [ "$(date +%s)" -lt "$room_deadline" ] || { log "room: no room for $1 and the night's wait is used up ($room_last)"; return 1; }
+    log "room: $1 waits for Ubicloud room ($room_last)"
+    sleep "${CANARY_ROOM_POLL_SECONDS:-600}"
+  done
+}
+quota_refused() { grep -rqs 'vCPU quota exhausted' "$1"; } # <dir>: the VM step in <dir> was refused for quota; callers check it only when the step left no results, since a trial transcript can print the same words
+no_room() { # <product> <step>
+  incomplete "$1" "Ubicloud capacity: no room for the $2 VM (${room_last:-its create was refused for vCPU quota}) within the night's wait of up to $(P '.schedule.capacity_wait_hours // 4') hours; this says nothing about the release" \
+    "Ubicloud usage (ubi-runner.sh usage), not $1" infra
+}
+
 # ---- one product ------------------------------------------------------------------------------------------------------
 suite() { # <product> <script> <args...>
   local p=$1 s=$2; shift 2
@@ -216,6 +249,7 @@ suite() { # <product> <script> <args...>
 run_tier() { # <product> <tier> <attempts> <arms> <models> <lease usd> <keep usd> <dir> <prev sha> <new sha> <decide release args...>
   local p=$1 tier=$2 attempts=$3 arms=$4 models=$5 lease=$6 keep=$7 dir=$8 prev=$9 new=${10}; shift 10
   local entry rc
+  room "$p $tier" || return 21
   entry=$(reserve "$lease" "$run_id $p $tier" "$keep") || return 20
   mkdir -p "$dir"
   step="$p $tier"
@@ -223,6 +257,7 @@ run_tier() { # <product> <tier> <attempts> <arms> <models> <lease usd> <keep usd
     --models "$models" --lease-usd "$lease" --run-id "$run_id-$p-${tier,,}" --out "$dir"
   rc=$?
   settle "$entry" "$dir/trials.jsonl"
+  [ $rc -eq 0 ] || [ -s "$dir/trials.jsonl" ] || ! quota_refused "$dir" || { log "$p $tier: Ubicloud refused its VM for vCPU quota"; return 21; }
   local prev_args=()
   [ ! -f "$out/$p/previous-t2.json" ] || prev_args=(--previous "$out/$p/previous-t2.json")
   decide_last=(--suite "$p" --tier "${tier%%-*}" --prereg "$out/prereg.json" --tasks "$(tasks_for "$p")" "$@" --run-id "$run_id" --receipts-dir "runs/$run_id/$p"
@@ -255,8 +290,18 @@ run_product() { # <product> <kind: moved|due|baseline> <prev sha> <new sha>
   [ -z "$t2_verdict" ] || receipts cat --path "$t2_verdict" --out "$pd/previous-t2.json" 2>/dev/null || rm -f "$pd/previous-t2.json"
 
   step="$p T0"
-  suite "$p" t0.sh --prev "$prev" --new "$new" --out "$pd/t0"
-  local t0rc=$?
+  local t0rc refused=0
+  while :; do
+    room "$p T0" || { no_room "$p" T0; return; }
+    suite "$p" t0.sh --prev "$prev" --new "$new" --out "$pd/t0"
+    t0rc=$?
+    [ $t0rc -ne 0 ] && [ ! -f "$pd/t0/t0.json" ] && quota_refused "$pd/t0" || break
+    refused=$(( refused + 1 ))
+    log "$p T0: Ubicloud refused its VM for vCPU quota (try $refused)"
+    mv "$pd/t0" "$pd/t0-quota-$refused"
+    [ "$(date +%s)" -lt "${room_deadline:-0}" ] || { no_room "$p" T0; return; }
+    sleep "${CANARY_ROOM_POLL_SECONDS:-600}"
+  done
   bun "$here/decide.ts" --suite "$p" --tier T0 --prereg "$out/prereg.json" --tasks "$(tasks_for "$p")" "${rel[@]}" --run-id "$run_id" --receipts-dir "runs/$run_id/$p" \
     --range "$pd/range.json" --t0 "$pd/t0/t0.json" --t0-exit "$t0rc" --out "$pd/T0" >/dev/null 2>>"$out/run.log" || { incomplete "$p" "decide failed at T0" "the run log"; return; }
   last_verdict[$p]=$pd/T0/verdict.json
@@ -267,7 +312,7 @@ run_product() { # <product> <kind: moved|due|baseline> <prev sha> <new sha>
 
   if [ "$status" != BROKEN ] && [ "$status" != INCOMPLETE ] && [ "$kind" = moved ]; then
     run_tier "$p" T1 1 prev,new "$t1_models" "$(P ".leases.per_run_usd.T1.$p")" 0 "$pd/T1" "$prev" "$new" "${rel[@]}"
-    case $? in 0) last_verdict[$p]=$pd/T1/verdict.json ;; 20) incomplete "$p" "the lease could not cover T1 (monthly lease $ledger_name)" "the monthly lease: it renews next month"; return ;; *) incomplete "$p" "T1 could not be decided" "the run log"; return ;; esac
+    case $? in 0) last_verdict[$p]=$pd/T1/verdict.json ;; 21) no_room "$p" T1; return ;; 20) incomplete "$p" "the lease could not cover T1 (monthly lease $ledger_name)" "the monthly lease: it renews next month"; return ;; *) incomplete "$p" "T1 could not be decided" "the run log"; return ;; esac
   fi
   v=${last_verdict[$p]}; status=$(jq -r .status "$v"); next=$(jq -r .next "$v")
   local due=0 every; every=$(P '.tiers.T2.every_days // 30')
@@ -277,7 +322,7 @@ run_product() { # <product> <kind: moved|due|baseline> <prev sha> <new sha>
     local attempts=1 lease; lease=$(P ".leases.per_run_usd.T2.$p")
     [ "$kind" != baseline ] || { attempts=$(P '.tiers.baseline.attempts'); lease=$(P ".leases.baseline_usd.$p"); }
     run_tier "$p" T2 "$attempts" plain,prev,new "$t2_models" "$lease" "$t1_keep" "$pd/T2" "$prev" "$new" "${rel[@]}"
-    case $? in 0) last_verdict[$p]=$pd/T2/verdict.json ;; 20) lease_skip "$p" T2 ;; *) incomplete "$p" "T2 could not be decided" "the run log"; return ;; esac
+    case $? in 0) last_verdict[$p]=$pd/T2/verdict.json ;; 21) no_room "$p" T2; return ;; 20) lease_skip "$p" T2 ;; *) incomplete "$p" "T2 could not be decided" "the run log"; return ;; esac
   fi
   v=${last_verdict[$p]}; status=$(jq -r .status "$v"); next=$(jq -r .next "$v")
   if [ "$kind" != baseline ] && { [ "$next" = T3 ] || [ "$next" = bisect ]; }; then
@@ -286,7 +331,7 @@ run_product() { # <product> <kind: moved|due|baseline> <prev sha> <new sha>
     n=$(awk -F, '{print NF}' <<<"$flagged")
     local per; per=$(P ".leases.per_run_usd.T3_per_model.$p")
     run_tier "$p" T3 2 prev,new "$flagged" "$(( per * n ))" "$t1_keep" "$pd/T3" "$prev" "$new" "${rel[@]}"
-    case $? in 0) last_verdict[$p]=$pd/T3/verdict.json ;; 20) lease_skip "$p" "$next" ;; *) incomplete "$p" "T3 could not be decided" "the run log"; return ;; esac
+    case $? in 0) last_verdict[$p]=$pd/T3/verdict.json ;; 21) no_room "$p" T3; return ;; 20) lease_skip "$p" "$next" ;; *) incomplete "$p" "T3 could not be decided" "the run log"; return ;; esac
     if [ "$next" = bisect ] && [ "$(jq -r .status "${last_verdict[$p]}")" = REGRESSION ]; then
       local t3args=("${decide_last[@]}") bis
       jq -c --arg sha "$new" --arg v "$(jq -r .new.version "$pd/release.json")" 'if (.[-1].sha // "") == $sha then . else . + [{tag: "stable", version: $v, sha: $sha}] end' "$pd/range.json" > "$pd/bisect-range.json"
@@ -296,7 +341,7 @@ run_product() { # <product> <kind: moved|due|baseline> <prev sha> <new sha>
         last_verdict[$p]=$pd/T2/verdict.json
         run_tier "$p" "T3-bisect-$mid" 2 prev,new "$flagged" "$(( per * n ))" "$t1_keep" "$pd/bisect-$mid" "$prev" "$msha" \
           --prev-sha "$prev" --prev-version "$(jq -r .prev.version "$pd/release.json")" --new-sha "$msha" --new-version "$mver"
-        case $? in 0) ;; 20) note="not run: the lease could not cover bisect step $mver"; ok=0; break ;; *) note="not run: bisect step $mver failed"; ok=0; break ;; esac
+        case $? in 0) ;; 20) note="not run: the lease could not cover bisect step $mver"; ok=0; break ;; 21) note="not run: no Ubicloud room for bisect step $mver"; ok=0; break ;; *) note="not run: bisect step $mver failed"; ok=0; break ;; esac
         if [ "$(jq -r .status "$pd/bisect-$mid/verdict.json")" = REGRESSION ]; then hi=$mid; else lo=$mid; fi
       done
       last_verdict[$p]=$pd/T3/verdict.json
@@ -317,7 +362,7 @@ run_product() { # <product> <kind: moved|due|baseline> <prev sha> <new sha>
   fi
   cp "${last_verdict[$p]}" "$pd/verdict.json"
   if [ "$(jq -r .status "$pd/verdict.json")" = OK ]; then bun "$here/alert.ts" ok --verdict "$pd/verdict.json" > "$pd/alert.md"; else bun "$here/alert.ts" alert --verdict "$pd/verdict.json" > "$pd/alert.md"; fi
-  spend[$p]=$(find "$pd" -mindepth 2 -maxdepth 2 -name trials.jsonl -exec cat {} + | jq -s 'map(.usage.usd // 0) | add // 0')
+  product_spend "$p"
 }
 
 # ---- what to run -------------------------------------------------------------------------------------------------------

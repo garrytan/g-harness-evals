@@ -5,7 +5,7 @@
 //     --prev-sha <sha> --prev-version <v> --new-sha <sha> --new-version <v> --run-id <id> --out <dir>
 //     [--trials <trials.jsonl>]... [--t0 <t0.json>] [--t0-exit <n>] [--suite-exit <n>] [--arms plain,prev,new]
 //     [--models opus,sol[,particle]] [--earlier <verdict.json>] [--previous <verdict.json>] [--range <moves.json>]
-//     [--bisect <json>] [--ref-moved] [--note <text>]... [--receipts-dir <path>] [--failure <reason> --check-first <text>]
+//     [--bisect <json>] [--ref-moved] [--note <text>]... [--receipts-dir <path>] [--failure <reason> --check-first <text> [--infra]]
 //
 // Writes <out>/verdict.json and <out>/alert.md (scripts/canary/alert.ts) and prints "<status> next=<next>". Exit 0 whatever
 // the status, 2 on a usage error. The statistics:
@@ -91,7 +91,7 @@ export interface DecideInput {
   t0?: { exit: number; report: T0Report | null } | null; suite_exit?: number | null;
   earlier?: Verdict | null; previous?: Verdict | null; ref_moved?: boolean; notes?: string[];
   /** A run-level failure (rig check, lock, releases, a crashed step): INCOMPLETE with this reason, no tier evaluated. */
-  failure?: { detail: string; check_first: string } | null;
+  failure?: { detail: string; check_first: string; infra?: boolean } | null;
 }
 
 const RANK: Record<Status, number> = { OK: 0, WATCH: 1, REGRESSION: 2, INCOMPLETE: 3, BROKEN: 4 };
@@ -300,7 +300,7 @@ export function decide(input: DecideInput): Verdict {
   else if (input.suite_exit != null && input.suite_exit !== 0) add({ rule: 'suite_failed', status: 'INCOMPLETE', detail: `the ${suite} ${tier} run exited ${input.suite_exit}`, check_first: `the ${tier} run log of the ${suite} rig` });
 
   if (input.failure) {
-    add({ rule: 'run_failed', status: 'INCOMPLETE', detail: input.failure.detail, check_first: input.failure.check_first });
+    add({ rule: input.failure.infra ? 'ubicloud_capacity' : 'run_failed', status: 'INCOMPLETE', detail: input.failure.detail, check_first: input.failure.check_first });
   } else if (tier === 'T0') {
     const t0 = input.t0;
     const failed = t0?.report?.checks.filter((c) => !c.ok) ?? [];
@@ -407,13 +407,13 @@ export function decide(input: DecideInput): Verdict {
   }
 
   // Earlier tiers of the same run: a reason this tier measured again is superseded, a sticky one carries forward, and a
-  // screen flag this tier did not repeat is cleared.
+  // screen flag this tier did not repeat is cleared. A failure measured nothing, so it clears nothing.
   const cleared: Reason[] = [...(input.earlier?.cleared ?? [])];
   const carried: Reason[] = [];
   for (const r of input.earlier?.reasons ?? []) {
     const again = reasons.some((x) => x.model === r.model && family(x.rule) === family(r.rule));
     if (again) continue;
-    if (r.sticky || r.status === 'BROKEN' || r.status === 'INCOMPLETE') carried.push(r);
+    if (r.sticky || r.status === 'BROKEN' || r.status === 'INCOMPLETE' || input.failure) carried.push(r);
     else cleared.push(r);
   }
   reasons.unshift(...carried);
@@ -481,7 +481,7 @@ if (import.meta.main) {
     t0: tier === 'T0' ? { exit: t0Exit === undefined ? -1 : Number(t0Exit), report: json<T0Report>(flag('--t0')) } : null,
     suite_exit: suiteExit === undefined ? null : Number(suiteExit),
     earlier: json<Verdict>(flag('--earlier')), previous: json<Verdict>(flag('--previous')), ref_moved: argv.includes('--ref-moved'), notes: all('--note'),
-    failure: flag('--failure') ? { detail: flag('--failure')!, check_first: flag('--check-first') ?? 'the run log' } : null,
+    failure: flag('--failure') ? { detail: flag('--failure')!, check_first: flag('--check-first') ?? 'the run log', infra: argv.includes('--infra') } : null,
   });
   const out = need('--out');
   mkdirSync(out, { recursive: true });

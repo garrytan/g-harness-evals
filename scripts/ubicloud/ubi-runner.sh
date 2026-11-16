@@ -35,7 +35,8 @@
 # confirmed gone or provably never existed, waiting out a create that may still
 # be in flight. An interrupted `up` or `run` (EXIT, INT, TERM, HUP, QUIT) runs
 # that `down`; further signals are ignored until it finishes. A create refused
-# for vCPU quota prints the project's usage per owner.
+# for vCPU quota prints the project's usage per owner. `capacity` answers whether
+# one more VM fits the quota without creating one (see cmd_capacity).
 #
 # Stale-VM sweeps are off by default. With UBI_GC_HOURS set to a positive
 # number, every `up` first destroys this owner's VMs older than that; `gc HOURS`
@@ -213,6 +214,50 @@ cmd_usage() {
       printf "%-14s %4d %6d\n", "total", count, total
     }'
   rm -rf "$tmp"
+}
+
+# capacity [-s SIZE] [-l LOCATION]: whether the project's vCPU quota has room for
+# one more VM of SIZE, without creating one. The quota maximum is not readable
+# through the API, so this sends a create Ubicloud must refuse: a valid size with
+# an invalid unix user. Ubicloud checks the vCPU quota before it validates the
+# user, so a quota refusal reports the real used and maximum counts (managed
+# runners included), and a user refusal means the quota had room. Prints one
+# UBICLOUD_CAPACITY line; exits 0 with room, 3 without, 1 when the answer was
+# neither. Room in the quota is not room on a host: a create can still wait for
+# capacity.
+cmd_capacity() {
+  local size=$DEFAULT_SIZE location=$DEFAULT_LOCATION name dir err created=no refusal need used max
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -s|--size) size=$2; shift 2 ;;
+      -l|--location) location=$2; shift 2 ;;
+      *) die "capacity: unknown option $1" ;;
+    esac
+  done
+  name=$(new_name)
+  dir=$(mktemp -d)
+  ssh-keygen -q -t ed25519 -N '' -C "$name" -f "$dir/key"
+  err=$(cli vm "$location/$name" create -s "$size" -u 0capacity-probe "$(cat "$dir/key.pub")" 2>&1 >/dev/null) && created=yes
+  rm -rf "$dir"
+  if [ "$created" = yes ]; then
+    log "WARNING: the capacity probe created $location/$name; destroying it"
+    cmd_down "$name" -l "$location" || log "WARNING: failed to destroy $name; run: $0 down $name -l $location"
+    echo "UBICLOUD_CAPACITY: room=yes size=$size location=$location"
+    return 0
+  fi
+  refusal=$(sed -n 's/.*Requested vCPU count: \([0-9]*\), currently used vCPU count: \([0-9]*\), maximum allowed vCPU count: \([0-9]*\).*/\1 \2 \3/p' <<<"$err")
+  if [ -n "$refusal" ]; then
+    read -r need used max <<<"$refusal"
+    echo "UBICLOUD_CAPACITY: room=no size=$size need=$need used=$used max=$max free=$(( max - used ))"
+    return 3
+  fi
+  if grep -q 'OS user name' <<<"$err"; then
+    echo "UBICLOUD_CAPACITY: room=yes size=$size location=$location"
+    return 0
+  fi
+  printf '%s\n' "$err" >&2
+  echo "UBICLOUD_CAPACITY: room=unknown size=$size"
+  return 1
 }
 
 write_state() {
@@ -521,6 +566,9 @@ usage: ubi-runner.sh <command> [args]
   down NAME [-l LOC]     destroy the VM; returns once it is confirmed gone or never existed
   list [--mine]          list all VMs in the project, or only this owner's
   usage                  VMs and vCPUs per owner across the project
+  capacity [-s SIZE] [-l LOCATION]
+                         whether one more VM of SIZE fits the vCPU quota (creates nothing);
+                         exits 0 with room, 3 without (printing used and maximum), 1 unknown
   owner                  print this caller's owner tag ($OWNER)
   ttl                    print the TTL hours a new VM's name carries (-t<hours>)
   gc HOURS               destroy this owner's VMs older than HOURS (never other owners')
@@ -557,6 +605,7 @@ case $cmd in
   down) cmd_down "$@" ;;
   list) cmd_list "$@" ;;
   usage) cmd_usage ;;
+  capacity) require_create; cmd_capacity "$@" ;;
   owner) echo "$OWNER" ;;
   ttl) ttl_hours ;;
   gc) cmd_gc "$@" ;;

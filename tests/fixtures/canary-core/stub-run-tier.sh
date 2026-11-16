@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stub of scripts/canary/<suite>/run-tier.sh for tests/canary-core-run.test.ts: one contract-shaped trials.jsonl row per model, arm,
 # task and attempt, every listed task passing. CANARY_STUB_MODE (for the suite named by CANARY_STUB_SUITE): regress fails Opus's
-# T1 tasks and its first 8 tasks on the new arm; crash exits 1 with no trials. CANARY_STUB_USD sets each trial's usage.usd (default
+# T1 tasks and its first 8 tasks on the new arm; crash exits 1 with no trials; quota-t1 answers T1 like a VM create refused for
+# vCPU quota (the ubi-runner.sh line in <out>/remote.log, exit 1, no trials). CANARY_STUB_USD sets each trial's usage.usd (default
 # 0.25). Each call is logged to <out>/../../calls.log. Like the real rigs, it leaves a second copy of the trials under
 # <out>/shard/, which spend accounting must not count twice.
 set -euo pipefail
@@ -17,7 +18,8 @@ mkdir -p "$out"
 echo "$tier $models $arms $k" >> "$out/../../calls.log"
 mode=ok; [ "${CANARY_STUB_SUITE:-}" != "$suite" ] || mode=${CANARY_STUB_MODE:-ok}
 [ "$mode" != crash ] || { echo "stub crash" >&2; exit 1; }
-jq -c -n --slurpfile t "$tasks" --arg suite "$suite" --arg tier "$tier" --arg arms "$arms" --arg models "$models" --argjson k "$k" --arg mode "$mode" --arg prev "$prev" --arg new "$new" --argjson usd "${CANARY_STUB_USD:-0.25}" '
+[ "$mode" != quota-t1 ] || [ "$tier" != T1 ] || { echo "ubi-runner: create failed: vCPU quota exhausted; wait for running VMs to finish" > "$out/remote.log"; exit 1; }
+jq -c -n --slurpfile t "$tasks" --arg suite "$suite" --arg tier "$tier" --arg arms "$arms" --arg models "$models" --argjson k "$k" --arg mode "${mode%%-*}" --arg prev "$prev" --arg new "$new" --argjson usd "${CANARY_STUB_USD:-0.25}" '
   $t[0] as $f
   | ($f.models.opus.t1 + $f.models.opus.tasks[0:8]) as $bad
   | ($models | split(","))[] as $m
@@ -37,3 +39,4 @@ jq -c -n --slurpfile t "$tasks" --arg suite "$suite" --arg tier "$tier" --arg ar
        exposure: {first_request_has_product: ($arm != "plain"), product_calls: (if $arm == "plain" then 0 else 1 end)},
        safety: (if $suite == "gbrain" then {cross_scope_reads: 0, hidden_fact_leaks: 0} else null end)}}' > "$out/trials.jsonl"
 mkdir -p "$out/shard" && cp "$out/trials.jsonl" "$out/shard/trials.jsonl"
+[ "$mode" != regress-quota-text ] || [ "$tier" != T1 ] || { echo "agent ran: grep -r quota scripts -> ubi-runner: create failed: vCPU quota exhausted" > "$out/shard/transcript.txt"; exit 1; }

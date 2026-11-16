@@ -83,6 +83,22 @@ function committedUsd(r: Rig) {
   writeFileSync(file, spawnSync('git', ['--git-dir', r.remote, 'show', 'canary-receipts:leases/canary-2026-11.sqlite'], { env: r.env }).stdout);
   return JSON.parse(sh(['bun', join(r.repo, 'scripts/canary/lease.ts'), 'status', '--ledger', file], r.base, r.env)).committed_usd as number;
 }
+/** A stub ubi-runner.sh in the rig whose capacity answers come one per call from <answers> ("no" or "yes", the last repeating), counted in <base>/room.n. */
+function roomStub(r: Rig, answers: string[]) {
+  mkdirSync(join(r.repo, 'scripts/ubicloud'), { recursive: true });
+  const f = join(r.base, 'room');
+  writeFileSync(f, answers.join('\n') + '\n');
+  rmSync(f + '.n', { force: true });
+  writeFileSync(join(r.repo, 'scripts/ubicloud/ubi-runner.sh'), [
+    '#!/usr/bin/env bash', '[ "$1" = capacity ] || exit 2', `f=${f}`,
+    'n=$(( $(cat "$f.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$f.n"',
+    'a=$(sed -n "${n}p" "$f"); [ -n "$a" ] || a=$(tail -1 "$f")',
+    'if [ "$a" = no ]; then echo "UBICLOUD_CAPACITY: room=no size=standard-16 need=16 used=504 max=512 free=8"; exit 3; fi',
+    'echo "UBICLOUD_CAPACITY: room=yes size=standard-16 location=eu-central-h1"', ''].join('\n'));
+}
+/** A nightly without --local, so run.sh asks for Ubicloud room before each VM step (the stub suites ignore --remote). */
+const remoteNight = (r: Rig, id: string, now: string, extra: Record<string, string> = {}) =>
+  r.run(['--fake', '--prereg-ref', 'main', '--run-id', id, '--now', now, '--drive-dir', join(r.base, 'drive')], { UBI_OWNER: 'internal-task', CANARY_ROOM_POLL_SECONDS: '0', ...extra });
 /** Env that puts tests/fixtures/canary-core/stub-git.sh first on PATH as git, failing the named receipts step. */
 function stubGit(r: Rig, fail: 'lease-read' | 'push') {
   const bin = join(r.base, 'stub-bin');
@@ -214,6 +230,79 @@ describe('run.sh end to end with stub suites', () => {
     const again = nightly(r, 'retry', '2026-11-11T09:30:00Z');
     expect(again.code).toBe(0);
     expect(r.history().at(-1)).toMatchObject({ run_id: 'retry', product: 'gstack', status: 'OK' });
+  }, 300_000);
+
+  test('no Ubicloud room all night is INCOMPLETE as infrastructure, owned by internal-task, runs nothing, and the next night with room screens the release', () => {
+    const r = rig({ prereg: (p) => { p.schedule.capacity_wait_hours = 0; } });
+    expect(baseline(r).code).toBe(0);
+    roomStub(r, ['no']);
+    const n = remoteNight(r, 'full', '2026-11-10T09:30:00Z');
+    expect(n.err).not.toContain('stopped unexpectedly');
+    expect(n.code).toBe(30);
+    const alert = block(n.out)!;
+    expect(alert).toStartWith('Harness Evals canary: INCOMPLETE, infrastructure only, not a gstack result: stable 1.98.0.0 (91009308) was not screened against previous 1.97.0.0 (e75a69c9)\n'
+      + '- Why: Ubicloud capacity: no room for the T0 VM (room=no size=standard-16 need=16 used=504 max=512 free=8) within the night\'s wait of up to 0 hours; this says nothing about the release\n');
+    expect(alert.split('\n').filter((l) => l.startsWith('- Suggested owner:'))).toEqual(['- Suggested owner: internal-task; what to check first: Ubicloud usage (ubi-runner.sh usage), not gstack']);
+    expect(existsSync(join(r.base, 'work/full/out/gstack/t0'))).toBe(false);
+    expect(existsSync(join(r.base, 'work/full/out/calls.log'))).toBe(false);
+    expect(JSON.parse(readFileSync(join(r.base, 'work/full/out/gstack/verdict.json'), 'utf8')).reasons.map((x: any) => x.rule)).toEqual(['ubicloud_capacity']);
+    expect(r.history().at(-1)).toMatchObject({ run_id: 'full', product: 'gstack', status: 'INCOMPLETE' });
+    roomStub(r, ['yes']);
+    const again = remoteNight(r, 'room', '2026-11-11T09:30:00Z');
+    expect(again.code).toBe(0);
+    expect(r.history().at(-1)).toMatchObject({ run_id: 'room', product: 'gstack', status: 'OK', tiers: ['T0', 'T1'] });
+  }, 300_000);
+
+  test('a night that finds room within its wait goes on, and a T0 VM refused for quota anyway waits and tries again', () => {
+    const r = rig();
+    expect(baseline(r).code).toBe(0);
+    roomStub(r, ['no', 'no', 'yes']);
+    const left = join(r.base, 'quota-left');
+    writeFileSync(left, '1\n');
+    const n = remoteNight(r, 'wait', '2026-11-10T09:30:00Z', { CANARY_STUB_MODE: 'quota-t0', CANARY_STUB_SUITE: 'gstack', CANARY_STUB_QUOTA_LEFT: left });
+    expect(n.err).not.toContain('stopped unexpectedly');
+    expect(n.code).toBe(0);
+    expect(r.history().at(-1)).toMatchObject({ run_id: 'wait', product: 'gstack', status: 'OK', tiers: ['T0', 'T1'] });
+    const log = readFileSync(join(r.base, 'work/wait/out/run.log'), 'utf8');
+    expect(log).toContain('room: gstack T0 waits for Ubicloud room (room=no size=standard-16 need=16 used=504 max=512 free=8)');
+    expect(log).toContain('gstack T0: Ubicloud refused its VM for vCPU quota (try 1)');
+    expect(existsSync(join(r.base, 'work/wait/out/gstack/t0-quota-1/remote.log'))).toBe(true);
+    expect(readFileSync(join(r.base, 'room.n'), 'utf8').trim()).toBe('5');
+  }, 300_000);
+
+  test('a tier VM refused for quota is INCOMPLETE as infrastructure, not a release result', () => {
+    const r = rig({ prereg: (p) => { p.schedule.capacity_wait_hours = 0; } });
+    expect(baseline(r).code).toBe(0);
+    roomStub(r, ['yes']);
+    const n = remoteNight(r, 'tier', '2026-11-10T09:30:00Z', { CANARY_STUB_MODE: 'quota-t1', CANARY_STUB_SUITE: 'gstack' });
+    expect(n.code).toBe(30);
+    const alert = block(n.out)!;
+    expect(alert).toStartWith('Harness Evals canary: INCOMPLETE, infrastructure only, not a gstack result:');
+    expect(alert).toContain('- Why: Ubicloud capacity: no room for the T1 VM (its create was refused for vCPU quota)');
+    expect(alert).toContain('- Suggested owner: internal-task;');
+  }, 300_000);
+
+  test('a tier that ran its trials and exits nonzero is decided as a release result even when a trial printed the quota words', () => {
+    const r = rig({ prereg: (p) => { p.schedule.capacity_wait_hours = 0; } });
+    expect(baseline(r).code).toBe(0);
+    roomStub(r, ['yes']);
+    const n = remoteNight(r, 'text', '2026-11-10T09:30:00Z', { CANARY_STUB_MODE: 'regress-quota-text', CANARY_STUB_SUITE: 'gstack' });
+    const alert = block(n.out)!;
+    expect(alert).not.toContain('infrastructure only');
+    expect(alert).toStartWith('Harness Evals canary: INCOMPLETE in gstack stable 1.98.0.0 (91009308), previous 1.97.0.0 (e75a69c9)\n');
+    expect(alert).toContain('- What moved: Opus 5.5 in Claude Code: pass 4/4 -> 0/4');
+    expect(alert).toContain('- Suggested owner: internal-task;');
+  }, 300_000);
+
+  test('a night that ends early for want of room still records what its earlier tiers spent in history.jsonl', () => {
+    const r = rig({ prereg: (p) => { p.schedule.capacity_wait_hours = 0; } });
+    expect(baseline(r).code).toBe(0);
+    roomStub(r, ['yes', 'yes', 'no']);
+    const n = remoteNight(r, 'spent', '2026-11-10T09:30:00Z', { CANARY_STUB_MODE: 'regress', CANARY_STUB_SUITE: 'gstack' });
+    expect(n.code).toBe(30);
+    const t1 = readFileSync(join(r.base, 'work/spent/out/gstack/T1/trials.jsonl'), 'utf8').trim().split('\n').reduce((s, l) => s + JSON.parse(l).usage.usd, 0);
+    expect(t1).toBeGreaterThan(0);
+    expect(r.history().find((x) => x.run_id === 'spent' && x.product === 'gstack')).toMatchObject({ status: 'INCOMPLETE', spend_usd: t1 });
   }, 300_000);
 
   test('no history is INCOMPLETE until a baseline runs, and a fresh lock held by another run refuses', () => {

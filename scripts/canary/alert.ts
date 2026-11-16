@@ -20,7 +20,14 @@ const usd = (x: number | null) => (x === null ? 'n/a' : '$' + x.toFixed(2));
 const int = (x: number | null) => (x === null ? 'n/a' : Math.round(x).toLocaleString('en-US'));
 const num = (x: number, d = 2) => x.toFixed(d);
 
+/** Reasons that say the canary could not test the release for an infrastructure reason; never a result about the release. */
+const INFRA_RULES: ReadonlySet<string> = new Set(['ubicloud_capacity']);
+const infraLead = (v: Verdict) => INFRA_RULES.has(leadReason(v)?.rule ?? '');
+/** Infrastructure only when no tier screened the release: no model results and no reason but an infrastructure one, so a flag an earlier tier raised still reaches the product owner. */
+const infraOnly = (v: Verdict, status: string = v.status) => status === 'INCOMPLETE' && infraLead(v) && !Object.keys(v.models).length && v.reasons.every((r) => INFRA_RULES.has(r.rule));
+
 export function headline(v: Verdict, status: string = v.status): string {
+  if (infraOnly(v, status)) return `Harness Evals canary: INCOMPLETE, infrastructure only, not a ${v.suite} result: stable ${v.release.new.version} (${short(v.release.new.sha)}) was not screened against previous ${v.release.prev.version} (${short(v.release.prev.sha)})`;
   return `Harness Evals canary: ${status} in ${v.suite} stable ${v.release.new.version} (${short(v.release.new.sha)}), previous ${v.release.prev.version} (${short(v.release.prev.sha)})`;
 }
 
@@ -30,8 +37,8 @@ export function leadReason(v: Verdict): Reason | null {
 }
 
 function leadModel(v: Verdict): [ModelKey, ModelReport] | null {
-  const lead = leadReason(v);
-  const key = lead?.model && v.models[lead.model] ? lead.model : (Object.keys(v.models) as ModelKey[])[0];
+  const lead = [...v.reasons].filter((r) => r.model && v.models[r.model]).sort((a, b) => RANK[b.status] - RANK[a.status])[0];
+  const key = lead?.model ?? (Object.keys(v.models) as ModelKey[])[0];
   return key ? [key, v.models[key]!] : null;
 }
 
@@ -41,6 +48,7 @@ const HARNESS_NAME: Record<string, string> = { 'claude-code': 'Claude Code', cod
 export function renderAlert(v: Verdict): string {
   const lines = [headline(v)];
   const lead = leadReason(v);
+  if (infraLead(v)) lines.push(`- Why: ${lead!.detail}`);
   const m = leadModel(v);
   if (m) {
     const [key, r] = m;
@@ -61,7 +69,7 @@ export function renderAlert(v: Verdict): string {
   }
   if (v.release.range.length) lines.push(`- Releases in range: ${v.release.range.map((x) => x.version).join(', ')}; bisect: ${v.release.bisect?.first_bad ?? 'not run'}`);
   lines.push(`- Receipts: canary-receipts:${v.receipts_dir}, drive canary/runs/${v.run_id}/`);
-  lines.push(`- Suggested owner: ${OWNER[v.suite]}; what to check first: ${lead?.check_first ?? 'the run log'}`);
+  lines.push(`- Suggested owner: ${infraOnly(v) ? 'internal-task' : OWNER[v.suite]}; what to check first: ${lead?.check_first ?? 'the run log'}`);
   return lines.join('\n');
 }
 
