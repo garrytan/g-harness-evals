@@ -251,7 +251,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       openEgress?.setTrial(cell.slice === INSTALL_SLICE ? trial.id : null);
       const record = cell.slice === INSTALL_SLICE
         ? await runInstallTrial({ cell, trial, runDir, trialDir, proxy, log, opts: serveOpts(), egress: openEgress, keyEnv: opts.installKeyEnv }).catch((e: unknown) => {
-          if (e instanceof InstallLeak) { appendRecord(runDir, e.record); records.push(e.record); }
+          if (e instanceof InstallLeak && e.record) { appendRecord(runDir, e.record); records.push(e.record); }
           throw e;
         })
         : cell.slice === SET_T_SLICE

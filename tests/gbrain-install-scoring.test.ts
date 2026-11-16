@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { asksForInput, classifyInstall, refOf, type InstallTurn, type Probe } from '../scripts/gbrain-install/classify.ts';
 import { failureCsv, failureMarkdown, failureTable } from '../scripts/gbrain-install/failure-table.ts';
 import { stepOf } from '../scripts/gbrain-install/steps.ts';
-import { gbrainArgvFromShell, githubRateLimited, hasToken, isGbrainCall, parseHermes, parseTurn, type NEvent } from '../scripts/gbrain-install/transcript.ts';
+import { gbrainArgvFromShell, githubRateLimited, hasToken, isGbrainCall, isGbrainServed, parseHermes, parseTurn, type NEvent } from '../scripts/gbrain-install/transcript.ts';
 import { verdict, verdictMarkdown, wilson, type InstallTrialRecord } from '../scripts/gbrain-install/verdict.ts';
 
 const ROOT = join(import.meta.dir, '..');
@@ -117,6 +117,16 @@ describe('gbrain calls and tokens', () => {
     expect(gbrainArgvFromShell('gbrain put a "b c" > /tmp/out 2>&1')).toEqual([['put', 'a', 'b c']]);
     const mcp = (name: string): NEvent => ({ kind: 'mcp', name, input: '{}', output: '', is_error: false, exit_code: null, session: 's1', turn: 1 });
     expect([mcp('gbrain__search'), mcp('GBrain__query'), mcp('world__post_message'), mcp('notgbrain__search')].map(isGbrainCall)).toEqual([true, true, false, false]);
+  });
+
+  test('gbrain-served: only a whole command that is one gbrain invocation, or a gbrain MCP call', () => {
+    const yes = ['gbrain query cat', "/bin/bash -lc 'gbrain get family/sister-cat'", '~/.bun/bin/gbrain get family/cat 2>&1', 'GBRAIN_HOME=/x timeout 30 gbrain query "sister; cat"', "gbrain query 'a && b | c'", 'gbrain query cat > /tmp/out 2>&1', 'gbrain query cat &>/tmp/out', 'gbrain query "sister cat" | head -40', 'cd ~ && gbrain query cat', 'cd ~ && gbrain query cat 2>&1 | tail -n 5'];
+    const no = ['gbrain --version; cat notes.txt', 'gbrain query cat && cat notes.txt', 'gbrain query cat || cat notes.txt', 'gbrain query cat | grep Vorlimb', '(gbrain query cat)', 'gbrain query "$(cat notes.txt)"', 'gbrain query `cat notes.txt`', 'cat notes.txt; gbrain query cat', 'gbrain query cat & cat notes.txt', 'gbrain query cat\ncat notes.txt', 'export PATH=$HOME/.bun/bin:$PATH; gbrain query cat', "/bin/bash -lc 'gbrain --version; cat notes.txt'", 'cat notes.txt', 'echo gbrain', 'timeout 30 sh -c "cat notes.txt; gbrain --version"', 'eval "cat notes.txt; gbrain --version"', `sh -c 'sh -c "cat notes.txt; gbrain --version"'`, 'echo cat | xargs gbrain query', 'gbrain query cat | head -40 notes.txt', 'cd ~ && cat notes.txt', 'cd ~ && gbrain query cat && cat notes.txt'];
+    expect(yes.map((c) => isGbrainServed(shell(c)))).toEqual(yes.map(() => true));
+    expect(no.map((c) => isGbrainServed(shell(c)))).toEqual(no.map(() => false));
+    expect(isGbrainCall(shell('gbrain --version; cat notes.txt'))).toBe(true);
+    const mcp = (name: string): NEvent => ({ kind: 'mcp', name, input: '{}', output: '', is_error: false, exit_code: null, session: 's1', turn: 1 });
+    expect([mcp('gbrain__query'), mcp('gbrain-local__search'), mcp('world__post_message')].map(isGbrainServed)).toEqual([true, true, false]);
   });
 
   test('hasToken: whole token, case and punctuation ignored, never a substring', () => {

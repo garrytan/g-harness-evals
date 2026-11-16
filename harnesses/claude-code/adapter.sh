@@ -51,7 +51,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s claude-code[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -70,7 +70,7 @@ case "${HE_MODEL_BASE_URL%/}" in
   *) log "HE_MODEL_BASE_URL $HE_MODEL_BASE_URL does not end in /anthropic: claude-code runs only on an anthropic cell (the proxy route <proxy>/<slot>/anthropic)"; exit 2 ;;
 esac
 
-# internal-task, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
+# GST-2715, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
 # from Claude Code's shipped defaults and keeps whatever the agent and gbrain write across sessions: no world MCP, no MCP config of
 # ours, no --strict-mcp-config, --mcp-config or --disallowedTools, no permissions.deny seed. The proxy token reaches the CLI only
 # through an apiKeyHelper in settings.json that reads a 0600 copy of HE_MODEL_API_KEY_FILE, so ANTHROPIC_API_KEY is never exported
@@ -108,9 +108,9 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
-# H10 (internal-task): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
+# H10 (HARN-18): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
 # the grammar parseRouteConfig in runner/contracts.ts reads), applied below once CLAUDE_CONFIG_DIR exists. Unset, empty or default
-# changes nothing; official-minimal (internal-task, below) is no route.
+# changes nothing; official-minimal (HARN-20, below) is no route.
 # The driver prefix picks what runs each turn: cli (the default) is `claude -p`; sdk-preset and sdk-default run the
 # same CLI through the Agent SDK (sdk-driver.ts, H10 PR 4) with the claude_code system prompt preset or with no system prompt set.
 # route-system is refused on the SDK drivers: H10 runs no SDK system cell, and the SDK can append to the preset only. A route beside
@@ -143,7 +143,7 @@ esac
 if [ "$route_driver" != cli ] && [ "$route" = route-system ]; then refuse_route "is route-system on the $route_driver driver; H10 runs route-system on the cli driver only (--append-system-prompt)"; fi
 if [ "$route" != default ] && [ -n "${HE_GBRAIN_INSTALL:-}" ]; then refuse_route "is a route and HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL writes gbrain's own rule into CLAUDE.md and settings.json; a route cell runs without gbrain.install"; fi
 
-# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
+# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Claude Code's own system prompt with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), passed as --system-prompt on every
 # turn. Unset, empty or default adds nothing, so the adapter's files and command lines are as before; any other value is a route (parsed
@@ -176,9 +176,10 @@ export CLAUDE_CONFIG_DIR="$HE_SESSION_STATE_DIR/claude"
 export TMPDIR="$HE_SESSION_STATE_DIR/tmp" CLAUDE_TMPDIR="$HE_SESSION_STATE_DIR/tmp"
 mkdir -p "$CLAUDE_CONFIG_DIR" "$TMPDIR"
 [ "$install_mode" = 1 ] || [ -e "$CLAUDE_CONFIG_DIR/settings.json" ] || cp "$harness_dir/config/settings.json" "$CLAUDE_CONFIG_DIR/settings.json"
-# Install mode: no seed, so Claude Code's shipped defaults apply (web tools included). settings.json gets apiKeyHelper alone, which
-# cats HE_SESSION_STATE_DIR/he-install/api-key, a 0600 copy of HE_MODEL_API_KEY_FILE made once; a settings.json the agent or gbrain
-# already wrote keeps every other key.
+# Install mode: no seed, so Claude Code's shipped defaults apply (web tools included). settings.json gets apiKeyHelper, which
+# cats HE_SESSION_STATE_DIR/he-install/api-key, a 0600 copy of HE_MODEL_API_KEY_FILE made once, and skipWebFetchPreflight, because
+# WebFetch first asks api.anthropic.com whether a domain may be fetched and the install network's egress blocklist refuses that
+# host; a settings.json the agent or gbrain already wrote keeps every other key.
 if [ "$install_mode" = 1 ]; then
   install_key="$HE_SESSION_STATE_DIR/he-install/api-key"
   [ -e "$install_key" ] || ( umask 077 && mkdir -p "${install_key%/*}" && cp "$HE_MODEL_API_KEY_FILE" "$install_key" )
@@ -188,13 +189,14 @@ const fs = require("fs");
 const [settings, key] = process.argv.slice(2);
 const s = fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, "utf8")) : {};
 s.apiKeyHelper = "cat '" + key.replace(/'/g, "'\\''") + "'";
+s.skipWebFetchPreflight = true;
 fs.writeFileSync(settings + ".tmp", JSON.stringify(s, null, 2) + "\n");
 fs.renameSync(settings + ".tmp", settings);
 JS
-  log "install mode: settings.json apiKeyHelper reads $install_key; ANTHROPIC_API_KEY is not set"
+  log "install mode: settings.json apiKeyHelper reads $install_key, skipWebFetchPreflight is on; ANTHROPIC_API_KEY is not set"
 fi
 
-# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup claude-code --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CLAUDE_CONFIG_DIR=/harness-state/claude, so every path in it is
 # this container's: home/claude/CLAUDE.md (the brain-first block, Claude Code's user memory), home/claude/settings.json (this
@@ -314,7 +316,7 @@ fi
 # The number of times gbrain's turn hook has run in this state dir: one heartbeat line per UserPromptSubmit.
 hook_runs() { cat "$hook_heartbeat" 2>/dev/null | grep -c '"event":"user-prompt"' || true; }
 
-# H10 (internal-task), the instruction routes on the cli driver (harnesses/routes/README.md, "Routes on four harnesses"). One instruction,
+# H10 (HARN-18), the instruction routes on the cli driver (harnesses/routes/README.md, "Routes on four harnesses"). One instruction,
 # routes/instruction.md beside this file (/opt/harness/routes in the image, a byte copy of harnesses/routes/instruction.md checked
 # against the sha256 the preregistration cites; routes/placebo.md likewise), reaches Claude Code through the route the config names:
 #   route-tool                  nothing written: the gbrain MCP tool descriptions stay the only carrier
@@ -413,7 +415,7 @@ JS
   route_json=$(printf ',"instruction_route":{"config":"%s","driver":"%s","route":"%s","bytes_sha256":"%s","files":%s,"hook":"%s"}' "$route_config" "$route_driver" "$route" "$route_sha" "$route_files" "$route_hook")
 fi
 
-# internal-task, the skill-resolver arms (scripts/skill-resolver/ARMS.md). HE_HARNESS_CONFIG skills-<arm> reads the kit at
+# HARN-52, the skill-resolver arms (scripts/skill-resolver/ARMS.md). HE_HARNESS_CONFIG skills-<arm> reads the kit at
 # ${HE_SKILL_KIT_DIR:-/opt/skill-resolver} (scripts/skill-resolver/build-kit.ts):
 #   skills-native      the catalog in $CLAUDE_CONFIG_DIR/skills; a UserPromptSubmit lane of its own runs the hook wrapper with
 #                      the resolver in shadow mode each turn (logged, nothing injected)

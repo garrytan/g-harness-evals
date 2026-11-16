@@ -45,7 +45,7 @@ const preregFile = (dir: string, runId: string, cells: unknown[]) => {
 };
 
 let runs = 0;
-async function runPlay(play: string, o: { reps?: number; ls?: () => { status: number; stdout: string; stderr: string }; keyEnv?: Record<string, string>; harnessEnv?: Record<string, string>; cell?: Record<string, unknown>; manifestCell?: Record<string, unknown> } = {}) {
+async function runPlay(play: string, o: { reps?: number; ls?: () => { status: number; stdout: string; stderr: string }; keyEnv?: Record<string, string>; harnessEnv?: Record<string, string>; cell?: Record<string, unknown>; manifestCell?: Record<string, unknown>; log?: (line: string) => void } = {}) {
   const dir = scratch();
   const runId = `gbrain-install-${play}-${++runs}`;
   const { prereg, sha256 } = loadPrereg(preregFile(dir, runId, [cellOf({ repetitions: o.reps ?? 1, ...o.cell })]));
@@ -58,7 +58,7 @@ async function runPlay(play: string, o: { reps?: number; ls?: () => { status: nu
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 1));
   let thrown: Error | null = null;
   const result = await executeRun(JSON.parse(readFileSync(manifestPath, 'utf8')), manifestPath, { harnessMode: 'process', proxyEnv: ENV, turnGraceS: 1, stopGraceS: 2, readyTimeoutS: 20, repoRoot: ROOT, leaseUsd: 1, newLease: true,
-    capture: { upstream: { anthropic: 'http://127.0.0.1:' + fake.port }, dns: null }, harnessEnv: { HE_FIXTURE_PLAY: play, ...o.harnessEnv }, installLsRemote: o.ls ?? lsServes(STABLE), installKeyEnv: o.keyEnv ?? {} })
+    capture: { upstream: { anthropic: 'http://127.0.0.1:' + fake.port }, dns: null }, harnessEnv: { HE_FIXTURE_PLAY: play, ...o.harnessEnv }, installLsRemote: o.ls ?? lsServes(STABLE), installKeyEnv: o.keyEnv ?? {}, ...(o.log ? { log: o.log } : {}) })
     .catch((e: Error) => { thrown = e; return null; });
   const lines = existsSync(join(runDir, 'trials.jsonl')) ? readFileSync(join(runDir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord) : [];
   return { result, record: lines[0]!, lines, runDir, runLog: readFileSync(join(runDir, 'run.log'), 'utf8'), thrown: thrown as Error | null };
@@ -115,6 +115,30 @@ describe('the install trial through the runner (fixture adapter, capture mode)',
     expect({ outcome: i.outcome, finish: i.finish, hinted: i.hinted }).toEqual({ outcome: 'not-recalled', finish: { reply: false, gbrain_call: false, brain: true, outside_brain: [] }, hinted: { ran: true, reply: true, gbrain_call: true } });
   }, 60_000);
 
+  test('a nonce in the harness TMPDIR ($HE_SESSION_STATE_DIR/tmp, Claude Code and Codex scratch) is not harness memory: the trial still finishes', async () => {
+    const { record } = await runPlay('scratch');
+    expect(existsSync(join(record.paths.dir!, 'state', 'tmp', 'claude-1000', 'bash-output.txt'))).toBe(true);
+    expect({ outcome: record.install!.outcome, outside: record.install!.finish.outside_brain }).toEqual({ outcome: 'recalled', outside: [] });
+  }, 60_000);
+
+  test('a recall through "gbrain --version; cat <file>" runs gbrain but is not a gbrain-served recall', async () => {
+    const { record } = await runPlay('chained');
+    const i = record.install!;
+    expect({ outcome: i.outcome, finish: i.finish, hinted: i.hinted }).toEqual({ outcome: 'not-recalled', finish: { reply: true, gbrain_call: false, brain: true, outside_brain: [] }, hinted: { ran: true, reply: true, gbrain_call: false } });
+  }, 60_000);
+
+  test('the scrub and the canary also run when the trial throws', async () => {
+    const { thrown, lines, runLog, runDir } = await runPlay('leak', { log: (line) => { if (/^turn 1 \(/.test(line)) throw new Error('injected failure after turn 1'); } });
+    expect(thrown?.message).toContain('injected failure after turn 1');
+    expect(lines.length).toBe(0);
+    const found = [...new Bun.Glob('trials/**/state/claude/settings.json').scanSync({ cwd: runDir })];
+    expect(found.length).toBe(1);
+    const settings = readFileSync(join(runDir, found[0]!), 'utf8');
+    expect(settings).toContain('[trial-token-removed]');
+    expect(settings).not.toMatch(/trial-token:/);
+    expect(runLog).toMatch(/token scrubbed from 1 file\(s\); canary clean after the trial threw/);
+  }, 60_000);
+
   test('a token the harness wrote into its own files is scrubbed after the trial and the canary is clean', async () => {
     const { record, thrown, runLog } = await runPlay('leak');
     expect(thrown).toBeNull();
@@ -130,6 +154,14 @@ describe('the install trial through the runner (fixture adapter, capture mode)',
     expect(thrown?.message).toMatch(/HE-INSTALL-005 .*the value of ANTHROPIC_API_KEY is in a file under/);
     expect(thrown?.message).not.toContain(fakeKey);
     expect(lines.length).toBe(1);
+  }, 60_000);
+
+  test('a throw plus a provider key value left behind stops the run with HE-INSTALL-005 and writes no record', async () => {
+    const fakeKey = 'sk-ant-fixture-' + 'k'.repeat(40);
+    const { thrown, lines } = await runPlay('leakkey', { harnessEnv: { HE_FIXTURE_FAKE_KEY: fakeKey }, keyEnv: { ANTHROPIC_API_KEY: fakeKey }, log: (line) => { if (/^turn 1 \(/.test(line)) throw new Error('injected failure after turn 1'); } });
+    expect(thrown?.message).toMatch(/HE-INSTALL-005 .*which threw: injected failure after turn 1.*the value of ANTHROPIC_API_KEY is in a file under/);
+    expect(thrown?.message).not.toContain(fakeKey);
+    expect(lines.length).toBe(0);
   }, 60_000);
 
   test('a missing watcher is infra_error with HE-INSTALL-004; an adapter that refuses install mode is harness_error with its HE-INSTALL-003 line', async () => {
@@ -358,12 +390,68 @@ describe('the open-egress proxy (network "install")', () => {
     expect(seen).not.toMatch(/keep-alive/i);
     await Bun.sleep(50);
     const lines = egress.lines('t2');
-    expect(lines.map((l) => [l.host, l.decision])).toEqual([['169.254.169.254', 'blocked'], ['10.0.0.1', 'blocked'], ['::1', 'blocked'], ['::ffff:127.0.0.1', 'blocked'], ['localhost', 'blocked'], ['169.254.169.254', 'blocked'], ['no-such-host.invalid', 'allowed'], ['127.0.0.1', 'allowed']]);
+    expect(lines.map((l) => [l.host, l.decision])).toEqual([['169.254.169.254', 'blocked'], ['10.0.0.1', 'blocked'], ['::1', 'blocked'], ['::ffff:127.0.0.1', 'blocked'], ['localhost', 'blocked'], ['169.254.169.254', 'blocked'], ['no-such-host.invalid', 'failed'], ['127.0.0.1', 'allowed']]);
     expect(lines[4].reason).toMatch(/^host resolves to the local address /);
     expect(lines[6].reason).toMatch(/^no address for the host: /);
     expect(lines[7].status).toBe(204);
     await egress.stop();
     web.close();
+  });
+  const exchangeWith = (port: number) => (head: string, then?: string) => new Promise<string>((res) => {
+    const s = connect(port, '127.0.0.1', () => s.write(head));
+    let got = '';
+    s.on('data', (d) => { got += d.toString(); if (then && got.includes('200 Connection Established') && !got.includes(then)) s.write(then); if (then && got.includes(then)) s.end(); });
+    s.on('close', () => res(got));
+  });
+  test('a port outside 1 to 65535 is answered 400 before any lookup, and the proxy keeps serving', async () => {
+    const dir = scratch();
+    let lookups = 0;
+    const egress = await startOpenEgress({ host: '127.0.0.1', block: [], logPath: join(dir, 'egress.ndjson'), resolve: async () => { lookups++; return []; } });
+    egress.setTrial('t3');
+    const exchange = exchangeWith(egress.port);
+    for (const t of ['example.test:0', 'example.test:65536', 'example.test:99999999999999999999']) expect(await exchange(`CONNECT ${t} HTTP/1.1\r\n\r\n`)).toMatch(/^HTTP\/1.1 400/);
+    expect(await exchange('GET http://example.test:0/ HTTP/1.1\r\nHost: example.test\r\n\r\n')).toMatch(/^HTTP\/1.1 400/);
+    expect(await exchange('CONNECT example.test:443 HTTP/1.1\r\n\r\n')).toMatch(/^HTTP\/1.1 502/);
+    await Bun.sleep(50);
+    expect(lookups).toBe(1);
+    expect(egress.lines('t3').slice(0, 4).map((l) => [l.host, l.decision, l.reason])).toEqual([0, 65536, 1e20, 0].map((p) => ['example.test', 'blocked', `port ${p} is outside 1 to 65535`]));
+    await egress.stop();
+  });
+  test('decimal, hex and octal IPv4 hosts are refused like dotted IP literals, in CONNECT and plain HTTP, with no lookup', async () => {
+    const dir = scratch();
+    let lookups = 0;
+    const egress = await startOpenEgress({ host: '127.0.0.1', block: [], logPath: join(dir, 'egress.ndjson'), resolve: async () => { lookups++; return [{ address: '93.184.215.14', family: 4 }]; } });
+    egress.setTrial('t4');
+    const exchange = exchangeWith(egress.port);
+    const hosts = ['2130706433', '0x7f000001', '0177.0.0.1', '0x7f.1', '134744072', '8.8.8.8'];
+    for (const h of hosts) expect(await exchange(`CONNECT ${h}:443 HTTP/1.1\r\n\r\n`)).toMatch(/^HTTP\/1.1 403/);
+    for (const h of ['2130706433', '0x7f000001']) expect(await exchange(`GET http://${h}/ HTTP/1.1\r\nHost: ${h}\r\n\r\n`)).toMatch(/^HTTP\/1.1 403/);
+    await Bun.sleep(50);
+    expect(lookups).toBe(0);
+    const lines = egress.lines('t4');
+    expect(lines.length).toBe(hosts.length + 2);
+    expect(lines.every((l) => l.decision === 'blocked' && l.reason === 'target is an IP address; the blocklist matches host names')).toBe(true);
+    await egress.stop();
+  });
+  test('connect gets the whole vetted address list: the name resolves once, a dead first address falls back to the next, and a failure is logged failed', async () => {
+    const dir = scratch();
+    const echo = createServer((s) => s.on('data', (d) => s.write(d)));
+    await new Promise<void>((r) => echo.listen(0, '127.0.0.1', () => r()));
+    const port = (echo.address() as { port: number }).port;
+    let lookups = 0;
+    const lists: Record<string, Array<{ address: string; family: number }>> = { 'fallback.test': [{ address: '127.0.0.2', family: 4 }, { address: '127.0.0.1', family: 4 }], 'dead.test': [{ address: '127.0.0.2', family: 4 }] };
+    const egress = await startOpenEgress({ host: '127.0.0.1', block: [], logPath: join(dir, 'egress.ndjson'), trusted: ['fallback.test', 'dead.test'], resolve: async (h) => { lookups++; return lists[h]!; } });
+    egress.setTrial('t5');
+    const exchange = exchangeWith(egress.port);
+    expect(await exchange(`CONNECT fallback.test:${port} HTTP/1.1\r\n\r\n`, 'ping')).toContain('ping');
+    expect(lookups).toBe(1);
+    expect(await exchange(`CONNECT dead.test:${port} HTTP/1.1\r\n\r\n`)).toMatch(/^HTTP\/1.1 502/);
+    await Bun.sleep(50);
+    const lines = egress.lines('t5');
+    expect(lines.map((l) => [l.host, l.decision])).toEqual([['fallback.test', 'allowed'], ['dead.test', 'failed']]);
+    expect(lines[1]!.reason).toMatch(/^upstream error: /);
+    await egress.stop();
+    echo.close();
   });
 });
 
@@ -388,6 +476,16 @@ describe('the finish-line scans and the token', () => {
     mkdirSync(join(home, 'claude', 'memory'), { recursive: true });
     writeFileSync(join(home, 'claude', 'memory', 'MEMORY.md'), '- cat: ' + nonce);
     expect(outsideBrain([home], nonce, home)).toEqual(['claude/memory/MEMORY.md', 'state.db (memories)']);
+  });
+  test('outside the brain skips the paths it is told to (the harness TMPDIR), and only those', () => {
+    const home = scratch();
+    const nonce = 'Vorlimbask';
+    mkdirSync(join(home, 'tmp', 'claude-1000'), { recursive: true });
+    writeFileSync(join(home, 'tmp', 'claude-1000', 'out.txt'), nonce);
+    mkdirSync(join(home, 'notes', 'tmp'), { recursive: true });
+    writeFileSync(join(home, 'notes', 'tmp', 'cat.md'), nonce);
+    expect(outsideBrain([home], nonce, home)).toEqual(['notes/tmp/cat.md', 'tmp/claude-1000/out.txt']);
+    expect(outsideBrain([home], nonce, home, [join(home, 'tmp')])).toEqual(['notes/tmp/cat.md']);
   });
   test('the scrub overwrites the token and its random tail in place; the canary then finds nothing, and names a provider key by name only', () => {
     const root = scratch();

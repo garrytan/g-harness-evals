@@ -9,7 +9,7 @@ These scripts score the gbrain install eval: a fresh agent is told "install gbra
 
 | File | What it does |
 |---|---|
-| `transcript.ts` | Turns one turn file into a flat event list (`parseTurn`). Also: `isGbrainCall` (a gbrain MCP tool, or the gbrain CLI in command position), `hasToken` (whole-word match, case and punctuation ignored), `githubRateLimited`, `norm`. |
+| `transcript.ts` | Turns one turn file into a flat event list (`parseTurn`). Also: `isGbrainCall` (a gbrain MCP tool, or the gbrain CLI in command position), `isGbrainServed` (the finish line's gbrain call: a gbrain MCP tool, or a shell command that is one gbrain invocation, with gbrain as the command word, optionally after `cd <dir> &&` and optionally piped into `head` or `tail` with no file, and otherwise no `;`, `&&`, `||`, `|`, subshell or command substitution), `hasToken` (whole-word match, case and punctuation ignored), `githubRateLimited`, `norm`. |
 | `steps.ts` | `stepOf` (the first install step a probe has not passed) and the time to each step. |
 | `classify.ts` | `classifyInstall`: one trial's route, version, fetched install doc, stalls, person-needed events, failed and retried commands, question types, harness-memory saves, last gbrain error code, step times, the step a failed install died at, and infra flags. |
 | `verdict.ts` | Per cell and arm: n, finish-line rate with a Wilson 95% interval, median and IQR of time to finish, median agent turns, person-needed counts, harness-memory count, hinted recall. |
@@ -62,19 +62,21 @@ Every run is counted except those [docs/methodology.md](../../docs/methodology.m
 
 `real-image-check.sh` runs the four install-mode images, built from this tree, through the runner's own install trial with no provider key and no spend. A fake model upstream inside `real-image-check.ts` stands in for the model: the metering proxy forwards to it, and it answers with shell tool calls. Those calls install bun and gbrain for real, through the run's egress proxy, then wire gbrain into the harness the way gbrain's INSTALL_FOR_AGENTS.md says. Each command prints `HECHECK key=value` lines, which reach the fake in the next request.
 
-It runs six cases: Claude Code, Codex and OpenClaw on one model each, and Hermes on Anthropic, OpenAI and Particle. Each case passes four checks:
+It runs six install cases: Claude Code, Codex and OpenClaw on one model each, and Hermes on Anthropic, OpenAI and Particle. Each passes four checks:
 
 - **a.** The harness's model call went through the metering proxy, with the trial token, to the fake.
 - **b.** bun, gbrain and the setup command exited 0, and the harness's own `mcp list` names gbrain in a new conversation. On Codex and Hermes, which start MCP servers with the session, a gbrain serve process runs too.
 - **c.** In both conversations the agent's shell could read the token file, yet no provider key variable is set and no variable holds the token. Only names and counts are printed.
 - **d.** The brain path gbrain's config names matches the one the install probe and the install watcher recorded.
 
+A seventh case, **WebFetch** on Claude Code, installs nothing. The fake model loads WebFetch with Claude Code's ToolSearch (Claude Code 2.1.312 declares WebFetch only after that), then calls it once on gbrain's INSTALL_FOR_AGENTS.md (raw.githubusercontent.com). It passes **a** and **fetch**: the page host was admitted by the egress proxy, the page reached a model request, and the tool result is not an error. It also reports, from the egress log, whether Claude Code's own domain check before a fetch (its preflight to api.anthropic.com or claude.ai) was blocked. The preflight is reported, never failed on: the blocklist refuses api.anthropic.com on purpose.
+
 ```bash
-scripts/gbrain-install/real-image-check.sh --out ~/ric            # build the images, run all six cases
+scripts/gbrain-install/real-image-check.sh --out ~/ric            # build the images, run all seven cases
 scripts/gbrain-install/real-image-check.sh --out ~/ric --skip-build --harness hermes
 ```
 
-It needs Docker and internet access, so it runs on a fresh VM, not in CI. Without `--commit` it installs the commit gbrain's stable tag serves now. The report is `<out>/real-image-check.json`: per case the four checks with their evidence, every marker, the trial's outcome and the run directory. Exit 0 means every case passed. Tests: `bun test tests/gbrain-install-real-image-check.test.ts`.
+It needs Docker and internet access, so it runs on a fresh VM, not in CI. Without `--commit` it installs the commit gbrain's stable tag serves now. The report is `<out>/real-image-check.json`: per case the four checks with their evidence, every marker, the trial's outcome and the run directory. Exit 0 means every case passed, here and with `--codex-semantic`. Tests: `bun test tests/gbrain-install-real-image-check.test.ts`.
 
 ## Known limits
 

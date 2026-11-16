@@ -179,6 +179,26 @@ describe.skipIf(!HAS_TOOLS).each(HARNESSES)('%s adapter, install mode', (h) => {
   }, 40_000);
 });
 
+describe.skipIf(!HAS_TOOLS)('claude-code adapter, WebFetch preflight', () => {
+  const settings = (t: Trial) => JSON.parse(readFileSync(join(t.state, 'claude', 'settings.json'), 'utf8')) as Record<string, unknown>;
+  test('install mode turns the WebFetch domain preflight off in settings.json', async () => {
+    const t = trial('claude-code');
+    const s = await session('claude-code', t, 's1', 'alice', ['run: true']);
+    expect(s.turns[0]!.response.exit, s.turns[0]!.response.detail).toBe(0);
+    expect(settings(t).skipWebFetchPreflight).toBe(true);
+  }, 60_000);
+  test('outside install mode settings.json is the seed, with no skipWebFetchPreflight', () => {
+    const t = trial('claude-code');
+    const logs = join(t.root, 'logs'), turns = join(t.root, 'turns');
+    mkdirSync(logs); mkdirSync(turns);
+    writeFileSync(join(t.workspace, 'instruction.md'), 'run: true\n');
+    const r = spawnSync('bash', [join(ROOT, 'harnesses', 'claude-code', 'adapter.sh'), 'run'], { env: env('claude-code', t, logs, turns, { HE_INSTALL_MODE: undefined, HE_MODEL_API_KEY: 'he-run-dummy' }), stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 30_000 });
+    expect(existsSync(join(t.state, 'claude', 'settings.json')), r.stderr.slice(-800)).toBe(true);
+    expect(settings(t)).toEqual(JSON.parse(readFileSync(join(ROOT, 'harnesses', 'claude-code', 'config', 'settings.json'), 'utf8')));
+    expect('skipWebFetchPreflight' in settings(t)).toBe(false);
+  }, 40_000);
+});
+
 describe.skipIf(!HAS_TOOLS).each(HARNESSES)('%s adapter, harness PATH', (h) => {
   const extra = (t: Trial) => ['.bun/bin', '.npm-global/bin', '.local/bin'].map((d) => join(t.state, d));
   test('install mode starts each harness session with the PATH plus HOME/.bun/bin, HOME/.npm-global/bin and HOME/.local/bin', async () => {

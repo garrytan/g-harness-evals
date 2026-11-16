@@ -1,4 +1,4 @@
-// internal-task: install slots in the metering proxy (runner/proxy/metering-proxy.ts, a bind with install: true), keyless.
+// GST-2715: install slots in the metering proxy (runner/proxy/metering-proxy.ts, a bind with install: true), keyless.
 // The mix in tests/fixtures/proxy-install-slot/drive.ts runs against a fake upstream with placeholder keys. golden.json is
 // what the proxy at origin/main (db705db2, before install slots) wrote and answered for that mix; a slot bound without
 // install must still write and answer exactly that, times aside.

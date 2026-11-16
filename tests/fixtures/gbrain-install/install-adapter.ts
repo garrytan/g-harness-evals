@@ -8,6 +8,8 @@
 //   leak        oracle, and writes the proxy token into its settings file (the runner must scrub it)
 //   leakkey     oracle, and writes HE_FIXTURE_FAKE_KEY into a state file (the canary must stop the run)
 //   nowatch     oracle without the filesystem watcher
+//   scratch     oracle, and its shell leaves the fact in a scratch file under TMPDIR ($HE_SESSION_STATE_DIR/tmp)
+//   chained     oracle, but recalls with "gbrain --version; cat <the brain's page file>", which runs gbrain but returns the file
 //   refuse      exits 2 before ready with an HE-INSTALL-003 line, as an adapter refusing its install mode does
 // Each turn: one model call through the proxy with the token from HE_MODEL_API_KEY_FILE, a Claude Code stream-json
 // transcript at turn-NNNN.claude.jsonl, the probe at turn-NNNN.probe.json, then the response.
@@ -93,6 +95,7 @@ async function answer(req: { turn: number; text: string; channel: { id: string }
     if (play === 'decoy') { mkdirSync(join(home, '.claude'), { recursive: true }); appendFileSync(memoryFile, '- ' + saved[1] + '\n'); tool('Write', { file_path: memoryFile }, 'ok'); return 'Saved to my memory.'; }
     remember(saved[1]!);
     tool('mcp__gbrain__put_page', { slug: 'family/sister-cat', content: saved[1] }, '{"ok":true}');
+    if (play === 'scratch') { mkdirSync(join(home, 'tmp', 'claude-1000'), { recursive: true }); writeFileSync(join(home, 'tmp', 'claude-1000', 'bash-output.txt'), saved[1] + '\n'); }
     return 'Saved to gbrain.';
   }
   if (/cat called\?$/.test(t)) {
@@ -100,7 +103,8 @@ async function answer(req: { turn: number; text: string; channel: { id: string }
     if (play === 'decoy') { const m = /called ([A-Za-z]+)/.exec(existsSync(memoryFile) ? readFileSync(memoryFile, 'utf8') : ''); return m ? `Your sister's new cat is called ${m[1]}.` : "I don't know."; }
     if (play === 'hinted' && !hinted) return "I don't know.";
     const page = recallFromBrain();
-    tool('Bash', { command: 'gbrain query "sister cat"' }, JSON.stringify({ results: [{ slug: 'family/sister-cat', text: page.trim() }] }));
+    if (play === 'chained') tool('Bash', { command: 'gbrain --version; cat ' + pagesFile }, '0.60.717.0\n' + page);
+    else tool('Bash', { command: 'gbrain query "sister cat"' }, JSON.stringify({ results: [{ slug: 'family/sister-cat', text: page.trim() }] }));
     const m = /called ([A-Za-z]+)/.exec(page);
     return m ? `Your sister's new cat is called ${m[1]}.` : "I don't know.";
   }

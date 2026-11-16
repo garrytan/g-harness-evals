@@ -11,7 +11,12 @@
 //   c. the agent's shell, in both conversations, could read the proxy token file yet has no provider key variable and no
 //      variable holding the token (names and counts only, never a value);
 //   d. the brain path gbrain's own config names equals the brain_path the install probe and the install watcher recorded.
-// The report is <out>/real-image-check.json. Exit 0 when every case passes, 1 when any fails, 2 on a usage error.
+// One more case, WebFetch on Claude Code, installs nothing: the fake loads WebFetch with ToolSearch, then calls it once on
+// gbrain's INSTALL_FOR_AGENTS.md. It
+// checks a and that the page came back (its host admitted by the egress proxy, the page in a model request, a tool result that
+// is not an error), and reports from the egress log whether Claude Code's own domain check (its preflight) was blocked.
+// The report is <out>/real-image-check.json. Exit 0 when every case passes, 1 when any fails, 2 on a usage error; the same
+// for --codex-semantic.
 //
 //   bun scripts/gbrain-install/real-image-check.ts --out <dir> [--harness claude-code,hermes] [--commit <gbrain commit>]
 //
@@ -26,7 +31,9 @@ import { trialKey } from '../../runner/trial/proxy.ts';
 import { executeRun } from '../../runner/trial/run.ts';
 import { SHELL_TOOLS, reply, shellTool, sse } from '../frontier-harbor/fake-upstream.ts';
 
-export interface CheckCase { harness: string; model: string }
+/** webfetch: the WebFetch case, which installs nothing: the fake model calls Claude Code's WebFetch on WEBFETCH_URL once, and the
+ *  case reports whether the page came back and whether Claude Code's own domain check (its preflight) got through the egress. */
+export interface CheckCase { harness: string; model: string; webfetch?: true }
 export const CASES: CheckCase[] = [
   { harness: 'claude-code', model: 'anthropic:claude-opus-5-5' },
   { harness: 'codex', model: 'openai:gpt-6.1-sol' },
@@ -34,7 +41,13 @@ export const CASES: CheckCase[] = [
   { harness: 'hermes', model: 'anthropic:claude-opus-5-5' },
   { harness: 'hermes', model: 'openai:gpt-6.1-sol' },
   { harness: 'hermes', model: 'particle:particle-1' },
+  { harness: 'claude-code', model: 'anthropic:claude-opus-5-5', webfetch: true },
 ];
+export const WEBFETCH_URL = 'https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md';
+/** The page's first heading: a model request that carries it got the fetched page (WebFetch hands the page to a model). */
+export const WEBFETCH_MARK = 'GBrain Installation Guide for AI Agents';
+/** Hosts Claude Code's WebFetch asks whether a domain may be fetched before it fetches. */
+export const PREFLIGHT_HOSTS = ['api.anthropic.com', 'claude.ai'];
 /** The only provider key values the check's proxy holds. None is a real key shape. */
 export const DUMMY_KEYS = { ANTHROPIC_API_KEY: 'sk-ant-capture-dummy', OPENAI_API_KEY: 'sk-capture-dummy', PARTICLE_API_KEY: 'particle-capture-dummy' };
 /** Provider key variables the agent's shell must not have. HE_MODEL_API_KEY is reported too but not failed on its own: the
@@ -165,8 +178,9 @@ export function markers(body: unknown): Record<string, string> {
   return out;
 }
 
-export interface CaseState { attempts: Record<string, number>; waits: number; waitUntil: number | null; requests: number; seen: Record<string, string>; gbrainTools: number }
-export const newState = (): CaseState => ({ attempts: {}, waits: 0, waitUntil: null, requests: 0, seen: {}, gbrainTools: 0 });
+export interface WebFetchState { searched: boolean; id: string | null; result: string | null; is_error: boolean | null; page_requests: number }
+export interface CaseState { attempts: Record<string, number>; waits: number; waitUntil: number | null; requests: number; seen: Record<string, string>; gbrainTools: number; webfetch: WebFetchState }
+export const newState = (): CaseState => ({ attempts: {}, waits: 0, waitUntil: null, requests: 0, seen: {}, gbrainTools: 0, webfetch: { searched: false, id: null, result: null, is_error: null, page_requests: 0 } });
 
 /** The next command for this conversation, or null for a text reply: the first step of the prompt's plan whose done marker
  *  the request does not carry yet, each tried at most twice (a `once` step once), and, once the install script was started,
@@ -205,7 +219,7 @@ export function answer(path: string, body: Record<string, any>, n: number, call:
   if (path.endsWith('/v1/messages')) {
     const usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     const id = 'msg_he_' + n;
-    const block: Record<string, unknown> = call ? { type: 'tool_use', id: 'toolu_he_' + n, name: call.tool.name, input: toolArgs(call.tool.name, call.command, call.background) } : { type: 'text', text };
+    const block: Record<string, unknown> = call ? { type: 'tool_use', id: 'toolu_he_' + n, name: call.tool.name, input: call.args ?? toolArgs(call.tool.name, call.command, call.background) } : { type: 'text', text };
     const stop = call ? 'tool_use' : 'end_turn';
     if (!stream) return Response.json({ id, type: 'message', role: 'assistant', model, content: [block], stop_reason: stop, stop_sequence: null, usage });
     return sse([
@@ -267,7 +281,30 @@ export function gbrainToolCount(body: Record<string, any>): number {
 }
 
 /** The fake upstream: one scripted conversation plan per case, every HECHECK marker the requests carried kept in state.seen. */
-export function startFake(active: () => { harness: string; commit: string; state: CaseState } | null) {
+/** The WebFetch case's side of a request: the WebFetch tool result once it comes back, and whether the request carries the page. */
+export function noteWebFetch(body: Record<string, any>, w: WebFetchState): void {
+  if (strings(body).some((s) => s.includes(WEBFETCH_MARK))) w.page_requests++;
+  if (!w.id) return;
+  for (const m of Array.isArray(body.messages) ? body.messages : []) {
+    for (const b of Array.isArray(m?.content) ? m.content : []) {
+      if (b?.type !== 'tool_result' || b.tool_use_id !== w.id) continue;
+      w.result = typeof b.content === 'string' ? b.content : (Array.isArray(b.content) ? b.content : []).map((x: any) => (typeof x?.text === 'string' ? x.text : '')).join('\n');
+      w.is_error = b.is_error === true;
+    }
+  }
+}
+
+/** The WebFetch case's calls in the install conversation: WebFetch once when the request declares it, else, once, Claude Code's
+ *  ToolSearch selecting it, since Claude Code 2.1.312 defers WebFetch and declares it only after a ToolSearch loads it. */
+export function webFetchCall(kind: PromptKind, body: Record<string, any>, w: WebFetchState): Call | null {
+  if (kind !== 'install' || w.id) return null;
+  const names = toolDecls(body).map((d) => d.name);
+  if (names.includes('WebFetch')) return { tool: { name: 'WebFetch', custom: false }, command: '', args: { url: WEBFETCH_URL, prompt: 'What are the install steps for Claude Code?' } };
+  if (names.includes('ToolSearch') && !w.searched) return { tool: { name: 'ToolSearch', custom: false }, command: '', args: { query: 'select:WebFetch', max_results: 1 } };
+  return null;
+}
+
+export function startFake(active: () => { harness: string; commit: string; state: CaseState; webfetch?: boolean } | null) {
   let n = 0;
   return Bun.serve({ port: 0, hostname: '127.0.0.1', idleTimeout: 0, fetch: async (req) => {
     const path = new URL(req.url).pathname;
@@ -279,6 +316,13 @@ export function startFake(active: () => { harness: string; commit: string; state
       a.state.requests++;
       Object.assign(a.state.seen, markers(body));
       if (kind === 'recall') a.state.gbrainTools = Math.max(a.state.gbrainTools, gbrainToolCount(body));
+    }
+    if (a?.webfetch) {
+      noteWebFetch(body, a.state.webfetch);
+      const call = webFetchCall(kind, body, a.state.webfetch);
+      if (call?.tool.name === 'WebFetch') a.state.webfetch.id = 'toolu_he_' + n;
+      if (call?.tool.name === 'ToolSearch') a.state.webfetch.searched = true;
+      return answer(path, body, n, call, TEXT[kind]);
     }
     const tool = shellTool(body);
     const step = a && tool ? nextCommand(kind, body, a.state, a.harness, a.commit) : null;
@@ -316,6 +360,19 @@ export function evaluate(c: CheckCase, e: Evidence): { a: Check; b: Check; c: Ch
   const d = { ok: !!oracle && probePaths.length > 0 && watchPaths.length > 0 && [...probePaths, ...watchPaths].every((p) => p === oracle),
     detail: 'gbrain=' + (s.brain_path ?? 'missing') + ' probe=' + (probePaths.join(',') || 'none') + ' watcher=' + (watchPaths.join(',') || 'none') };
   return { a, b, c: cc, d };
+}
+
+/** The WebFetch case from the egress log and the fake's notes: whether the preflight to Claude Code's domain check got through
+ *  (reported, never failed on: the blocklist refuses api.anthropic.com on purpose), and whether the fetch worked: the page host
+ *  admitted, the page in a model request, and a tool result that is not an error. */
+export function evaluateWebFetch(w: WebFetchState, egress: Array<{ host: string; port: number; decision: string; reason?: string }>): { preflight: { blocked: boolean; detail: string }; fetch: Check } {
+  const show = (ls: typeof egress) => ls.map((l) => l.host + ':' + l.port + ' ' + l.decision + (l.reason ? ' (' + l.reason + ')' : '')).join(', ');
+  const pre = egress.filter((l) => PREFLIGHT_HOSTS.includes(l.host));
+  const page = egress.filter((l) => l.host === new URL(WEBFETCH_URL).hostname);
+  const preflight = { blocked: pre.some((l) => l.decision === 'blocked'), detail: pre.length ? show(pre) : 'no connection to ' + PREFLIGHT_HOSTS.join(' or ') };
+  const ok = page.some((l) => l.decision === 'allowed') && w.page_requests > 0 && w.is_error === false;
+  const result = w.result === null ? 'missing' : (w.is_error ? 'error' : 'ok') + ' ' + JSON.stringify(w.result.slice(0, 300));
+  return { preflight, fetch: { ok, detail: 'WebFetch ' + (w.id ? 'called' : 'never called (not offered' + (w.searched ? ' after a ToolSearch for it)' : ', and no ToolSearch to load it)')) + '; tool result ' + result + '; ' + new URL(WEBFETCH_URL).hostname + ' ' + (show(page) || 'never contacted') + '; ' + w.page_requests + ' model request(s) carried the page' } };
 }
 
 // ---- Codex semantic search after gbrain setup codex (internal-task, gbrain#9396) ---------------------------------------------
@@ -522,7 +579,7 @@ async function main(argv: string[]): Promise<number> {
       results.push(r);
     }
     writeFileSync(join(outDir, 'codex-semantic.json'), JSON.stringify({ schema: 'gbrain-codex-semantic-check/1', at: new Date().toISOString(), cases: results }, null, 1) + '\n');
-    return 0;
+    return results.every((r) => r.ok) ? 0 : 1;
   }
   const only = flag('--harness')?.split(',');
   const cases = CASES.filter((c) => !only || only.includes(c.harness));
@@ -545,7 +602,7 @@ async function main(argv: string[]): Promise<number> {
   try {
     for (const [i, c] of cases.entries()) {
       const provider = c.model.slice(0, c.model.indexOf(':'));
-      const runId = 'real-image-check-' + (i + 1) + '-' + c.harness + '-' + provider;
+      const runId = 'real-image-check-' + (i + 1) + '-' + c.harness + '-' + provider + (c.webfetch ? '-webfetch' : '');
       const dir = join(outDir, runId);
       const runDir = join(dir, 'run');
       mkdirSync(runDir, { recursive: true });
@@ -556,8 +613,8 @@ async function main(argv: string[]): Promise<number> {
       const { prereg, sha256 } = loadPrereg(preregPath);
       const manifestPath = join(runDir, 'manifest.json');
       writeFileSync(manifestPath, JSON.stringify(buildManifest(prereg, sha256), null, 1));
-      active = { harness: c.harness, commit, state: newState() };
-      const label = c.harness + ' ' + c.model;
+      active = { harness: c.harness, commit, state: newState(), ...(c.webfetch ? { webfetch: true } : {}) };
+      const label = c.harness + ' ' + c.model + (c.webfetch ? ' webfetch' : '');
       console.log('== ' + label + ' (' + runDir + ')');
       let thrown: string | null = null;
       await executeRun(JSON.parse(readFileSync(manifestPath, 'utf8')), manifestPath, {
@@ -573,14 +630,16 @@ async function main(argv: string[]): Promise<number> {
       const watch = trialDir ? readJsonLines(join(trialDir, 'logs', 'install-watch.ndjson')) : [];
       const state = active.state;
       active = null;
-      const checks = evaluate(c, { record, usage: readJsonLines(join(runDir, 'proxy-usage.ndjson')), seen: state.seen, requests: state.requests, gbrainTools: state.gbrainTools, probes, watch });
       const egress = readJsonLines(join(runDir, 'install-egress.ndjson'));
+      const install = evaluate(c, { record, usage: readJsonLines(join(runDir, 'proxy-usage.ndjson')), seen: state.seen, requests: state.requests, gbrainTools: state.gbrainTools, probes, watch });
+      const web = c.webfetch ? evaluateWebFetch(state.webfetch, egress as Array<{ host: string; port: number; decision: string; reason?: string }>) : null;
+      const checks: Record<string, Check> = web ? { a: install.a, fetch: web.fetch } : install;
       const installLog = trialDir ? join(trialDir, 'state', '.he-check', 'install.log') : null;
       const ok = !thrown && Object.values(checks).every((x) => x.ok);
-      results.push({ harness: c.harness, model: c.model, ok, checks, run_dir: runDir, error: thrown ?? record?.error ?? null, termination: record?.termination ?? null, outcome: record?.install?.outcome ?? null,
-        markers: state.seen, fake_requests: state.requests, egress: { allowed: egress.filter((l) => l.decision === 'allowed').length, blocked: egress.filter((l) => l.decision === 'blocked').length },
+      results.push({ harness: c.harness, model: c.model, ...(c.webfetch ? { case: 'webfetch', preflight: web!.preflight } : {}), ok, checks, run_dir: runDir, error: thrown ?? record?.error ?? null, termination: record?.termination ?? null, outcome: record?.install?.outcome ?? null,
+        markers: state.seen, fake_requests: state.requests, egress: { allowed: egress.filter((l) => l.decision === 'allowed').length, blocked: egress.filter((l) => l.decision === 'blocked').length, failed: egress.filter((l) => l.decision === 'failed').length },
         cold_download: readJsonLines(join(runDir, 'install-download.jsonl'))[0] ?? null, install_log: installLog && existsSync(installLog) ? installLog : null });
-      console.log('== ' + label + ': ' + (ok ? 'pass' : 'FAIL') + ' ' + Object.entries(checks).map(([k, v]) => k + '=' + (v.ok ? 'ok' : 'fail')).join(' '));
+      console.log('== ' + label + ': ' + (ok ? 'pass' : 'FAIL') + ' ' + Object.entries(checks).map(([k, v]) => k + '=' + (v.ok ? 'ok' : 'fail')).join(' ') + (web ? ' preflight=' + (web.preflight.blocked ? 'blocked' : 'not blocked') : ''));
     }
   } finally {
     fake.stop(true);

@@ -30,7 +30,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s hermes[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 # config/ sits beside this file (/opt/harness in the image), so a checkout's adapter run on the host reads the checkout's OpenAI
@@ -43,7 +43,7 @@ case "$entry" in
   *) log "unknown entry point: $entry; 'run' and 'serve' are implemented"; exit 2 ;;
 esac
 
-# internal-task, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
+# GST-2715, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
 # from the adapter's config template and keeps whatever the agent and gbrain write across sessions (HERMES_HOME), with no world MCP
 # server. The proxy token goes into $HERMES_HOME/.env (mode 0600), which Hermes loads itself, as ANTHROPIC_API_KEY (OPENAI_API_KEY
 # on an OpenAI, Particle or OpenRouter cell); neither is exported, so no shell the agent starts gets it from this adapter. Hermes's
@@ -66,8 +66,8 @@ if [ "${HE_INSTALL_MODE:-}" = 1 ]; then
   export -n HE_MODEL_API_KEY HE_MODEL_API_KEY_FILE
 fi
 
-# internal-task: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
-# empty or default changes nothing; any other value that is not a route is refused here, before anything is written. internal-task
+# HARN-15: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
+# empty or default changes nothing; any other value that is not a route is refused here, before anything is written. HARN-18
 # (H10) adds route-once and route-placebo (the route-hook hook, docs/adapters.md "Emit flag"), route-told (the route-skill skill;
 # the told sentence is in the cell's preamble, which the runner carries) and the slot routes route-slot-told@<id> and
 # route-slot-skill@<id> (the bundle byte-copied under routes/slots/<id>/, its bundle_sha256 re-checked here). The grammar is
@@ -82,7 +82,7 @@ case "$instruction_route" in
     route_slot=${instruction_route#*@}
     [[ "$route_slot" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route needs @<slot_id> matching [a-z0-9][a-z0-9-]{0,62}"; exit 2; } ;;
   skills-native|skills-resolver|skills-names-only|skills-no-catalog)
-    # internal-task: a skills arm (scripts/skill-resolver/ARMS.md), applied below after the instruction routes. It is not a route, so
+    # HARN-52: a skills arm (scripts/skill-resolver/ARMS.md), applied below after the instruction routes. It is not a route, so
     # the route code below sees default and writes nothing.
     [ "$entry" = serve ] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is applied for the serve entry only (scripts/skill-resolver/ARMS.md)"; exit 2; }
     skill_config=$instruction_route
@@ -99,10 +99,10 @@ export HOME="$HE_SESSION_STATE_DIR"
 [ "$install_mode" = 0 ] || export PATH="$PATH:$HOME/.bun/bin:$HOME/.npm-global/bin:$HOME/.local/bin"
 export HERMES_HOME="$HE_SESSION_STATE_DIR/hermes"
 mkdir -p "$HERMES_HOME"
-# internal-task: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
+# HARN-13: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
 # (<proxy>/<slot>/<provider>, runner/trial/proxy.ts baseUrlFor). An OpenAI cell gets config/config.openai.yaml and Hermes's
 # openai-api provider on its shipped Responses transport at HE_MODEL_BASE_URL/v1 with reasoning effort medium (pin.json
-# model_openai; `openai` is Hermes's alias for openrouter at this pin, hermes_cli/providers.py). internal-task: a Particle cell (URL
+# model_openai; `openai` is Hermes's alias for openrouter at this pin, hermes_cli/providers.py). HARN-16: a Particle cell (URL
 # ending in /particle) gets config/config.particle.yaml and its custom_providers entry custom:particle, Hermes's custom-endpoint
 # provider on the chat_completions transport at HE_MODEL_BASE_URL/v1 with OPENAI_* and no Anthropic variables (pin.json
 # model_particle). An OpenRouter cell (URL ending in /openrouter) gets config/config.openrouter.yaml and its custom_providers entry
@@ -115,7 +115,7 @@ case "${HE_MODEL_BASE_URL%/}" in
   */openrouter) provider=custom:openrouter-proxy; [ -e "$HERMES_HOME/config.yaml" ] || cp "$harness_dir/config/config.openrouter.yaml" "$HERMES_HOME/config.yaml" ;;
 esac
 [ -e "$HERMES_HOME/config.yaml" ] || cp /opt/harness/config/config.yaml "$HERMES_HOME/config.yaml"
-# internal-task: while config.yaml is still exactly one of the templates, its model.default is set to the cell model, as --model
+# HARN-20: while config.yaml is still exactly one of the templates, its model.default is set to the cell model, as --model
 # is on every turn, so no request names another model. The templates' default (claude-sonnet-5-5, gpt-6-luna) otherwise
 # shows up in Hermes's metadata read GET /v1/models/<default> beside the one for the cell model (keyless capture,
 # 2026-10-31). Each template has exactly one "  default:" line. Any other config.yaml (one a home already had, or the gstack
@@ -169,18 +169,18 @@ log "hermes ${hermes_version%%$'\n'*} model=$provider/$HE_MODEL_NAME budget=${HE
 # A model error is a proxy refusal, an Anthropic or OpenAI SDK error class (both SDKs use these names)
 # or an HTTP status on stderr or in the result record; everything else that fails is Hermes's.
 model_error_pattern='metering proxy|AuthenticationError|PermissionDeniedError|RateLimitError|APIStatusError|APIConnectionError|InternalServerError|Error code: (401|402|403|404|429|5[0-9]{2})|HTTP (401|402|403|404|429|5[0-9]{2})'
-# internal-task: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
+# HARN-16: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
 # (a Particle 400 with code invalid_value or unsupported_parameter is model_error) belongs to the runner, which reads the
 # metering proxy's record of the upstream status and code; Hermes's own output drops error.code (agent/api_error_summary.py).
 
 cd "$HE_WORKSPACE_DIR"
 
-# internal-task, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
+# HARN-5, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
 # exported view of gbrain's install read-only at HE_GBRAIN_INSTALL_DIR (/he-gbrain-install) and names the split in HE_GBRAIN_SPLIT.
 # Before the harness starts, every file the view's manifest lists is checked against its sha256 and copied to where the gbrain
 # command would have written it. gbrain-docs: workspace/x to /workspace/x (`gbrain skillpack scaffold --all`, skills/ at this
 # commit) and the split's compiled context to /workspace/.hermes.md (`gbrain compile-context --target hermes --include-core`,
-# the file Hermes's prompt builder reads from the cwd). gbrain-installer (internal-task): home/SOUL.md to $HERMES_HOME/SOUL.md, Hermes's
+# the file Hermes's prompt builder reads from the cwd). gbrain-installer (GBRA-188): home/SOUL.md to $HERMES_HOME/SOUL.md, Hermes's
 # own SOUL.md at the pinned Hermes commit with the brain-first block `gbrain setup hermes --instructions-only` appended. Hermes seeds that
 # default SOUL.md into HERMES_HOME when `hermes --version` runs above, the "ran Hermes once" the installer needs, so the copy replaces a
 # SOUL.md whose sha256 equals the seed the bundle records and refuses any other content. At gbrain#7489's per-turn-hook head the
@@ -343,7 +343,7 @@ PY
   gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"%s}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests" "$turn_hook_json")
 fi
 
-# internal-task, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
+# HARN-15, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
 # (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction.md, checked here against the sha256 the
 # preregistration cites), goes to Hermes through the route HE_HARNESS_CONFIG names. route-tool writes nothing: the gbrain MCP
 # tool descriptions stay the only carrier. route-system sets agent.system_prompt in the config.yaml this adapter wrote (Hermes's
@@ -354,7 +354,7 @@ fi
 # $HERMES_HOME/skills/brain-first/SKILL.md (a fixed description of at most 57 characters, which Hermes shows whole, and the
 # instruction as the body); route-told writes the same skill. The slot routes copy the bundle's skill/<skill_name>/ from
 # routes/slots/<id>/ to $HERMES_HOME/skills/<skill_name>/ after re-checking its bundle_sha256 (the full shape check is host-side,
-# scripts/routes/slot-check.ts). The hook routes (route-hook, route-once, route-placebo; internal-task) append a marked
+# scripts/routes/slot-check.ts). The hook routes (route-hook, route-once, route-placebo; HARN-18) append a marked
 # hooks.pre_llm_call block whose command is /bin/sh routes/he-route-hook.sh <emit flag> <bytes file> (the instruction, or
 # routes/placebo.md on route-placebo, each checked against its committed sha256) and write shell-hooks-allowlist.json approving
 # exactly that command (refused when the config already has hooks: or an allowlist exists; HERMES_ACCEPT_HOOKS stays unset). The
@@ -542,7 +542,7 @@ PY
     log "instruction route hook: $route_doctor_line"
     route_hook_json=',"hook":"healthy"'
   fi
-  # internal-task (H10): Hermes's command-approval setting and the Tirith scanner this cell runs with, recorded before any turn in
+  # HARN-18 (H10): Hermes's command-approval setting and the Tirith scanner this cell runs with, recorded before any turn in
   # $HE_LOG_DIR/hermes-security.json and named in ready.instruction_route (approvals: the single-query mode serve turns run
   # under; tirith: the version, or absent). Tirith is pinned in the image (pin.json tirith; TIRITH_BIN names it, so Hermes never
   # downloads one, and TIRITH_OFFLINE=1 stops Tirith's own threat-DB download); the receipt says whether the binary here is the
@@ -583,7 +583,7 @@ PY
   route_json=$(printf ',"instruction_route":{"route":"%s","instruction_sha256":"%s","files":%s%s,"approvals":"%s","tirith":"%s"}' "$instruction_route" "$route_sha" "$route_files" "$route_hook_json" "$route_approvals" "$route_tirith")
 fi
 
-# internal-task, the skills arms (scripts/skill-resolver/ARMS.md). The kit is one read-only directory, /opt/skill-resolver
+# HARN-52, the skills arms (scripts/skill-resolver/ARMS.md). The kit is one read-only directory, /opt/skill-resolver
 # (HE_SKILL_KIT_DIR overrides it), built by scripts/skill-resolver/build-kit.ts. skills-native and skills-resolver copy the kit's
 # catalog/skills into $HERMES_HOME/skills, copy the kit's index/hermes/gbrain-home to $HE_SESSION_STATE_DIR/he-skills/gbrain-home,
 # write he-skills/hook.json for the hook wrapper (mode shadow on native, push on resolver), append a marked hooks.pre_llm_call
@@ -887,7 +887,7 @@ os.rename(resp + ".tmp", resp)
 PY
 }
 
-# internal-task (H10), route cells only. route_turn, before each member turn: count the turn in its session (the adapter's session
+# HARN-18 (H10), route cells only. route_turn, before each member turn: count the turn in its session (the adapter's session
 # key; a session's first member turn is session_turn 1), write the emit flag the hook routes read (route-hook and route-placebo
 # emit=1 on every turn, route-once emit=1 on session_turn 1 only, the temp file renamed into place) and the turn's
 # RouteTurnStatus to $HE_LOG_DIR/turns/<turn>.route.json: config, driver (cli), route, session_key in the TurnWindow form
@@ -918,7 +918,7 @@ session_key = r["channel"]["id"] + (":" + str(r["thread_ts"]) if r.get("thread_t
 put(out, json.dumps({"config": config, "driver": "cli", "route": route, "session_key": session_key, "session_turn": sessions[key], "emitted": emitted}))
 PY
 }
-# internal-task, skills-native and skills-resolver only. skills_turn, before each member turn: count the turn in its session (the
+# HARN-52, skills-native and skills-resolver only. skills_turn, before each member turn: count the turn in its session (the
 # adapter's session key) and keep that count and the session's last text in $HE_SESSION_STATE_DIR/he-skills/sessions.json, then
 # write the turn context the hook wrapper reads, $HE_SESSION_STATE_DIR/he-skills/turn.json (temp file renamed into place): turn,
 # name (the turn file's base name), session_key, window_key (<channel id>, or <channel id>:<thread_ts> in a thread),

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The preregistered analysis of the gstack delivery eval (HARN-61, plan decisions 6 and 8, gate changes d2, d5, d12, d14),
+// The preregistered analysis of the gstack delivery eval (internal-task, plan decisions 6 and 8, gate changes d2, d5, d12, d14),
 // modelled on scripts/matrix-analysis.ts and scripts/instruction-followed-h10.ts and built on runner/stats/paired.ts.
 //
 //   bun scripts/gstack-delivery/analyze.ts --trials <trials.jsonl> --probes <probes.jsonl> [--pi-delivery-passed]

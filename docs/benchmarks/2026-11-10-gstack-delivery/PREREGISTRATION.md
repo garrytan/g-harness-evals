@@ -21,7 +21,7 @@ Status: written 2026-11-09 (America/Los_Angeles), before any counted trial of th
 
 **The steps cards:**
 
-GSTA-36 approved 2026-11-09, one edit to review line 4
+internal-task approved 2026-11-09, one edit to review line 4
 
 - review.md sha256 `92ff952d1f76d6871c8a97c9dcd885332bf3510de7ebf6eab1e72334252efaaf`, ship.md sha256 `dfae5c36ffcc64460eba35b5e0a76025ebe9e6339d33bf724c689903abb1a697`.
 - Review line 4 now reads: "For an approved defect regression, write the test and prove it fails for the original defect before changing product code."
@@ -139,7 +139,7 @@ This turns the d14 decision table into the change gstack makes for each way the 
 - **Hook routes:** Claude Code's UserPromptSubmit and PostToolUse hooks, Codex's hooks (with `--dangerously-bypass-hook-trust`), the Hermes `llm_request` plugin, the OpenClaw plugin and the Pi extension.
 - **Startup routes:** `CLAUDE.md` in Claude Code's config folder, `AGENTS.md` in `CODEX_HOME`, Hermes's `SOUL.md` and Pi's `AGENTS.md`. OpenClaw has no startup route (see "Cells that do not run").
 
-A route is named for a harness only where that harness's own minimum detectable difference is reported (d14, last row). Every verdict line goes to GSTA-36 with the harness, route, file and number. Every CUT-CANDIDATE also goes to Garry in plain words, with the evidence (R48).
+A route is named for a harness only where that harness's own minimum detectable difference is reported (d14, last row). Every verdict line goes to internal-task with the harness, route, file and number. Every CUT-CANDIDATE also goes to Garry in plain words, with the evidence (R48).
 
 | Result | What changes for gstack | Verdict on the step text |
 |---|---|---|
@@ -149,8 +149,8 @@ A route is named for a harness only where that harness's own minimum detectable 
 | **No arm beats none on review pass rate (every primary 2 interval includes 0)** | gstack ships no new route. We run one "Why null?" cycle: did the model get and use the card (delivery records, step markers), do the tasks fit, were there enough tasks and headroom (against the minimum detectable differences above), and does the model already do the steps with no gstack (none-arm compliance)? | CUT-CANDIDATE if none-arm compliance is already at the ceiling and the run had the power to see a gain. Before the cut, we make one honest attempt to raise the ceiling with harder review tasks (R61). FIX-METHOD, naming the fix, if the card wasn't delivered or the run lacked power. |
 | **Compliance goes up but pass rate doesn't change** | Following d14's third row, the route becomes the default only for the kind whose compliance claim holds. It replaces skill auto-load for review only if it's also non-inferior and cheaper (first row). For ship, the compliance claim alone decides (B1). | For each step whose marker rose with no gain in pass rate or cost: CUT-CANDIDATE if the review pass-rate interval excludes any gain as large as the minimum detectable difference (10.1 points at 8 pairs), meaning the run could have seen a gain and didn't; FIX-METHOD otherwise. |
 | **Placebo matches hook (placebo minus hook interval includes 0, with hook ahead of skill)** | The gain comes from extra text, not from the card's words, so gstack doesn't ship the card text as written. | FIX-METHOD: rewrite the card's step text and retest it against the placebo. |
-| **Pi fails its delivery test (under 95% of hook and startup trials delivered)** | Pi stays out of the pooled result and gets no route advice. gstack doesn't ship the Pi extension or Pi startup file. GSTA-36 gets the failed check, the extension file and the count. | FIX-METHOD for the Pi route. |
-| **OpenClaw can't run a route** | Startup never runs on OpenClaw (HE-DELIVERY-004: its startup file would be inside `/work`), so gstack gives no OpenClaw startup advice. If the OpenClaw hook fails its health checks too, OpenClaw stays on skills (`./setup --host openclaw`). Either way, GSTA-36 gets the refusal and its evidence lines as an OpenClaw install note. | FIX-METHOD for any OpenClaw route that didn't run. |
+| **Pi fails its delivery test (under 95% of hook and startup trials delivered)** | Pi stays out of the pooled result and gets no route advice. gstack doesn't ship the Pi extension or Pi startup file. internal-task gets the failed check, the extension file and the count. | FIX-METHOD for the Pi route. |
+| **OpenClaw can't run a route** | Startup never runs on OpenClaw (HE-DELIVERY-004: its startup file would be inside `/work`), so gstack gives no OpenClaw startup advice. If the OpenClaw hook fails its health checks too, OpenClaw stays on skills (`./setup --host openclaw`). Either way, internal-task gets the refusal and its evidence lines as an OpenClaw install note. | FIX-METHOD for any OpenClaw route that didn't run. |
 
 ## Headroom check and its results
 
@@ -176,7 +176,7 @@ The plan's fallback for a review set without headroom was the QM edition's singl
 - **B1, ship is a compliance-only kind.** Opus ship is at 16/16 on no gstack (Sol 12/16, 4 of 16 tasks vary), so a ship pass-rate gain cannot show on Opus. Ship's pass rate, non-inferiority and cost per solve are reported as descriptive. Primary 2 and the non-inferiority family run on review only (`analyze.ts --pass-kinds review`), which this PR adds.
 - **C1, the compliance primary stays on "followed" markers, and every marker is reported.** The d5 gate wanted at least 2 markers per kind at or under 60% on no gstack. Each kind has one: review `full_diff_first` 10% (followed 3%); ship `final_diff_after_commit` 0% (`fresh_verification` 93%, followed 0%). So ship compliance mostly reads the final-diff step, as said at the top.
 - **The first headroom archives are lost.** H1 and H2's archives (78 MB) were only on a subagent machine that stopped answering, and are treated as lost. Their numbers above come from their written reports only. The rerun's archive is kept, with its checksum verified, on the coordinating agent's primary machine (`~/.capy/work/harness-eval/h61-headroom-2`), not in the drive (the drive copy never synced). Raw captures stay private; the committed [headroom/](headroom/) files hold only per-trial grades and markers.
-- **Headroom ran before the egress read-timeout fix.** HARN-57's commit `e4acedadaa` sets a 900 s read timeout on the Harbor egress sidecar. Before it, gost's 15 s default cut any model reply that took more than 15 s to start, the harness resent it, and the cut call was still paid. All three headroom checks ran without the fix, so slow replies there were cut and resent; we did not measure how many. This branch merges that fix, and the counted run uses the fixed sidecar.
+- **Headroom ran before the egress read-timeout fix.** internal-task's commit `e4acedadaa` sets a 900 s read timeout on the Harbor egress sidecar. Before it, gost's 15 s default cut any model reply that took more than 15 s to start, the harness resent it, and the cut call was still paid. All three headroom checks ran without the fix, so slow replies there were cut and resent; we did not measure how many. This branch merges that fix, and the counted run uses the fixed sidecar.
 - **One R61 ceiling-raise was used,** before the rerun (commit `f529f969b0`, described under [Tasks](#tasks)). No second raise.
 - **The ship marker moved** from tests-after-merge to fresh verification after H1 (commit `db5b101d4d`), because no gstack already did tests-after-merge in 87.5% of H1's ship trials. Card text is unchanged.
 - **A3 (gstack's existing Claude Code hooks) does not run** (see [Cells that do not run](#cells-that-do-not-run)).
@@ -238,7 +238,7 @@ Each amendment is a dated commit on the results branch before any cell it affect
 
 ## Outside terms
 
-Task source repositories are MIT-licensed, and each task keeps its upstream licence text (`tasks/repo/gstack-delivery-v1/LICENSES`). The cards quote gstack (MIT, Garry Tan's own project). Harbor is Apache-2.0. Harnesses and Particle are pinned and routed as in #337 and HARN-57.
+Task source repositories are MIT-licensed, and each task keeps its upstream licence text (`tasks/repo/gstack-delivery-v1/LICENSES`). The cards quote gstack (MIT, Garry Tan's own project). Harbor is Apache-2.0. Harnesses and Particle are pinned and routed as in #337 and internal-task.
 
 ## Disclosures
 

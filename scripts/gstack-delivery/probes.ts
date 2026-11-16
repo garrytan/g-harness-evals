@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Step-compliance probes for the gstack delivery eval (HARN-61, plan decision 5 and gate changes d5, d12, d13): what the agent
+// Step-compliance probes for the gstack delivery eval (internal-task, plan decision 5 and gate changes d5, d12, d13): what the agent
 // did, read from the metering proxy's request captures, scored against the steps-card lines the task text does not already
 // demand. Keyless; it reads files and never calls a model.
 //

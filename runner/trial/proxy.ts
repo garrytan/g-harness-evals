@@ -22,7 +22,7 @@
 // A run with an ablation cell starts the proxy with --ablation-log <run dir>/ablation.ndjson (outside every agent
 // mount), and each trial slot of such a cell is bound with its map, map sha256 and layers. summarizeAblation reads the
 // trial key's receipts into TrialRecord.ablation.
-// internal-task: a run of cells with log_sections starts the proxy with --log-sections and checks /__proxy/status says so before
+// HARN-21: a run of cells with log_sections starts the proxy with --log-sections and checks /__proxy/status says so before
 // any trial; sectionsSmokeProblems is the check the one-trial smoke runs on its usage log (bun runner/run.ts check-sections).
 
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
@@ -57,10 +57,10 @@ export interface RunProxyOptions {
   /** Fake upstreams by provider (the proxy's --upstream), with the provider keys `env` gives; capture's win where both name one.
    *  scripts/gbrain-install/real-image-check.ts uses it for Particle, which capture mode does not cover. */
   upstream?: Record<string, string>;
-  /** internal-task (H10): count route copies on slots bound with `routes` (the proxy's --route-texts, written to <runDir>/route-texts.json).
+  /** HARN-18 (H10): count route copies on slots bound with `routes` (the proxy's --route-texts, written to <runDir>/route-texts.json).
    *  Unset, the proxy's command line and every usage line are as before. */
   routeTexts?: RouteTexts;
-  /** internal-task: the proxy's --log-sections, from the cells' log_sections; start() refuses a proxy whose status disagrees. */
+  /** HARN-21: the proxy's --log-sections, from the cells' log_sections; start() refuses a proxy whose status disagrees. */
   logSections?: boolean;
   startTimeoutMs?: number;
   /** Start the proxy with --ablation-log <runDir>/ablation.ndjson so trial slots can be bound with a layer map. */
@@ -174,13 +174,13 @@ export class RunProxy {
   /** Charge the slot to `key`; with `token`, the proxy forwards only requests that present it; with `models` (provider:model
    *  ids), only requests for those models, inside the run-wide --allow-models; with `ablation`, the proxy
    *  checks the map's sha256 (a mismatch fails the bind) and cuts the layers out of the slot's requests; with `routes`
-   *  (internal-task-a), the slot's usage lines carry route copies when the proxy has route texts; with `install` (internal-task-b), an install slot,
+   *  (HARN-18), the slot's usage lines carry route copies when the proxy has route texts; with `install` (GST-2715), an install slot,
    *  which refuses at $0 and counts every request that is not the harness's own model call (HE-PROXY-010). */
   bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec, routes = false, limits: SlotLimits = {}, install = false) {
     if (ablation && this.ablationLog) this.ablationFrom.set(key, existsSync(this.ablationLog) ? statSync(this.ablationLog).size : 0);
     return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}), ...(routes ? { routes } : {}), ...limits, ...(install ? { install: true } : {}) });
   }
-  /** internal-task Phase B: the request bodies the proxy collected for `key` (a slot bound with collect_requests), handed over once:
+  /** HARN-52 Phase B: the request bodies the proxy collected for `key` (a slot bound with collect_requests), handed over once:
    *  the forwarded ones, and the first one the request cap refused. */
   async requests(key: string): Promise<{ requests: unknown[]; refused: unknown[] }> {
     const r = await this.control('/__proxy/requests', { key }) as { requests: unknown[]; refused?: unknown[] };
@@ -217,7 +217,7 @@ export class RunProxy {
   }
 }
 
-/** internal-task: why a usage log of a run whose cells set log_sections fails the one-trial smoke: no forwarded chat line, or a
+/** HARN-21: why a usage log of a run whose cells set log_sections fails the one-trial smoke: no forwarded chat line, or a
  *  forwarded chat line (Anthropic /v1/messages, OpenAI /v1/responses or /v1/chat/completions, Particle /v1/chat/completions) without sections or without the
  *  cache-write fields. Empty when every chat line carries them. */
 export function sectionsSmokeProblems(lines: UsageLine[]): string[] {

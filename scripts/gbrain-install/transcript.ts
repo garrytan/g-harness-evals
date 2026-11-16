@@ -259,6 +259,46 @@ export function isGbrainCall(e: NEvent): boolean {
   return false;
 }
 
+/** A call whose output gbrain alone produced, the only kind that counts a recall as served by gbrain: a gbrain MCP tool, or a shell
+ *  command that is one gbrain CLI invocation, optionally after "cd <dir> &&" and optionally piped into head or tail with no file
+ *  operand. The gbrain word must be the command word (after VAR=value and the wrappers gbrainArgvFromShell takes), so a command
+ *  handed to another shell (sh -c "...", eval "...") never counts. Outside quotes it may hold redirections (2>&1, > file) but no
+ *  other ;, &, &&, ||, |, newline or parenthesis, and nowhere outside single quotes a command substitution ($( or a backquote).
+ *  "gbrain --version; cat notes.txt" runs gbrain, but its output is the file's, so it does not count. */
+export function isGbrainServed(e: NEvent): boolean {
+  if (e.kind !== 'shell') return isGbrainCall(e);
+  const cmd = unwrapShell(e.input).trim();
+  const parts: string[] = [];
+  const ops: string[] = [];
+  let quote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i]!;
+    if (quote === "'") { if (c === "'") quote = null; continue; }
+    if (c === '\\') { i++; continue; }
+    if (c === '`' || (c === '$' && cmd[i + 1] === '(')) return false;
+    if (quote === '"') { if (c === '"') quote = null; continue; }
+    if (c === "'" || c === '"') { quote = c; continue; }
+    if (';\n()'.includes(c)) return false;
+    const op = cmd.startsWith('&&', i) ? '&&' : cmd.startsWith('||', i) ? '||' : c === '|' ? '|' : c === '&' && cmd[i - 1] !== '>' && cmd[i - 1] !== '<' && cmd[i + 1] !== '>' ? '&' : null;
+    if (!op) continue;
+    if (op !== '&&' && op !== '|') return false;
+    parts.push(cmd.slice(start, i).trim());
+    ops.push(op);
+    start = i + op.length;
+    i += op.length - 1;
+  }
+  parts.push(cmd.slice(start).trim());
+  const shape = ops.join(' ');
+  if (!['', '&&', '|', '&& |'].includes(shape)) return false;
+  if (ops[0] === '&&' && !/^cd(?:\s+(?:"[^"]*"|'[^']*'|[^\s"']+))?$/.test(parts.shift()!)) return false;
+  if (ops.at(-1) === '|' && !/^(?:head|tail)(?:\s+(?:-[A-Za-z]*\d*|\+?\d+))*$/.test(parts.pop()!)) return false;
+  const words = parts[0]!.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+  let w = 0;
+  while (w < words.length && /^(?:sudo|exec|command|time|nohup|bunx|npx|env|timeout|[A-Za-z_][A-Za-z0-9_]*=\S*)$/.test(words[w]!)) w += words[w] === 'timeout' ? 2 : 1;
+  return /^["']?(?:[^\s;&|()"']*\/)?gbrain["']?$/.test(words[w] ?? '');
+}
+
 /** Straight quotes and apostrophes, so the text rules match curly-quoted model output. */
 export function norm(s: string): string {
   return s.replace(/[\u2018\u2019\u02bc]/g, "'").replace(/[\u201c\u201d]/g, '"');

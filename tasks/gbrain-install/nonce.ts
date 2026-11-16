@@ -1,4 +1,4 @@
-// internal-task: the per-trial nonce, a made-up word the save turn stores and the recall turn asks for, so recall cannot be
+// GST-2715: the per-trial nonce, a made-up word the save turn stores and the recall turn asks for, so recall cannot be
 // guessed. It is a pure function of the cell's seed and the trial id: a rerun of the same trial id gets the same word.
 
 import { createHash } from 'node:crypto';

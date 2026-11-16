@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The gbrain install probe (internal-task, docs/adapters.md "Install mode"). Bash, grep, find and coreutils only, so the same file runs
+# The gbrain install probe (GST-2715, docs/adapters.md "Install mode"). Bash, grep, find and coreutils only, so the same file runs
 # in all four harness images (the Hermes image has python3 and no node; the Claude Code and Codex images have node and no python3).
 #
 #   probe.sh state <harness>                       one JSON line on stdout: is gbrain installed, is there a brain, is the harness

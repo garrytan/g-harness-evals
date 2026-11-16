@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { answer, CODEX_TOOLS_SOURCE, installScript, embeddingsReply, envCommand, evaluate, evaluateSemantic, fakeVector, gbrainQueryCall, gbrainToolCount, installPlan, markers, newSemanticState, newState, nextCommand, promptKind, recallPlan, SEMANTIC_KEY, SEMANTIC_QUESTION, SEMANTIC_VERSIONS, semanticScript, startFake, startSemanticFake } from '../scripts/gbrain-install/real-image-check.ts';
+import { answer, CASES, CODEX_TOOLS_SOURCE, installScript, embeddingsReply, envCommand, evaluate, evaluateSemantic, evaluateWebFetch, WEBFETCH_MARK, WEBFETCH_URL, fakeVector, gbrainQueryCall, gbrainToolCount, installPlan, markers, newSemanticState, newState, nextCommand, promptKind, recallPlan, SEMANTIC_KEY, SEMANTIC_QUESTION, SEMANTIC_VERSIONS, semanticScript, startFake, startSemanticFake } from '../scripts/gbrain-install/real-image-check.ts';
 import { trialKey } from '../runner/trial/proxy.ts';
 import type { TrialRecord } from '../runner/contracts.ts';
 
@@ -150,6 +150,54 @@ describe('the fake upstream drives a conversation to the end', () => {
     expect(active!.seen).toMatchObject({ 'recall.env_names': 'none', 'recall.token_read': '0', mcp_listed: '0', 'step.recall-mcp': '1' });
     expect(active!.seen.gbrain_procs).toMatch(/^\d+$/);
     active = null;
+  });
+});
+
+describe('the WebFetch case', () => {
+  test('is a Claude Code case of its own beside the six install cases', () => {
+    expect(CASES.length).toBe(7);
+    expect(CASES.filter((c) => c.webfetch)).toEqual([{ harness: 'claude-code', model: 'anthropic:claude-opus-5-5', webfetch: true }]);
+  });
+  test('the fake loads WebFetch with ToolSearch, calls it once in the install conversation, never a shell command, and notes the result and the page', async () => {
+    const state = newState();
+    const fake = startFake(() => ({ harness: 'claude-code', commit: COMMIT, state, webfetch: true }));
+    try {
+      const post = async (body: Record<string, unknown>) => (await fetch('http://127.0.0.1:' + fake.port + '/v1/messages', { method: 'POST', body: JSON.stringify({ model: 'claude-opus-5-5', ...body }) })).json() as Promise<any>;
+      const deferred = [...bashTool, { name: 'ToolSearch', input_schema: { type: 'object' } }];
+      const search = await post({ tools: deferred, messages: [msg('install gbrain')] });
+      expect(search.content[0]).toMatchObject({ type: 'tool_use', name: 'ToolSearch', input: { query: 'select:WebFetch' } });
+      expect(state.webfetch.searched).toBe(true);
+      expect((await post({ tools: deferred, messages: [msg('install gbrain')] })).content[0].type).toBe('text');
+      const tools = [...deferred, { name: 'WebFetch', input_schema: { type: 'object' } }];
+      const first = await post({ tools, messages: [msg('install gbrain')] });
+      expect(first.content[0]).toMatchObject({ type: 'tool_use', name: 'WebFetch', input: { url: WEBFETCH_URL } });
+      expect((await post({ messages: [msg('Web page content:\n# ' + WEBFETCH_MARK + '\n...')] })).content[0].type).toBe('text');
+      const second = await post({ tools, messages: [msg('install gbrain'), msg(first.content, 'assistant'), msg([{ type: 'tool_result', tool_use_id: first.content[0].id, content: [{ type: 'text', text: 'Run bun install -g ...' }] }])] });
+      expect(second.content[0]).toEqual({ type: 'text', text: 'gbrain is installed.' });
+      expect(state.webfetch).toEqual({ searched: true, id: first.content[0].id, result: 'Run bun install -g ...', is_error: false, page_requests: 1 });
+    } finally { fake.stop(true); }
+  });
+  test('the fetch passes on an admitted page host, the page in a model request and a clean result; the preflight is reported, never failed', () => {
+    const w = { searched: true, id: 'toolu_he_1', result: 'steps', is_error: false, page_requests: 1 };
+    const egress = [{ host: 'api.anthropic.com', port: 443, decision: 'blocked', reason: 'host matches the blocklist entry api.anthropic.com' }, { host: 'raw.githubusercontent.com', port: 443, decision: 'allowed' }];
+    const r = evaluateWebFetch(w, egress);
+    expect({ blocked: r.preflight.blocked, ok: r.fetch.ok }).toEqual({ blocked: true, ok: true });
+    expect(r.preflight.detail).toBe('api.anthropic.com:443 blocked (host matches the blocklist entry api.anthropic.com)');
+    expect(evaluateWebFetch({ ...w, is_error: true, result: 'Unable to verify if domain raw.githubusercontent.com is safe to fetch' }, egress.slice(0, 1)).fetch.ok).toBe(false);
+    expect(evaluateWebFetch({ ...w, page_requests: 0 }, egress).fetch.ok).toBe(false);
+    expect(evaluateWebFetch(w, []).preflight).toEqual({ blocked: false, detail: 'no connection to api.anthropic.com or claude.ai' });
+  });
+});
+
+describe('--codex-semantic', () => {
+  test('exits 1 when a case fails', () => {
+    const bin = mkdtempSync(join(tmpdir(), 'ric-bin-'));
+    writeFileSync(join(bin, 'docker'), '#!/bin/sh\nif [ "$1" = network ]; then echo 127.0.0.1; exit 0; fi\nexit 1\n', { mode: 0o755 });
+    const out = mkdtempSync(join(tmpdir(), 'ric-out-'));
+    const r = spawnSync('env', ['-i', 'PATH=' + bin + ':' + PATH, 'HOME=' + out, process.execPath, join(import.meta.dir, '..', 'scripts', 'gbrain-install', 'real-image-check.ts'), '--out', out, '--codex-semantic', 'v0.60.723.0'], { encoding: 'utf8', timeout: 60_000 });
+    expect(r.stdout).toContain('== codex semantic v0.60.723.0: FAIL');
+    expect(r.status).toBe(1);
+    expect((JSON.parse(readFileSync(join(out, 'codex-semantic.json'), 'utf8')) as { cases: Array<{ ok: boolean }> }).cases.map((c) => c.ok)).toEqual([false]);
   });
 });
 
