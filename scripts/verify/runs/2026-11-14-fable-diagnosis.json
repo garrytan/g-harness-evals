@@ -1,0 +1,44 @@
+{
+  "run": "2026-11-14-fable-diagnosis",
+  "about": "The Fable diagnosis run: the preregistered primary analysis (feature-split.ts on the committed merged trial list and labels.json), which holds every headline, group and interaction number in the report.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/feature-split.ts",
+        "--trials",
+        "{run}/results/merged/trials.jsonl",
+        "--labels",
+        "{run}/labels.json",
+        "--out",
+        "{run}/results/analysis"
+      ],
+      "outputs": [
+        "results/analysis/analysis.json",
+        "results/analysis/analysis.md"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged trial list and per-shard results (results/merged/, results/shards/, results/stopped/, results/verifier-unavailable.json)",
+      "reason": "They were written by the run itself; verify uses them as this run's receipts."
+    },
+    {
+      "what": "The task labels (labels.json) and the oracle checks (oracle-check.json, oracle-check-first-run.json)",
+      "reason": "They are pinned by the preregistration and were built before the run from the task source, which the repository does not hold."
+    },
+    {
+      "what": "The count of fetches of the fixed code (results/contamination/)",
+      "reason": "release-fetch-audit.ts reads the trials' Harbor transcripts, which are not in the repository."
+    },
+    {
+      "what": "The without-fetches and no-safety-stop sensitivity lines, the per-language lines and the time and context lines in report.md",
+      "reason": "They were computed from filtered trial lists and the shards' proxy usage logs, which are not in the repository."
+    },
+    {
+      "what": "The trace reads (trace-read.md, post-run-trace-read.md and their folders)",
+      "reason": "They were written by blind readers from the harness transcripts, which are not in the repository."
+    }
+  ]
+}

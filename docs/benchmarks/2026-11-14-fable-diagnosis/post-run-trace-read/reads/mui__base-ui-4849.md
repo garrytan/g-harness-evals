@@ -1,0 +1,6 @@
+# mui__base-ui-4849
+Passes: X 1 of 2, Y 2 of 2
+Fault named in the instruction: no (the issue names the Dialog, Alert Dialog and Popover demos; all fixes landed in the shared FloatingFocusManager.tsx)
+- X-a2 FAIL: right place but incomplete or wrong fix. It changed only FloatingFocusManager to return focus to the element focused at open time unless the open came from hover, and did not touch the root context; the three passing tries also cleared or tracked how the popup was opened in useSyncedFloatingRootContext or FloatingRootStore, so a stale trigger open event left over from an earlier controlled close is not handled. It also could not run the Chromium tests (no browser installed) and did not try installing one.
+Passing tries did differently: besides the focus manager change they fixed the open-event bookkeeping in the root context (X-a1 and Y-a1 clear the stale open event on close, Y-a2 records whether the last open came from a trigger), and all three installed Chromium and ran the browser tests.
+Rating: WEAK, favours Y. Y did the root-context bookkeeping on both tries while X did it on only one, but X-a1 shows X can find it, so this looks like a per-try miss more than an agent trait.

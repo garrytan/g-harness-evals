@@ -1,0 +1,7 @@
+# agno-agi__agno-8148
+Passes: X 0 of 2, Y 2 of 2
+Fault named in the instruction: yes (the issue names _aroute_requirements_to_members_stream in team/_run.py; every try fixed it and its three sibling routing functions)
+- X-a1 FAIL: right place but incomplete or wrong fix. In all four routing functions in team/_run.py it built a member RunContext (copied session_state, dependencies, metadata) and passed only that plus user_id to member.continue_run/acontinue_run, with a state merge-back; its own fake-model test passed, so the trace does not show what the grader rejected.
+- X-a2 FAIL: right place but incomplete or wrong fix. Almost the same code as X-a1 (same helper names, run_context plus user_id passed to the member, merge-back), again self-verified with new unit tests; the cause of the failure is not visible.
+Passing tries did differently: both Y tries passed dependencies, metadata, knowledge_filters and user_id to the member's continue_run as explicit keyword arguments (with the session_state copy in a member RunContext), and Y-a1 also made the sync dispatch fall back to stored session_state when a caller's run_context has none. That keyword forwarding is the only consistent visible difference from X.
+Rating: WEAK, favours Y. The split is clean (both X build only a run_context, both Y forward explicit kwargs), but whether that is what the grader checked cannot be seen from the traces.
