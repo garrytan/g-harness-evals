@@ -1,0 +1,71 @@
+{
+  "run": "2026-11-09-particle-swap",
+  "about": "particle-swap-2026-11 and particle-swap-a1-2026-11: particle-1 against Opus 5.5 and GPT-6.1 Sol inside Hermes, OpenClaw, Pi and DeepSeek Harness on Terminal-Bench 2.1, DeepSeek-V4.1-Flash-1017 as a low-cost comparison, and the particle-1 completeness cells on the saturated v0.3 company set (report tables and the model-swap calls).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/merged/run1-codegen",
+        "--spec",
+        "{run}/analysis-spec.json",
+        "--lookup-fails",
+        "{run}/results/codegen/lookup-fails.json",
+        "--out",
+        "{run}/results/codegen/analysis"
+      ],
+      "outputs": [
+        "results/codegen/analysis/analysis.json",
+        "results/codegen/analysis/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/analyze.ts",
+        "--results",
+        "{run}/results/union",
+        "--spec",
+        "{run}/analysis-spec-a1.json",
+        "--lookup-fails",
+        "{run}/results/union/lookup-fails.json",
+        "--out",
+        "{run}/results/a1/analysis"
+      ],
+      "outputs": [
+        "results/a1/analysis/analysis.json",
+        "results/a1/analysis/analysis.md"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results/completeness"
+      ],
+      "outputs": [
+        "results/completeness/summary.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged results (results/merged/run1-codegen and results/merged/run2-amendment1: trials.jsonl, manifest.json, merge.json and shards/)",
+      "reason": "scripts/frontier-harbor/merge-stages.ts needs each shard folder's manifest.json, shard.json and per-trial Harbor directories, which are not committed (they hold the request captures). The merges are the run's receipts, and every analysis is rebuilt from them."
+    },
+    {
+      "what": "results/union/trials.jsonl and results/union/lookup-fails.json",
+      "reason": "They are results/merged/run1-codegen/trials.jsonl followed by results/merged/run2-amendment1/trials.jsonl, and the two lookup-fails lists joined, because Amendment 1 analyses the union of both run ids. They are committed as written rather than rebuilt by a script."
+    },
+    {
+      "what": "The contamination audits (results/codegen/audit.json, results/a1/audit.json) and the confirmed lookup lists (lookup-fails.json)",
+      "reason": "scripts/frontier-harbor/audit.ts reads every trial's captured request bodies, which are not committed. The lookup lists are a blind reader's verdicts on the flagged trials."
+    },
+    {
+      "what": "The merged completeness results (results/completeness/trials.jsonl, manifest.json, shards.json and the per-shard receipts)",
+      "reason": "scripts/merge-shards.ts needs each shard's trials/ directory (417 MB with the event logs), which is not committed."
+    }
+  ]
+}

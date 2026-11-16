@@ -70,7 +70,7 @@ Notes on these numbers:
 - 4 Hermes tries (2 in these rows) are scored as fails, because Hermes's web tools reached the answer key.
 - Pi's comparisons use 51 tasks: on pytorch-model-recovery, Pi exited before sending any request, so the preregistered rules (fixed before the run) leave that task out of its comparisons. Scored as Pi fails instead, Pi passes 79.8% [69.2%, 89.4%] on Opus and 78.8% [68.3%, 88.5%] on Sol, and both stay within 15 points of the home harness, on Opus only just (Holm-adjusted p 0.043, a p-value corrected for running several tests) ([correction](docs/corrections/2026-11-10/README.md)).
 - Tries ran 4 at a time on each machine, so each try shared its machine with three others, which affects the times.
-- A planned run that adds particle-1, a low-cost model, next to these frontier models will extend these rankings.
+- A separate run put particle-1, a low-cost model, in Hermes, OpenClaw and Pi in place of these frontier models. Opus 5.5 and GPT-6.1 Sol were detectably better, by 17.7 and 19.7 points. That run compares models inside each harness, so these rankings don't change ([particle-swap report](docs/benchmarks/2026-11-09-particle-swap/report.md)).
 - Full tables and receipts: [scoreboard](docs/scoreboard.md) and [frontier report](docs/benchmarks/2026-11-07-frontier-harness/report.md).
 
 ### Multi-user: 20 public tasks from task set v0.3 (matrix-mu-2026-11)

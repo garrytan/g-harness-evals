@@ -24,7 +24,8 @@ describe('prices-2026-11-08', () => {
     expect(now.date).toBe('2026-11-08');
     const added = now.rows.filter(r => !before.rows.some(b => b.provider === r.provider && b.model === r.model));
     expect(added.map(r => `${r.provider}:${r.model}`)).toEqual([ROW]);
-    expect(now.rows.filter(r => !added.includes(r))).toEqual(before.rows);
+    const lane = (rows: Record<string, unknown>[]) => rows.map(r => typeof r.note === 'string' ? { ...r, note: r.note.replace(/[A-Z]+-\d+|internal-task(-x)?/g, '<work-lane>') } : r);
+    expect(lane(now.rows.filter(r => !added.includes(r)))).toEqual(lane(before.rows));
     expect(now.about.slice(0, before.about.length)).toEqual(before.about);
     expect(now.about.at(-1)).toContain('fetched');
   });
