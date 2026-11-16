@@ -4,6 +4,7 @@
 // install must still write and answer exactly that, times aside.
 import { afterAll, describe, expect, test } from 'bun:test';
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BudgetRun, closeLedgers, closeRun, readLedger } from '../runner/ledger/budget-ledger.ts';
@@ -60,7 +61,8 @@ describe('an install slot', () => {
     expect(r.answer('models list, no credential')).toContain('HE-PROXY-010');
     expect(r.line('models list, no credential')).toMatchObject({ key: 'slot:i1', outcome: 'refused', status: 403, method: 'GET', endpoint: 'models', token_presented: false, non_harness: true, model: null });
     expect(r.line('models list, wrong credential, the token in the user agent')).toMatchObject({ key: 'slot:i1', outcome: 'refused', token_presented: false, non_harness: true });
-    expect(r.line('messages, no credential')).toMatchObject({ key: 'slot:i1', outcome: 'refused', endpoint: 'generation', model: 'claude-opus-5-5', non_harness: true });
+    // A tokenless request is refused from its headers, before its body is read, so its line names no model.
+    expect(r.line('messages, no credential')).toMatchObject({ key: 'slot:i1', outcome: 'refused', endpoint: 'generation', model: null, non_harness: true });
   });
 
   test('a GET /v1/models with the token is forwarded free and recorded as the harness', async () => {
@@ -172,6 +174,106 @@ describe('an install slot', () => {
     } finally { proxy.stop(); }
   });
 
+  test('finalize does not wait for a tokenless install request whose body never finishes', async () => {
+    const dir = join(tmp, 'tokenless-slow-body');
+    mkdirSync(dir, { recursive: true });
+    const lease = BudgetRun.openLease({ runId: 'tokenless-slow-run', leaseUsd: 5, ledgerPath: join(dir, 'ledger.sqlite'), maxOutputTokens: 4096 });
+    const fetchImpl = async () => new Response(JSON.stringify({ id: 'msg_t', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 100, output_tokens: 10 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const proxy = new MeteringProxy({ hostname: '127.0.0.1', port: 0, fetchImpl, policy: { lease, env: { ANTHROPIC_API_KEY: 'placeholder-anthropic' }, usageLog: join(dir, 'usage.ndjson'), maxOutputTokens: 4096 } } as never);
+    proxy.start();
+    const stuck = connect({ host: '127.0.0.1', port: proxy.port });
+    try {
+      proxy.bind('s1', KEY, TOKEN, MODELS, null, false, {}, null, true);
+      // Headers and the start of a body that never finishes, with no credential.
+      await new Promise<void>((res, rej) => { stuck.once('error', rej); stuck.write('POST /s1/anthropic/v1/messages HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-type: application/json\r\ncontent-length: 4096\r\n\r\n{"model":', () => res()); });
+      // A complete request with the token, sent after the stuck one has been written, is the barrier: once it is answered, the
+      // proxy has had the stuck request's headers for at least that long.
+      const ok = await fetch(`http://127.0.0.1:${proxy.port}/s1/anthropic/v1/messages`, { method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 64, messages: [{ role: 'user', content: 'q' }] }) });
+      expect(ok.status).toBe(200);
+      const t0 = Date.now();
+      const m = await proxy.finalize(KEY, 30_000);
+      expect(Date.now() - t0).toBeLessThan(10_000);
+      expect(m.requests).toBe(1);
+      expect(m.undrained).toBeUndefined();
+    } finally { stuck.destroy(); proxy.stop(); }
+  });
+
+  test('a Responses stream that completed 30 web searches and sent no final usage is charged its reservation plus the 30 searches', async () => {
+    const dir = join(tmp, 'no-usage-web');
+    mkdirSync(dir, { recursive: true });
+    const ledgerPath = join(dir, 'ledger.sqlite'), usageLog = join(dir, 'usage.ndjson');
+    const lease = BudgetRun.openLease({ runId: 'no-usage-web-run', leaseUsd: 5, ledgerPath, maxOutputTokens: 4096 });
+    const items = Array.from({ length: 30 }, (_, i) => ({ type: 'web_search_call', id: 'ws_' + i, status: 'completed', action: { type: 'search', query: 'q' } }));
+    const events = [
+      ...items.map((item, i) => ({ type: 'response.output_item.done', sequence_number: i, output_index: i, item })),
+      { type: 'response.completed', sequence_number: 30, response: { id: 'resp_n', object: 'response', status: 'completed', model: 'gpt-6.1-sol', output: items } },
+    ];
+    const sseText = events.map((e) => 'event: ' + e.type + '\ndata: ' + JSON.stringify(e) + '\n\n').join('');
+    const fetchImpl = async () => new Response(sseText, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    const proxy = new MeteringProxy({ hostname: '127.0.0.1', port: 0, fetchImpl, policy: { lease, env: { OPENAI_API_KEY: 'placeholder-openai' }, usageLog, maxOutputTokens: 4096 } } as never);
+    proxy.start();
+    try {
+      proxy.bind('w1', KEY, TOKEN, MODELS, null, false, {}, null, true);
+      const res = await fetch('http://127.0.0.1:' + proxy.port + '/w1/openai/v1/responses', { method: 'POST', headers: { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gpt-6.1-sol', max_output_tokens: 64, stream: true, input: 'q', tools: [{ type: 'web_search', max_uses: 5 }] }) });
+      expect(res.status).toBe(200);
+      await res.text();
+      await proxy.finalize(KEY);
+    } finally { proxy.stop(); }
+    const line = JSON.parse(readFileSync(usageLog, 'utf8').trim()) as UsageLine;
+    expect(line).toMatchObject({ outcome: 'forwarded', streamed: true, charged_reservation: true, usage_unknown: true, web_search_calls: 30 });
+    expect(line.web_search_usd).toBeCloseTo(0.3, 12);
+    expect(line.actual_usd! - line.reserved_usd!).toBeGreaterThanOrEqual(0.3 - 1e-12);
+    const entry = readLedger(ledgerPath).entries[0]!;
+    expect(entry.actual_usd!).toBeCloseTo(line.actual_usd!, 12);
+    expect(entry.actual_usd! - entry.reserved_usd).toBeGreaterThanOrEqual(0.3 - 1e-12);
+  });
+
+  test('an unauthenticated install request whose body never finishes is refused from its headers: nothing in flight, nothing undrained', async () => {
+    const dir = join(tmp, 'tokenless-refused-early');
+    mkdirSync(dir, { recursive: true });
+    const lease = BudgetRun.openLease({ runId: 'tokenless-early-run', leaseUsd: 5, ledgerPath: join(dir, 'ledger.sqlite'), maxOutputTokens: 4096 });
+    let upstream = 0;
+    const fetchImpl = async () => { upstream++; return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }); };
+    const usageLog = join(dir, 'usage.ndjson');
+    const proxy = new MeteringProxy({ hostname: '127.0.0.1', port: 0, fetchImpl, policy: { lease, env: { ANTHROPIC_API_KEY: 'placeholder-anthropic' }, usageLog, maxOutputTokens: 4096 } } as never);
+    proxy.start();
+    const stuck = connect({ host: '127.0.0.1', port: proxy.port });
+    try {
+      proxy.bind('s1', KEY, TOKEN, MODELS, null, false, {}, null, true);
+      const answered = new Promise<string>((res) => { let got = ''; stuck.on('data', (d) => { got += d.toString(); if (got.includes('\r\n\r\n')) res(got); }); });
+      stuck.write('POST /s1/anthropic/v1/messages HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-type: application/json\r\ncontent-length: 4096\r\n\r\n{"model":');
+      const head = await Promise.race([answered, Bun.sleep(5000).then(() => 'no answer')]);
+      expect(head).toStartWith('HTTP/1.1 403');
+      const inflight = (proxy as unknown as { inflight: Map<string, number> }).inflight;
+      expect(inflight.get(KEY) ?? 0).toBe(0);
+      expect(inflight.get('slot:s1') ?? 0).toBe(0);
+      const m = await proxy.finalize(KEY, 1000);
+      expect(m.undrained ?? 0).toBe(0);
+      expect(upstream).toBe(0);
+      expect(JSON.parse(readFileSync(usageLog, 'utf8').trim())).toMatchObject({ key: 'slot:s1', outcome: 'refused', status: 403, token_presented: false, model: null });
+    } finally { stuck.destroy(); proxy.stop(); }
+  });
+
+  test('a token-bearing install request whose body stalls past the read deadline is refused 408 and leaves nothing in flight', async () => {
+    const dir = join(tmp, 'token-deadline');
+    mkdirSync(dir, { recursive: true });
+    const lease = BudgetRun.openLease({ runId: 'token-deadline-run', leaseUsd: 5, ledgerPath: join(dir, 'ledger.sqlite'), maxOutputTokens: 4096 });
+    const usageLog = join(dir, 'usage.ndjson');
+    const proxy = new MeteringProxy({ hostname: '127.0.0.1', port: 0, fetchImpl: async () => new Response('{}'), installBodyDeadlineMs: 300, policy: { lease, env: { ANTHROPIC_API_KEY: 'placeholder-anthropic' }, usageLog, maxOutputTokens: 4096 } } as never);
+    proxy.start();
+    const stuck = connect({ host: '127.0.0.1', port: proxy.port });
+    try {
+      proxy.bind('s1', KEY, TOKEN, MODELS, null, false, {}, null, true);
+      const answered = new Promise<string>((res) => { let got = ''; stuck.on('data', (d) => { got += d.toString(); if (got.includes('\r\n\r\n')) res(got); }); });
+      stuck.write('POST /s1/anthropic/v1/messages HTTP/1.1\r\nhost: 127.0.0.1\r\nauthorization: Bearer ' + TOKEN + '\r\ncontent-type: application/json\r\ncontent-length: 4096\r\n\r\n{"model":');
+      const head = await Promise.race([answered, Bun.sleep(5000).then(() => 'no answer')]);
+      expect(head).toStartWith('HTTP/1.1 408');
+      const m = await proxy.finalize(KEY, 1000);
+      expect(m.undrained ?? 0).toBe(0);
+      expect(JSON.parse(readFileSync(usageLog, 'utf8').trim())).toMatchObject({ key: KEY, outcome: 'refused', status: 408, token_presented: true });
+    } finally { stuck.destroy(); proxy.stop(); }
+  });
+
   test('a hosted web tool with no fee row is refused 400 (HE-PROXY-011), never metered at $0', async () => {
     const r = await run(true);
     for (const label of ['responses, web search preview', 'chat completions, web_search_options']) {
@@ -201,7 +303,7 @@ describe('an install slot', () => {
     expect(out.exitCode).toBe(0);
     const s = JSON.parse(out.stdout.toString()) as { install: Record<string, { requests: number; non_harness: Record<string, number>; web_search_calls: number; web_search_usd: number; web_fetch_calls: number; web_fetch_usd: number }> };
     expect(Object.keys(s.install).sort()).toEqual(['slot:i1', KEY]);
-    expect(s.install['slot:i1']).toEqual({ requests: 3, non_harness: { generation: 1, models: 2, embeddings: 0, count_tokens: 0, other: 0 }, web_search_calls: 0, web_search_usd: 0, web_fetch_calls: 0, web_fetch_usd: 0 });
+    expect(s.install['slot:i1']).toEqual({ requests: 3, non_harness: { generation: 1, models: 2, embeddings: 0, count_tokens: 0, probe: 0, other: 0 }, web_search_calls: 0, web_search_usd: 0, web_fetch_calls: 0, web_fetch_usd: 0 });
     const mine = s.install[KEY]!;
     expect(mine).toMatchObject({ requests: requests().length - 3, non_harness: { generation: 1, models: 0, embeddings: 1, count_tokens: 0, other: 1 }, web_search_calls: 5, web_fetch_calls: 1, web_fetch_usd: 0 });
     expect(mine.web_search_usd).toBeCloseTo(0.05, 12);
@@ -226,6 +328,59 @@ describe('an install slot', () => {
       { cwd: ROOT, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmp } });
     expect(out.exitCode).toBe(0);
     expect(JSON.parse(out.stdout.toString()).install).toBeUndefined();
+  });
+});
+
+// Precondition of the gbrain install preregistration: no install cell runs unless this passes. Hermes and Claude Code probe what
+// serves their base URL at startup; with the slot's token those probes are the harness's own and must count as non_harness 0.
+describe('harness startup probes on an install slot', () => {
+  const PROBES: Array<[string, string, string]> = [
+    ['hermes', 'POST', '/anthropic/api/show'], ['hermes', 'GET', '/anthropic/api/tags'], ['hermes', 'GET', '/anthropic/props'], ['hermes', 'GET', '/anthropic/v1/props'],
+    ['hermes', 'GET', '/anthropic/version'], ['hermes', 'GET', '/anthropic/models'], ['hermes', 'GET', '/anthropic/api/v1/models'],
+    ['hermes', 'POST', '/openai/api/show'], ['hermes', 'GET', '/openai/api/tags'], ['hermes', 'GET', '/openai/props'], ['hermes', 'GET', '/openai/v1/props'],
+    ['hermes', 'GET', '/openai/version'], ['hermes', 'GET', '/openai/models'], ['hermes', 'GET', '/openai/api/v1/models'],
+    ['claude-cli/2.1.312', 'HEAD', '/anthropic/api/hello'],
+  ];
+  async function probeRun(credential: string | null) {
+    const dir = join(tmp, `probes-${credential ? 'token' : 'none'}`);
+    mkdirSync(dir, { recursive: true });
+    const usageLog = join(dir, 'usage.ndjson');
+    const lease = BudgetRun.openLease({ runId: `probe-run-${credential ? 't' : 'n'}`, leaseUsd: 5, ledgerPath: join(dir, 'ledger.sqlite'), maxOutputTokens: 4096 });
+    const upstream: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => { upstream.push(String(input)); return new Response('{}', { status: 200 }); };
+    const proxy = new MeteringProxy({ hostname: '127.0.0.1', port: 0, fetchImpl, policy: { lease, env: { ANTHROPIC_API_KEY: 'placeholder-anthropic', OPENAI_API_KEY: 'placeholder-openai' }, usageLog, maxOutputTokens: 4096 } } as never);
+    proxy.start();
+    const statuses: number[] = [];
+    try {
+      proxy.bind('p1', KEY, TOKEN, MODELS, null, false, {}, null, true);
+      for (const [ua, method, path] of PROBES) {
+        const res = await fetch(`http://127.0.0.1:${proxy.port}/p1${path}`, { method, headers: { 'user-agent': ua, ...(credential ? { authorization: `Bearer ${credential}` } : {}), ...(method === 'POST' ? { 'content-type': 'application/json' } : {}) }, ...(method === 'POST' ? { body: JSON.stringify({ model: 'claude-opus-5-5' }) } : {}) });
+        statuses.push(res.status);
+        await res.arrayBuffer();
+      }
+      await proxy.finalize(KEY);
+    } finally { proxy.stop(); }
+    const lines = readFileSync(usageLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as UsageLine);
+    return { lines, statuses, upstream };
+  }
+
+  test('with the token, every probe is refused 403 at $0, classed probe, and no non_harness count is above zero', async () => {
+    const r = await probeRun(TOKEN);
+    expect(r.statuses.every((s) => s === 403)).toBe(true);
+    expect(r.upstream).toEqual([]);
+    expect(r.lines).toHaveLength(PROBES.length);
+    for (const l of r.lines) expect(l).toMatchObject({ kind: 'install_slot', key: KEY, outcome: 'refused', status: 403, endpoint: 'probe', token_presented: true, non_harness: false });
+    expect(r.lines.every((l) => (l.actual_usd ?? 0) === 0)).toBe(true);
+    const totals = installTotals(r.lines);
+    expect(Object.keys(totals)).toEqual([KEY]);
+    expect(Object.values(totals[KEY]!.non_harness).every((n) => n === 0)).toBe(true);
+  });
+
+  test('without the token, the same probes stay non_harness under slot:<id>', async () => {
+    const r = await probeRun(null);
+    expect(r.statuses.every((s) => s === 403)).toBe(true);
+    for (const l of r.lines) expect(l).toMatchObject({ key: 'slot:p1', endpoint: 'probe', token_presented: false, non_harness: true });
+    expect(installTotals(r.lines)['slot:p1']!.non_harness.probe).toBe(PROBES.length);
   });
 });
 
@@ -272,6 +427,12 @@ describe('helpers', () => {
     expect(endpointClass('POST', '/v1/embeddings')).toBe('embeddings');
     expect(endpointClass('POST', '/v1/messages/count_tokens')).toBe('count_tokens');
     expect(endpointClass('POST', '/v1/rerank')).toBe('other');
+    expect(endpointClass('POST', '/api/show')).toBe('probe');
+    expect(endpointClass('GET', '/api/tags')).toBe('probe');
+    expect(endpointClass('GET', '/v1/props')).toBe('probe');
+    expect(endpointClass('HEAD', '/api/hello')).toBe('probe');
+    expect(endpointClass('GET', '/api/hello')).toBe('other');
+    expect(endpointClass('POST', '/version')).toBe('other');
   });
 
   test('sanitizeUserAgent keeps printable ASCII, masks the token and token-like runs, and stops at 120 characters', () => {

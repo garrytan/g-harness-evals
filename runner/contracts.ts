@@ -7,6 +7,7 @@
 //   runner/scripted/             executeScript: an oracle or mutation acting on the world through world-MCP
 
 import type { WorldEvent } from '../world/services/events.ts';
+import type { InstallClassification } from '../scripts/gbrain-install/classify.ts';
 
 // ---- adapter turn protocol (multi-user trials) -------------------------------------------------------
 
@@ -579,6 +580,36 @@ export interface TrialRecord {
   set_t?: TrialSetT;
   /** internal-task addition: set on a trial of a skill-requests cell (Phase B, runner/trial/skill-requests.ts). */
   skill_request?: TrialSkillRequest;
+  /** internal-task addition: set on a trial of a gbrain-install cell (runner/trial/install.ts). grade stays n/a; outcome is the score. */
+  install?: TrialInstall;
+}
+
+/** internal-task: one gbrain install trial. The finish line is all of finish.reply (the recall reply holds the nonce as a whole
+ *  word), finish.gbrain_call (a successful gbrain MCP or CLI call in the recall conversation returned it) and finish.brain (the
+ *  nonce's bytes are under the brain directory), with no copy outside the brain (finish.outside_brain, harness state and the
+ *  workspace, transcripts excluded). outcome: recalled (the finish line), harness-memory (a copy outside the brain, a miss
+ *  whatever else held), not-installed (no turn's probe passed), not-recalled (installed, finish line missed). */
+export interface TrialInstall {
+  arm: 'bare' | 'paste';
+  stable_commit: string;
+  nonce: string;
+  outcome: 'recalled' | 'harness-memory' | 'not-recalled' | 'not-installed';
+  finish: { reply: boolean; gbrain_call: boolean; brain: boolean; outside_brain: string[] };
+  /** The third conversation, asked only when the plain question missed: descriptive, never the score. */
+  hinted: { ran: boolean; reply: boolean; gbrain_call: boolean };
+  /** Scripted replies sent (the agent ended a turn while the install probe failed), at most the task's max. */
+  scripted_replies: number;
+  probe_exhausted: boolean;
+  /** Milliseconds from the first message to the end of the recall turn, on a recalled trial; else null. */
+  finish_ms: number | null;
+  /** Turns sent to the harness up to and including the recall turn. */
+  agent_turns: number;
+  /** Requests the proxy forwarded for the cell's model. */
+  model_requests: number;
+  /** Install-slot requests that were not the harness's own model call (HE-PROXY-010), with or without the trial's token. */
+  non_harness_requests: number;
+  watcher: 'ok' | 'missing';
+  classification: InstallClassification;
 }
 
 /** internal-task Phase B: one request row sent as the member's one turn in a fresh session. Ids and hashes only: the request text

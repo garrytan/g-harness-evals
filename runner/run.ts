@@ -82,6 +82,7 @@ import { setNames as zeroSetNames } from '../harnesses/harness-zero/zero.ts';
 import { checkCursorCell, isCursorCell, offlineCanary, requireCursorCells, takeCursorKey } from './trial/cursor.ts';
 import { SET_T_DIR, SET_T_SLICE, setTTaskIds, skillArmImage } from './trial/set-t.ts';
 import { REQUEST_HALVES, SKILL_REQUESTS_SLICE, privateSetProblem, requestSetIds } from './trial/skill-requests.ts';
+import { INSTALL_SLICE, INSTALL_TASK, checkInstallCell, type InstallCellConfig } from './trial/install-cell.ts';
 
 export { RunnerError };
 
@@ -144,7 +145,7 @@ export interface Cell {
   model: string;
   /** skill-tasks: set T of the skill-resolver eval (runner/trial/set-t.ts), single-shot like hello and smoke. skill-requests:
    *  its Phase B, one request row per trial (runner/trial/skill-requests.ts), single-shot too. */
-  slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke' | 'skill-tasks' | 'skill-requests';
+  slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke' | 'skill-tasks' | 'skill-requests' | 'gbrain-install';
   split: 'dev' | 'heldout';
   /** Harness-specific configuration name, handed to the adapter as HE_HARNESS_CONFIG. QM accepts pi (the
    *  default), pi-probe, pi-strict, pi-command-deny and pi-memory-provider (gbrain as QM's per-turn memory provider,
@@ -184,8 +185,10 @@ export interface Cell {
   utility_models?: string[];
   /** "internal" runs the harness container (and a gbrain sidecar) on the run's internal docker network: no DNS and
    *  no route off the machine, the metering proxy, the world and the gbrain tap on that network's gateway, still reached as
-   *  host.docker.internal (docs/adapters.md, "Network"). Absent, the default docker bridge, as before. */
-  network?: 'internal';
+   *  host.docker.internal (docs/adapters.md, "Network"). Absent, the default docker bridge, as before. internal-task: "install"
+   *  (gbrain-install cells only) is the internal network plus the run's open-egress proxy, which admits every host but the
+   *  pinned blocklist (direct provider hosts and gbrain.io) and logs every connection (runner/trial/egress.ts). */
+  network?: 'internal' | 'install';
   /** Prompt archaeology: the metering proxy cuts these layers of the harness's built-in prompt out of every request,
    *  by the layer map (harnesses/ablation/<harness>.<wire>.layers.json, path from the repository root) whose sha256 the
    *  preregistration names (runner/proxy/ablate.ts). An empty layer list is the full cell: filter on, nothing removed. */
@@ -209,9 +212,11 @@ export interface Cell {
   catalog?: string;
   private?: boolean;
   request_cap?: number;
+  /** internal-task, gbrain-install cells only: the arm, the stable pin and the nonce seed (runner/trial/install-cell.ts). */
+  install?: InstallCellConfig;
 }
 
-const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap']);
+const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap', 'install']);
 export const DEFAULT_TASK_SET = 'v0.1';
 
 /** The cells whose harness pin has no `transport` entry (model_particle, model_openrouter), the declaration an adapter makes
@@ -457,8 +462,9 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     checkSkillRequestsCell(c);
     if (c.log_sections === true && c.split === 'heldout') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections cannot run on a held-out split; its unsalted digests would let a published usage log confirm held-out content. fix: drop log_sections from the cell`);
     if (c.log_sections === true && c.harness_mode === 'scripted') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections needs a cell that calls a model; a scripted cell calls none. fix: drop log_sections from the cell`);
+    checkInstallCell(c);
     if (c.network !== undefined) {
-      if (c.network !== 'internal') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: network must be "internal" or absent, the default docker bridge (got ${JSON.stringify(c.network)})`);
+      if (c.network !== 'internal' && c.network !== 'install') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: network must be "internal" or absent, the default docker bridge, or "install" on a gbrain-install cell (got ${JSON.stringify(c.network)})`);
       if (c.harness_mode === 'scripted' || c.harness_mode === 'process') throw new RunnerError('HE-NET-001', `cell ${c.id}: network "internal" needs a harness container; harness_mode "${c.harness_mode}" runs none. fix: drop network or harness_mode`);
       if (c.slice === 'hello' || c.slice === 'smoke') throw new RunnerError('HE-NET-001', `cell ${c.id}: network "internal" is for multi-user trials; slice ${c.slice} runs through harnesses/run-trial.sh on the default bridge. fix: drop network from the cell`);
       if (existsSync(join('harnesses', c.harness, 'compose.yaml'))) throw new RunnerError('HE-NET-001', `cell ${c.id}: harness ${c.harness} is a compose stack (harnesses/${c.harness}/compose.yaml), which the runner does not move onto the internal network. fix: drop network from the cell`);
@@ -466,14 +472,14 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     // Codex 0.165.0 calls chatgpt.com and other hosts directly when its plugins are on. The adapter turns them off, and a
     // Codex cell still runs only where nothing but the proxy, the world and the gbrain tap is reachable, so a direct connection the
     // config missed cannot happen either (harnesses/codex/README.md).
-    if (c.harness === 'codex' && c.network !== 'internal') throw new RunnerError('HE-NET-001', `cell ${c.id}: harness codex needs network "internal" (Codex 0.165.0 calls chatgpt.com directly when its plugins are on; the internal network rules out any direct connection the config missed; harnesses/codex/README.md). fix: add "network": "internal" to the cell`);
+    if (c.harness === 'codex' && c.network !== 'internal' && c.network !== 'install') throw new RunnerError('HE-NET-001', `cell ${c.id}: harness codex needs network "internal" (Codex 0.165.0 calls chatgpt.com directly when its plugins are on; the internal network rules out any direct connection the config missed; harnesses/codex/README.md). fix: add "network": "internal" to the cell`);
     if (c.ablation !== undefined) checkAblation(c);
     // internal-task: Harness Zero reaches only the proxy, the world and the gbrain tap by design, and its config names a set from
     // harnesses/harness-zero/config; an unknown set would exit 2 before ready in every trial.
     if (c.harness === 'harness-zero' && c.network !== 'internal') throw new RunnerError('HE-NET-001', `cell ${c.id}: harness harness-zero needs network "internal" (harnesses/harness-zero/pin.json). fix: add "network": "internal" to the cell`);
     checkZeroConfig(c);
     checkCursorCell(c);
-    if (!prereg.tasks[c.slice] && !c.tasks && c.slice !== 'multiuser' && c.slice !== SET_T_SLICE && c.slice !== SKILL_REQUESTS_SLICE) throw new RunnerError('HE-PREREG-004', `cell ${c.id} names slice ${c.slice} but tasks.${c.slice} is missing`);
+    if (!prereg.tasks[c.slice] && !c.tasks && c.slice !== 'multiuser' && c.slice !== SET_T_SLICE && c.slice !== SKILL_REQUESTS_SLICE && c.slice !== INSTALL_SLICE) throw new RunnerError('HE-PREREG-004', `cell ${c.id} names slice ${c.slice} but tasks.${c.slice} is missing`);
     const scripted = c.harness_mode === 'scripted';
     if (scripted && (c.harness !== 'scripted' || !['oracle', 'mutations'].includes(c.script ?? '')))
       throw new RunnerError('HE-PREREG-006', `cell ${c.id}: a scripted cell needs harness "scripted" and script "oracle" or "mutations"`);
@@ -647,6 +653,10 @@ export function cellTasks(prereg: Prereg, cell: Cell, tasksRoot = 'tasks'): stri
     if (!all.length) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: request set ${cell.requests} has no rows in half ${cell.half ?? 'all'}`);
     return explicit?.list ?? all;
   }
+  if (cell.slice === INSTALL_SLICE) {
+    if (explicit && (explicit.list.length !== 1 || explicit.list[0] !== INSTALL_TASK)) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: ${explicit.from} names ${explicit.list.join(', ')}, but a ${INSTALL_SLICE} cell has the one task ${INSTALL_TASK} (tasks/gbrain-install/)`);
+    return [INSTALL_TASK];
+  }
   if (cell.slice === SET_T_SLICE) {
     const all = setTTaskIds(tasksRoot);
     const missing = (explicit?.list ?? []).filter((t) => !all.includes(t));
@@ -749,7 +759,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}${c.gbrain.channel_remember ? ` channel_remember=${c.gbrain.channel_remember}` : ''}${c.gbrain.serves ? ` serves=${c.gbrain.serves}` : ''}${c.gbrain.labels ? ` labels=${c.gbrain.labels}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''}${c.install ? ` install_arm=${c.install.arm} stable_commit=${c.install.stable_commit.slice(0, 12)} seed=${c.install.seed}${c.install.paste_sha256 ? ` paste_sha256=${c.install.paste_sha256.slice(0, 12)}` : ''}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}${c.gbrain.channel_remember ? ` channel_remember=${c.gbrain.channel_remember}` : ''}${c.gbrain.serves ? ` serves=${c.gbrain.serves}` : ''}${c.gbrain.labels ? ` labels=${c.gbrain.labels}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);

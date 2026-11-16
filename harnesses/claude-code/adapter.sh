@@ -38,7 +38,8 @@ set -euo pipefail
 : "${HE_SESSION_STATE_DIR:=/harness-state}"
 : "${HE_LOG_DIR:?HE_LOG_DIR must be set}"
 : "${HE_MODEL_BASE_URL:?HE_MODEL_BASE_URL must be set}"
-: "${HE_MODEL_API_KEY:?HE_MODEL_API_KEY must be set}"
+# Install mode (below) reads the token from HE_MODEL_API_KEY_FILE instead, so it does not need this variable.
+[ "${HE_INSTALL_MODE:-}" = 1 ] || : "${HE_MODEL_API_KEY:?HE_MODEL_API_KEY must be set}"
 : "${HE_MODEL_NAME:=claude-sonnet-5-5}"
 : "${HE_TIME_BUDGET_S:=300}"
 : "${HE_TRIAL_ID:=unknown}"
@@ -68,6 +69,29 @@ case "${HE_MODEL_BASE_URL%/}" in
   */anthropic) ;;
   *) log "HE_MODEL_BASE_URL $HE_MODEL_BASE_URL does not end in /anthropic: claude-code runs only on an anthropic cell (the proxy route <proxy>/<slot>/anthropic)"; exit 2 ;;
 esac
+
+# internal-task, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
+# from Claude Code's shipped defaults and keeps whatever the agent and gbrain write across sessions: no world MCP, no MCP config of
+# ours, no --strict-mcp-config, --mcp-config or --disallowedTools, no permissions.deny seed. The proxy token reaches the CLI only
+# through an apiKeyHelper in settings.json that reads a 0600 copy of HE_MODEL_API_KEY_FILE, so ANTHROPIC_API_KEY is never exported
+# and no shell the agent starts holds the token. HE_INSTALL_DIR/probe.sh records the install state after every turn
+# (turns/turn-NNNN.probe.json) and every second as a watcher (install-watch.ndjson). The run entry, a route config, HE_GBRAIN_INSTALL,
+# HE_GBRAIN_MCP_URL, a missing, empty or unreadable token file, or no probe.sh is HE-INSTALL-003 and exit 2 before ready. Unset,
+# nothing here runs.
+install_mode=0 install_json=''
+if [ "${HE_INSTALL_MODE:-}" = 1 ]; then
+  install_mode=1 install_json=',"install_mode":true'
+  refuse_install() { log "HE-INSTALL-003 install mode $1"; exit 2; }
+  [ "$entry" = serve ] || refuse_install "runs the serve entry only, not $entry"
+  [ "${HE_HARNESS_CONFIG:-default}" = default ] || refuse_install "runs the shipped defaults; HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG names a route config"
+  [ -z "${HE_GBRAIN_INSTALL:-}" ] || refuse_install "has the agent install gbrain itself; HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL is set"
+  [ -z "${HE_GBRAIN_MCP_URL:-}" ] || refuse_install "wires no gbrain MCP server of its own; HE_GBRAIN_MCP_URL is set"
+  [ -n "${HE_MODEL_API_KEY_FILE:-}" ] && [ -f "$HE_MODEL_API_KEY_FILE" ] && [ -r "$HE_MODEL_API_KEY_FILE" ] && [ -s "$HE_MODEL_API_KEY_FILE" ] \
+    || refuse_install "needs the proxy token in HE_MODEL_API_KEY_FILE (${HE_MODEL_API_KEY_FILE:-unset}), which is missing, empty or unreadable"
+  [ -r "${HE_INSTALL_DIR:-}/probe.sh" ] || refuse_install "needs probe.sh in HE_INSTALL_DIR (${HE_INSTALL_DIR:-unset})"
+  unset HE_MODEL_API_KEY ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN OPENAI_API_KEY
+  export -n HE_MODEL_API_KEY_FILE
+fi
 
 # Set before anything long runs, run included: bash is PID 1 in the container and ignores a SIGTERM it has no trap for, so
 # docker stop would otherwise wait for its SIGKILL while the turn's processes kept running. A turn checks the flag (run_turn).
@@ -144,11 +168,31 @@ esac
 # HOME and CLAUDE_CONFIG_DIR hold settings, sessions (projects/<cwd>/<session id>.jsonl), memory and skills: all state.
 # No .credentials.json is ever written: the CLI authenticates with ANTHROPIC_API_KEY only.
 export HOME="$HE_SESSION_STATE_DIR"
+# Install mode: each harness session starts with the PATH a fresh terminal would have after an installer edited the shell rc
+# (no rc file is sourced), so an MCP server or hook that gbrain wires by a bun-shebang script finds bun and gbrain.
+[ "$install_mode" = 0 ] || export PATH="$PATH:$HOME/.bun/bin:$HOME/.npm-global/bin:$HOME/.local/bin"
 export CLAUDE_CONFIG_DIR="$HE_SESSION_STATE_DIR/claude"
 # The CLI's scratch files (Bash tool task output, socket and fs-watch probes) go under /harness-state too, not the image's /tmp.
 export TMPDIR="$HE_SESSION_STATE_DIR/tmp" CLAUDE_TMPDIR="$HE_SESSION_STATE_DIR/tmp"
 mkdir -p "$CLAUDE_CONFIG_DIR" "$TMPDIR"
-[ -e "$CLAUDE_CONFIG_DIR/settings.json" ] || cp "$harness_dir/config/settings.json" "$CLAUDE_CONFIG_DIR/settings.json"
+[ "$install_mode" = 1 ] || [ -e "$CLAUDE_CONFIG_DIR/settings.json" ] || cp "$harness_dir/config/settings.json" "$CLAUDE_CONFIG_DIR/settings.json"
+# Install mode: no seed, so Claude Code's shipped defaults apply (web tools included). settings.json gets apiKeyHelper alone, which
+# cats HE_SESSION_STATE_DIR/he-install/api-key, a 0600 copy of HE_MODEL_API_KEY_FILE made once; a settings.json the agent or gbrain
+# already wrote keeps every other key.
+if [ "$install_mode" = 1 ]; then
+  install_key="$HE_SESSION_STATE_DIR/he-install/api-key"
+  [ -e "$install_key" ] || ( umask 077 && mkdir -p "${install_key%/*}" && cp "$HE_MODEL_API_KEY_FILE" "$install_key" )
+  chmod 600 "$install_key"
+  node - "$CLAUDE_CONFIG_DIR/settings.json" "$install_key" <<'JS'
+const fs = require("fs");
+const [settings, key] = process.argv.slice(2);
+const s = fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, "utf8")) : {};
+s.apiKeyHelper = "cat '" + key.replace(/'/g, "'\\''") + "'";
+fs.writeFileSync(settings + ".tmp", JSON.stringify(s, null, 2) + "\n");
+fs.renameSync(settings + ".tmp", settings);
+JS
+  log "install mode: settings.json apiKeyHelper reads $install_key; ANTHROPIC_API_KEY is not set"
+fi
 
 # internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup claude-code --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
@@ -504,7 +548,7 @@ JS
 # The model goes through the proxy with the per-trial token. Every model setting the CLI reads at this pin names the cell
 # model, so no background, subagent, classifier or alias call can ask for another; model substitution is switched off.
 export ANTHROPIC_BASE_URL="$HE_MODEL_BASE_URL"
-export ANTHROPIC_API_KEY="$HE_MODEL_API_KEY"
+[ "$install_mode" = 1 ] || export ANTHROPIC_API_KEY="$HE_MODEL_API_KEY"
 for v in ANTHROPIC_MODEL ANTHROPIC_DEFAULT_MODEL ANTHROPIC_SMALL_FAST_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL \
   ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_FABLE_MODEL CLAUDE_CODE_SUBAGENT_MODEL CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL \
   CLAUDE_CODE_AUTO_MODE_MODEL CLAUDE_CODE_BG_CLASSIFIER_MODEL; do
@@ -558,12 +602,13 @@ cd "$HE_WORKSPACE_DIR"
 # the redaction set), written under /harness-state; --strict-mcp-config makes it the only MCP source.
 mcp_config="$HE_SESSION_STATE_DIR/mcp.json"
 mcp_servers=()
-if [ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ]; then mcp_servers+=(world); fi
+if [ "$install_mode" = 0 ] && [ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ]; then mcp_servers+=(world); fi
 # The gbrain arm (docs/gbrain-arm.md): with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, a server named gbrain goes in beside
 # world with the same shape (the URL is the world's /gbrain tap, the token the bot token). Unset, the file has world alone.
 if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ]; then mcp_servers+=(gbrain); fi
-if [ "$entry" = serve ] && [[ " ${mcp_servers[*]} " != *" world "* ]]; then log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; fi
-( umask 077 && node -e '
+if [ "$install_mode" = 0 ] && [ "$entry" = serve ] && [[ " ${mcp_servers[*]} " != *" world "* ]]; then log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; fi
+# Install mode needs no world server and writes no mcp.json: Claude Code loads only the MCP servers the agent and gbrain register.
+[ "$install_mode" = 1 ] || ( umask 077 && node -e '
 const [out, ...names] = process.argv.slice(1);
 const env = { world: ["HE_WORLD_MCP_URL", "HE_WORLD_MCP_TOKEN"], gbrain: ["HE_GBRAIN_MCP_URL", "HE_GBRAIN_MCP_TOKEN"] };
 const mcpServers = {};
@@ -623,7 +668,9 @@ process.stdout.write([x.slice(0, 8), x.slice(8, 12), x.slice(12, 16), x.slice(16
     log "session $key: skills arm $skill_arm $skill_status"
   fi
   [ "$route" != route-system ] || route_args=(--append-system-prompt "$route_system_text")
-  if [ "$route_driver" = cli ]; then
+  if [ "$install_mode" = 1 ]; then
+    turn_cmd=(claude -p --output-format stream-json --verbose --model "$HE_MODEL_NAME" --permission-mode bypassPermissions "$flag" "$sid")
+  elif [ "$route_driver" = cli ]; then
     turn_cmd=(claude -p --output-format stream-json --verbose --model "$HE_MODEL_NAME" --permission-mode bypassPermissions \
       --disallowedTools WebSearch,WebFetch --mcp-config "$mcp_config" --strict-mcp-config "${system_prompt_args[@]}" "$flag" "$sid" "${route_args[@]}")
   else
@@ -719,6 +766,9 @@ fi
 : "${HE_TURNS_DIR:=/he-turns}"
 mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 
+# Install mode: the watcher starts before ready and stops by itself once this process is gone.
+if [ "$install_mode" = 1 ]; then bash "$HE_INSTALL_DIR/probe.sh" watch claude-code "$HE_LOG_DIR/install-watch.ndjson" $$ > /dev/null 2>> "$HE_LOG_DIR/install-watch.stderr.log" & fi
+
 write_response() {
   node -e '
 const fs = require("fs");
@@ -731,7 +781,7 @@ fs.renameSync(resp + ".tmp", resp);' "$@"
 }
 
 printf '{"harness":"claude-code","version":"%s","trial":"%s","ready_at":"%s","session_keys":"claude -p --session-id|--resume UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","adapter_sha256":"%s"%s}\n' \
-  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$sdk_json$skill_arm_json" > "$HE_LOG_DIR/ready.tmp"
+  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$sdk_json$skill_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -750,6 +800,7 @@ console.log([r.turn, r.time_budget_s || process.env.HE_TIME_BUDGET_S, key, r.cha
     started=$(now)
     run_turn "$HE_LOG_DIR/turns/$name" "$HE_LOG_DIR/turns/$name.prompt.md" "$key" "$budget" 5 "$window_key"
     ended=$(now)
+    [ "$install_mode" = 0 ] || bash "$HE_INSTALL_DIR/probe.sh" state claude-code > "$HE_LOG_DIR/turns/$name.probe.json" || log "turn $turn: probe.sh state failed; see stderr.log"
     write_response "$resp" "$turn" "$turn_code" "$HE_LOG_DIR/turns/$name.reply.txt" "$started" "$ended" "$turn_detail"
     log "turn $turn: exit $turn_code${turn_detail:+ ($turn_detail)}"
   done

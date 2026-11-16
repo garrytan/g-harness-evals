@@ -1,0 +1,42 @@
+{
+  "schema": "frontier-harbor-source/1",
+  "source": {
+    "name": "gbrain-install",
+    "note": "Not a Harbor task source: the gbrain install trial reuses the frontier blocklist rules (scripts/egress/egress_blocklist.py) for its open-egress proxy (runner/trial/egress.ts)."
+  },
+  "egress": {
+    "how": "runner/trial/egress.ts startOpenEgress: every host and port is reachable except the patterns below (a \"*\" matches any characters); every connection, admitted or refused, is one line of the trial's egress log.",
+    "blocklist": [
+      "tbench.ai",
+      "*.tbench.ai",
+      "harborframework.com",
+      "*.harborframework.com",
+      "joelniklaus-harness-leaderboard.hf.space",
+      "datasets-server.huggingface.co",
+      "api.anthropic.com",
+      "api.openai.com",
+      "generativelanguage.googleapis.com",
+      "aiplatform.googleapis.com",
+      "*-aiplatform.googleapis.com",
+      "cursor.sh",
+      "*.cursor.sh",
+      "downloads.cursor.com",
+      "api.particle.ai",
+      "openrouter.ai",
+      "*.openrouter.ai",
+      "api.voyageai.com",
+      "gbrain.io",
+      "*.gbrain.io",
+      "gbrainio.terminalwire.sh"
+    ],
+    "why": {
+      "api.particle.ai": "Particle's model API: every model call goes through the metering proxy, so a direct call from the container (a key the agent found, or gbrain configured with one) is refused and logged",
+      "openrouter.ai": "OpenRouter's model API, for the same reason; the metering proxy is the only route to a model",
+      "*.openrouter.ai": "OpenRouter subdomains, for the same reason",
+      "api.voyageai.com": "Voyage embeddings: gbrain can embed with Voyage, and the keyless install must make no provider request at all; a direct call is refused and logged",
+      "gbrain.io": "hosted gbrain: its setup needs a person to pick a plan in the browser, so the hosted route cannot finish without one; the agent sees it refused and the egress log records that it tried",
+      "*.gbrain.io": "hosted gbrain subdomains, for the same reason",
+      "gbrainio.terminalwire.sh": "the hosted gbrain installer (curl -sSL https://gbrainio.terminalwire.sh | bash), the first path INSTALL_FOR_AGENTS.md offers; refused for the same reason, and the attempt is logged as the hosted route"
+    }
+  }
+}

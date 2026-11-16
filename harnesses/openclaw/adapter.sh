@@ -18,7 +18,8 @@ set -euo pipefail
 : "${HE_SESSION_STATE_DIR:=/harness-state}"
 : "${HE_LOG_DIR:?HE_LOG_DIR must be set}"
 : "${HE_MODEL_BASE_URL:?HE_MODEL_BASE_URL must be set}"
-: "${HE_MODEL_API_KEY:?HE_MODEL_API_KEY must be set}"
+# Install mode (below) reads the token from HE_MODEL_API_KEY_FILE instead, so it does not need this variable.
+[ "${HE_INSTALL_MODE:-}" = 1 ] || : "${HE_MODEL_API_KEY:?HE_MODEL_API_KEY must be set}"
 : "${HE_MODEL_NAME:=claude-sonnet-5-5}"
 export HE_MODEL_NAME
 : "${HE_TIME_BUDGET_S:=300}"
@@ -44,6 +45,28 @@ case "$entry" in
   run|serve) ;;
   *) log "unknown entry point: $entry; 'run' and 'serve' are implemented"; exit 2 ;;
 esac
+
+# internal-task, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
+# from the adapter's config template and keeps whatever the agent and gbrain write across sessions (OPENCLAW_STATE_DIR and the
+# workspace), with no world MCP server. The proxy token goes into openclaw.json (mode 0600) as a literal instead of the
+# ${HE_MODEL_API_KEY} substitution, and HE_MODEL_API_KEY is unset, so no shell the agent starts holds it. HE_INSTALL_DIR/probe.sh
+# records the install state after every turn (turns/turn-NNNN.probe.json) and every second as a watcher (install-watch.ndjson). The
+# run entry, a route config, HE_GBRAIN_INSTALL, HE_GBRAIN_MCP_URL, a missing, empty or unreadable token file, or no probe.sh is
+# HE-INSTALL-003 and exit 2 before ready. Unset, nothing here runs.
+install_mode=0 install_json=''
+if [ "${HE_INSTALL_MODE:-}" = 1 ]; then
+  install_mode=1 install_json=',"install_mode":true'
+  refuse_install() { log "HE-INSTALL-003 install mode $1"; exit 2; }
+  [ "$entry" = serve ] || refuse_install "runs the serve entry only, not $entry"
+  [ "${HE_HARNESS_CONFIG:-default}" = default ] || refuse_install "runs the shipped defaults; HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG names a route config"
+  [ -z "${HE_GBRAIN_INSTALL:-}" ] || refuse_install "has the agent install gbrain itself; HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL is set"
+  [ -z "${HE_GBRAIN_MCP_URL:-}" ] || refuse_install "wires no gbrain MCP server of its own; HE_GBRAIN_MCP_URL is set"
+  [ -n "${HE_MODEL_API_KEY_FILE:-}" ] && [ -f "$HE_MODEL_API_KEY_FILE" ] && [ -r "$HE_MODEL_API_KEY_FILE" ] && [ -s "$HE_MODEL_API_KEY_FILE" ] \
+    || refuse_install "needs the proxy token in HE_MODEL_API_KEY_FILE (${HE_MODEL_API_KEY_FILE:-unset}), which is missing, empty or unreadable"
+  [ -r "${HE_INSTALL_DIR:-}/probe.sh" ] || refuse_install "needs probe.sh in HE_INSTALL_DIR (${HE_INSTALL_DIR:-unset})"
+  unset HE_MODEL_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY
+  export -n HE_MODEL_API_KEY_FILE
+fi
 
 # internal-task: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
 # empty or `default` changes nothing. A value that is not a route, a route OpenClaw has no setting for, or on the run entry a
@@ -81,6 +104,9 @@ fi
 # All OpenClaw state (config copy, sessions, agent dirs, credentials) lives
 # under /harness-state. The config template is read-only in the image.
 export HOME="$HE_SESSION_STATE_DIR"
+# Install mode: each harness session starts with the PATH a fresh terminal would have after an installer edited the shell rc
+# (no rc file is sourced), so an MCP server or hook that gbrain wires by a bun-shebang script finds bun and gbrain.
+[ "$install_mode" = 0 ] || export PATH="$PATH:$HOME/.bun/bin:$HOME/.npm-global/bin:$HOME/.local/bin"
 export OPENCLAW_STATE_DIR="$HE_SESSION_STATE_DIR/openclaw"
 export OPENCLAW_CONFIG_PATH="$OPENCLAW_STATE_DIR/openclaw.json"
 mkdir -p "$OPENCLAW_STATE_DIR/exec"
@@ -98,7 +124,31 @@ case "${HE_MODEL_BASE_URL%/}" in
   */particle) provider=particle config_template=$harness_dir/config/openclaw.particle.json ;;
   */openrouter) provider=openrouter-proxy config_template=$harness_dir/config/openclaw.openrouter.json ;;
 esac
-[ -e "$OPENCLAW_CONFIG_PATH" ] || cp "$config_template" "$OPENCLAW_CONFIG_PATH"
+[ "$install_mode" = 1 ] || [ -e "$OPENCLAW_CONFIG_PATH" ] || cp "$config_template" "$OPENCLAW_CONFIG_PATH"
+# Install mode: the template with the token from HE_MODEL_API_KEY_FILE in place of its one ${HE_MODEL_API_KEY}, written once; a
+# config the agent or gbrain already changed is kept as it is.
+if [ "$install_mode" = 1 ]; then
+  if [ ! -e "$OPENCLAW_CONFIG_PATH" ]; then
+    install_line=$(umask 077 && python3 - "$config_template" "$HE_MODEL_API_KEY_FILE" "$OPENCLAW_CONFIG_PATH" <<'PY'
+import json, os, sys
+template, key_file, out = sys.argv[1:4]
+text = open(template, encoding="utf-8").read()
+slot = '"${HE_MODEL_API_KEY}"'
+if text.count(slot) != 1:
+    print("HE-INSTALL-003 install mode needs exactly one %s in %s, found %d" % (slot, template, text.count(slot)))
+    sys.exit(1)
+token = open(key_file, encoding="utf-8").read().strip()
+with open(out + ".tmp", "w", encoding="utf-8") as f:
+    f.write(text.replace(slot, json.dumps(token)))
+os.chmod(out + ".tmp", 0o600)
+os.replace(out + ".tmp", out)
+print("ok")
+PY
+) || { log "${install_line:-HE-INSTALL-003 install mode could not write $OPENCLAW_CONFIG_PATH; see stderr.log}"; exit 2; }
+  fi
+  chmod 600 "$OPENCLAW_CONFIG_PATH"
+  log "install mode: $OPENCLAW_CONFIG_PATH carries the proxy token (mode 0600); HE_MODEL_API_KEY is not set"
+fi
 
 log "openclaw $(openclaw --version 2>/dev/null | head -1) model=$provider/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 
@@ -701,29 +751,34 @@ fi
 
 # ---- serve ----------------------------------------------------------------------------------------
 : "${HE_TURNS_DIR:=/he-turns}"
-[ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ] || { log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; }
+# Install mode needs no world server and registers no MCP server: OpenClaw loads only what the agent and gbrain configure.
+if [ "$install_mode" = 0 ]; then
+  [ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ] || { log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; }
+fi
 mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 
-# The world-MCP server goes into mcp.servers.world of the config copy through
-# OpenClaw's own registry command, which validates and saves it. The bearer
-# token is the per-trial bot token the world minted (in the redaction set).
-world_def=$(node -e 'process.stdout.write(JSON.stringify({ url: process.env.HE_WORLD_MCP_URL, transport: "streamable-http", headers: { Authorization: "Bearer " + process.env.HE_WORLD_MCP_TOKEN }, connectionTimeoutMs: 30000, requestTimeoutMs: 120000 }))')
-openclaw mcp set world "$world_def" >> "$HE_LOG_DIR/adapter.log" 2>&1 || { log "openclaw mcp set world failed"; exit 2; }
-# The gbrain arm (docs/gbrain-arm.md): with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, a second server named
-# gbrain goes in beside world the same way. The URL is the world's /gbrain tap and the token the same bot token,
-# so the registration is byte-for-byte the world's shape with another name. Unset, nothing here runs.
-if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ]; then
-  gbrain_def=$(node -e 'process.stdout.write(JSON.stringify({ url: process.env.HE_GBRAIN_MCP_URL, transport: "streamable-http", headers: { Authorization: "Bearer " + process.env.HE_GBRAIN_MCP_TOKEN }, connectionTimeoutMs: 30000, requestTimeoutMs: 120000 }))')
-  openclaw mcp set gbrain "$gbrain_def" >> "$HE_LOG_DIR/adapter.log" 2>&1 || { log "openclaw mcp set gbrain failed"; exit 2; }
-  log "gbrain MCP wired as a second server (gbrain) through the world tap"
+if [ "$install_mode" = 0 ]; then
+  # The world-MCP server goes into mcp.servers.world of the config copy through
+  # OpenClaw's own registry command, which validates and saves it. The bearer
+  # token is the per-trial bot token the world minted (in the redaction set).
+  world_def=$(node -e 'process.stdout.write(JSON.stringify({ url: process.env.HE_WORLD_MCP_URL, transport: "streamable-http", headers: { Authorization: "Bearer " + process.env.HE_WORLD_MCP_TOKEN }, connectionTimeoutMs: 30000, requestTimeoutMs: 120000 }))')
+  openclaw mcp set world "$world_def" >> "$HE_LOG_DIR/adapter.log" 2>&1 || { log "openclaw mcp set world failed"; exit 2; }
+  # The gbrain arm (docs/gbrain-arm.md): with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, a second server named
+  # gbrain goes in beside world the same way. The URL is the world's /gbrain tap and the token the same bot token,
+  # so the registration is byte-for-byte the world's shape with another name. Unset, nothing here runs.
+  if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ]; then
+    gbrain_def=$(node -e 'process.stdout.write(JSON.stringify({ url: process.env.HE_GBRAIN_MCP_URL, transport: "streamable-http", headers: { Authorization: "Bearer " + process.env.HE_GBRAIN_MCP_TOKEN }, connectionTimeoutMs: 30000, requestTimeoutMs: 120000 }))')
+    openclaw mcp set gbrain "$gbrain_def" >> "$HE_LOG_DIR/adapter.log" 2>&1 || { log "openclaw mcp set gbrain failed"; exit 2; }
+    log "gbrain MCP wired as a second server (gbrain) through the world tap"
+  fi
+  if openclaw mcp probe > "$HE_LOG_DIR/openclaw-mcp-probe.log" 2>&1; then
+    log "world-MCP wired: $(grep -m1 -- '- world' "$HE_LOG_DIR/openclaw-mcp-probe.log" | sed 's/^ *//')"
+    [ -n "${HE_GBRAIN_MCP_URL:-}" ] && log "gbrain probe: $(grep -m1 -- '- gbrain' "$HE_LOG_DIR/openclaw-mcp-probe.log" | sed 's/^ *//')"
+  else
+    log "world-MCP probe failed (see openclaw-mcp-probe.log); turns will show whether tools reach the world"
+  fi
+  [ -n "${HE_GBRAIN_MCP_URL:-}" ] && { openclaw mcp list > "$HE_LOG_DIR/openclaw-mcp-list.log" 2>&1 || true; }
 fi
-if openclaw mcp probe > "$HE_LOG_DIR/openclaw-mcp-probe.log" 2>&1; then
-  log "world-MCP wired: $(grep -m1 -- '- world' "$HE_LOG_DIR/openclaw-mcp-probe.log" | sed 's/^ *//')"
-  [ -n "${HE_GBRAIN_MCP_URL:-}" ] && log "gbrain probe: $(grep -m1 -- '- gbrain' "$HE_LOG_DIR/openclaw-mcp-probe.log" | sed 's/^ *//')"
-else
-  log "world-MCP probe failed (see openclaw-mcp-probe.log); turns will show whether tools reach the world"
-fi
-[ -n "${HE_GBRAIN_MCP_URL:-}" ] && { openclaw mcp list > "$HE_LOG_DIR/openclaw-mcp-list.log" 2>&1 || true; }
 
 # One serve turn: write the prompt to a file under HE_LOG_DIR, run the embedded agent in the
 # conversation's session, and leave the JSON envelope beside it. Arguments: request path, session
@@ -776,6 +831,54 @@ write_response() {
     fs.writeFileSync(resp + ".tmp", JSON.stringify(out));
     fs.renameSync(resp + ".tmp", resp);
   ' "$resp" "$turn" "$code" "$reply_file" "$started" "$ended" "$detail"
+}
+
+# Install mode, after each member turn and before its probe and response: every OpenClaw session event written since the last
+# export, decoded, to $HE_LOG_DIR/turns/<turn>.openclaw-session.jsonl, so the turn's tool calls (assistant toolCall blocks with
+# their arguments) and tool results (toolResult messages with their content) sit beside its envelope. The source is table
+# transcript_events in OPENCLAW_STATE_DIR/agents/<agent>/agent/openclaw-agent.sqlite, read from a scratch copy; a session's
+# highest exported seq is kept in $HE_SESSION_STATE_DIR/he-install/openclaw-session.cursor.json, so a later session in the same
+# state dir exports only its own events. One line per event: turn, db (relative to OPENCLAW_STATE_DIR), session_id, seq,
+# created_at and event (the event JSON, or null with error "undecodable"). The proxy token, if a tool result shows it, is
+# replaced by [HE_MODEL_API_KEY]. Prints the event count. Arguments: turn number, turn name.
+openclaw_session_export() {
+  mkdir -p "$HE_SESSION_STATE_DIR/he-install"
+  node --no-warnings - "$1" "$HE_LOG_DIR/turns/$2.openclaw-session.jsonl" "$HE_SESSION_STATE_DIR/he-install/openclaw-session.cursor.json" "$HE_MODEL_API_KEY_FILE" <<'JS'
+const fs = require("fs"), os = require("os"), path = require("path"), zlib = require("zlib");
+const { DatabaseSync } = require("node:sqlite");
+const [turn, out, cursorPath, keyFile] = process.argv.slice(2);
+const state = process.env.OPENCLAW_STATE_DIR;
+let cursor = {};
+try { cursor = JSON.parse(fs.readFileSync(cursorPath, "utf8")); } catch {}
+const agents = path.join(state, "agents");
+const dbs = fs.existsSync(agents) ? fs.readdirSync(agents).map(a => path.join("agents", a, "agent", "openclaw-agent.sqlite")).filter(p => fs.existsSync(path.join(state, p))) : [];
+const lines = [];
+for (const rel of dbs) {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "he-openclaw-session-"));
+  try {
+    for (const side of ["", "-wal", "-shm"]) if (fs.existsSync(path.join(state, rel) + side)) fs.copyFileSync(path.join(state, rel) + side, path.join(scratch, "store.sqlite" + side));
+    const db = new DatabaseSync(path.join(scratch, "store.sqlite"));
+    const last = cursor[rel] || {};
+    for (const r of db.prepare("select session_id, seq, created_at, event_json, event_zstd from transcript_events order by session_id, seq").all()) {
+      if (r.session_id in last && r.seq <= last[r.session_id]) continue;
+      const line = { turn: Number(turn), db: rel, session_id: r.session_id, seq: r.seq, created_at: r.created_at, event: null };
+      try { line.event = JSON.parse(r.event_json ?? new TextDecoder().decode(zlib.zstdDecompressSync(r.event_zstd))); } catch { line.error = "undecodable"; }
+      lines.push(JSON.stringify(line));
+      last[r.session_id] = r.seq;
+    }
+    db.close();
+    cursor[rel] = last;
+  } finally { fs.rmSync(scratch, { recursive: true, force: true }); }
+}
+const token = fs.readFileSync(keyFile, "utf8").trim();
+let text = lines.map(l => l + "\n").join("");
+if (token) text = text.split(token).join("[HE_MODEL_API_KEY]");
+fs.writeFileSync(out + ".tmp", text);
+fs.renameSync(out + ".tmp", out);
+fs.writeFileSync(cursorPath + ".tmp", JSON.stringify(cursor));
+fs.renameSync(cursorPath + ".tmp", cursorPath);
+process.stdout.write(lines.length + " events from " + dbs.length + " store(s)");
+JS
 }
 
 # internal-task (H10), route cells only: before each member turn, count the turn in its session (the adapter's session key; a
@@ -844,8 +947,10 @@ PY
 
 stopping=0
 trap 'stopping=1' TERM INT
+# Install mode: the watcher starts before ready and stops by itself once this process is gone.
+if [ "$install_mode" = 1 ]; then bash "$HE_INSTALL_DIR/probe.sh" watch openclaw "$HE_LOG_DIR/install-watch.ndjson" $$ > /dev/null 2>> "$HE_LOG_DIR/install-watch.stderr.log" & fi
 if [ "$HE_SESSION_SCOPE" = turn ]; then session_keys='agent:main:turn:<NNNN>'; else session_keys='agent:main:dm:<member> | agent:main:channel:<id>'; fi
-printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_scope":"%s","session_keys":"%s","adapter_sha256":"%s"%s}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$HE_SESSION_SCOPE" "$session_keys" "$adapter_sha256" "$gbrain_install_json$route_json$skill_arm_json" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_scope":"%s","session_keys":"%s","adapter_sha256":"%s"%s}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$HE_SESSION_SCOPE" "$session_keys" "$adapter_sha256" "$gbrain_install_json$route_json$skill_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -882,6 +987,10 @@ while [ "$stopping" -eq 0 ]; do
       143) code=2; detail="stopped by SIGTERM during the turn" ;;
       *) code=2; detail="harness error" ;;
     esac
+    if [ "$install_mode" = 1 ]; then
+      if exported=$(openclaw_session_export "$turn" "$name"); then log "turn $turn: session export: $exported"; else log "turn $turn: session export failed; see stderr.log"; fi
+    fi
+    [ "$install_mode" = 0 ] || bash "$HE_INSTALL_DIR/probe.sh" state openclaw > "$HE_LOG_DIR/turns/$name.probe.json" || log "turn $turn: probe.sh state failed; see stderr.log"
     write_response "$resp" "$turn" "$code" "$HE_LOG_DIR/turns/$name.reply.txt" "$started" "$ended" "$detail"
     log "turn $turn: exit $code${detail:+ ($detail)}"
   done

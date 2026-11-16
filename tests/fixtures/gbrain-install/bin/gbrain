@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# A stand-in for the gbrain CLI at v0.60.717.0, for tests/gbrain-install-adapters.test.ts. It never calls a model or the network.
+#   --version          prints 0.60.717.0
+#   init               creates ~/.gbrain/brain.pglite (a directory, as PGLite keeps it) and ~/.gbrain/config.json
+#   setup <harness>    writes the wiring "gbrain setup" writes, where the real one writes it for that harness:
+#                        claude-code  mcpServers.gbrain in $CLAUDE_CONFIG_DIR/.claude.json (~/.claude.json without it) and a
+#                                     brain-first block in $CLAUDE_CONFIG_DIR/CLAUDE.md (~/.claude/CLAUDE.md)
+#                        codex        [mcp_servers.gbrain] in $CODEX_HOME/config.toml and a block in $CODEX_HOME/AGENTS.md (~/.codex)
+#                        openclaw     a block in the workspace AGENTS.md (HE_WORKSPACE_DIR, /workspace without it)
+#                        hermes       mcp_servers.gbrain in $HERMES_HOME/config.yaml and a block in $HERMES_HOME/SOUL.md (~/.hermes)
+#   remember <text>    appends the text to ~/.gbrain/facts.txt
+#   recall [words]     prints the facts holding the words (every fact without words)
+#   serve              exits 0 (there is no MCP server here)
+set -euo pipefail
+self="$(cd "$(dirname "$0")" && pwd)/gbrain"
+block=$'<!-- gbrain:brain-first -->\nBefore you answer, check GBrain: run "gbrain recall <words>".\n<!-- /gbrain:brain-first -->'
+case "${1:-}" in
+  --version) echo "0.60.717.0" ;;
+  init)
+    mkdir -p "$HOME/.gbrain/brain.pglite"
+    [ -e "$HOME/.gbrain/config.json" ] || printf '{"engine":"pglite","database_path":"%s"}\n' "$HOME/.gbrain/brain.pglite" > "$HOME/.gbrain/config.json"
+    echo "brain ready at $HOME/.gbrain/brain.pglite" ;;
+  setup)
+    case "${2:-}" in
+      claude-code)
+        if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then json="$CLAUDE_CONFIG_DIR/.claude.json" memory="$CLAUDE_CONFIG_DIR/CLAUDE.md"; else json="$HOME/.claude.json" memory="$HOME/.claude/CLAUDE.md"; fi
+        mkdir -p "$(dirname "$json")" "$(dirname "$memory")"
+        node -e '
+const fs = require("fs");
+const [file, cmd] = process.argv.slice(1);
+const c = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+c.mcpServers = { ...(c.mcpServers ?? {}), gbrain: { type: "stdio", command: cmd, args: ["serve"] } };
+fs.writeFileSync(file, JSON.stringify(c, null, 2) + "\n");' "$json" "$self"
+        printf '%s\n' "$block" >> "$memory" ;;
+      codex)
+        dir=${CODEX_HOME:-$HOME/.codex}
+        mkdir -p "$dir"
+        printf '\n[mcp_servers.gbrain]\ncommand = "%s"\nargs = ["serve"]\n' "$self" >> "$dir/config.toml"
+        printf '%s\n' "$block" >> "$dir/AGENTS.md" ;;
+      openclaw)
+        ws=${HE_WORKSPACE_DIR:-/workspace}
+        printf '%s\n' "$block" >> "$ws/AGENTS.md" ;;
+      hermes)
+        dir=${HERMES_HOME:-$HOME/.hermes}
+        mkdir -p "$dir"
+        grep -q '^mcp_servers:' "$dir/config.yaml" 2>/dev/null || printf '\nmcp_servers:\n' >> "$dir/config.yaml"
+        printf '  gbrain:\n    command: "%s"\n    args: ["serve"]\n' "$self" >> "$dir/config.yaml"
+        printf '%s\n' "$block" >> "$dir/SOUL.md" ;;
+      *) echo "gbrain setup: unknown harness ${2:-}" >&2; exit 2 ;;
+    esac
+    echo "gbrain wired into ${2}" ;;
+  remember) shift; mkdir -p "$HOME/.gbrain"; printf '%s\n' "$*" >> "$HOME/.gbrain/facts.txt"; echo "saved" ;;
+  recall) shift; if [ $# -eq 0 ]; then cat "$HOME/.gbrain/facts.txt"; else grep -iF -- "$*" "$HOME/.gbrain/facts.txt" || true; fi ;;
+  serve) exit 0 ;;
+  *) echo "gbrain: unknown command ${1:-}" >&2; exit 2 ;;
+esac

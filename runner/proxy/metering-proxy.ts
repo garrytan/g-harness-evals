@@ -189,6 +189,8 @@ const CREDENTIAL_HEADERS = ['authorization', 'x-api-key', 'api-key', 'openai-org
 export const DEFAULT_MAX_OUTPUT_TOKENS = 32_768;
 /** A provider call may run this long (Bun's own 300-second fetch timeout is off; long reasoning calls exceed it). */
 export const UPSTREAM_DEADLINE_MS = 900_000;
+/** internal-task: how long an install slot waits for a token-bearing request's body before it refuses the request (408). */
+export const INSTALL_BODY_DEADLINE_MS = 120_000;
 
 export interface Meter {
   usd: number;
@@ -289,11 +291,18 @@ export interface UsageLine {
   web_search_calls?: number; web_search_usd?: number; web_fetch_calls?: number; web_fetch_usd?: number;
 }
 
-/** internal-task: what an install-slot request is, by method and route. */
-export type EndpointClass = 'generation' | 'models' | 'embeddings' | 'count_tokens' | 'other';
+/** internal-task: what an install-slot request is, by method and route. `probe` is a harness's startup probe of what serves its base
+ *  URL: Hermes's POST /api/show and its GETs of /api/tags, /props, /v1/props, /version, /models and /api/v1/models, and Claude
+ *  Code's HEAD /api/hello (seen under QM). */
+export type EndpointClass = 'generation' | 'models' | 'embeddings' | 'count_tokens' | 'probe' | 'other';
+const PROBE_ROUTES: ReadonlyArray<{ method: string; route: string }> = [
+  { method: 'POST', route: '/api/show' }, { method: 'HEAD', route: '/api/hello' },
+  ...['/api/tags', '/props', '/v1/props', '/version', '/models', '/api/v1/models'].flatMap((route) => [{ method: 'GET', route }, { method: 'HEAD', route }]),
+];
 export function endpointClass(method: string, route: string): EndpointClass {
   if (route === COUNT_TOKENS_ROUTE) return 'count_tokens';
   if (method === 'GET' && /^\/v1\/models(\/[^/]+)?$/.test(route)) return 'models';
+  if (PROBE_ROUTES.some((p) => p.method === method && p.route === route)) return 'probe';
   if (/^\/v1\/embeddings$/.test(route)) return 'embeddings';
   if (method === 'POST' && /^\/v1\/(messages|chat\/completions|responses)$/.test(route)) return 'generation';
   return 'other';
@@ -320,7 +329,7 @@ export function installTotals(lines: UsageLine[]): Record<string, InstallTotals>
   const out: Record<string, InstallTotals> = {};
   for (const l of lines) {
     if (l.kind !== 'install_slot') continue;
-    const t = out[l.key] ??= { requests: 0, non_harness: { generation: 0, models: 0, embeddings: 0, count_tokens: 0, other: 0 }, web_search_calls: 0, web_search_usd: 0, web_fetch_calls: 0, web_fetch_usd: 0 };
+    const t = out[l.key] ??= { requests: 0, non_harness: { generation: 0, models: 0, embeddings: 0, count_tokens: 0, probe: 0, other: 0 }, web_search_calls: 0, web_search_usd: 0, web_fetch_calls: 0, web_fetch_usd: 0 };
     t.requests++;
     if (l.non_harness) t.non_harness[l.endpoint ?? 'other']++;
     t.web_search_calls += l.web_search_calls ?? 0; t.web_search_usd += l.web_search_usd ?? 0;
@@ -518,7 +527,7 @@ export class MeteringProxy {
   private inflight = new Map<string, number>();
   private waiters = new Map<string, Array<() => void>>();
   /** `transform` (in-process mode) rewrites a response body after it is metered: a mutant that drops a model's output, for example. */
-  constructor(private options: { fetchImpl?: typeof fetch; hostname?: string; port?: number; upstream?: Partial<Record<ProviderName, string>>; policy?: LeasePolicy; controlToken?: string | null; transform?: (slot: string, target: string, text: string) => string } = {}) {}
+  constructor(private options: { fetchImpl?: typeof fetch; hostname?: string; port?: number; upstream?: Partial<Record<ProviderName, string>>; policy?: LeasePolicy; controlToken?: string | null; transform?: (slot: string, target: string, text: string) => string; installBodyDeadlineMs?: number } = {}) {}
   get port(): number { return this.server!.port as number; }
   /** Charge the slot's provider requests to `key` (a cell id) from now on; with `token`, only requests presenting it; with `models`, only requests for those provider:model ids;
    *  with `ablation` (lease mode), the bound layers are cut from every generation request (runner/proxy/ablate.ts); with
@@ -588,24 +597,45 @@ export class MeteringProxy {
           const refused = (reason: string) => { this.log({ at: new Date().toISOString(), key, provider: prov, route: rest, model: null, outcome: 'refused', reason, status: 403 }); return json(403, 'invalid_request', reason); };
           if (!binding) return refused(`slot ${slot} is not bound; the proxy forwards only for a slot the runner bound`);
           if (binding.install) {
+            // The token is checked from the headers before the body is read. A tokenless request is refused at once, its body never
+            // read, and is never in flight; a token-bearing one is counted in flight while its body arrives, so it is metered, and
+            // refused 408 if the body takes longer than the read deadline, so finalize never reports it undrained.
+            const tokenPresented = presentedCredential(req) === binding.token;
+            const endpoint = endpointClass(req.method, rest);
+            const userAgent = sanitizeUserAgent(req.headers.get('user-agent'), binding.token);
+            const refuseInstall = (why: string, status: number, model: string | null, tag: InstallTag) => {
+              const reason = `HE-PROXY-010 ${why}; an install slot refuses at $0, and counts, every request that is not the harness's own model call (docs/errors.md)`;
+              this.log({ at: new Date().toISOString(), key: tokenPresented ? key : `slot:${slot}`, provider: prov, route: rest, model, outcome: 'refused', reason, status }, tag);
+              return json(status, 'invalid_request', reason);
+            };
+            if (!tokenPresented) return refuseInstall(`the credential presented for slot ${slot} is not the slot's token`, 403, null, { kind: 'install_slot', method: req.method.slice(0, 16), endpoint, token_presented: false, user_agent: userAgent, non_harness: true, model: null });
             this.inflight.set(key, (this.inflight.get(key) ?? 0) + 1);
             let raw: string | undefined;
-            try { raw = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.clone().text(); } catch (e) { this.settled(key); throw e; }
+            if (req.method !== 'GET' && req.method !== 'HEAD') {
+              const deadlineMs = this.options.installBodyDeadlineMs ?? INSTALL_BODY_DEADLINE_MS;
+              let timer: ReturnType<typeof setTimeout> | undefined;
+              try {
+                raw = await Promise.race([req.clone().text(), new Promise<undefined>(r => { timer = setTimeout(() => r(undefined), deadlineMs); })]);
+              } catch (e) { this.settled(key); throw e; } finally { clearTimeout(timer); }
+              if (raw === undefined) {
+                this.settled(key);
+                return refuseInstall(`the request body did not arrive within ${deadlineMs / 1000} s`, 408, null, { kind: 'install_slot', method: req.method.slice(0, 16), endpoint, token_presented: true, user_agent: userAgent, non_harness: true, model: null });
+              }
+            }
+            const done = () => this.settled(key);
             const named = (jsonOrNull(raw ?? '') as { model?: unknown } | null)?.model;
             const model = typeof named === 'string' && /^[A-Za-z0-9._:/-]{1,200}$/.test(named) ? named : null;
-            const endpoint = endpointClass(req.method, rest);
-            const tokenPresented = presentedCredential(req) === binding.token;
-            install = { kind: 'install_slot', method: req.method.slice(0, 16), endpoint, token_presented: tokenPresented, user_agent: sanitizeUserAgent(req.headers.get('user-agent'), binding.token), non_harness: true, model };
-            const why = !tokenPresented ? `the credential presented for slot ${slot} is not the slot's token`
-              : endpoint === 'embeddings' ? 'an embeddings request, which the harness\'s own model call never makes'
+            install = { kind: 'install_slot', method: req.method.slice(0, 16), endpoint, token_presented: true, user_agent: userAgent, non_harness: true, model };
+            const why = endpoint === 'embeddings' ? 'an embeddings request, which the harness\'s own model call never makes'
+              : endpoint === 'probe' ? `route ${req.method} /${prov}${rest} is the harness's startup probe of its base URL, not a model call`
               : endpoint === 'other' ? `route ${req.method} /${prov}${rest} is not a model call the harness makes`
               : endpoint !== 'models' && !binding.models!.includes(`${prov}:${model}`) ? `${prov}:${model ?? '(no model)'} is not on slot ${slot}'s model list (${binding.models!.join(', ')})`
               : null;
             if (why) {
-              this.settled(key);
-              const reason = `HE-PROXY-010 ${why}; an install slot refuses at $0, and counts, every request that is not the harness's own model call (docs/errors.md)`;
-              this.log({ at: new Date().toISOString(), key: tokenPresented ? key : `slot:${slot}`, provider: prov, route: rest, model, outcome: 'refused', reason, status: 403 }, install);
-              return json(403, 'invalid_request', reason);
+              done();
+              // A startup probe that carries the token is the harness's own, so it is refused but not counted as non_harness.
+              if (endpoint === 'probe') install.non_harness = false;
+              return refuseInstall(why, 403, model, install);
             }
             install.non_harness = false;
           }
@@ -855,10 +885,13 @@ export class MeteringProxy {
     const settle = (cost: ReturnType<typeof usageCost>, status: number, isStream: boolean, response: unknown, cached?: number, reason?: string, unfinished = false, facts: Partial<UsageLine> = {}) => {
       // internal-task: an install slot charges the hosted web tool fees the response reports on top of its tokens.
       const web = install && bounded ? webToolUse(prov, route, response, isStream) : null;
-      if (cost && web && web.web_search_usd + web.web_fetch_usd > 0) cost = { ...cost, usd: cost.usd + web.web_search_usd + web.web_fetch_usd };
+      const webUsd = web ? web.web_search_usd + web.web_fetch_usd : 0;
+      if (cost && webUsd > 0) cost = { ...cost, usd: cost.usd + webUsd };
+      // With no usage the reservation is charged, and an install slot adds the web tool fees the response still reports.
+      const unknownUsd = reserved + (cost ? 0 : webUsd);
       const charged = !!bounded && (!cost || unfinished);
-      if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost);
-      const usd = !cost ? reserved : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
+      if (entry) p.lease.settle(entry, cost && unfinished ? { ...cost, unfinished } : cost ?? (webUsd > 0 ? { usd: unknownUsd, unfinished: true } : null));
+      const usd = !cost ? unknownUsd : unfinished ? Math.max(reserved, cost.usd) : cost.usd;
       this.charge(key, prov, bounded?.model ?? null, usd, charged);
       const elsewhere = facts.served_elsewhere ? `HE-PROXY-009 OpenRouter answered from ${facts.served_provider ?? 'an unnamed provider'}, not the pinned ${OPENROUTER_MODELS[model ?? '']?.served ?? 'endpoint'}; the trial is infra_error (docs/errors.md)` : undefined;
       const why = [elsewhere, reason].filter(Boolean).join('; ');

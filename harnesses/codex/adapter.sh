@@ -31,7 +31,8 @@ set -euo pipefail
 : "${HE_SESSION_STATE_DIR:=/harness-state}"
 : "${HE_LOG_DIR:?HE_LOG_DIR must be set}"
 : "${HE_MODEL_BASE_URL:?HE_MODEL_BASE_URL must be set}"
-: "${HE_MODEL_API_KEY:?HE_MODEL_API_KEY must be set}"
+# Install mode (below) reads the token from HE_MODEL_API_KEY_FILE instead, so it does not need this variable.
+[ "${HE_INSTALL_MODE:-}" = 1 ] || : "${HE_MODEL_API_KEY:?HE_MODEL_API_KEY must be set}"
 : "${HE_MODEL_NAME:=gpt-6-luna}"
 : "${HE_TIME_BUDGET_S:=300}"
 : "${HE_TRIAL_ID:=unknown}"
@@ -62,6 +63,30 @@ case "${HE_MODEL_BASE_URL%/}" in
   */openai) ;;
   *) log "HE_MODEL_BASE_URL $HE_MODEL_BASE_URL does not end in /openai: codex runs only on an openai cell (the proxy route <proxy>/<slot>/openai)"; exit 2 ;;
 esac
+
+# internal-task, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
+# from Codex's shipped defaults and keeps whatever the agent and gbrain write across sessions: config.toml is written once, before
+# the first turn, and never regenerated; it has no MCP server of ours, and the web_search and external_web_access disables and
+# plugins = false are left out so the shipped defaults apply. env_key stays HE_MODEL_API_KEY, but the variable is set only in each
+# codex process's own environment, read from HE_MODEL_API_KEY_FILE, and [shell_environment_policy] exclude keeps it out of every
+# shell Codex starts (codex 0.165.0 inherits the whole environment by default: ignore_default_excludes defaults to true).
+# HE_INSTALL_DIR/probe.sh records the install state after every turn (turns/turn-NNNN.probe.json) and every second as a watcher
+# (install-watch.ndjson). The run entry, a route config, HE_GBRAIN_INSTALL, HE_GBRAIN_MCP_URL, a missing, empty or unreadable token
+# file, or no probe.sh is HE-INSTALL-003 and exit 2 before ready. Unset, nothing here runs.
+install_mode=0 install_json=''
+if [ "${HE_INSTALL_MODE:-}" = 1 ]; then
+  install_mode=1 install_json=',"install_mode":true'
+  refuse_install() { log "HE-INSTALL-003 install mode $1"; exit 2; }
+  [ "$entry" = serve ] || refuse_install "runs the serve entry only, not $entry"
+  [ "${HE_HARNESS_CONFIG:-default}" = default ] || refuse_install "runs the shipped defaults; HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG names a route config"
+  [ -z "${HE_GBRAIN_INSTALL:-}" ] || refuse_install "has the agent install gbrain itself; HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL is set"
+  [ -z "${HE_GBRAIN_MCP_URL:-}" ] || refuse_install "wires no gbrain MCP server of its own; HE_GBRAIN_MCP_URL is set"
+  [ -n "${HE_MODEL_API_KEY_FILE:-}" ] && [ -f "$HE_MODEL_API_KEY_FILE" ] && [ -r "$HE_MODEL_API_KEY_FILE" ] && [ -s "$HE_MODEL_API_KEY_FILE" ] \
+    || refuse_install "needs the proxy token in HE_MODEL_API_KEY_FILE (${HE_MODEL_API_KEY_FILE:-unset}), which is missing, empty or unreadable"
+  [ -r "${HE_INSTALL_DIR:-}/probe.sh" ] || refuse_install "needs probe.sh in HE_INSTALL_DIR (${HE_INSTALL_DIR:-unset})"
+  unset HE_MODEL_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY
+  export -n HE_MODEL_API_KEY_FILE
+fi
 
 # The install ladder (docs/gbrain-arm.md): gbrain documents one install for Codex, its installer (gbrain-installer, applied below
 # once config.toml is written). A cell that asks for another stops before ready instead of running without it.
@@ -99,6 +124,9 @@ if [ "$route" != default ] && [ -n "${HE_GBRAIN_INSTALL:-}" ]; then refuse_route
 # CODEX_HOME holds config.toml, the thread store (sessions/ and the state and thread history databases), skills and logs:
 # all state. TMPDIR moves Codex's scratch files off the image.
 export HOME="$HE_SESSION_STATE_DIR"
+# Install mode: each harness session starts with the PATH a fresh terminal would have after an installer edited the shell rc
+# (no rc file is sourced), so an MCP server or hook that gbrain wires by a bun-shebang script finds bun and gbrain.
+[ "$install_mode" = 0 ] || export PATH="$PATH:$HOME/.bun/bin:$HOME/.npm-global/bin:$HOME/.local/bin"
 export CODEX_HOME="$HE_SESSION_STATE_DIR/codex"
 export TMPDIR="$HE_SESSION_STATE_DIR/tmp"
 mkdir -p "$CODEX_HOME" "$TMPDIR"
@@ -139,6 +167,11 @@ jq -Rjs --slurpfile pin "$harness_dir/pin.json" --arg model "$HE_MODEL_NAME" --a
   | gsub("@REQUEST_RETRIES@"; $c.request_max_retries | tostring) | gsub("@STREAM_RETRIES@"; $c.stream_max_retries | tostring)
   | if $mi == "" then . else sub("\nmodel = "; "\nmodel_instructions_file = " + ($mi | tojson) + "\nmodel = ") end
 ' "$harness_dir/config/config.toml" > "$CODEX_HOME/config.toml.tmp"
+# Install mode: the template without its web and plugin disables, plus the shell policy that keeps the token out of every shell.
+if [ "$install_mode" = 1 ]; then
+  sed -i -e '/^web_search = /d' -e '/^external_web_access = /d' -e '/^plugins = false$/d' "$CODEX_HOME/config.toml.tmp"
+  printf '\n[shell_environment_policy]\nexclude = ["HE_MODEL_API_KEY"]\n' >> "$CODEX_HOME/config.toml.tmp"
+fi
 
 # One MCP server block: Streamable HTTP, the bearer read by Codex from the named variable, required so a server that does
 # not start fails the turn instead of leaving the harness without its tools.
@@ -162,7 +195,7 @@ mcp_probe() {
 }
 
 mcp_servers='[]'
-if [ "$entry" = serve ]; then
+if [ "$entry" = serve ] && [ "$install_mode" = 0 ]; then
   [ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ] || { log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; }
   mcp_block world "$HE_WORLD_MCP_URL" HE_WORLD_MCP_TOKEN >> "$CODEX_HOME/config.toml.tmp"
   mcp_probe world "$HE_WORLD_MCP_URL" "$HE_WORLD_MCP_TOKEN" || exit 2
@@ -176,8 +209,13 @@ if [ "$entry" = serve ]; then
     mcp_servers='["world","gbrain"]'
   fi
 fi
-mv "$CODEX_HOME/config.toml.tmp" "$CODEX_HOME/config.toml"
-log "config written to $CODEX_HOME/config.toml (mcp_servers $mcp_servers)"
+if [ "$install_mode" = 1 ] && [ -e "$CODEX_HOME/config.toml" ]; then
+  rm -f "$CODEX_HOME/config.toml.tmp"
+  log "install mode: kept $CODEX_HOME/config.toml as the agent and gbrain left it (written once, never regenerated)"
+else
+  mv "$CODEX_HOME/config.toml.tmp" "$CODEX_HOME/config.toml"
+  log "config written to $CODEX_HOME/config.toml (mcp_servers $mcp_servers)"
+fi
 
 # internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup codex --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
@@ -580,7 +618,11 @@ codex_turn() {
   fi
   marker="$HE_TRIAL_ID.${stem##*/}.$$.$RANDOM"
   [ -z "$hook_heartbeat" ] || hook_before=$(hook_runs)
-  HE_CODEX_TURN="$marker" setsid codex "${args[@]}" < "$prompt" > "$events" 2> "$err" &
+  if [ "$install_mode" = 1 ]; then
+    HE_MODEL_API_KEY="$(cat "$HE_MODEL_API_KEY_FILE")" HE_CODEX_TURN="$marker" setsid codex "${args[@]}" < "$prompt" > "$events" 2> "$err" &
+  else
+    HE_CODEX_TURN="$marker" setsid codex "${args[@]}" < "$prompt" > "$events" 2> "$err" &
+  fi
   cpid=$!
   deadline=$((SECONDS + budget))
   while kill -0 "$cpid" 2>/dev/null; do
@@ -644,8 +686,10 @@ fi
 # ---- serve ----------------------------------------------------------------------------------------
 : "${HE_TURNS_DIR:=/he-turns}"
 mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
+# Install mode: the watcher starts before ready and stops by itself once this process is gone.
+if [ "$install_mode" = 1 ]; then bash "$HE_INSTALL_DIR/probe.sh" watch codex "$HE_LOG_DIR/install-watch.ndjson" $$ > /dev/null 2>> "$HE_LOG_DIR/install-watch.stderr.log" & fi
 printf '{"harness":"codex","version":"%s","trial":"%s","ready_at":"%s","session_keys":"codex exec (first turn of a key) | codex exec resume <thread id>; dm:<member> | channel:<id>","mcp_servers":%s,"adapter_sha256":"%s"%s}\n' \
-  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$skill_arm_json" > "$HE_LOG_DIR/ready.tmp"
+  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$skill_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -664,6 +708,7 @@ while [ "$stopping" -eq 0 ]; do
     started=$(now)
     codex_turn "$HE_LOG_DIR/turns/$name.prompt.md" "$key" "$HE_LOG_DIR/turns/$name" "$budget" 5 "$window_key"
     ended=$(now)
+    [ "$install_mode" = 0 ] || bash "$HE_INSTALL_DIR/probe.sh" state codex > "$HE_LOG_DIR/turns/$name.probe.json" || log "turn $turn: probe.sh state failed; see stderr.log"
     code=$turn_code
     [ "$code" -ne 143 ] || code=2
     jq -n --argjson turn "$turn" --argjson exit "$code" --rawfile reply "$HE_LOG_DIR/turns/$name.reply.txt" --arg started "$started" --arg ended "$ended" --arg detail "$turn_detail" \

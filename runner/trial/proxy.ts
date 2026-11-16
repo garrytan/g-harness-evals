@@ -54,6 +54,9 @@ export interface RunProxyOptions {
   /** Capture mode: forward to these fake upstreams (the proxy's --upstream) and give the proxy dummy provider keys
    *  instead of `env`'s, keeping only PATH and HOME from it (runner/trial/capture.ts). */
   capture?: CaptureConfig;
+  /** Fake upstreams by provider (the proxy's --upstream), with the provider keys `env` gives; capture's win where both name one.
+   *  scripts/gbrain-install/real-image-check.ts uses it for Particle, which capture mode does not cover. */
+  upstream?: Record<string, string>;
   /** internal-task (H10): count route copies on slots bound with `routes` (the proxy's --route-texts, written to <runDir>/route-texts.json).
    *  Unset, the proxy's command line and every usage line are as before. */
   routeTexts?: RouteTexts;
@@ -122,7 +125,7 @@ export class RunProxy {
     const ablationLog = opts.ablationLog ? join(opts.runDir, 'ablation.ndjson') : null;
     if (ablationLog) args.push('--ablation-log', ablationLog);
     if (opts.logSections) args.push('--log-sections');
-    for (const [provider, url] of Object.entries(opts.capture?.upstream ?? {})) args.push('--upstream', `${provider}=${url}`);
+    for (const [provider, url] of Object.entries({ ...opts.upstream, ...opts.capture?.upstream })) args.push('--upstream', `${provider}=${url}`);
     if (opts.routeTexts) {
       const file = join(opts.runDir, 'route-texts.json');
       writeFileSync(file, JSON.stringify(opts.routeTexts, null, 1) + '\n');
@@ -171,10 +174,11 @@ export class RunProxy {
   /** Charge the slot to `key`; with `token`, the proxy forwards only requests that present it; with `models` (provider:model
    *  ids), only requests for those models, inside the run-wide --allow-models; with `ablation`, the proxy
    *  checks the map's sha256 (a mismatch fails the bind) and cuts the layers out of the slot's requests; with `routes`
-   *  (internal-task), the slot's usage lines carry route copies when the proxy has route texts. */
-  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec, routes = false, limits: SlotLimits = {}) {
+   *  (internal-task-a), the slot's usage lines carry route copies when the proxy has route texts; with `install` (internal-task-b), an install slot,
+   *  which refuses at $0 and counts every request that is not the harness's own model call (HE-PROXY-010). */
+  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec, routes = false, limits: SlotLimits = {}, install = false) {
     if (ablation && this.ablationLog) this.ablationFrom.set(key, existsSync(this.ablationLog) ? statSync(this.ablationLog).size : 0);
-    return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}), ...(routes ? { routes } : {}), ...limits });
+    return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}), ...(routes ? { routes } : {}), ...limits, ...(install ? { install: true } : {}) });
   }
   /** internal-task Phase B: the request bodies the proxy collected for `key` (a slot bound with collect_requests), handed over once:
    *  the forwarded ones, and the first one the request cap refused. */

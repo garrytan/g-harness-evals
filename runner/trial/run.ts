@@ -37,6 +37,9 @@ import { REQUEST_CAP, type SlotLimits } from '../proxy/metering-proxy.ts';
 import { checkoutProvenance } from './provenance.ts';
 import { routeTextsFor } from './routes.ts';
 import { type EgressAllowlist, cursorTransport, isCursorCell, keyValueFound, startEgressAllowlist } from './cursor.ts';
+import { INSTALL_SLICE } from './install-cell.ts';
+import { InstallLeak, type LsRemote, measureColdDownload, runInstallTrial, stableProblem } from './install.ts';
+import { type OpenEgress, loadBlocklist, openEgressEnv, startOpenEgress } from './egress.ts';
 
 export interface RunOptions {
   harnessMode: HarnessMode;
@@ -67,10 +70,16 @@ export interface RunOptions {
   proxyEnv?: Record<string, string | undefined>;
   /** Capture mode (runner/trial/capture.ts): fake upstreams and dummy keys for the proxy, --dns for in-container harnesses. */
   capture?: CaptureConfig;
+  /** The proxy's --upstream per provider outside capture mode (scripts/gbrain-install/real-image-check.ts, keyless). */
+  proxyUpstream?: Record<string, string>;
   repoRoot?: string;
   log?: (line: string) => void;
   /** Cursor cells: the key their containers get (CURSOR_API_KEY, or the --cursor-offline canary, with no egress host). */
   cursor?: { key: string; offline: boolean };
+  /** gbrain-install cells (runner/trial/install.ts): the stable check's git ls-remote, which tests replace; and where the
+   *  canary reads the provider keys' values (default this process's environment). */
+  installLsRemote?: LsRemote;
+  installKeyEnv?: Record<string, string | undefined>;
 }
 
 export interface RunResult {
@@ -127,7 +136,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     if (gap) log(gap);
   }
   const needsProxy = pending.some((t) => modeFor(cells.get(t.cell)!) !== 'scripted' && !isCursorCell(cells.get(t.cell)!));
-  const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!) && cells.get(t.cell)!.slice !== SKILL_REQUESTS_SLICE);
+  const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!) && cells.get(t.cell)!.slice !== SKILL_REQUESTS_SLICE && cells.get(t.cell)!.slice !== INSTALL_SLICE);
   const preambles = new Map<string, string>();
   const preambleFor = (cell: Cell): string => {
     const path = cell.preamble ?? opts.preamblePath ?? defaultPreambleFor(cell.task_set);
@@ -144,10 +153,12 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   }
   const privateCells = pendingCells.filter((c) => c.private === true);
   if (privateCells.length && insideDir(runDir, resolve(import.meta.dir, '..', '..'))) throw new RunnerError('HE-RUN-002', `cells ${privateCells.map((c) => c.id).join(', ')} are private and the run directory ${runDir} is inside the repository; fix: plan the run with --out outside the repository`);
-  const internal = pendingCells.filter((c) => c.network === 'internal');
+  // internal-task: network "install" is the internal network plus the open-egress proxy on its gateway.
+  const internal = pendingCells.filter((c) => c.network === 'internal' || c.network === 'install');
+  const installNet = pendingCells.filter((c) => c.network === 'install');
   if (internal.length) {
     const ids = (list: Cell[]) => list.map((c) => c.id).join(', ');
-    const bridged = pendingCells.filter((c) => c.network !== 'internal' && modeFor(c) !== 'scripted');
+    const bridged = pendingCells.filter((c) => c.network !== 'internal' && c.network !== 'install' && modeFor(c) !== 'scripted');
     const compose = internal.filter((c) => existsSync(join(opts.repoRoot ?? '.', 'harnesses', c.harness, 'compose.yaml')));
     if (!docker) throw new RunnerError('HE-NET-001', `cells ${ids(internal)} have network "internal", which only a harness container gets; this invocation runs in ${opts.harnessMode} mode. fix: run them with --harness-mode docker`);
     if (bridged.length) throw new RunnerError('HE-NET-001', `cells ${ids(internal)} have network "internal" and cells ${ids(bridged)} run on the default bridge; the run's one metering proxy listens on one network's gateway. fix: run each group in its own invocation with --cells`);
@@ -170,6 +181,9 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   let proxy: RunProxy | null = null;
   let network: InternalNetwork | null = null;
   let egress: EgressAllowlist | null = null;
+  let openEgress: OpenEgress | null = null;
+  const stoppedCells = new Map<string, string>();
+  const downloaded = new Set<string>();
   const offline: Array<{ trial: string; denied_hosts: string[]; denied: number; key_found: boolean }> = [];
   let capStop = false;
   let exit: 0 | 3 = 0;
@@ -183,6 +197,11 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       egress = await startEgressAllowlist({ host: network.gateway, allow: opts.cursor!.offline ? [] : hosts, logPath: join(runDir, 'egress.ndjson') });
       log(`cursor egress allowlist on ${network.gateway}:${egress.port} (${opts.cursor!.offline ? `--cursor-offline: no host admitted, a canary stands in for the key` : `CONNECT to ${hosts.join(', ')} on 443 only`}), every decision in ${join(runDir, 'egress.ndjson')}; no metering proxy for cells ${cursorCells.map((c) => c.id).join(', ')}`);
     }
+    if (installNet.length && network) {
+      const block = loadBlocklist('gbrain-install', repoRoot);
+      openEgress = await startOpenEgress({ host: network.gateway, block, logPath: join(runDir, 'install-egress.ndjson') });
+      log(`open egress on ${network.gateway}:${openEgress.port} for cells ${installNet.map((c) => c.id).join(', ')}: every host but the ${block.length} entries of scripts/egress/egress_blocklist.py gbrain-install, every connection in ${join(runDir, 'install-egress.ndjson')}`);
+    }
     if (needsProxy) {
       // A cell with embeddings on sends the sidecar's query embeddings through the same proxy, so the embedding model
       // joins the allowlist and the proxy binds every interface (the sidecar is a container whatever the harness mode).
@@ -190,7 +209,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       proxy = await RunProxy.start({
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
         allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
-        reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture, logSections,
+        reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture, ...(opts.proxyUpstream ? { upstream: opts.proxyUpstream } : {}), logSections,
         routeTexts: routeTextsFor(manifest.cells, opts.repoRoot),
         ...(manifest.cells.some((c) => c.ablation) ? { ablationLog: true } : {}),
       });
@@ -201,13 +220,41 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       if (!cell) throw new RunnerError('HE-RUN-002', `trial ${planned.id} names cell ${planned.cell}, which the manifest does not define`);
       const trial: Trial = opts.sealedRoot && isSealedCell(cell, opts.sealedSet) ? { ...planned, task_dir: sealedPath(cell, planned.task_dir), script: sealedPath(cell, planned.script) } : planned;
       const trialDir = trialDirFor(runDir, trial);
+      if (stoppedCells.has(cell.id)) { log(`trial ${trial.id} not run: its cell stopped (${stoppedCells.get(cell.id)!.slice(0, 15)})`); continue; }
+      if (cell.slice === INSTALL_SLICE) {
+        const problem = stableProblem(cell, opts.installLsRemote);
+        if (problem) {
+          stoppedCells.set(cell.id, problem);
+          log(problem);
+          console.error(problem);
+          appendFileSync(join(runDir, 'install-stops.jsonl'), JSON.stringify({ at: new Date().toISOString(), cell: cell.id, trial: trial.id, stable_commit: cell.install!.stable_commit, error: problem }) + '\n');
+          exit = 3;
+          continue;
+        }
+      }
       log(`trial ${trial.id} starting (${cell.harness}, ${cell.model})`);
       const cursorTrial = isCursorCell(cell) && egress ? { proxyUrl: egress.proxyUrl, key: opts.cursor!.key } : undefined;
       egress?.setTrial(cursorTrial ? trial.id : null);
       const serveOpts = (): TrialContext['opts'] => ({
           harnessMode: opts.harnessMode, adapter: opts.adapter, image: opts.image, gbrainImage: opts.gbrainImage ?? (cell.gbrain ? gbrainSetWorld([cell], join(opts.repoRoot ?? '.', 'tasks'))?.image : undefined), preamble: preambleFor(cell), worldPath: setWorldPath(cell, join(opts.repoRoot ?? '.', 'tasks')) ?? opts.worldPath, readyTimeoutS: opts.readyTimeoutS ?? 180,
           turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, captureDns: opts.capture?.dns ?? undefined, repoRoot: opts.repoRoot, ...(network ? { network } : {}), ...(cursorTrial ? { cursor: cursorTrial } : {}) });
-      const record = cell.slice === SET_T_SLICE
+      if (cell.slice === INSTALL_SLICE && openEgress && network && docker) {
+        const image = opts.image ?? `harness-eval/${cell.harness}:dev`;
+        if (!downloaded.has(image)) {
+          downloaded.add(image);
+          openEgress.setTrial(null);
+          const result = await measureColdDownload(image, network, openEgressEnv(openEgress.proxyUrl));
+          appendFileSync(join(runDir, 'install-download.jsonl'), JSON.stringify(result) + '\n');
+          log(`cold gbrain download in ${image}: ${JSON.stringify(result)}`);
+        }
+      }
+      openEgress?.setTrial(cell.slice === INSTALL_SLICE ? trial.id : null);
+      const record = cell.slice === INSTALL_SLICE
+        ? await runInstallTrial({ cell, trial, runDir, trialDir, proxy, log, opts: serveOpts(), egress: openEgress, keyEnv: opts.installKeyEnv }).catch((e: unknown) => {
+          if (e instanceof InstallLeak) { appendRecord(runDir, e.record); records.push(e.record); }
+          throw e;
+        })
+        : cell.slice === SET_T_SLICE
         ? await runSetTTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() })
         : cell.slice === SKILL_REQUESTS_SLICE
         ? await runSkillRequestTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() })
@@ -238,6 +285,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   } finally {
     if (proxy) await proxy.stop();
     if (egress) await egress.stop();
+    if (openEgress) await openEgress.stop();
     if (offline.length) {
       const hosts = cursorTransport(opts.repoRoot).egress_hosts;
       const ok = offline.every((t) => !t.key_found && t.denied_hosts.some((h) => hosts.includes(h.replace(/:443$/, ''))));

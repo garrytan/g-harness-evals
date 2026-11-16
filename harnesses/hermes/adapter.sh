@@ -15,6 +15,9 @@ set -euo pipefail
 : "${HE_SESSION_STATE_DIR:=/harness-state}"
 : "${HE_LOG_DIR:?HE_LOG_DIR must be set}"
 : "${HE_MODEL_BASE_URL:?HE_MODEL_BASE_URL must be set}"
+# Install mode (below) reads the token from HE_MODEL_API_KEY_FILE instead: a placeholder stands in for the check, unexported, and
+# is unset before Hermes starts.
+[ "${HE_INSTALL_MODE:-}" != 1 ] || HE_MODEL_API_KEY=install-mode-reads-HE_MODEL_API_KEY_FILE
 : "${HE_MODEL_API_KEY:?HE_MODEL_API_KEY must be set}"
 : "${HE_MODEL_NAME:=claude-sonnet-5-5}"
 : "${HE_TIME_BUDGET_S:=300}"
@@ -39,6 +42,29 @@ case "$entry" in
   run|serve) ;;
   *) log "unknown entry point: $entry; 'run' and 'serve' are implemented"; exit 2 ;;
 esac
+
+# internal-task, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
+# from the adapter's config template and keeps whatever the agent and gbrain write across sessions (HERMES_HOME), with no world MCP
+# server. The proxy token goes into $HERMES_HOME/.env (mode 0600), which Hermes loads itself, as ANTHROPIC_API_KEY (OPENAI_API_KEY
+# on an OpenAI, Particle or OpenRouter cell); neither is exported, so no shell the agent starts gets it from this adapter. Hermes's
+# terminal tool also drops both names from every shell it starts (tools/environments/local_env_policy.py at v2026.9.24).
+# HE_INSTALL_DIR/probe.sh records the install state after every turn (turns/turn-NNNN.probe.json) and every second as a watcher
+# (install-watch.ndjson). The run entry, a route config, HE_GBRAIN_INSTALL, HE_GBRAIN_MCP_URL, a missing, empty or unreadable token
+# file, or no probe.sh is HE-INSTALL-003 and exit 2 before ready. Unset, nothing here runs.
+install_mode=0 install_json=''
+if [ "${HE_INSTALL_MODE:-}" = 1 ]; then
+  install_mode=1 install_json=',"install_mode":true'
+  refuse_install() { log "HE-INSTALL-003 install mode $1"; exit 2; }
+  [ "$entry" = serve ] || refuse_install "runs the serve entry only, not $entry"
+  [ "${HE_HARNESS_CONFIG:-default}" = default ] || refuse_install "runs the shipped defaults; HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG names a route config"
+  [ -z "${HE_GBRAIN_INSTALL:-}" ] || refuse_install "has the agent install gbrain itself; HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL is set"
+  [ -z "${HE_GBRAIN_MCP_URL:-}" ] || refuse_install "wires no gbrain MCP server of its own; HE_GBRAIN_MCP_URL is set"
+  [ -n "${HE_MODEL_API_KEY_FILE:-}" ] && [ -f "$HE_MODEL_API_KEY_FILE" ] && [ -r "$HE_MODEL_API_KEY_FILE" ] && [ -s "$HE_MODEL_API_KEY_FILE" ] \
+    || refuse_install "needs the proxy token in HE_MODEL_API_KEY_FILE (${HE_MODEL_API_KEY_FILE:-unset}), which is missing, empty or unreadable"
+  [ -r "${HE_INSTALL_DIR:-}/probe.sh" ] || refuse_install "needs probe.sh in HE_INSTALL_DIR (${HE_INSTALL_DIR:-unset})"
+  unset ANTHROPIC_API_KEY OPENAI_API_KEY
+  export -n HE_MODEL_API_KEY HE_MODEL_API_KEY_FILE
+fi
 
 # internal-task: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
 # empty or default changes nothing; any other value that is not a route is refused here, before anything is written. internal-task
@@ -68,6 +94,9 @@ route_name=${instruction_route%@*}
 
 # HERMES_HOME holds config, memories, skills, sessions and logs: all state.
 export HOME="$HE_SESSION_STATE_DIR"
+# Install mode: each harness session starts with the PATH a fresh terminal would have after an installer edited the shell rc
+# (no rc file is sourced), so an MCP server or hook that gbrain wires by a bun-shebang script finds bun and gbrain.
+[ "$install_mode" = 0 ] || export PATH="$PATH:$HOME/.bun/bin:$HOME/.npm-global/bin:$HOME/.local/bin"
 export HERMES_HOME="$HE_SESSION_STATE_DIR/hermes"
 mkdir -p "$HERMES_HOME"
 # internal-task: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
@@ -107,6 +136,29 @@ export ANTHROPIC_BASE_URL="$HE_MODEL_BASE_URL"
 if [ "$provider" = openai-api ] || [ "$provider" = custom:particle ] || [ "$provider" = custom:openrouter-proxy ]; then
   unset ANTHROPIC_API_KEY ANTHROPIC_BASE_URL
   export OPENAI_API_KEY="$HE_MODEL_API_KEY" OPENAI_BASE_URL="${HE_MODEL_BASE_URL%/}/v1"
+fi
+# Install mode exports no key variable: the token goes to $HERMES_HOME/.env below.
+[ "$install_mode" = 0 ] || unset HE_MODEL_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY
+# Install mode: the token from HE_MODEL_API_KEY_FILE as the provider's key variable in $HERMES_HOME/.env, written once (mode 0600);
+# a .env that already names the variable is kept as it is.
+if [ "$install_mode" = 1 ]; then
+  install_var=ANTHROPIC_API_KEY
+  [ "$provider" = anthropic ] || install_var=OPENAI_API_KEY
+  ( umask 077 && python3 - "$HE_MODEL_API_KEY_FILE" "$HERMES_HOME/.env" "$install_var" <<'PY'
+import json, os, re, sys
+key_file, env_file, var = sys.argv[1:4]
+lines = open(env_file, encoding="utf-8").read().splitlines() if os.path.exists(env_file) else []
+if not any(re.match(r"\s*(export\s+)?%s\s*=" % re.escape(var), l) for l in lines):
+    token = open(key_file, encoding="utf-8").read().strip()
+    lines.append("%s=%s" % (var, token if re.fullmatch(r"[A-Za-z0-9._:~+/=@-]+", token) else json.dumps(token)))
+    with open(env_file + ".tmp", "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    os.chmod(env_file + ".tmp", 0o600)
+    os.replace(env_file + ".tmp", env_file)
+PY
+  )
+  chmod 600 "$HERMES_HOME/.env"
+  log "install mode: $HERMES_HOME/.env carries the proxy token as $install_var (mode 0600); it is not exported"
 fi
 
 # Read all of --version (several lines): a `| head -1` could close the pipe before Hermes had seeded SOUL.md into HERMES_HOME, the
@@ -732,14 +784,18 @@ fi
 
 # ---- serve ----------------------------------------------------------------------------------------
 : "${HE_TURNS_DIR:=/he-turns}"
-[ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ] || { log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; }
+# Install mode needs no world server and wires no MCP server: Hermes loads only what the agent and gbrain configure.
+if [ "$install_mode" = 0 ]; then
+  [ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ] || { log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; }
+fi
 mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 
-# The world-MCP server goes into mcp_servers.world of the config copy (Streamable HTTP with the
-# per-trial bot token the world minted; in the redaction set). Hermes connects on the first turn
-# and registers the server's tools as mcp__world__<tool>.
-if ! grep -q '^mcp_servers:' "$HERMES_HOME/config.yaml"; then
-  HE_WORLD_MCP_URL="$HE_WORLD_MCP_URL" HE_WORLD_MCP_TOKEN="$HE_WORLD_MCP_TOKEN" python3 - "$HERMES_HOME/config.yaml" <<'PY'
+if [ "$install_mode" = 0 ]; then
+  # The world-MCP server goes into mcp_servers.world of the config copy (Streamable HTTP with the
+  # per-trial bot token the world minted; in the redaction set). Hermes connects on the first turn
+  # and registers the server's tools as mcp__world__<tool>.
+  if ! grep -q '^mcp_servers:' "$HERMES_HOME/config.yaml"; then
+    HE_WORLD_MCP_URL="$HE_WORLD_MCP_URL" HE_WORLD_MCP_TOKEN="$HE_WORLD_MCP_TOKEN" python3 - "$HERMES_HOME/config.yaml" <<'PY'
 import json, os, sys
 path = sys.argv[1]
 block = "\nmcp_servers:\n  world:\n    url: %s\n    headers:\n      Authorization: %s\n    timeout: 120\n    connect_timeout: 60\n" % (
@@ -747,8 +803,9 @@ block = "\nmcp_servers:\n  world:\n    url: %s\n    headers:\n      Authorizatio
 with open(path, "a") as f:
     f.write(block)
 PY
+  fi
+  log "world-MCP wired into $HERMES_HOME/config.yaml#mcp_servers.world"
 fi
-log "world-MCP wired into $HERMES_HOME/config.yaml#mcp_servers.world"
 
 # The gbrain arm (docs/gbrain-arm.md): with HE_GBRAIN_MCP_URL and HE_GBRAIN_MCP_TOKEN set, an mcp_servers.gbrain
 # block goes in beside world (same http transport, same Authorization header shape; the URL is the world's
@@ -892,6 +949,74 @@ put(sessions_path, json.dumps(sessions, sort_keys=True))
 put(os.path.join(state, "turn.json"), json.dumps(ctx))
 PY
 }
+# Install mode, after each member turn and before its probe and response: every Hermes message row written since the last export,
+# to $HE_LOG_DIR/turns/<turn>.hermes-session.jsonl. The stream-json events cut a tool's output at 5,000 characters
+# (hermes_cli/stream_json.py, _TOOL_OUTPUT_CAP); the row keeps it whole. The source is table messages in HERMES_HOME/state.db,
+# read from a scratch copy (state.db, -wal, -shm); a session's highest exported id is kept in
+# $HE_SESSION_STATE_DIR/he-install/hermes-session.cursor.json, so each turn holds only its own rows. One line per row: turn,
+# session_id, id, role, timestamp, content, tool_call_id, tool_name, tool_calls (parsed when it is JSON), finish_reason and
+# active. A tool result Hermes moved to HERMES_HOME/cache/spillover (over 100,000 characters, tools/tool_result_storage.py)
+# keeps its <persisted-output> block as content and adds spillover {path, content} with the saved file. The proxy token, if
+# a row shows it, is replaced by [HE_MODEL_API_KEY]. Prints the row count. Arguments: turn number, turn name.
+hermes_session_export() {
+  mkdir -p "$HE_SESSION_STATE_DIR/he-install"
+  python3 - "$1" "$HE_LOG_DIR/turns/$2.hermes-session.jsonl" "$HE_SESSION_STATE_DIR/he-install/hermes-session.cursor.json" "$HE_MODEL_API_KEY_FILE" <<'PY'
+import json, os, re, shutil, sqlite3, sys, tempfile
+turn, out, cursor_path, key_file = sys.argv[1:5]
+home = os.environ["HERMES_HOME"]
+db = os.path.join(home, "state.db")
+try:
+    cursor = json.load(open(cursor_path))
+except (OSError, ValueError):
+    cursor = {}
+rows = []
+if os.path.isfile(db):
+    scratch = tempfile.mkdtemp(prefix="he-hermes-session-")
+    try:
+        for side in ("", "-wal", "-shm"):
+            if os.path.exists(db + side):
+                shutil.copyfile(db + side, os.path.join(scratch, "state.db" + side))
+        conn = sqlite3.connect(os.path.join(scratch, "state.db"))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("select id, session_id, role, content, tool_call_id, tool_calls, tool_name, finish_reason, timestamp, active"
+                            " from messages order by session_id, id").fetchall()
+        conn.close()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+spill_root = os.path.realpath(os.path.join(home, "cache", "spillover")) + os.sep
+lines = []
+for r in rows:
+    if r["session_id"] in cursor and r["id"] <= cursor[r["session_id"]]:
+        continue
+    tool_calls = r["tool_calls"]
+    if tool_calls:
+        try:
+            tool_calls = json.loads(tool_calls)
+        except ValueError:
+            pass
+    content = r["content"]
+    line = {"turn": int(turn), "session_id": r["session_id"], "id": r["id"], "role": r["role"], "timestamp": r["timestamp"], "content": content,
+            "tool_call_id": r["tool_call_id"], "tool_name": r["tool_name"], "tool_calls": tool_calls, "finish_reason": r["finish_reason"], "active": r["active"]}
+    saved = re.search(r"^Full output saved to: (.+)$", content, re.M) if isinstance(content, str) and "<persisted-output>" in content else None
+    if saved:
+        path = os.path.realpath(saved.group(1).strip())
+        if path.startswith(spill_root) and os.path.isfile(path):
+            line["spillover"] = {"path": saved.group(1).strip(), "content": open(path, encoding="utf-8", errors="replace").read()}
+    lines.append(json.dumps(line))
+    cursor[r["session_id"]] = r["id"]
+token = open(key_file, encoding="utf-8").read().strip()
+text = "".join(l + "\n" for l in lines)
+if token:
+    text = text.replace(token, "[HE_MODEL_API_KEY]")
+with open(out + ".tmp", "w", encoding="utf-8") as f:
+    f.write(text)
+os.replace(out + ".tmp", out)
+with open(cursor_path + ".tmp", "w") as f:
+    json.dump(cursor, f)
+os.replace(cursor_path + ".tmp", cursor_path)
+sys.stdout.write("%d rows from %s" % (len(lines), "state.db" if os.path.isfile(db) else "no state.db"))
+PY
+}
 # turn_security, after each member turn and before its response: every approval card or blocked command the turn's stream-json
 # shows, from its tool results, to $HE_LOG_DIR/turns/<turn>.security.json. kind is tirith (a "Security scan" block), pattern (the
 # dangerous-command patterns), approval (a card asking for a person) or other; for Tirith the finding titles are kept, never the
@@ -929,7 +1054,9 @@ PY
 
 stopping=0
 trap 'stopping=1' TERM INT
-printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json$route_json$skill_arm_json" > "$HE_LOG_DIR/ready.tmp"
+# Install mode: the watcher starts before ready and stops by itself once this process is gone.
+if [ "$install_mode" = 1 ]; then bash "$HE_INSTALL_DIR/probe.sh" watch hermes "$HE_LOG_DIR/install-watch.ndjson" $$ > /dev/null 2>> "$HE_LOG_DIR/install-watch.stderr.log" & fi
+printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json$route_json$skill_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do
@@ -968,6 +1095,10 @@ print(r["turn"], r.get("time_budget_s") or os.environ["HE_TIME_BUDGET_S"], key)
       *) code=2; detail="harness error" ;;
     esac
     [ "$instruction_route" = default ] || turn_security "$name" "$turn"
+    if [ "$install_mode" = 1 ]; then
+      if exported=$(hermes_session_export "$turn" "$name"); then log "turn $turn: session export: $exported"; else log "turn $turn: session export failed; see stderr.log"; fi
+    fi
+    [ "$install_mode" = 0 ] || bash "$HE_INSTALL_DIR/probe.sh" state hermes > "$HE_LOG_DIR/turns/$name.probe.json" || log "turn $turn: probe.sh state failed; see stderr.log"
     write_response "$resp" "$turn" "$code" "$HE_LOG_DIR/turns/$name.reply.txt" "$started" "$ended" "$detail"
     log "turn $turn: exit $code${detail:+ ($detail)}"
   done
