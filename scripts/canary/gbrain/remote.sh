@@ -104,9 +104,12 @@ for loc in "${locations[@]}"; do
   break
 done
 if [ "$no_room" -eq 1 ] && [ "$entry" = run-tier ] && [ ! -e "$out/trials.jsonl" ]; then : > "$out/trials.jsonl"; log "no location had capacity; no trial ran (empty trials.jsonl)"; fi
-if [ -d "$out/vm/out" ] && ! cp -a "$out/vm/out/." "$out/" 2>> "$out/lane.log"; then
+lost=""
+! grep -q 'pull failed: ' "$scratch/try.log" || lost="pulling the results off the VM"
+if [ -d "$out/vm/out" ] && ! cp -a "$out/vm/out/." "$out/" 2>> "$out/lane.log"; then lost="copying the results back from $out/vm/out"; fi
+if [ -n "$lost" ]; then
   rm -f "$out/trials.jsonl"; [ "$rc" -ne 0 ] || rc=3
-  log "WARNING: copying the results back from $out/vm/out failed (lane.log); removed trials.jsonl so the lease charges the whole reservation; the pulled results stay in $out/vm/out"
+  log "WARNING: $lost failed (lane.log); removed trials.jsonl so the lease charges the whole reservation; the pulled results stay in $out/vm/out"
 fi
 names=$(sort -u "$scratch/vms")
 left=0

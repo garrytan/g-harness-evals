@@ -7,6 +7,7 @@
 # appended to $STUB_UBI_DIR/tries; a VM still up is a "<location>  <name>" line of $STUB_UBI_DIR/listed, which list --mine
 # prints; every down appends its name to $STUB_UBI_DIR/downs, and fails when $STUB_UBI_DIR/down-fails exists. Locations in
 # $STUB_UBI_DIR/copyfail run, but their results hold an unreadable file, so copying them back fails, and the VM stays listed.
+# Locations in $STUB_UBI_DIR/pullfail run and pull a trials.jsonl, but report the pull as failed, as a dropped transfer does.
 set -uo pipefail
 d=$STUB_UBI_DIR
 cmd=${1:-}; shift || true
@@ -48,6 +49,7 @@ case $cmd in
       echo "UBICLOUD: left=1 owner=harn00 vm=$name others=0" >&2
       exit 0
     fi
+    ! grep -qsx "$loc" "$d/pullfail" || echo "ubi-runner: pull failed: $pull" >&2
     echo "UBICLOUD: left=0 owner=harn00 vm=$name others=0" >&2
     ;;
   *) exit 2 ;;

@@ -1,10 +1,12 @@
-// The gbrain canary's stop path (scripts/canary/gbrain/run-tier.sh): a TERM or INT while the arms run at once, keyless,
+// The gbrain canary's stop path (scripts/canary/gbrain/run-tier.sh): a TERM or INT while the arms run, at once or in turn,
+// or while their rows are being added, and an arm whose rows could not be added, keyless,
 // with --fake and a stub bun whose fake-shard step stands in for scripts/run-shard.sh: a shell with run-shard.sh's TERM
 // trap that runs a sleeping child in the foreground, as run-shard.sh runs bun runner/run.ts, so the arm shards and their
 // runners are still running when the signal lands. The scripts run under env -i with PATH, HOME and the stub's two variables.
 //
 // Value: protects=a stopped gbrain tier taking its concurrent arm shards (scripts/run-shard.sh in a real run) and the
-// runners under them down with it and exiting non-zero; fails_when=run-tier.sh dies on TERM or INT and leaves an arm's
+// runners under them down with it and exiting non-zero, and a tier whose trials.jsonl is missing some arm's spend leaving
+// no trials.jsonl, so the lease charges the whole reservation; fails_when=run-tier.sh dies on TERM or INT and leaves an arm's
 // shard or its runner running, signals only the shard (whose trap waits for its foreground runner), exits 0, or returns
 // before they are gone; seam=a stub bun on HOME/.bun/bin in place of the fake shard; no_claim=that runner/run.ts or
 // docker remove the trial containers once the runner is signalled.
@@ -31,7 +33,7 @@ const running = (pid: number) => {
   try { return !/^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, 'utf8')); } catch { return false; }
 };
 
-async function stopWhileArmsRun(signal: 'SIGTERM' | 'SIGINT') {
+async function stopWhileArmsRun(signal: 'SIGTERM' | 'SIGINT', lease = '42', n = 3) {
   const base = mkdtempSync(join(tmp, 'case-'));
   const home = join(base, 'home'), stub = join(base, 'stub'), out = join(base, 'out');
   mkdirSync(join(home, '.bun/bin'), { recursive: true });
@@ -41,12 +43,12 @@ async function stopWhileArmsRun(signal: 'SIGTERM' | 'SIGINT') {
   const tasks = join(base, 'tasks.json');
   writeFileSync(tasks, JSON.stringify(TASKS));
   const proc = Bun.spawn(['bash', join(ROOT, 'scripts/canary/gbrain/run-tier.sh'), '--tier', 'T1', '--prev', P593, '--new', P613, '--tasks', tasks, '--attempts', '1',
-    '--arms', 'plain,prev,new', '--models', 'opus,sol', '--lease-usd', '42', '--run-id', 'canary-stop', '--out', out, '--fake'],
+    '--arms', 'plain,prev,new', '--models', 'opus,sol', '--lease-usd', lease, '--run-id', 'canary-stop', '--out', out, '--fake'],
   { env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: home, STUB_BUN_DIR: stub, STUB_REAL_BUN: process.execPath }, stdout: 'ignore', stderr: 'pipe' });
   const listed = (f: string) => (existsSync(join(stub, f)) ? readFileSync(join(stub, f), 'utf8').split('\n').filter(Boolean).map(Number) : []);
-  for (let i = 0; i < 600 && listed('runners').length < 3 && proc.exitCode === null; i++) await Bun.sleep(100);
-  expect(listed('shards')).toHaveLength(3);
-  expect(listed('runners')).toHaveLength(3);
+  for (let i = 0; i < 600 && listed('runners').length < n && proc.exitCode === null; i++) await Bun.sleep(100);
+  expect(listed('shards')).toHaveLength(n);
+  expect(listed('runners')).toHaveLength(n);
   const pids = [...listed('shards'), ...listed('runners')];
   expect(pids.every(running)).toBe(true);
   proc.kill(signal);
@@ -54,6 +56,21 @@ async function stopWhileArmsRun(signal: 'SIGTERM' | 'SIGINT') {
   const stillRunning = pids.filter(running);
   for (const pid of stillRunning) process.kill(pid, 'SIGKILL');
   return { code, signalCode: proc.signalCode, stillRunning, log: readFileSync(join(out, 'run-tier.log'), 'utf8'), trials: existsSync(join(out, 'trials.jsonl')) };
+}
+
+async function annotateFails() {
+  const base = mkdtempSync(join(tmp, 'ann-'));
+  const home = join(base, 'home'), stub = join(base, 'stub'), out = join(base, 'out');
+  mkdirSync(join(home, '.bun/bin'), { recursive: true });
+  mkdirSync(stub);
+  writeFileSync(join(home, '.bun/bin/bun'), '#!/usr/bin/env bash\nflag() { local f=$1; shift; local o=""; while [ $# -gt 0 ]; do [ "$1" != "$f" ] || o=$2; shift; done; echo "$o"; }\nif [ "${2:-}" = fake-shard ]; then o=$(flag --out "$@"); mkdir -p "$o"; echo "{}" > "$o/trials.jsonl"; exit 0; fi\nif [ "${2:-}" = annotate ]; then [ "$(flag --arm "$@")" != prev ] || exit 1; echo "{\\"usage\\":{\\"usd\\":1}}" >> "$(flag --out "$@")"; exit 0; fi\nexec "$STUB_REAL_BUN" "$@"\n');
+  chmodSync(join(home, '.bun/bin/bun'), 0o755);
+  const tasks = join(base, 'tasks.json');
+  writeFileSync(tasks, JSON.stringify(TASKS));
+  const r = Bun.spawnSync(['bash', join(ROOT, 'scripts/canary/gbrain/run-tier.sh'), '--tier', 'T1', '--prev', P593, '--new', P613, '--tasks', tasks, '--attempts', '1',
+    '--arms', 'plain,prev,new', '--models', 'opus,sol', '--lease-usd', '42', '--run-id', 'canary-ann', '--out', out, '--fake'],
+  { env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: home, STUB_BUN_DIR: stub, STUB_REAL_BUN: process.execPath } });
+  return { code: r.exitCode, log: readFileSync(join(out, 'run-tier.log'), 'utf8'), trials: existsSync(join(out, 'trials.jsonl')) };
 }
 
 async function stopWhileAggregating() {
@@ -75,7 +92,21 @@ async function stopWhileAggregating() {
   return { code, signalCode: proc.signalCode, log: readFileSync(join(out, 'run-tier.log'), 'utf8'), trials: existsSync(join(out, 'trials.jsonl')) };
 }
 
-describe('run-tier.sh stopped while its arms run at once', () => {
+describe('run-tier.sh stopped while its arms run, and a tier missing an arm\'s rows', () => {
+  test('TERM while the arms run in turn (shares below $8) stops the running shard and its runner, leaves no trials.jsonl and exits 143', async () => {
+    const r = await stopWhileArmsRun('SIGTERM', '12', 1);
+    expect(r.code).toBe(143);
+    expect(r.stillRunning).toEqual([]);
+    expect(r.log).toContain('the arms run in turn');
+    expect(r.trials).toBe(false);
+  }, 120_000);
+  test('an arm whose rows could not be added leaves no trials.jsonl, so the lease charges the whole reservation', async () => {
+    const r = await annotateFails();
+    expect(r.code).toBe(2);
+    expect(r.log).toContain('annotating the prev shard failed');
+    expect(r.log).toContain("removed the tier's trials.jsonl: an arm's spend is not all in it");
+    expect(r.trials).toBe(false);
+  }, 120_000);
   test('TERM while the shards\' rows are being added removes the partial trials.jsonl and exits 143', async () => {
     const r = await stopWhileAggregating();
     expect(r.signalCode).toBeNull();

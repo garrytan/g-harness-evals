@@ -17,7 +17,7 @@ const ROOT = join(import.meta.dir, '..');
 const tmp = mkdtempSync(join(tmpdir(), 'canary-remote-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
-function checkout(full: string[], more: { leak?: string[]; ghost?: string[]; copyfail?: string[]; downFails?: boolean } = {}) {
+function checkout(full: string[], more: { leak?: string[]; ghost?: string[]; copyfail?: string[]; pullfail?: string[]; downFails?: boolean } = {}) {
   const base = mkdtempSync(join(tmp, 'case-'));
   const home = join(base, 'home'), repo = join(base, 'repo'), stub = join(base, 'stub');
   for (const d of [home, stub, join(repo, 'scripts/canary/gbrain'), join(repo, 'scripts/canary/gstack'), join(repo, 'scripts/ubicloud')]) mkdirSync(d, { recursive: true });
@@ -31,6 +31,7 @@ function checkout(full: string[], more: { leak?: string[]; ghost?: string[]; cop
   writeFileSync(join(stub, 'leak'), (more.leak ?? []).map((l) => l + '\n').join(''));
   writeFileSync(join(stub, 'ghost'), (more.ghost ?? []).map((l) => l + '\n').join(''));
   writeFileSync(join(stub, 'copyfail'), (more.copyfail ?? []).map((l) => l + '\n').join(''));
+  writeFileSync(join(stub, 'pullfail'), (more.pullfail ?? []).map((l) => l + '\n').join(''));
   if (more.downFails) writeFileSync(join(stub, 'down-fails'), '');
   const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: home, UBI_OWNER: 'internal-task', UBICLOUD_API_KEY: 'stub', STUB_UBI_DIR: stub };
   for (const a of [['init', '-q'], ['add', '-A'], ['commit', '-q', '-m', 'rig']]) spawnSync('git', a, { cwd: repo, env });
@@ -122,6 +123,20 @@ describe('canary remote wrappers and Ubicloud capacity', () => {
     expect(existsSync(join(r.out, 'trials.jsonl'))).toBe(false);
     expect(existsSync(join(r.out, '.remote/canary-out/trials.jsonl'))).toBe(true);
     expect(c.listed()).toEqual([]);
+  });
+  test('gbrain: a pull the runner reports as failed leaves no trials.jsonl and exits 3, so the lease charges the whole reservation', () => {
+    const c = checkout([], { pullfail: ['eu-central-h1'] });
+    const r = gbrain(c);
+    expect(r.code).toBe(3);
+    expect(existsSync(join(r.out, 'trials.jsonl'))).toBe(false);
+    expect(readFileSync(join(r.out, 'lane.log'), 'utf8')).toContain('WARNING: pulling the results off the VM failed');
+  });
+  test.skipIf(!existsSync(join(ROOT, 'scripts/canary/gstack/lib.sh')))('gstack: a pull the runner reports as failed leaves no trials.jsonl and exits 3 (private repository only)', () => {
+    const c = checkout([], { pullfail: ['eu-central-h1'] });
+    const r = gstack(c);
+    expect(r.code).toBe(3);
+    expect(existsSync(join(r.out, 'trials.jsonl'))).toBe(false);
+    expect(existsSync(join(r.out, '.remote/canary-out/trials.jsonl'))).toBe(true);
   });
   test('gbrain: a down that fails logs the exact command that finishes it', () => {
     const c = checkout([], { leak: ['eu-central-h1'], downFails: true });

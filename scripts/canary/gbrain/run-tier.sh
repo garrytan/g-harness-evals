@@ -81,14 +81,15 @@ log() { printf '%s run-tier (gbrain): %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*
 [ ! -s "$out/trials.jsonl" ] || { log "refused: $out/trials.jsonl exists; a run id writes one results directory"; exit 2; }
 : > "$out/trials.jsonl"
 shards="[]"
-lease_stop=0 infra_rc=0 spent=0
+lease_stop=0 infra_rc=0 spent=0 spend_unknown=0
+ntrials() { local n=""; [ ! -f "$out/trials.jsonl" ] || n=$(grep -c . "$out/trials.jsonl" || true); echo "${n:-0}"; }
 write_summary() {
   jq -n --arg tier "$tier" --arg run_id "$run_id" --argjson lease "$lease" --argjson spent "$spent" --argjson shards "$shards" \
     --argjson fake "$([ "$fake" -eq 1 ] && echo true || echo false)" --argjson exit "$1" --slurpfile spec "$out/specs/canary-spec.json" \
-    --argjson trials "$(grep -c . "$out/trials.jsonl" || true)" \
+    --argjson trials "$(ntrials)" \
     '{suite: "gbrain", tier: $tier, run_id: $run_id, fake: $fake, lease_usd: $lease, spent_usd: $spent, trials: $trials, exit: $exit, specs: ($spec[0].arms | map_values({spec_sha256, release})), shards: $shards}' > "$out/run-tier.json"
 }
-end() { write_summary "$1"; log "wrote $out/trials.jsonl ($(grep -c . "$out/trials.jsonl" || true) trials) and $out/run-tier.json, exit $1"; exit "$1"; }
+end() { write_summary "$1"; log "wrote $out/trials.jsonl ($(ntrials) trials) and $out/run-tier.json, exit $1"; exit "$1"; }
 
 # 1. The releases, and for a real run each release image built and its tools listed, so the spec states what it serves.
 mkdir -p "$out/specs"
@@ -147,7 +148,8 @@ run_arm() { # <arm> <lease usd>: one arm's shard; writes <out>/shards/<arm>.rc a
   echo "$rc" > "$out/shards/$arm.rc"; echo "${usd:-0}" > "$out/shards/$arm.usd"
 }
 declare -A arm_lease=()
-# stop_arms <signal>: a TERM or INT while the arms run at once sends TERM to every process under each arm's subshell, not
+# stop_arms <signal>: a TERM or INT while the arms run, at once or in turn (each arm's subshell runs in the background and
+# is waited for, so the handler runs as soon as the signal lands), sends TERM to every process under each arm's subshell, not
 # only to its shard: scripts/run-shard.sh runs bun runner/run.ts in the foreground, and its own TERM trap acts only once
 # that runner exits, so the runner has to be signalled itself. It waits up to 10 minutes, kills whatever still runs and
 # exits non-zero, so no shard or runner keeps running after the tier is stopped. It removes the tier's trials.jsonl,
@@ -171,10 +173,10 @@ stop_arms() {
   if [ "$1" = INT ]; then exit 130; fi
   exit 143
 }
+pids=()
+trap 'stop_arms TERM' TERM
+trap 'stop_arms INT' INT
 if [ "$together" -eq 1 ]; then
-  pids=()
-  trap 'stop_arms TERM' TERM
-  trap 'stop_arms INT' INT
   for i in "${!run_arms[@]}"; do
     arm_lease[${run_arms[$i]}]=${shares[$i]}
     log "shard ${run_arms[$i]}: \$${shares[$i]} of \$$lease, run at the same time as the other arms"
@@ -192,13 +194,17 @@ for arm in "${run_arms[@]}"; do
     left=$(python3 -c 'import sys; print(f"{float(sys.argv[1]) - float(sys.argv[2]):.4f}")' "$lease" "$spent")
     if python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) < 0.5 else 1)' "$left"; then log "lease stop: \$$left left of \$$lease before the $arm shard"; lease_stop=1; break; fi
     arm_lease[$arm]=$left
-    run_arm "$arm" "$left" || true
+    run_arm "$arm" "$left" &
+    pids=($!)
+    wait "${pids[0]}" || true
   fi
   rc=$(cat "$shard.rc" 2>/dev/null || echo 2)
   arm_spent=$(cat "$shard.usd" 2>/dev/null || echo 0)
   spent=$(python3 -c 'import sys; print(f"{float(sys.argv[1]) + float(sys.argv[2]):.6f}")' "$spent" "${arm_spent:-0}")
   if [ -f "$shard/trials.jsonl" ] && ! "${canary[@]}" annotate --spec-dir "$out/specs" --arm "$arm" --shard "$shard" --out "$out/trials.jsonl" >> "$out/run-tier.log" 2>&1; then
-    log "annotating the $arm shard failed ($out/run-tier.log)"; [ "$rc" -ne 0 ] || rc=2
+    log "annotating the $arm shard failed ($out/run-tier.log)"; [ "$rc" -ne 0 ] || rc=2; spend_unknown=1
+  elif [ ! -f "$shard/trials.jsonl" ] && python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) > 0 else 1)' "${arm_spent:-0}"; then
+    log "the $arm shard spent \$${arm_spent} but wrote no trials.jsonl"; [ "$rc" -ne 0 ] || rc=2; spend_unknown=1
   fi
   audit=null
   if [ "$arm" = plain ] && [ "$fake" -eq 0 ] && [ -s "$shard/trials.jsonl" ]; then
@@ -212,6 +218,9 @@ for arm in "${run_arms[@]}"; do
   if [ "$rc" -ne 0 ]; then [ "$infra_rc" -ne 0 ] || infra_rc=$rc; [ "$together" -eq 1 ] || break; fi
 done
 trap - TERM INT
+if [ "$spend_unknown" -eq 1 ]; then
+  rm -f "$out/trials.jsonl"; log "removed the tier's trials.jsonl: an arm's spend is not all in it, so the lease charges the whole reservation"
+fi
 [ "$lease_stop" -eq 0 ] || end 20
 [ "$infra_rc" -eq 0 ] || end "$infra_rc"
 end 0
