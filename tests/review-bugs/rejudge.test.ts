@@ -3,7 +3,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { adjudicationTsv, buildItems, itemId, kappa, sample, score, type ItemKey, type RulingRow } from '../../scripts/review-bugs/rejudge.ts';
@@ -157,5 +157,60 @@ describe('items from an adjudication key', () => {
   });
   test('a packet that does not match its key digest is refused', () => {
     expect(() => buildItems({ ...o, key: { ...key, packets: [{ ...key.packets[0]!, sha256: 'x' }] } })).toThrow(/does not match the key sha256/);
+  });
+});
+
+describe('stage 2 Amendment 4', () => {
+  const lab = (item: string, label: string) => [row(item, 'labeller', A, label), row(item, 'labeller', O, label)];
+  const table = (cells: Array<[string, string, number]>) => {
+    let n = 0;
+    return cells.flatMap(([judge, label, count]) => Array.from({ length: count }, () => { const it = 'k' + n++; return [...lab(it, label), row(it, 'judge', A, judge)]; }).flat());
+  };
+  test('fix 1: R78 compares the unrounded kappa; 2764/4607 (0.59996) fails, an exact 0.6 passes', () => {
+    const near = score(table([['defect', 'defect', 28], ['defect', 'not-defect', 1], ['not-defect', 'defect', 18], ['not-defect', 'not-defect', 50]]), A, O, 60, 0.6);
+    expect(near.r78).toMatchObject({ n: 97, kappa: 0.6, pass: false });
+    expect(near.judge_vs_labels[A]!.kappa_unrounded).toBeCloseTo(2764 / 4607, 12);
+    const exact = score(table([['defect', 'defect', 8], ['defect', 'not-defect', 2], ['not-defect', 'defect', 6], ['not-defect', 'not-defect', 54]]), A, O, 60, 0.6);
+    expect(exact.r78).toMatchObject({ n: 70, kappa: 0.6, pass: true });
+  });
+  const pe = (item: string): RulingRow => ({ ...row(item, 'judge', A, null), outcome: 'provider_error' });
+  test('fix 2: provider_error reads are counted apart, outside R78\'s n and not-read count and the unruled rate', () => {
+    const t = score([...lab('i1', 'defect'), pe('i1'), ...lab('i2', 'not-defect'), row('i2', 'judge', A, 'not-defect'), ...lab('i3', 'defect'), row('i3', 'judge', A, 'defect')], A, O, 2, 0.6);
+    expect(t.judge_vs_labels[A]).toMatchObject({ n: 2, raw_agreement: 1, judge_unruled: 0, judge_provider_error: 1, not_read: 0 });
+    expect(t.r78).toMatchObject({ n: 2, not_read: 0, provider_error: 1, pass: true });
+    expect(t.reads['judge ' + A]).toMatchObject({ reads: 3, outcomes: { provider_error: 1, ruled: 2 }, provider_errors: 1, cant_tell_or_unruled_rate: 0 });
+  });
+  test('fix 2: a provider_error read is final and written as defect in both readings, never as not-defect', () => {
+    const keys: ItemKey[] = [{ item: '12-F1', packet: 'packets/12.json', opaque: 'F1', arm: 'T5', pass: 1, finding: 'b3', unit: 'a/b#12@x', pr: '12', stratum: 'S1' }];
+    for (const cant of ['defect', 'not-defect'] as const) {
+      expect(adjudicationTsv([pe('12-F1')], keys, A, cant, 'B').get('T5')!.split('\n')[1]).toBe('12\tb3\t1\tdefect\topenai/gpt-6-astra\tno\t1\tB\tprovider_error, never counted as not-defect');
+    }
+    expect(() => score([pe('i1'), row('i1', 'judge', A, 'defect')], A, O, 1, 0.6)).toThrow(/two usable judge reads/);
+  });
+  const cli = (...args: string[]) => spawnSync(process.execPath, [join(import.meta.dir, '../../scripts/review-bugs/rejudge.ts'), ...args], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmp } });
+  const dir = join(tmp, 'a4');
+  mkdirSync(dir, { recursive: true });
+  const rulings = join(dir, 'rulings.jsonl'), itemsKey = join(dir, 'items-key.json');
+  writeFileSync(rulings, [row('12-F1', 'judge', A, 'cant-tell'), row('12-F2', 'judge', A, 'defect')].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  writeFileSync(itemsKey, JSON.stringify([
+    { item: '12-F1', packet: 'packets/12.json', opaque: 'F1', arm: 'T5', pass: 1, finding: 'b3', unit: 'a/b#12@x', pr: '12', stratum: 'S1' },
+    { item: '12-F2', packet: 'packets/12.json', opaque: 'F2', arm: 'T5', pass: 2, finding: 'b1', unit: 'a/b#12@x', pr: '12', stratum: 'S1' }]));
+  test('fix 4: score refuses --usage, which it never read, and any other flag it does not take', () => {
+    const r = cli('score', '--rulings', rulings, '--primary', A, '--second', O, '--usage', join(dir, 'usage.ndjson'));
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/does not take --usage/);
+    expect(cli('score', '--rulings', rulings, '--primary', A, '--second', O).status).toBe(0);
+  });
+  test('fix 5: --cant-tell has no default, and each reading is written under its own directory', () => {
+    const out = join(dir, 'adj');
+    const args = ['adjudication', '--rulings', rulings, '--items-key', itemsKey, '--judge', A, '--batch', 'B', '--out', out];
+    const none = cli(...args);
+    expect(none.status).toBe(2);
+    expect(none.stderr).toMatch(/needs --cant-tell/);
+    expect(cli(...args, '--cant-tell', 'defect').stdout).toMatch(/^counted reading: wrote cant-tell-defect\/T5\/adjudication.tsv/);
+    expect(cli(...args, '--cant-tell', 'not-defect').status).toBe(0);
+    expect(readFileSync(join(out, 'cant-tell-defect', 'T5', 'adjudication.tsv'), 'utf8')).toContain('12\tb3\t1\tdefect\topenai/gpt-6-astra\tno\t1\tB\tcant-tell, counted as defect');
+    expect(readFileSync(join(out, 'cant-tell-not-defect', 'T5', 'adjudication.tsv'), 'utf8')).toContain('12\tb3\t1\tnot-defect\topenai/gpt-6-astra\tno\t1\tB\tcant-tell, counted as not-defect');
+    expect(existsSync(join(out, 'T5'))).toBe(false);
   });
 });

@@ -1,0 +1,3839 @@
+{
+ "schema_version": 1,
+ "id": "review-real-bugs-2026-11",
+ "title": "Real-bug review suite: blocking bugs no gstack review found first, plus decoys and home-field units",
+ "kind": "noloss",
+ "development_only": false,
+ "purpose": "GST-2665: does gstack's code review catch real bugs better than a plain review prompt? Non-gstack units (S1, S2, S3) are ranked so the first N keep the mix; N units are decoys for false alarms; H units are home field, reported apart.",
+ "sealed": true,
+ "catalogs": [
+  "catalog"
+ ],
+ "sources": [],
+ "prereg_freezes": [],
+ "judging_rule": "A blocker is FOUND when a finding rated CRITICAL after mapping names the same defect: a path the blocker lists and the same cause; the line may move. The same defect rated only INFORMATIONAL is DOWNGRADED, which is a miss. Otherwise it is MISSED.",
+ "shelf_life": {
+  "rule": "Each model's knowledge cutoff is recorded in the preregistration; a sensitivity line reads the newest half. No case is dropped for shelf life.",
+  "released": null
+ },
+ "groups": {
+  "S1": "A human reviewer's comment on the PR, followed before merge by a commit that changed the lines it named.",
+  "S2-openai": "The same, from a review tool on an OpenAI model (partly home field for GPT cells).",
+  "S2-google": "The same, from a review tool on a Google model.",
+  "S2-anthropic": "The same, from a review tool on an Anthropic model.",
+  "S2-mixed": "The same, from a review tool whose vendor routes between labs or names none.",
+  "S3": "Escaped: a later fix PR points at this PR as the one that introduced the bug; the unit is this PR at its own head against its own base.",
+  "N": "Decoy: a merged PR whose added lines no commit touched for 90 days; read for false alarms only. Its one blocker is a bait.",
+  "H-stacks-r1": "Home field: gstack-evals stacks-r1 units, bugs gstack-family reviews found first. Reported apart, never in the headline.",
+  "H-206": "Home field: harness-evals #206 CRITICALs, gstack plus a second model family. Reported apart, never in the headline."
+ },
+ "units": [
+  {
+   "id": "apache/datafusion#25005@3f500825abd0",
+   "repo": "apache/datafusion",
+   "pr": 25005,
+   "head": "3f500825abd06b77832972f29abf127dc6d49ca6",
+   "base": "9951f0b351b751d26b66085190ac969ecd53b34d",
+   "cluster": "apache/datafusion#25005",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/datafusion/pull/25005#discussion_r4092780106",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-datafusion-25005-b1-3f50082",
+     "paths": [
+      "datafusion/sqllogictest/test_files/delete.slt"
+     ],
+     "file": "datafusion/sqllogictest/test_files/delete.slt",
+     "line": 120,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 1
+  },
+  {
+   "id": "QwenLM/qwen-code#7223@bc247cb22e3d",
+   "repo": "QwenLM/qwen-code",
+   "pr": 7223,
+   "head": "bc247cb22e3dec062b586d532eef34139cb75863",
+   "base": "2a9f6785215c0959937415d2326e87fafdfd7fc5",
+   "cluster": "QwenLM/qwen-code#7223",
+   "group": "S3",
+   "stratum": "S3",
+   "repro_confirmed": true,
+   "evidence": "https://github.com/QwenLM/qwen-code/pull/7336",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-qwenlm-qwen-code-7223-b1-bc247cb",
+     "paths": [
+      "packages/channels/base/src/AcpBridge.ts"
+     ],
+     "file": "packages/channels/base/src/AcpBridge.ts",
+     "line": 317,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 2
+  },
+  {
+   "id": "jdx/mise#13263@f6e9c9a26684",
+   "repo": "jdx/mise",
+   "pr": 13263,
+   "head": "f6e9c9a2668477a6522b81194e6dafed3d2fb1c9",
+   "base": "5fa99dfb4f8bc5ff5ba0c5be54d0f137b5eea6af",
+   "cluster": "jdx/mise#13263",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/jdx/mise/pull/13263#discussion_r4021692738",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-jdx-mise-13263-b1-f6e9c9a",
+     "paths": [
+      "crates/vfox/src/lua_mod/cmd.rs"
+     ],
+     "file": "crates/vfox/src/lua_mod/cmd.rs",
+     "line": 147,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 3
+  },
+  {
+   "id": "vllm-project/vllm#55966@ff191ed301a2",
+   "repo": "vllm-project/vllm",
+   "pr": 55966,
+   "head": "ff191ed301a2ab69ba0fc10c407535e569857edb",
+   "base": "9a35c081e80a94828af6f611525102bb70e3c67f",
+   "cluster": "vllm-project/vllm#55966",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/vllm-project/vllm/pull/55966#discussion_r3992840834",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-vllm-project-vllm-55966-b1-ff191ed",
+     "paths": [
+      "vllm/v1/attention/backends/mla/rocm_aiter_mla.py"
+     ],
+     "file": "vllm/v1/attention/backends/mla/rocm_aiter_mla.py",
+     "line": 255,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 4
+  },
+  {
+   "id": "assistant-ui/assistant-ui#10214@dfd389ae5f4c",
+   "repo": "assistant-ui/assistant-ui",
+   "pr": 10214,
+   "head": "dfd389ae5f4ce52115af0095baca7266de9daf90",
+   "base": "2b11e9cc44699ccbce1d5d4d2ce21a1d9edce85c",
+   "cluster": "assistant-ui/assistant-ui#10214",
+   "group": "S3",
+   "stratum": "S3",
+   "repro_confirmed": true,
+   "evidence": "https://github.com/assistant-ui/assistant-ui/pull/10266",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-assistant-ui-assistant-ui-10214-b1-dfd389a",
+     "paths": [
+      "packages/store/src/utils/thread-viewport-auto-scroll.ts"
+     ],
+     "file": "packages/store/src/utils/thread-viewport-auto-scroll.ts",
+     "line": 191,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 5
+  },
+  {
+   "id": "vllm-project/vllm#56387@ba5a774a6c77",
+   "repo": "vllm-project/vllm",
+   "pr": 56387,
+   "head": "ba5a774a6c770981e736ef2a77703567257ff347",
+   "base": "ce08bb5b3463fd423be90d5f22c2b41142834bf6",
+   "cluster": "vllm-project/vllm#56387",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/vllm-project/vllm/pull/56387#discussion_r3987934173",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-vllm-project-vllm-56387-b1-ba5a774",
+     "paths": [
+      "vllm/models/deepseek_v4_1/nvidia/dspark.py"
+     ],
+     "file": "vllm/models/deepseek_v4_1/nvidia/dspark.py",
+     "line": 73,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 6
+  },
+  {
+   "id": "assistant-ui/assistant-ui#9307@1068bf36e1a9",
+   "repo": "assistant-ui/assistant-ui",
+   "pr": 9307,
+   "head": "1068bf36e1a9f937e3217e8b822bac96d7ee4f1a",
+   "base": "22bbf64d1955367ea607cb563ffabdf465608cae",
+   "cluster": "assistant-ui/assistant-ui#9307",
+   "group": "S3",
+   "stratum": "S3",
+   "repro_confirmed": true,
+   "evidence": "https://github.com/assistant-ui/assistant-ui/pull/10200",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-assistant-ui-assistant-ui-9307-b1-1068bf3",
+     "paths": [
+      "packages/assistant-stream/src/core/modules/assistant-stream.ts"
+     ],
+     "file": "packages/assistant-stream/src/core/modules/assistant-stream.ts",
+     "line": 257,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 7
+  },
+  {
+   "id": "maximhq/bifrost#4786@1d82a3010e0c",
+   "repo": "maximhq/bifrost",
+   "pr": 4786,
+   "head": "1d82a3010e0c9243323d96618bc9d50935a144eb",
+   "base": "53a60c2d315d4716db71937969caf1282ad89d69",
+   "cluster": "maximhq/bifrost#4786",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/maximhq/bifrost/pull/4786#discussion_r3507094502",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-maximhq-bifrost-4786-b1-1d82a30",
+     "paths": [
+      "core/providers/anthropic/responses.go"
+     ],
+     "file": "core/providers/anthropic/responses.go",
+     "line": 5907,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 8
+  },
+  {
+   "id": "ray-project/ray#65679@c35e1e5a3098",
+   "repo": "ray-project/ray",
+   "pr": 65679,
+   "head": "c35e1e5a3098cf7ea20ac753d3c139d6b54f9c44",
+   "base": "1deb144bd4f8f72a021b49b37189c3607b4d5002",
+   "cluster": "ray-project/ray#65679",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/ray-project/ray/pull/65679#discussion_r3974765321",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-ray-project-ray-65679-b1-c35e1e5",
+     "paths": [
+      "python/ray/serve/experimental/round_robin_router.py"
+     ],
+     "file": "python/ray/serve/experimental/round_robin_router.py",
+     "line": 96,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 9
+  },
+  {
+   "id": "QwenLM/qwen-code#6142@5984b6948028",
+   "repo": "QwenLM/qwen-code",
+   "pr": 6142,
+   "head": "5984b694802894a2743b58dadf93c3c976650542",
+   "base": "e1e99f76ffb96cdd173c4c00bf96cfdef26799c6",
+   "cluster": "QwenLM/qwen-code#6142",
+   "group": "S3",
+   "stratum": "S3",
+   "repro_confirmed": true,
+   "evidence": "https://github.com/QwenLM/qwen-code/pull/6229",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-qwenlm-qwen-code-6142-b1-5984b69",
+     "paths": [
+      "packages/web-shell/client/components/MessageItem.tsx"
+     ],
+     "file": "packages/web-shell/client/components/MessageItem.tsx",
+     "line": 157,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 10
+  },
+  {
+   "id": "rjsf-team/react-jsonschema-form#5313@4e61e472503c",
+   "repo": "rjsf-team/react-jsonschema-form",
+   "pr": 5313,
+   "head": "4e61e472503c62f3b2831979920daab627b7ea2e",
+   "base": "40a9e8c828be204210bb1c0b333f0cc5ebec839a",
+   "cluster": "rjsf-team/react-jsonschema-form#5313",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/rjsf-team/react-jsonschema-form/pull/5313#discussion_r4065892307",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-rjsf-team-react-jsonschema-form-5313-b1-4e61e47",
+     "paths": [
+      "packages/utils/src/findSchemaDefinition.ts"
+     ],
+     "file": "packages/utils/src/findSchemaDefinition.ts",
+     "line": 22,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 11
+  },
+  {
+   "id": "gptme/gptme#4374@583468a3b83a",
+   "repo": "gptme/gptme",
+   "pr": 4374,
+   "head": "583468a3b83a39e5fd8e94304e081461773555fc",
+   "base": "c72b136ce5a518d25e06c50b5b956098340d10a5",
+   "cluster": "gptme/gptme#4374",
+   "group": "S3",
+   "stratum": "S3",
+   "repro_confirmed": true,
+   "evidence": "https://github.com/gptme/gptme/pull/4461",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-gptme-gptme-4374-b1-583468a",
+     "paths": [
+      "gptme/tools/shell_validation.py"
+     ],
+     "file": "gptme/tools/shell_validation.py",
+     "line": 1107,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 12
+  },
+  {
+   "id": "unslothai/unsloth#10561@0cad0eb58fda",
+   "repo": "unslothai/unsloth",
+   "pr": 10561,
+   "head": "0cad0eb58fda8ac92df4b3f39f427a7008245e64",
+   "base": "cfa31f27b89b0e6374d8d3741f802ebe9994a1d8",
+   "cluster": "unslothai/unsloth#10561",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/unslothai/unsloth/pull/10561#discussion_r3962965503",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-unslothai-unsloth-10561-b1-0cad0eb",
+     "paths": [
+      "studio/backend/routes/chat_history.py"
+     ],
+     "file": "studio/backend/routes/chat_history.py",
+     "line": 1150,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 13
+  },
+  {
+   "id": "apache/datafusion#24105@9031c84c66a1",
+   "repo": "apache/datafusion",
+   "pr": 24105,
+   "head": "9031c84c66a13301eb37bd948c9e85b3c9c38e80",
+   "base": "ee59f628b44eb80e8a4f126288632ef51fda5dc2",
+   "cluster": "apache/datafusion#24105",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/datafusion/pull/24105#discussion_r3977413639",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-datafusion-24105-b1-9031c84",
+     "paths": [
+      "datafusion/physical-plan/src/aggregates/topk/hash_table.rs"
+     ],
+     "file": "datafusion/physical-plan/src/aggregates/topk/hash_table.rs",
+     "line": 501,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 14
+  },
+  {
+   "id": "seaweedfs/seaweedfs#11435@0a730efea62e",
+   "repo": "seaweedfs/seaweedfs",
+   "pr": 11435,
+   "head": "0a730efea62eb50cf1a0f83a592d9e50437f738c",
+   "base": "d848b8ed0045b0167146cca05238787cf31a12db",
+   "cluster": "seaweedfs/seaweedfs#11435",
+   "group": "S3",
+   "stratum": "S3",
+   "repro_confirmed": true,
+   "evidence": "https://github.com/seaweedfs/seaweedfs/pull/11514",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-seaweedfs-seaweedfs-11435-b1-0a730ef",
+     "paths": [
+      "weed/server/filer_grpc_server_condition.go"
+     ],
+     "file": "weed/server/filer_grpc_server_condition.go",
+     "line": 93,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 15
+  },
+  {
+   "id": "apache/airflow#72164@7639e6b2e874",
+   "repo": "apache/airflow",
+   "pr": 72164,
+   "head": "7639e6b2e874016073517e0de082445b52f56123",
+   "base": "562e7307c2cffa1af1dc74813a215221d4c7ad9b",
+   "cluster": "apache/airflow#72164",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/airflow/pull/72164#discussion_r3963303751",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-airflow-72164-b1-7639e6b",
+     "paths": [
+      "task-sdk/src/airflow/sdk/execution_time/supervisor.py"
+     ],
+     "file": "task-sdk/src/airflow/sdk/execution_time/supervisor.py",
+     "line": 527,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 16
+  },
+  {
+   "id": "apache/iggy#4073@d5f79a543758",
+   "repo": "apache/iggy",
+   "pr": 4073,
+   "head": "d5f79a5437588845eab1cff90a827bb778421060",
+   "base": "59a9508cd58ec63e8a7dc78899f3f54e48fdacd3",
+   "cluster": "apache/iggy#4073",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/iggy/pull/4073#discussion_r3945305779",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-iggy-4073-b1-d5f79a5",
+     "paths": [
+      "core/consensus/src/impls.rs"
+     ],
+     "file": "core/consensus/src/impls.rs",
+     "line": 1752,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 17
+  },
+  {
+   "id": "microsoft/openvmm#3858@35de8235cb99",
+   "repo": "microsoft/openvmm",
+   "pr": 3858,
+   "head": "35de8235cb9903edf2229d4860adb50087bc6820",
+   "base": "332a2a12743fde87a9031dbba6f4cfee8eec081e",
+   "cluster": "microsoft/openvmm#3858",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/microsoft/openvmm/pull/3858#discussion_r3540351988",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-microsoft-openvmm-3858-b1-35de823",
+     "paths": [
+      "vm/devices/virtio/virtio/src/transport/pci.rs"
+     ],
+     "file": "vm/devices/virtio/virtio/src/transport/pci.rs",
+     "line": 580,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 18
+  },
+  {
+   "id": "flagos-ai/FlagGems#5915@94e171963e8b",
+   "repo": "flagos-ai/FlagGems",
+   "pr": 5915,
+   "head": "94e171963e8b32bc8a66e142a2b9be91dca4ea90",
+   "base": "8ea592557659491930ebf24c24392f958b29ac21",
+   "cluster": "flagos-ai/FlagGems#5915",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/flagos-ai/FlagGems/pull/5915#discussion_r3995552006",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-flagos-ai-flaggems-5915-b1-94e1719",
+     "paths": [
+      "src/flag_gems/ops/_histogramdd_from_bin_cts.py"
+     ],
+     "file": "src/flag_gems/ops/_histogramdd_from_bin_cts.py",
+     "line": 73,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 19
+  },
+  {
+   "id": "assistant-ui/assistant-ui#7485@17fbbde5a80c",
+   "repo": "assistant-ui/assistant-ui",
+   "pr": 7485,
+   "head": "17fbbde5a80ce5bea2e4f948d90e45d3343a68c9",
+   "base": "db0f94ebf0ec8c31cced75ac6d7e066019252f4d",
+   "cluster": "assistant-ui/assistant-ui#7485",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/assistant-ui/assistant-ui/pull/7485#discussion_r4017482546",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-assistant-ui-assistant-ui-7485-b1-17fbbde",
+     "paths": [
+      "packages/react-pi/src/runtime/threadState.ts"
+     ],
+     "file": "packages/react-pi/src/runtime/threadState.ts",
+     "line": 121,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 20
+  },
+  {
+   "id": "rjsf-team/react-jsonschema-form#5362@efd27d454a57",
+   "repo": "rjsf-team/react-jsonschema-form",
+   "pr": 5362,
+   "head": "efd27d454a57674c370ea10e1ea2ea35175903c6",
+   "base": "d669fa798b9efc6330b7a031a72af791cab7b6e5",
+   "cluster": "rjsf-team/react-jsonschema-form#5362",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/rjsf-team/react-jsonschema-form/pull/5362#discussion_r4139136298",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-rjsf-team-react-jsonschema-form-5362-b1-efd27d4",
+     "paths": [
+      "packages/core/src/components/fields/FallbackField.tsx"
+     ],
+     "file": "packages/core/src/components/fields/FallbackField.tsx",
+     "line": 425,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 21
+  },
+  {
+   "id": "apache/superset#45828@48c99bfbe949",
+   "repo": "apache/superset",
+   "pr": 45828,
+   "head": "48c99bfbe949d957632b42ca69c3c18b78361585",
+   "base": "56cd2bc0ef0e22eb8799282b460ac21fb5824137",
+   "cluster": "apache/superset#45828",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/superset/pull/45828#discussion_r4428377061",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-superset-45828-b1-48c99bf",
+     "paths": [
+      "superset/mcp_service/chart/chart_helpers.py"
+     ],
+     "file": "superset/mcp_service/chart/chart_helpers.py",
+     "line": 1179,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 22
+  },
+  {
+   "id": "langwatch/langwatch#7917@dbe3e584ec3b",
+   "repo": "langwatch/langwatch",
+   "pr": 7917,
+   "head": "dbe3e584ec3bc11aadb3b300275bdd0b73ac1cbf",
+   "base": "6a6a5c3bbcbf75a5f704e34c21b2934cf94bc014",
+   "cluster": "langwatch/langwatch#7917",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/langwatch/langwatch/pull/7917#discussion_r3945013825",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-langwatch-langwatch-7917-b1-dbe3e58",
+     "paths": [
+      "services/aigateway/adapters/authresolver/service.go"
+     ],
+     "file": "services/aigateway/adapters/authresolver/service.go",
+     "line": 215,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 23
+  },
+  {
+   "id": "apache/datafusion#26953@b02c75ebbc75",
+   "repo": "apache/datafusion",
+   "pr": 26953,
+   "head": "b02c75ebbc7575797eec69b9304fd74b8b6e1b04",
+   "base": "611311cd7ef50b40dd33f88ec527e2913de8e3d1",
+   "cluster": "apache/datafusion#26953",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/datafusion/pull/26953#discussion_r4430699232",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-datafusion-26953-b1-b02c75e",
+     "paths": [
+      "datafusion/physical-plan/src/sorts/sort.rs"
+     ],
+     "file": "datafusion/physical-plan/src/sorts/sort.rs",
+     "line": 1095,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 24
+  },
+  {
+   "id": "NVIDIA/Model-Optimizer#2203@2f73bcc57579",
+   "repo": "NVIDIA/Model-Optimizer",
+   "pr": 2203,
+   "head": "2f73bcc5757907b77cb0b65f53aa30c453a9cea9",
+   "base": "c56959cc314d6a5f4e4e8f3ea7bb6565ca26341e",
+   "cluster": "NVIDIA/Model-Optimizer#2203",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/NVIDIA/Model-Optimizer/pull/2203#discussion_r3931351961",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-nvidia-model-optimizer-2203-b1-2f73bcc",
+     "paths": [
+      "modelopt/torch/quantization/model_quant.py"
+     ],
+     "file": "modelopt/torch/quantization/model_quant.py",
+     "line": 200,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 25
+  },
+  {
+   "id": "thrasher-corp/gocryptotrader#2367@f577a3104120",
+   "repo": "thrasher-corp/gocryptotrader",
+   "pr": 2367,
+   "head": "f577a31041204e47aba57f849e8d4765e752aa44",
+   "base": "2690670f84f047c9fdebd9ac998bb084c5c52c17",
+   "cluster": "thrasher-corp/gocryptotrader#2367",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/thrasher-corp/gocryptotrader/pull/2367#discussion_r3945761336",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-thrasher-corp-gocryptotrader-2367-b1-f577a31",
+     "paths": [
+      "exchanges/kucoin/kucoin_websocket.go"
+     ],
+     "file": "exchanges/kucoin/kucoin_websocket.go",
+     "line": 1157,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 26
+  },
+  {
+   "id": "rjsf-team/react-jsonschema-form#5564@5de0ad37a5ba",
+   "repo": "rjsf-team/react-jsonschema-form",
+   "pr": 5564,
+   "head": "5de0ad37a5bafedd923deaea7d54a1a302763992",
+   "base": "119724810d559e03eb8b731c2257b59722f369c3",
+   "cluster": "rjsf-team/react-jsonschema-form#5564",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/rjsf-team/react-jsonschema-form/pull/5564#discussion_r4346766196",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-rjsf-team-react-jsonschema-form-5564-b1-5de0ad3",
+     "paths": [
+      "packages/core/src/components/fields/LayoutGridField.tsx"
+     ],
+     "file": "packages/core/src/components/fields/LayoutGridField.tsx",
+     "line": 323,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 27
+  },
+  {
+   "id": "apache/airflow#71949@e129ba00f24f",
+   "repo": "apache/airflow",
+   "pr": 71949,
+   "head": "e129ba00f24f6375f7929fb3481ee347cfbbe3eb",
+   "base": "17a2cdc343a13c5206c5f24f92451fb7306d1f7b",
+   "cluster": "apache/airflow#71949",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/airflow/pull/71949#discussion_r3946072668",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-airflow-71949-b1-e129ba0",
+     "paths": [
+      "providers/apache/spark/src/airflow/providers/apache/spark/hooks/spark_submit.py"
+     ],
+     "file": "providers/apache/spark/src/airflow/providers/apache/spark/hooks/spark_submit.py",
+     "line": 470,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 28
+  },
+  {
+   "id": "simstudioai/sim#7800@c77dd6d5d0e6",
+   "repo": "simstudioai/sim",
+   "pr": 7800,
+   "head": "c77dd6d5d0e683dbc05a4b6e70e9a2195c38ea56",
+   "base": "2799994574c2a71f4caec3292314f68e5db794e9",
+   "cluster": "simstudioai/sim#7800",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/simstudioai/sim/pull/7800#discussion_r3998567900",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-simstudioai-sim-7800-b1-c77dd6d",
+     "paths": [
+      "apps/sim/app/api/webhooks/route.ts"
+     ],
+     "file": "apps/sim/app/api/webhooks/route.ts",
+     "line": 429,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 29
+  },
+  {
+   "id": "sgl-project/sglang#45103@da1db98a77f8",
+   "repo": "sgl-project/sglang",
+   "pr": 45103,
+   "head": "da1db98a77f80ea3af32f22c0cf09d91e455b01f",
+   "base": "617c8b67b1e4d31a2bafa7fba7fe67150787d298",
+   "cluster": "sgl-project/sglang#45103",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/sgl-project/sglang/pull/45103#discussion_r4321670565",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-sgl-project-sglang-45103-b1-da1db98",
+     "paths": [
+      "experimental/sgl-router/src/policies/selection.rs"
+     ],
+     "file": "experimental/sgl-router/src/policies/selection.rs",
+     "line": 366,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 30
+  },
+  {
+   "id": "erigontech/erigon#23786@be98554bad94",
+   "repo": "erigontech/erigon",
+   "pr": 23786,
+   "head": "be98554bad9456d2d108d1704e607be52618d977",
+   "base": "3fe094cc44d3324c2a14019008632f5f35bb9587",
+   "cluster": "erigontech/erigon#23786",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/erigontech/erigon/pull/23786#discussion_r3939817730",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-erigontech-erigon-23786-b1-be98554",
+     "paths": [
+      "rpc/mcp/handlers_logs.go"
+     ],
+     "file": "rpc/mcp/handlers_logs.go",
+     "line": 288,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 31
+  },
+  {
+   "id": "moq-dev/moq#3449@8d5aef09ea60",
+   "repo": "moq-dev/moq",
+   "pr": 3449,
+   "head": "8d5aef09ea60c3262a243bd8c3b1c1b32d1bbc93",
+   "base": "460eea50709983f351ac693d193a1db88051595e",
+   "cluster": "moq-dev/moq#3449",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/moq-dev/moq/pull/3449#discussion_r3941316595",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-moq-dev-moq-3449-b1-8d5aef0",
+     "paths": [
+      "js/net/src/stream.ts"
+     ],
+     "file": "js/net/src/stream.ts",
+     "line": 17,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 32
+  },
+  {
+   "id": "flagos-ai/FlagGems#5939@be73eab52649",
+   "repo": "flagos-ai/FlagGems",
+   "pr": 5939,
+   "head": "be73eab5264996109e701e082f1689a4f51f0964",
+   "base": "e7b4a865fce6d85861ee91a6aca56564ef9acf7d",
+   "cluster": "flagos-ai/FlagGems#5939",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/flagos-ai/FlagGems/pull/5939#discussion_r4023768544",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-flagos-ai-flaggems-5939-b1-be73eab",
+     "paths": [
+      "src/flag_gems/ops/row_indices_copy.py"
+     ],
+     "file": "src/flag_gems/ops/row_indices_copy.py",
+     "line": 32,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 33
+  },
+  {
+   "id": "apache/airflow#70960@9717cf454da0",
+   "repo": "apache/airflow",
+   "pr": 70960,
+   "head": "9717cf454da0015060b28a5b723436580b669496",
+   "base": "4e52a36e81a430e77948f30ce8b9add3042cf30e",
+   "cluster": "apache/airflow#70960",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/airflow/pull/70960#discussion_r4014172660",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-airflow-70960-b1-9717cf4",
+     "paths": [
+      "providers/http/src/airflow/providers/http/hooks/http.py"
+     ],
+     "file": "providers/http/src/airflow/providers/http/hooks/http.py",
+     "line": 64,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 34
+  },
+  {
+   "id": "moq-dev/moq#6689@2deada294f61",
+   "repo": "moq-dev/moq",
+   "pr": 6689,
+   "head": "2deada294f61a6115c53157ccce4176e7a956349",
+   "base": "e33b77bb186723874793e75a9c5349fc9a412146",
+   "cluster": "moq-dev/moq#6689",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/moq-dev/moq/pull/6689#discussion_r4368553795",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-moq-dev-moq-6689-b1-2deada2",
+     "paths": [
+      "rs/moq-mux/src/container/ts/programs.rs"
+     ],
+     "file": "rs/moq-mux/src/container/ts/programs.rs",
+     "line": 260,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 35
+  },
+  {
+   "id": "rjsf-team/react-jsonschema-form#5243@10c354304abd",
+   "repo": "rjsf-team/react-jsonschema-form",
+   "pr": 5243,
+   "head": "10c354304abd6d24ac1ef18f9068e30e2f1c0c74",
+   "base": "033a53f57e86b31af22e9361e6574eb646eaca03",
+   "cluster": "rjsf-team/react-jsonschema-form#5243",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/rjsf-team/react-jsonschema-form/pull/5243#discussion_r3992844602",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-rjsf-team-react-jsonschema-form-5243-b1-10c3543",
+     "paths": [
+      "packages/core/src/components/fields/NumberField.tsx"
+     ],
+     "file": "packages/core/src/components/fields/NumberField.tsx",
+     "line": 104,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 36
+  },
+  {
+   "id": "NVIDIA-NeMo/RL#3912@9514cb800ec4",
+   "repo": "NVIDIA-NeMo/RL",
+   "pr": 3912,
+   "head": "9514cb800ec48e618e84b8cf96d77f4c2b42fa8e",
+   "base": "069a24321f9975598294da826b8a3e2cd83f7ed9",
+   "cluster": "NVIDIA-NeMo/RL#3912",
+   "group": "S1",
+   "stratum": "S1",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/NVIDIA-NeMo/RL/pull/3912#discussion_r3963667712",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-nvidia-nemo-rl-3912-b1-9514cb8",
+     "paths": [
+      "nemo_rl/models/generation/megatron/megatron_generation.py"
+     ],
+     "file": "nemo_rl/models/generation/megatron/megatron_generation.py",
+     "line": 107,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 37
+  },
+  {
+   "id": "jdx/mise#13606@e9e6ed0ebf5f",
+   "repo": "jdx/mise",
+   "pr": 13606,
+   "head": "e9e6ed0ebf5fd658eb48b98fbc05f244b30dbfca",
+   "base": "0eab6690a1d1eee87aa21ef3dd0a7ee81eefea04",
+   "cluster": "jdx/mise#13606",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/jdx/mise/pull/13606#discussion_r4099798236",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-jdx-mise-13606-b1-e9e6ed0",
+     "paths": [
+      ".github/workflows/release-window.yml"
+     ],
+     "file": ".github/workflows/release-window.yml",
+     "line": 66,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 38
+  },
+  {
+   "id": "gptme/gptme#3801@cc67081a88c0",
+   "repo": "gptme/gptme",
+   "pr": 3801,
+   "head": "cc67081a88c056a020143c44b09ea66d59b406c8",
+   "base": "328c628949046be97d2b0999db842900e3633d03",
+   "cluster": "gptme/gptme#3801",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/gptme/gptme/pull/3801#discussion_r3977386230",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-gptme-gptme-3801-b1-cc67081",
+     "paths": [
+      "gptme/tools/__init__.py"
+     ],
+     "file": "gptme/tools/__init__.py",
+     "line": 327,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 39
+  },
+  {
+   "id": "maximhq/bifrost#7860@cc0bdf89e092",
+   "repo": "maximhq/bifrost",
+   "pr": 7860,
+   "head": "cc0bdf89e0923477f57e1fa0a41d409caa113cb6",
+   "base": "1521603e87d837211838d607b62f65cec1447a2d",
+   "cluster": "maximhq/bifrost#7860",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/maximhq/bifrost/pull/7860#discussion_r4169083703",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-maximhq-bifrost-7860-b1-cc0bdf8",
+     "paths": [
+      "framework/oauth2/discovery.go"
+     ],
+     "file": "framework/oauth2/discovery.go",
+     "line": 48,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 40
+  },
+  {
+   "id": "seaweedfs/seaweedfs#11167@bd817aad27e0",
+   "repo": "seaweedfs/seaweedfs",
+   "pr": 11167,
+   "head": "bd817aad27e0a46dcef2c185fc3e089c35d327d5",
+   "base": "27b2411cddee929becc0cdaae3b20706f884c560",
+   "cluster": "seaweedfs/seaweedfs#11167",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/seaweedfs/seaweedfs/pull/11167#discussion_r3939438145",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-seaweedfs-seaweedfs-11167-b1-bd817aa",
+     "paths": [
+      "weed/storage/volume_checking.go"
+     ],
+     "file": "weed/storage/volume_checking.go",
+     "line": 306,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 41
+  },
+  {
+   "id": "spiceai/spiceai#13884@34a4b9da43f9",
+   "repo": "spiceai/spiceai",
+   "pr": 13884,
+   "head": "34a4b9da43f91ea8993d0b6ac80a6da6ee810ad9",
+   "base": "f67da93bb865f8b0a6675bf48b537dec00fde893",
+   "cluster": "spiceai/spiceai#13884",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/spiceai/spiceai/pull/13884#discussion_r3941222837",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-spiceai-spiceai-13884-b1-34a4b9d",
+     "paths": [
+      "crates/llms/src/provider.rs"
+     ],
+     "file": "crates/llms/src/provider.rs",
+     "line": 213,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 42
+  },
+  {
+   "id": "Project-N-E-K-O/N.E.K.O#3060@47a65ce57f54",
+   "repo": "Project-N-E-K-O/N.E.K.O",
+   "pr": 3060,
+   "head": "47a65ce57f5446afa9270f7ccafcc3679bea5eeb",
+   "base": "e1fa3482509132532a242d841b98d55ba03d4c4b",
+   "cluster": "Project-N-E-K-O/N.E.K.O#3060",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/Project-N-E-K-O/N.E.K.O/pull/3060#discussion_r3944686882",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-project-n-e-k-o-n-e-k-o-3060-b1-47a65ce",
+     "paths": [
+      "plugin/server/logs.py"
+     ],
+     "file": "plugin/server/logs.py",
+     "line": 272,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 43
+  },
+  {
+   "id": "reflex-dev/reflex#7396@e3f50a159a9f",
+   "repo": "reflex-dev/reflex",
+   "pr": 7396,
+   "head": "e3f50a159a9f9f960bdb7c365ee50ad725fbb432",
+   "base": "7970e91f089e3610d181cf338f9909c3fdf6a0f2",
+   "cluster": "reflex-dev/reflex#7396",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/reflex-dev/reflex/pull/7396#discussion_r4170743222",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-reflex-dev-reflex-7396-b1-e3f50a1",
+     "paths": [
+      "packages/reflex-workflow/src/reflex_workflow/engine/claim.py"
+     ],
+     "file": "packages/reflex-workflow/src/reflex_workflow/engine/claim.py",
+     "line": 128,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 44
+  },
+  {
+   "id": "assistant-ui/assistant-ui#7198@b4b216b298f5",
+   "repo": "assistant-ui/assistant-ui",
+   "pr": 7198,
+   "head": "b4b216b298f568d51f85387dd72a806fda9afc1f",
+   "base": "2c22f5d7fdeb45f10891a0ab2457d046ace668fa",
+   "cluster": "assistant-ui/assistant-ui#7198",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/assistant-ui/assistant-ui/pull/7198#discussion_r3986045772",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-assistant-ui-assistant-ui-7198-b1-b4b216b",
+     "paths": [
+      "packages/assistant-stream/src/resumable/stores/redis-impl.ts"
+     ],
+     "file": "packages/assistant-stream/src/resumable/stores/redis-impl.ts",
+     "line": 402,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 45
+  },
+  {
+   "id": "promptfoo/promptfoo#10948@ba357058e024",
+   "repo": "promptfoo/promptfoo",
+   "pr": 10948,
+   "head": "ba357058e0249106e7a6034138dd30e8f69e56f9",
+   "base": "29a15d1edb256c789d0035ce3f36ad7cf91db6bb",
+   "cluster": "promptfoo/promptfoo#10948",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/promptfoo/promptfoo/pull/10948#discussion_r4018810344",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-promptfoo-promptfoo-10948-b1-ba35705",
+     "paths": [
+      "src/providers/azure/foundry-agent.ts"
+     ],
+     "file": "src/providers/azure/foundry-agent.ts",
+     "line": 645,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 46
+  },
+  {
+   "id": "gptme/gptme#3801@b8df37213291",
+   "repo": "gptme/gptme",
+   "pr": 3801,
+   "head": "b8df3721329187af86198868f9c95498d1b65e44",
+   "base": "26242d52045e4d0dc30b5bef4c492c2e5893e744",
+   "cluster": "gptme/gptme#3801",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/gptme/gptme/pull/3801#discussion_r3999797022",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-gptme-gptme-3801-b1-b8df372",
+     "paths": [
+      "gptme/tools/__init__.py"
+     ],
+     "file": "gptme/tools/__init__.py",
+     "line": 350,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 47
+  },
+  {
+   "id": "Project-N-E-K-O/N.E.K.O#2157@db35b2e46c14",
+   "repo": "Project-N-E-K-O/N.E.K.O",
+   "pr": 2157,
+   "head": "db35b2e46c1418a2701f0e52ad1cc5384d068fcd",
+   "base": "9beb7f1a835aaf42ea280fa177ddb6ba9dc9cbc9",
+   "cluster": "Project-N-E-K-O/N.E.K.O#2157",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/Project-N-E-K-O/N.E.K.O/pull/2157#discussion_r3521952921",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-project-n-e-k-o-n-e-k-o-2157-b1-db35b2e",
+     "paths": [
+      "pkgbuild/PKGBUILD"
+     ],
+     "file": "pkgbuild/PKGBUILD",
+     "line": 36,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 48
+  },
+  {
+   "id": "Project-N-E-K-O/N.E.K.O#3048@4d2384ce3afc",
+   "repo": "Project-N-E-K-O/N.E.K.O",
+   "pr": 3048,
+   "head": "4d2384ce3afcecad7f69142da6bd7bb9e3e75b68",
+   "base": "cf3eb0331fd3d32c2127ef6c6ce370e7108aaeb8",
+   "cluster": "Project-N-E-K-O/N.E.K.O#3048",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/Project-N-E-K-O/N.E.K.O/pull/3048#discussion_r3931393003",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-project-n-e-k-o-n-e-k-o-3048-b1-4d2384c",
+     "paths": [
+      "main_logic/omni_realtime_client/_transport.py"
+     ],
+     "file": "main_logic/omni_realtime_client/_transport.py",
+     "line": 3046,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 49
+  },
+  {
+   "id": "c15t/c15t#1219@f5b6e1386086",
+   "repo": "c15t/c15t",
+   "pr": 1219,
+   "head": "f5b6e1386086124d8fa0121a6b33b0fe4461edc1",
+   "base": "9993ae57867e33e96783640413a2429b649104c7",
+   "cluster": "c15t/c15t#1219",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/c15t/c15t/pull/1219#discussion_r4112532377",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-c15t-c15t-1219-b1-f5b6e13",
+     "paths": [
+      "packages/core/src/kernel/commands.ts"
+     ],
+     "file": "packages/core/src/kernel/commands.ts",
+     "line": 1138,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 50
+  },
+  {
+   "id": "simstudioai/sim#7897@56d6fcbcff6f",
+   "repo": "simstudioai/sim",
+   "pr": 7897,
+   "head": "56d6fcbcff6fe30e620e145476af3bc155070ab7",
+   "base": "90a05d9485d192096506cf5df31ba5a3a6222b9d",
+   "cluster": "simstudioai/sim#7897",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/simstudioai/sim/pull/7897#discussion_r4031578966",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-simstudioai-sim-7897-b1-56d6fcb",
+     "paths": [
+      "apps/sim/lib/knowledge/connectors/sync-engine.ts"
+     ],
+     "file": "apps/sim/lib/knowledge/connectors/sync-engine.ts",
+     "line": 177,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 51
+  },
+  {
+   "id": "Mentra-Community/MentraOS#4045@fe89948f6a36",
+   "repo": "Mentra-Community/MentraOS",
+   "pr": 4045,
+   "head": "fe89948f6a36729ac12b7b2b58b973df5f9312c6",
+   "base": "626082d1f9ddc939fc90eefc7af897878a79cbb0",
+   "cluster": "Mentra-Community/MentraOS#4045",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/Mentra-Community/MentraOS/pull/4045#discussion_r4011662756",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-mentra-community-mentraos-4045-b1-fe89948",
+     "paths": [
+      "mobile/modules/bluetooth-sdk/src/_private/BluetoothSdkModule.ts"
+     ],
+     "file": "mobile/modules/bluetooth-sdk/src/_private/BluetoothSdkModule.ts",
+     "line": 679,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 52
+  },
+  {
+   "id": "Mentra-Community/MentraOS#4552@5c490cd1fe91",
+   "repo": "Mentra-Community/MentraOS",
+   "pr": 4552,
+   "head": "5c490cd1fe9124452a89b849acc90c765507dcf0",
+   "base": "de6e808ec334957b7a56dce012ae763d6bbd5951",
+   "cluster": "Mentra-Community/MentraOS#4552",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/Mentra-Community/MentraOS/pull/4552#discussion_r4210864796",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-mentra-community-mentraos-4552-b1-5c490cd",
+     "paths": [
+      "cloud-v2/packages/core/src/services/test-suite.service.ts"
+     ],
+     "file": "cloud-v2/packages/core/src/services/test-suite.service.ts",
+     "line": 139,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 53
+  },
+  {
+   "id": "seaweedfs/seaweedfs#11167@67692f6a32b9",
+   "repo": "seaweedfs/seaweedfs",
+   "pr": 11167,
+   "head": "67692f6a32b92f1ad6e9c3fd78d41c8c26aaab94",
+   "base": "27b2411cddee929becc0cdaae3b20706f884c560",
+   "cluster": "seaweedfs/seaweedfs#11167",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/seaweedfs/seaweedfs/pull/11167#discussion_r3939342839",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-seaweedfs-seaweedfs-11167-b1-67692f6",
+     "paths": [
+      "weed/storage/volume_checking.go"
+     ],
+     "file": "weed/storage/volume_checking.go",
+     "line": 305,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 54
+  },
+  {
+   "id": "pnpm/pnpm#13135@be4911869c4c",
+   "repo": "pnpm/pnpm",
+   "pr": 13135,
+   "head": "be4911869c4c4d4b75dcbe8d3c7b825c78bf9e5d",
+   "base": "0dbf7e6aa6139b070cb954a03fa0d7cb49749a68",
+   "cluster": "pnpm/pnpm#13135",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/pnpm/pnpm/pull/13135#discussion_r3609385442",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-pnpm-pnpm-13135-b1-be49118",
+     "paths": [
+      "pnpm/crates/resolving-deps-resolver/src/resolve_dependency_tree.rs"
+     ],
+     "file": "pnpm/crates/resolving-deps-resolver/src/resolve_dependency_tree.rs",
+     "line": 1696,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 55
+  },
+  {
+   "id": "simstudioai/sim#8723@80ee657d7571",
+   "repo": "simstudioai/sim",
+   "pr": 8723,
+   "head": "80ee657d7571d2c3ec545ac1a8ed904aaa262c41",
+   "base": "988b079d17510cfc1568c7c7dc6374c0d890c891",
+   "cluster": "simstudioai/sim#8723",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/simstudioai/sim/pull/8723#discussion_r4203179708",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-simstudioai-sim-8723-b1-80ee657",
+     "paths": [
+      "apps/sim/app/workspace/[workspaceId]/home/hooks/use-chat.ts"
+     ],
+     "file": "apps/sim/app/workspace/[workspaceId]/home/hooks/use-chat.ts",
+     "line": 3895,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 56
+  },
+  {
+   "id": "c15t/c15t#1292@9214cb7070f3",
+   "repo": "c15t/c15t",
+   "pr": 1292,
+   "head": "9214cb7070f3a3abff9646549a7782b62280ad78",
+   "base": "a3c4bd69adcb6a468db296916003de8eb2a203a0",
+   "cluster": "c15t/c15t#1292",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/c15t/c15t/pull/1292#discussion_r4138257157",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-c15t-c15t-1292-b1-9214cb7",
+     "paths": [
+      "packages/astro/src/integration.ts"
+     ],
+     "file": "packages/astro/src/integration.ts",
+     "line": 201,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 57
+  },
+  {
+   "id": "pnpm/pnpm#14627@01265bd8b5ae",
+   "repo": "pnpm/pnpm",
+   "pr": 14627,
+   "head": "01265bd8b5ae5a16d4208773506caa4a5352f6a7",
+   "base": "2361fad83c1330940a309199a353166ef29fe660",
+   "cluster": "pnpm/pnpm#14627",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/pnpm/pnpm/pull/14627#discussion_r3945445513",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-pnpm-pnpm-14627-b1-01265bd",
+     "paths": [
+      "pnpm/crates/cli/src/cli_args/pre_command.rs"
+     ],
+     "file": "pnpm/crates/cli/src/cli_args/pre_command.rs",
+     "line": 234,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 58
+  },
+  {
+   "id": "ray-project/ray#66249@92f3c5276b01",
+   "repo": "ray-project/ray",
+   "pr": 66249,
+   "head": "92f3c5276b01d875198158b036a8b1fe2f6d0c33",
+   "base": "94c2862136278e346e0c108ea7747e60f18455a4",
+   "cluster": "ray-project/ray#66249",
+   "group": "S2-google",
+   "stratum": "S2-google",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/ray-project/ray/pull/66249#discussion_r4041689096",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-ray-project-ray-66249-b1-92f3c52",
+     "paths": [
+      "src/ray/raylet/scheduling/policy/node_affinity_scheduling_policy.cc"
+     ],
+     "file": "src/ray/raylet/scheduling/policy/node_affinity_scheduling_policy.cc",
+     "line": 35,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 59
+  },
+  {
+   "id": "traycerai/traycer#1716@f445fdead5d0",
+   "repo": "traycerai/traycer",
+   "pr": 1716,
+   "head": "f445fdead5d0f2eac61e278a239b3fde3dd865ce",
+   "base": "5707f72422024c27531928e0aa3d06d10684a9a6",
+   "cluster": "traycerai/traycer#1716",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/traycerai/traycer/pull/1716#discussion_r3933705348",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-traycerai-traycer-1716-b1-f445fde",
+     "paths": [
+      "clients/gui-app/src/stores/epics/open-epic/runtime/epic-replica-runtime.ts"
+     ],
+     "file": "clients/gui-app/src/stores/epics/open-epic/runtime/epic-replica-runtime.ts",
+     "line": 1028,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 60
+  },
+  {
+   "id": "thrasher-corp/gocryptotrader#2369@71e819691600",
+   "repo": "thrasher-corp/gocryptotrader",
+   "pr": 2369,
+   "head": "71e819691600cb24c2c654bd43d3e41940e53e78",
+   "base": "2690670f84f047c9fdebd9ac998bb084c5c52c17",
+   "cluster": "thrasher-corp/gocryptotrader#2369",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/thrasher-corp/gocryptotrader/pull/2369#discussion_r3945845934",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-thrasher-corp-gocryptotrader-2369-b1-71e8196",
+     "paths": [
+      "exchanges/yobit/yobit.go"
+     ],
+     "file": "exchanges/yobit/yobit.go",
+     "line": 65,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 61
+  },
+  {
+   "id": "c15t/c15t#1057@164e30d484b4",
+   "repo": "c15t/c15t",
+   "pr": 1057,
+   "head": "164e30d484b4e6eed1b83331666ccb2e70a895da",
+   "base": "1cc395b5277dcdf7dae617eae728b3c04fae267d",
+   "cluster": "c15t/c15t#1057",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/c15t/c15t/pull/1057#discussion_r3940386563",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-c15t-c15t-1057-b1-164e30d",
+     "paths": [
+      "packages/react/src/devtools.tsx"
+     ],
+     "file": "packages/react/src/devtools.tsx",
+     "line": 20,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 62
+  },
+  {
+   "id": "unslothai/unsloth#9778@23d3bcba07bf",
+   "repo": "unslothai/unsloth",
+   "pr": 9778,
+   "head": "23d3bcba07bfb9693c83099f290ec766a753fb73",
+   "base": "adca7b9aab628e17886c09f208e33a02835e055b",
+   "cluster": "unslothai/unsloth#9778",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/unslothai/unsloth/pull/9778#discussion_r3860654628",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-unslothai-unsloth-9778-b1-23d3bcb",
+     "paths": [
+      "studio/backend/core/inference/llama_cpp.py"
+     ],
+     "file": "studio/backend/core/inference/llama_cpp.py",
+     "line": 4439,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 63
+  },
+  {
+   "id": "pnpm/pnpm#12997@84a6a7dfe509",
+   "repo": "pnpm/pnpm",
+   "pr": 12997,
+   "head": "84a6a7dfe5096c3a101fd9c858b1e0c885a10076",
+   "base": "3c1af785c2cd3cbc6ab6e38b3d2fee294c087a96",
+   "cluster": "pnpm/pnpm#12997",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/pnpm/pnpm/pull/12997#discussion_r3940297658",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-pnpm-pnpm-12997-b1-84a6a7d",
+     "paths": [
+      "pnpm/crates/store-dir/src/upload.rs"
+     ],
+     "file": "pnpm/crates/store-dir/src/upload.rs",
+     "line": 78,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 64
+  },
+  {
+   "id": "gptme/gptme#3095@38375e8a4ffb",
+   "repo": "gptme/gptme",
+   "pr": 3095,
+   "head": "38375e8a4ffb530aeab83b23f5aae92a65fe2bf2",
+   "base": "007fe94b2728f34178eb270e767e16c88e694563",
+   "cluster": "gptme/gptme#3095",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/gptme/gptme/pull/3095#discussion_r3524014906",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-gptme-gptme-3095-b1-38375e8",
+     "paths": [
+      "gptme/tools/_browser_playwright.py"
+     ],
+     "file": "gptme/tools/_browser_playwright.py",
+     "line": 828,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 65
+  },
+  {
+   "id": "simstudioai/sim#7666@8fbfd562cf5a",
+   "repo": "simstudioai/sim",
+   "pr": 7666,
+   "head": "8fbfd562cf5aa8cf3dbe124b38f3abf8613fe52a",
+   "base": "c03ce29af0d9aed752fabdd393c3d2fa97787cf1",
+   "cluster": "simstudioai/sim#7666",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/simstudioai/sim/pull/7666#discussion_r3972264555",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-simstudioai-sim-7666-b1-8fbfd56",
+     "paths": [
+      "apps/sim/components/integrations/slack-search-setup-wizard.tsx"
+     ],
+     "file": "apps/sim/components/integrations/slack-search-setup-wizard.tsx",
+     "line": 107,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 66
+  },
+  {
+   "id": "fossasia/eventyay#5438@1b2160663663",
+   "repo": "fossasia/eventyay",
+   "pr": 5438,
+   "head": "1b2160663663bdd8146cab5c68d356c8fe533338",
+   "base": "66c0f053bca1e3b510e06dc3f9a40d6cda31d0fc",
+   "cluster": "fossasia/eventyay#5438",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/fossasia/eventyay/pull/5438#discussion_r3943222711",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-fossasia-eventyay-5438-b1-1b21606",
+     "paths": [
+      "app/eventyay/base/models/privacy.py"
+     ],
+     "file": "app/eventyay/base/models/privacy.py",
+     "line": 84,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 67
+  },
+  {
+   "id": "pipeshub-ai/pipeshub-ai#3572@e266da4d20e9",
+   "repo": "pipeshub-ai/pipeshub-ai",
+   "pr": 3572,
+   "head": "e266da4d20e946efb947bc10f014b01848dfca96",
+   "base": "f0b93b0b8042893af271fbbcc484d2bd58d3e4bd",
+   "cluster": "pipeshub-ai/pipeshub-ai#3572",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/pipeshub-ai/pipeshub-ai/pull/3572#discussion_r4110615912",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-pipeshub-ai-pipeshub-ai-3572-b1-e266da4",
+     "paths": [
+      "backend/python/app/connectors/core/base/token_service/token_refresh_service.py"
+     ],
+     "file": "backend/python/app/connectors/core/base/token_service/token_refresh_service.py",
+     "line": 821,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 68
+  },
+  {
+   "id": "netdata/netdata#22440@c70caedff6a6",
+   "repo": "netdata/netdata",
+   "pr": 22440,
+   "head": "c70caedff6a6b7283e1b3deb9a144d33d1b91a77",
+   "base": "5c15ca077f14a8188175c2782bf4140404db3ff9",
+   "cluster": "netdata/netdata#22440",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/netdata/netdata/pull/22440#discussion_r3989938375",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-netdata-netdata-22440-b1-c70caed",
+     "paths": [
+      ".github/workflows/build.yml"
+     ],
+     "file": ".github/workflows/build.yml",
+     "line": 701,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 69
+  },
+  {
+   "id": "unslothai/unsloth#10953@71fb7484187d",
+   "repo": "unslothai/unsloth",
+   "pr": 10953,
+   "head": "71fb7484187dbf45f769244c2a6256cd35db4a52",
+   "base": "c3329b9dbf2defc1e333dff30862e4bf31fb3718",
+   "cluster": "unslothai/unsloth#10953",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/unslothai/unsloth/pull/10953#discussion_r4010391290",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-unslothai-unsloth-10953-b1-71fb748",
+     "paths": [
+      "studio/backend/core/inference/tools.py"
+     ],
+     "file": "studio/backend/core/inference/tools.py",
+     "line": 8206,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 70
+  },
+  {
+   "id": "fossasia/eventyay#5579@11e97d647b51",
+   "repo": "fossasia/eventyay",
+   "pr": 5579,
+   "head": "11e97d647b51a4d64d0df3faf80f3fb1de467d9e",
+   "base": "edf342c74318eb9386316605e4ebb7403c8d7c75",
+   "cluster": "fossasia/eventyay#5579",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/fossasia/eventyay/pull/5579#discussion_r3995621181",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-fossasia-eventyay-5579-b1-11e97d6",
+     "paths": [
+      "app/eventyay/webapp/schedule/src/teamshifts-adapter/index.js"
+     ],
+     "file": "app/eventyay/webapp/schedule/src/teamshifts-adapter/index.js",
+     "line": 199,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 71
+  },
+  {
+   "id": "pnpm/pnpm#14564@26506415772f",
+   "repo": "pnpm/pnpm",
+   "pr": 14564,
+   "head": "26506415772fedd2a215dc5c56aa161aa4353da9",
+   "base": "5a18bfc6609ec860138ad431cd6d560ef6359aad",
+   "cluster": "pnpm/pnpm#14564",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/pnpm/pnpm/pull/14564#discussion_r3938940762",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-pnpm-pnpm-14564-b1-2650641",
+     "paths": [
+      "pnpm11/installing/commands/src/import/index.ts"
+     ],
+     "file": "pnpm11/installing/commands/src/import/index.ts",
+     "line": 125,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 72
+  },
+  {
+   "id": "home-assistant/core#173578@b3d19b8861f1",
+   "repo": "home-assistant/core",
+   "pr": 173578,
+   "head": "b3d19b8861f1deeff1dac7fdf0a4443dea5ad4f4",
+   "base": "f1b2b67b57b5eeca3f88fda5557645a80b8013d4",
+   "cluster": "home-assistant/core#173578",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/home-assistant/core/pull/173578#discussion_r3503016730",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-home-assistant-core-173578-b1-b3d19b8",
+     "paths": [
+      "homeassistant/components/switchbot/const.py"
+     ],
+     "file": "homeassistant/components/switchbot/const.py",
+     "line": 126,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 73
+  },
+  {
+   "id": "seaweedfs/seaweedfs#11185@ca3185aad8ea",
+   "repo": "seaweedfs/seaweedfs",
+   "pr": 11185,
+   "head": "ca3185aad8ea28ba45710675b4d2a4c3dfdfab7a",
+   "base": "3f9b05946b8e5a752e7a07b64dd5ce65ad9c99bc",
+   "cluster": "seaweedfs/seaweedfs#11185",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/seaweedfs/seaweedfs/pull/11185#discussion_r3941775771",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-seaweedfs-seaweedfs-11185-b1-ca3185a",
+     "paths": [
+      "weed/command/admin.go"
+     ],
+     "file": "weed/command/admin.go",
+     "line": 290,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 74
+  },
+  {
+   "id": "reflex-dev/reflex#7155@16f6f18bd8f5",
+   "repo": "reflex-dev/reflex",
+   "pr": 7155,
+   "head": "16f6f18bd8f57fc641be050d8498ae638712d636",
+   "base": "2f63cb342150116b0625f2355c95f364a4cf7812",
+   "cluster": "reflex-dev/reflex#7155",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/reflex-dev/reflex/pull/7155#discussion_r4017848383",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-reflex-dev-reflex-7155-b1-16f6f18",
+     "paths": [
+      "packages/reflex-base/src/reflex_base/otel.py"
+     ],
+     "file": "packages/reflex-base/src/reflex_base/otel.py",
+     "line": 210,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 75
+  },
+  {
+   "id": "maximhq/bifrost#6854@3a6a075f8d9c",
+   "repo": "maximhq/bifrost",
+   "pr": 6854,
+   "head": "3a6a075f8d9c5bfaef790ca48a3ce53cce07f86d",
+   "base": "bea2e1c10de67a3d563a86606ebc712c4a7f4b9d",
+   "cluster": "maximhq/bifrost#6854",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/maximhq/bifrost/pull/6854#discussion_r3937291106",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-maximhq-bifrost-6854-b1-3a6a075",
+     "paths": [
+      "core/providers/bedrock/responses.go"
+     ],
+     "file": "core/providers/bedrock/responses.go",
+     "line": 3576,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 76
+  },
+  {
+   "id": "coder/coder#28207@4b56c112bc5b",
+   "repo": "coder/coder",
+   "pr": 28207,
+   "head": "4b56c112bc5ba058a79a679d8d9a8d655a92b146",
+   "base": "bf236bb3403448b0c0ac6d05cbf2e73415e8ade5",
+   "cluster": "coder/coder#28207",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/coder/coder/pull/28207#discussion_r3796294744",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-coder-coder-28207-b1-4b56c11",
+     "paths": [
+      "site/src/pages/AgentsPage/components/ChatConversation/useChatStore.ts"
+     ],
+     "file": "site/src/pages/AgentsPage/components/ChatConversation/useChatStore.ts",
+     "line": 515,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 77
+  },
+  {
+   "id": "Project-N-E-K-O/N.E.K.O#3109@afc11beb6b11",
+   "repo": "Project-N-E-K-O/N.E.K.O",
+   "pr": 3109,
+   "head": "afc11beb6b1121d52bef31f9163385979f37626d",
+   "base": "d6f49ff5c0f67936fe0d529ba1065258ec346c2a",
+   "cluster": "Project-N-E-K-O/N.E.K.O#3109",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/Project-N-E-K-O/N.E.K.O/pull/3109#discussion_r3995090056",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-project-n-e-k-o-n-e-k-o-3109-b1-afc11be",
+     "paths": [
+      "static/js/api_key_settings.js"
+     ],
+     "file": "static/js/api_key_settings.js",
+     "line": 5586,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 78
+  },
+  {
+   "id": "microsoft/openvmm#3832@aba3419a8bf5",
+   "repo": "microsoft/openvmm",
+   "pr": 3832,
+   "head": "aba3419a8bf5ce9eb4cbf28d340cd667839c30b1",
+   "base": "b2d79e56cdf651a3c2d0a388dac70056f1c34c02",
+   "cluster": "microsoft/openvmm#3832",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/microsoft/openvmm/pull/3832#discussion_r3516314544",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-microsoft-openvmm-3832-b1-aba3419",
+     "paths": [
+      "support/crypto/src/ecdsa/mod.rs"
+     ],
+     "file": "support/crypto/src/ecdsa/mod.rs",
+     "line": 82,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 79
+  },
+  {
+   "id": "unslothai/unsloth#10371@aab840f8fdf3",
+   "repo": "unslothai/unsloth",
+   "pr": 10371,
+   "head": "aab840f8fdf321b9a5455900a9e3bb5173956088",
+   "base": "b8bfff26717b6dd702948c51f64136307b5ee34b",
+   "cluster": "unslothai/unsloth#10371",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/unslothai/unsloth/pull/10371#discussion_r3943289992",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-unslothai-unsloth-10371-b1-aab840f",
+     "paths": [
+      "studio/backend/core/inference/llama_cpp.py"
+     ],
+     "file": "studio/backend/core/inference/llama_cpp.py",
+     "line": 24357,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 80
+  },
+  {
+   "id": "jdx/mise#13123@f4463ab6118f",
+   "repo": "jdx/mise",
+   "pr": 13123,
+   "head": "f4463ab6118fc24523b793922f43c585717c0540",
+   "base": "a181a037c9672ed2a1a9aa65947c7f716b695b87",
+   "cluster": "jdx/mise#13123",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/jdx/mise/pull/13123#discussion_r3998011306",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-jdx-mise-13123-b1-f4463ab",
+     "paths": [
+      "src/toolset/install_options.rs"
+     ],
+     "file": "src/toolset/install_options.rs",
+     "line": 65,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 81
+  },
+  {
+   "id": "vitali87/code-graph-rag#1877@9e67aa9152cc",
+   "repo": "vitali87/code-graph-rag",
+   "pr": 1877,
+   "head": "9e67aa9152ccdd65dc1ff099a7f588ee67b7076b",
+   "base": "96e017e39b803a6f58b1db3da11d0a55656a42e9",
+   "cluster": "vitali87/code-graph-rag#1877",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/vitali87/code-graph-rag/pull/1877#discussion_r3999128470",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-vitali87-code-graph-rag-1877-b1-9e67aa9",
+     "paths": [
+      ".github/workflows/require-ci-at-head.yml"
+     ],
+     "file": ".github/workflows/require-ci-at-head.yml",
+     "line": 108,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 82
+  },
+  {
+   "id": "pipeshub-ai/pipeshub-ai#3267@bd21cb0916e2",
+   "repo": "pipeshub-ai/pipeshub-ai",
+   "pr": 3267,
+   "head": "bd21cb0916e2d219c5d62d002ef20afe56c0f178",
+   "base": "bb1fd063ccf7e0c046d48becb34dccf2f073637a",
+   "cluster": "pipeshub-ai/pipeshub-ai#3267",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/pipeshub-ai/pipeshub-ai/pull/3267#discussion_r4108878122",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-pipeshub-ai-pipeshub-ai-3267-b1-bd21cb0",
+     "paths": [
+      "backend/nodejs/apps/src/modules/mcp/controller/mcp.controller.ts"
+     ],
+     "file": "backend/nodejs/apps/src/modules/mcp/controller/mcp.controller.ts",
+     "line": 146,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 83
+  },
+  {
+   "id": "infiniflow/ragflow#19282@c27c565b3c7e",
+   "repo": "infiniflow/ragflow",
+   "pr": 19282,
+   "head": "c27c565b3c7e62f7502386f0b95a561f55a36cfc",
+   "base": "f99b9cd44b00f99dc79537ecdad710c5d693c902",
+   "cluster": "infiniflow/ragflow#19282",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/infiniflow/ragflow/pull/19282#discussion_r3938859289",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-infiniflow-ragflow-19282-b1-c27c565",
+     "paths": [
+      "agent/canvas.py"
+     ],
+     "file": "agent/canvas.py",
+     "line": 493,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 84
+  },
+  {
+   "id": "vitali87/code-graph-rag#1112@f3c0dc067bed",
+   "repo": "vitali87/code-graph-rag",
+   "pr": 1112,
+   "head": "f3c0dc067bed39b1f94d567878b9d97836a3ff4b",
+   "base": "53602af63c605fde4145e323ddf34c19cfc2fdf1",
+   "cluster": "vitali87/code-graph-rag#1112",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/vitali87/code-graph-rag/pull/1112#discussion_r3738499221",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-vitali87-code-graph-rag-1112-b1-f3c0dc0",
+     "paths": [
+      "codebase_rag/parsers/class_ingest/mixin.py"
+     ],
+     "file": "codebase_rag/parsers/class_ingest/mixin.py",
+     "line": 277,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 85
+  },
+  {
+   "id": "4gray/iptvnator#1626@54b1eed3e4f8",
+   "repo": "4gray/iptvnator",
+   "pr": 1626,
+   "head": "54b1eed3e4f83286989c388d586ce547d6680ee9",
+   "base": "fa8ce2699161e82f99bf8cb4387dc85814613cae",
+   "cluster": "4gray/iptvnator#1626",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/4gray/iptvnator/pull/1626#discussion_r4052468619",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-4gray-iptvnator-1626-b1-54b1eed",
+     "paths": [
+      "libs/services/src/lib/tmdb/tmdb-id-resolver.service.ts"
+     ],
+     "file": "libs/services/src/lib/tmdb/tmdb-id-resolver.service.ts",
+     "line": 61,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 86
+  },
+  {
+   "id": "vitali87/code-graph-rag#1484@982c960feda3",
+   "repo": "vitali87/code-graph-rag",
+   "pr": 1484,
+   "head": "982c960feda3cab86b9fb8721022868a473651db",
+   "base": "57b69ba03c2cac2964bac15b21badcc838f481e1",
+   "cluster": "vitali87/code-graph-rag#1484",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/vitali87/code-graph-rag/pull/1484#discussion_r3868577293",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-vitali87-code-graph-rag-1484-b1-982c960",
+     "paths": [
+      "codebase_rag/parsers/call_resolver.py"
+     ],
+     "file": "codebase_rag/parsers/call_resolver.py",
+     "line": 1371,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 87
+  },
+  {
+   "id": "infiniflow/ragflow#19288@7bb61dfdcfd5",
+   "repo": "infiniflow/ragflow",
+   "pr": 19288,
+   "head": "7bb61dfdcfd51dd81e9dd34ccb440607ed652dba",
+   "base": "0c28d59ea1d362d9b6aa7481eed48c7fd9a95f0b",
+   "cluster": "infiniflow/ragflow#19288",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/infiniflow/ragflow/pull/19288#discussion_r3941191032",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-infiniflow-ragflow-19288-b1-7bb61df",
+     "paths": [
+      "rag/llm/chat_model.py"
+     ],
+     "file": "rag/llm/chat_model.py",
+     "line": 1949,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 88
+  },
+  {
+   "id": "spiceai/spiceai#14044@2a6cb0612523",
+   "repo": "spiceai/spiceai",
+   "pr": 14044,
+   "head": "2a6cb06125231acd4d467dee1e8ffa4c99a854a7",
+   "base": "9972f4a6d455517099c1ca604bbc6a8c8c26f80f",
+   "cluster": "spiceai/spiceai#14044",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/spiceai/spiceai/pull/14044#discussion_r3985227584",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-spiceai-spiceai-14044-b1-2a6cb06",
+     "paths": [
+      "scripts/signoff"
+     ],
+     "file": "scripts/signoff",
+     "line": 917,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 89
+  },
+  {
+   "id": "4gray/iptvnator#1557@e60f10421ba1",
+   "repo": "4gray/iptvnator",
+   "pr": 1557,
+   "head": "e60f10421ba10f7bdc1e63acc78e2a61a409fc41",
+   "base": "9de480826c8a5f82fa4c1c052ec4cbfa107e52fc",
+   "cluster": "4gray/iptvnator#1557",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/4gray/iptvnator/pull/1557#discussion_r3943320892",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-4gray-iptvnator-1557-b1-e60f104",
+     "paths": [
+      "apps/electron-backend-e2e/src/epg-timeline-interaction.e2e.ts"
+     ],
+     "file": "apps/electron-backend-e2e/src/epg-timeline-interaction.e2e.ts",
+     "line": 120,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 90
+  },
+  {
+   "id": "vitali87/code-graph-rag#1846@a7b05eb7f40d",
+   "repo": "vitali87/code-graph-rag",
+   "pr": 1846,
+   "head": "a7b05eb7f40db026380728724d90df0b0f047c50",
+   "base": "70bd948fd17d76d2f3bb72b6c16162295a1afd30",
+   "cluster": "vitali87/code-graph-rag#1846",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/vitali87/code-graph-rag/pull/1846#discussion_r3983888183",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-vitali87-code-graph-rag-1846-b1-a7b05eb",
+     "paths": [
+      "codebase_rag/mcp/tools.py"
+     ],
+     "file": "codebase_rag/mcp/tools.py",
+     "line": 1262,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 91
+  },
+  {
+   "id": "moq-dev/moq#3641@86aff9d12bb1",
+   "repo": "moq-dev/moq",
+   "pr": 3641,
+   "head": "86aff9d12bb14ece557b6a144676cff457bc6e75",
+   "base": "246a4733f6259aecc8edb2b97d8952ff5e894454",
+   "cluster": "moq-dev/moq#3641",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/moq-dev/moq/pull/3641#discussion_r3998224471",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-moq-dev-moq-3641-b1-86aff9d",
+     "paths": [
+      "rs/moq-ffi/src/consumer.rs"
+     ],
+     "file": "rs/moq-ffi/src/consumer.rs",
+     "line": 448,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 92
+  },
+  {
+   "id": "kubernetes-sigs/kueue#16482@7c3b577f2578",
+   "repo": "kubernetes-sigs/kueue",
+   "pr": 16482,
+   "head": "7c3b577f25784e8db4a4cd04b08b7a690a9dd5a7",
+   "base": "36c42c8dfc10abcf90b15fa9c7cba6e28038b471",
+   "cluster": "kubernetes-sigs/kueue#16482",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/kubernetes-sigs/kueue/pull/16482#discussion_r4164918922",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-kubernetes-sigs-kueue-16482-b1-7c3b577",
+     "paths": [
+      "pkg/cache/scheduler/was/scheduler_simulator.go"
+     ],
+     "file": "pkg/cache/scheduler/was/scheduler_simulator.go",
+     "line": 151,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 93
+  },
+  {
+   "id": "traycerai/traycer#1814@0133a6bd3135",
+   "repo": "traycerai/traycer",
+   "pr": 1814,
+   "head": "0133a6bd3135c8a80e182ec2cdee69ba363903d6",
+   "base": "089375da3740713237159c8d5b63dbb2def5f8c9",
+   "cluster": "traycerai/traycer#1814",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/traycerai/traycer/pull/1814#discussion_r3982964368",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-traycerai-traycer-1814-b1-0133a6b",
+     "paths": [
+      "clients/gui-app/src/styles/auth-arrival.css"
+     ],
+     "file": "clients/gui-app/src/styles/auth-arrival.css",
+     "line": 60,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 94
+  },
+  {
+   "id": "infiniflow/ragflow#17668@0b185bf790c5",
+   "repo": "infiniflow/ragflow",
+   "pr": 17668,
+   "head": "0b185bf790c5bd7d1d5be220d8af9f0fde825788",
+   "base": "776b9371f7f8a7ef44161d5ed01805ceaa0e244d",
+   "cluster": "infiniflow/ragflow#17668",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/infiniflow/ragflow/pull/17668#discussion_r3692333627",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-infiniflow-ragflow-17668-b1-0b185bf",
+     "paths": [
+      "web/src/pages/dataset/compilation/hooks/use-compilation-nav.ts"
+     ],
+     "file": "web/src/pages/dataset/compilation/hooks/use-compilation-nav.ts",
+     "line": 58,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 95
+  },
+  {
+   "id": "traycerai/traycer#1739@377901beab3b",
+   "repo": "traycerai/traycer",
+   "pr": 1739,
+   "head": "377901beab3b8eb3fecf0902a1eeb436c07d3bc8",
+   "base": "92094efb27781728697bf582a90e1d704f2d3372",
+   "cluster": "traycerai/traycer#1739",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/traycerai/traycer/pull/1739#discussion_r3940527132",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-traycerai-traycer-1739-b1-377901b",
+     "paths": [
+      "clients/traycer-cli/src/auth/link-phone-flow.ts"
+     ],
+     "file": "clients/traycer-cli/src/auth/link-phone-flow.ts",
+     "line": 494,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 96
+  },
+  {
+   "id": "jdx/mise#13140@7d278c9aba2a",
+   "repo": "jdx/mise",
+   "pr": 13140,
+   "head": "7d278c9aba2a49128f69165b3d32cc7d7c9b409b",
+   "base": "ede84760b38a6c3526a3e33c8b9554e729d2e2e9",
+   "cluster": "jdx/mise#13140",
+   "group": "S2-mixed",
+   "stratum": "S2-mixed",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/jdx/mise/pull/13140#discussion_r3999585739",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-jdx-mise-13140-b1-7d278c9",
+     "paths": [
+      "src/oci/builder.rs"
+     ],
+     "file": "src/oci/builder.rs",
+     "line": 1031,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 97
+  },
+  {
+   "id": "promptfoo/promptfoo#10757@30c40e5da5d1",
+   "repo": "promptfoo/promptfoo",
+   "pr": 10757,
+   "head": "30c40e5da5d127a8436423c55c72de69a28a0389",
+   "base": "783d71ff922d16c70d6b3cfadcd61c6fadae8d3f",
+   "cluster": "promptfoo/promptfoo#10757",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/promptfoo/promptfoo/pull/10757#discussion_r3987051974",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-promptfoo-promptfoo-10757-b1-30c40e5",
+     "paths": [
+      "src/validation/fileExtensions.ts"
+     ],
+     "file": "src/validation/fileExtensions.ts",
+     "line": 11,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 98
+  },
+  {
+   "id": "marin-community/marin#9105@20b07188ec80",
+   "repo": "marin-community/marin",
+   "pr": 9105,
+   "head": "20b07188ec8044c553b4760cb8ba09f5c20c198f",
+   "base": "81966e89cbe501aab450d0a2a276be7fb8797ffc",
+   "cluster": "marin-community/marin#9105",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/marin-community/marin/pull/9105#discussion_r3990069834",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-marin-community-marin-9105-b1-20b0718",
+     "paths": [
+      "lib/marin/src/marin/evaluation/harbor/agent_context.py"
+     ],
+     "file": "lib/marin/src/marin/evaluation/harbor/agent_context.py",
+     "line": 68,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 99
+  },
+  {
+   "id": "moq-dev/moq#3386@aea4546002a4",
+   "repo": "moq-dev/moq",
+   "pr": 3386,
+   "head": "aea4546002a4f35efda5ca2a26bf4394d71a048a",
+   "base": "9e2054aea31714139bd9e07697468c4d0e27ee2f",
+   "cluster": "moq-dev/moq#3386",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/moq-dev/moq/pull/3386#discussion_r3937091476",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-moq-dev-moq-3386-b1-aea4546",
+     "paths": [
+      "rs/moq-audio/src/decode/consumer.rs"
+     ],
+     "file": "rs/moq-audio/src/decode/consumer.rs",
+     "line": 301,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 100
+  },
+  {
+   "id": "home-assistant/core#181388@4411a1fdee64",
+   "repo": "home-assistant/core",
+   "pr": 181388,
+   "head": "4411a1fdee64270dbfc5ae3a50f3a1eb642d8db1",
+   "base": "c12d255b5fd3e34cb1b47d19b1a00b32e704c9c6",
+   "cluster": "home-assistant/core#181388",
+   "group": "S2-openai",
+   "stratum": "S2-openai",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/home-assistant/core/pull/181388#discussion_r3941273884",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-home-assistant-core-181388-b1-4411a1f",
+     "paths": [
+      "homeassistant/components/fronius/coordinator.py"
+     ],
+     "file": "homeassistant/components/fronius/coordinator.py",
+     "line": 309,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B2",
+     "case": "rrb-home-assistant-core-181388-b2-4411a1f",
+     "paths": [
+      "homeassistant/components/fronius/coordinator.py"
+     ],
+     "file": "homeassistant/components/fronius/coordinator.py",
+     "line": 336,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "rank": 101
+  },
+  {
+   "id": "bytedance/deer-flow#3783@c1ac499e7dce",
+   "repo": "bytedance/deer-flow",
+   "pr": 3783,
+   "head": "c1ac499e7dce5bf90c0c679e44f7b1750f525d9d",
+   "base": "48477d868b92e0366a662d1f9f4e439ea2f8ca2c",
+   "cluster": "bytedance/deer-flow#3783",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/bytedance/deer-flow/pull/3783",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-bytedance-deer-flow-3783-b1-decoy",
+     "paths": [
+      "frontend/src/core/suggestions/placeholders.ts"
+     ],
+     "file": "frontend/src/core/suggestions/placeholders.ts",
+     "line": 1,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "apache/superset#40195@adeab56111b1",
+   "repo": "apache/superset",
+   "pr": 40195,
+   "head": "adeab56111b11d6df4d59e60d909a71fcba0ea6f",
+   "base": "3818152191286f3d6e35f7273a17fa3048611641",
+   "cluster": "apache/superset#40195",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/superset/pull/40195",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-superset-40195-b1-decoy",
+     "paths": [
+      "superset/utils/csv.py"
+     ],
+     "file": "superset/utils/csv.py",
+     "line": 29,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "vllm-project/vllm#40116@0dede2daba42",
+   "repo": "vllm-project/vllm",
+   "pr": 40116,
+   "head": "0dede2daba4214ad0d1c16e3d87b1691e2799ac7",
+   "base": "643c125fab66d5ed5ec3143b7e764a77e7ae8ac7",
+   "cluster": "vllm-project/vllm#40116",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/vllm-project/vllm/pull/40116",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-vllm-project-vllm-40116-b1-decoy",
+     "paths": [
+      "vllm/model_executor/models/qwen3_vl.py"
+     ],
+     "file": "vllm/model_executor/models/qwen3_vl.py",
+     "line": 51,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "sgl-project/sglang#22660@c9a23ddc2474",
+   "repo": "sgl-project/sglang",
+   "pr": 22660,
+   "head": "c9a23ddc2474113db32250226a01337e1a91eeac",
+   "base": "cc7d7ba3ddd8ec59824afb9a3c7a289d300d3b46",
+   "cluster": "sgl-project/sglang#22660",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/sgl-project/sglang/pull/22660",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-sgl-project-sglang-22660-b1-decoy",
+     "paths": [
+      "python/sglang/srt/layers/moe/moe_runner/triton_utils/fused_moe.py"
+     ],
+     "file": "python/sglang/srt/layers/moe/moe_runner/triton_utils/fused_moe.py",
+     "line": 793,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "datahub-project/datahub#18017@edeebe528e8e",
+   "repo": "datahub-project/datahub",
+   "pr": 18017,
+   "head": "edeebe528e8e327a04eeb30c9ff5b1ebcd2f9080",
+   "base": "fdb6c9bcd70e4e2256a9272e12a9c342d62f09e7",
+   "cluster": "datahub-project/datahub#18017",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/datahub-project/datahub/pull/18017",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-datahub-project-datahub-18017-b1-decoy",
+     "paths": [
+      "metadata-ingestion/src/datahub/ingestion/source/powerbi/m_query/pattern_handler.py"
+     ],
+     "file": "metadata-ingestion/src/datahub/ingestion/source/powerbi/m_query/pattern_handler.py",
+     "line": 1525,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "vllm-project/vllm#41131@a945dc22d90e",
+   "repo": "vllm-project/vllm",
+   "pr": 41131,
+   "head": "a945dc22d90e52c28bc4b35156fcb106a91d6d40",
+   "base": "27d7061ef62b3d853b4d335baf8ea9b3c56d9bf3",
+   "cluster": "vllm-project/vllm#41131",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/vllm-project/vllm/pull/41131",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-vllm-project-vllm-41131-b1-decoy",
+     "paths": [
+      "vllm/entrypoints/speech_to_text/base/serving.py"
+     ],
+     "file": "vllm/entrypoints/speech_to_text/base/serving.py",
+     "line": 261,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "apache/superset#32958@01d2c26f88d6",
+   "repo": "apache/superset",
+   "pr": 32958,
+   "head": "01d2c26f88d64d870c889daed3a024ff07f84f9a",
+   "base": "19399a506811a2afaac0d8d1cbaa4bc25ddb2bfe",
+   "cluster": "apache/superset#32958",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/superset/pull/32958",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-superset-32958-b1-decoy",
+     "paths": [
+      "superset-frontend/src/dashboard/reducers/dashboardState.ts"
+     ],
+     "file": "superset-frontend/src/dashboard/reducers/dashboardState.ts",
+     "line": 89,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "kubernetes-sigs/kueue#11855@2c16c5a83858",
+   "repo": "kubernetes-sigs/kueue",
+   "pr": 11855,
+   "head": "2c16c5a838582541cd29a15990b696089b82bec4",
+   "base": "45f4790f41a060913ba3dc22a403bd95445cd993",
+   "cluster": "kubernetes-sigs/kueue#11855",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/kubernetes-sigs/kueue/pull/11855",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-kubernetes-sigs-kueue-11855-b1-decoy",
+     "paths": [
+      "apis/config/v1beta2/defaults.go"
+     ],
+     "file": "apis/config/v1beta2/defaults.go",
+     "line": 48,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "apache/airflow#62938@5e00a9ecd98a",
+   "repo": "apache/airflow",
+   "pr": 62938,
+   "head": "5e00a9ecd98a7bd3a1d4fc370d1be95e46c208fe",
+   "base": "5efa9a1c8bf362223143cc2b28353b08816fc61f",
+   "cluster": "apache/airflow#62938",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/apache/airflow/pull/62938",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-apache-airflow-62938-b1-decoy",
+     "paths": [
+      "providers/git/src/airflow/providers/git/bundles/git.py"
+     ],
+     "file": "providers/git/src/airflow/providers/git/bundles/git.py",
+     "line": 376,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "bytedance/deer-flow#3428@c05e88374c69",
+   "repo": "bytedance/deer-flow",
+   "pr": 3428,
+   "head": "c05e88374c698ca84dafdc71aa9d9349bff2efd1",
+   "base": "cad6e89a19fb46b23caa20b5e22b365b5b96fc46",
+   "cluster": "bytedance/deer-flow#3428",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/bytedance/deer-flow/pull/3428",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-bytedance-deer-flow-3428-b1-decoy",
+     "paths": [
+      "scripts/wizard/providers.py"
+     ],
+     "file": "scripts/wizard/providers.py",
+     "line": 5,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "NVIDIA/Model-Optimizer#1888@c6b39711c849",
+   "repo": "NVIDIA/Model-Optimizer",
+   "pr": 1888,
+   "head": "c6b39711c8498ae39af7171b74086500ff45ce21",
+   "base": "429373bdaa6d2b6f575350a33a06de3a5476c33a",
+   "cluster": "NVIDIA/Model-Optimizer#1888",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/NVIDIA/Model-Optimizer/pull/1888",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-nvidia-model-optimizer-1888-b1-decoy",
+     "paths": [
+      "modelopt/torch/utils/plugins/prepare_megatron_data_blend.py"
+     ],
+     "file": "modelopt/torch/utils/plugins/prepare_megatron_data_blend.py",
+     "line": 1,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "home-assistant/core#166087@2a5a5ee6eebf",
+   "repo": "home-assistant/core",
+   "pr": 166087,
+   "head": "2a5a5ee6eebf033716f64935172a43834337214d",
+   "base": "2ad15d7f3d2e8317fc3cc45af99bc57a764d3963",
+   "cluster": "home-assistant/core#166087",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/home-assistant/core/pull/166087",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-home-assistant-core-166087-b1-decoy",
+     "paths": [
+      "homeassistant/components/airthings/sensor.py"
+     ],
+     "file": "homeassistant/components/airthings/sensor.py",
+     "line": 19,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "alibaba/rtp-llm#1291@26c836e137af",
+   "repo": "alibaba/rtp-llm",
+   "pr": 1291,
+   "head": "26c836e137af1fe2013f728cff4d4d50ebc99b54",
+   "base": "484ff69bf7ad401480d9fb6644977c555f88abaf",
+   "cluster": "alibaba/rtp-llm#1291",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/alibaba/rtp-llm/pull/1291",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-alibaba-rtp-llm-1291-b1-decoy",
+     "paths": [
+      ".github/scripts/ci_gate/review.py"
+     ],
+     "file": ".github/scripts/ci_gate/review.py",
+     "line": 10,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "vllm-project/vllm-ascend#10126@1f70d671a30a",
+   "repo": "vllm-project/vllm-ascend",
+   "pr": 10126,
+   "head": "1f70d671a30a08088c08eccb5e70cebedff0e3c9",
+   "base": "43e8b0a92e3e40b65aabeb9d8c263a51a785056e",
+   "cluster": "vllm-project/vllm-ascend#10126",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/vllm-project/vllm-ascend/pull/10126",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-vllm-project-vllm-ascend-10126-b1-decoy",
+     "paths": [
+      "examples/offline_reload_weight.py"
+     ],
+     "file": "examples/offline_reload_weight.py",
+     "line": 1,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "alibaba/rtp-llm#1246@57fbd52a9b7d",
+   "repo": "alibaba/rtp-llm",
+   "pr": 1246,
+   "head": "57fbd52a9b7d8ba2bc5df9fab03430db5f1cbaaa",
+   "base": "669cdd80c27065184b6ae4d10e77b851b031208e",
+   "cluster": "alibaba/rtp-llm#1246",
+   "group": "N",
+   "stratum": "N",
+   "repro_confirmed": null,
+   "evidence": "https://github.com/alibaba/rtp-llm/pull/1246",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-alibaba-rtp-llm-1246-b1-decoy",
+     "paths": [
+      "rtp_llm/models/qwen3_next/qwen3_next_weight.py"
+     ],
+     "file": "rtp_llm/models/qwen3_next/qwen3_next_weight.py",
+     "line": 652,
+     "location": "added",
+     "counts": "over-blocking"
+    }
+   ]
+  },
+  {
+   "id": "garrytan/gstack#3567@2b42ec597e03",
+   "repo": "garrytan/gstack",
+   "pr": 3567,
+   "head": "2b42ec597e035880838df088475001c03ecb3c17",
+   "base": "4c745eec108abf7072f1ff755dce09bc8ba400a9",
+   "cluster": "garrytan/gstack#3567",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3567-noloss-b1",
+     "paths": [
+      "lib/ship-receipt-depth.ts"
+     ],
+     "file": "lib/ship-receipt-depth.ts",
+     "line": 124,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B2",
+     "case": "gstack-3567-noloss-b2",
+     "paths": [
+      "lib/ship-receipt-depth.ts"
+     ],
+     "file": "lib/ship-receipt-depth.ts",
+     "line": 46,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B3",
+     "case": "gstack-3572-review-4ad8a6bf",
+     "paths": [
+      "bin/gstack-ship-receipt"
+     ],
+     "file": "bin/gstack-ship-receipt",
+     "line": 602,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3526@808dead70e32",
+   "repo": "garrytan/gstack",
+   "pr": 3526,
+   "head": "808dead70e32c78b7ba5c6035b41cf6892c3c81f",
+   "base": "398618259d56df55e66793f168d0bd8c25cb9085",
+   "cluster": "garrytan/gstack#3526",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3526-noloss-b1",
+     "paths": [
+      "bin/gstack-harness-ledger.sh",
+      "lib/harness-register.ts"
+     ],
+     "file": "bin/gstack-harness-ledger.sh",
+     "line": 35,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B2",
+     "case": "gstack-3526-noloss-b2",
+     "paths": [
+      "bin/gstack-harness-ledger.sh",
+      "lib/harness-register.ts"
+     ],
+     "file": "bin/gstack-harness-ledger.sh",
+     "line": 40,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B3",
+     "case": "gstack-3526-noloss-b3",
+     "paths": [
+      "bin/gstack-harness-ledger.sh",
+      "lib/harness-register.ts"
+     ],
+     "file": "bin/gstack-harness-ledger.sh",
+     "line": 27,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B4",
+     "case": "gstack-3526-noloss-b4",
+     "paths": [
+      "lib/harness-register.ts",
+      "bin/gstack-harness-ledger.sh"
+     ],
+     "file": "lib/harness-register.ts",
+     "line": 429,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3593@89156431975e",
+   "repo": "garrytan/gstack",
+   "pr": 3593,
+   "head": "89156431975e5569f57130b37c8fcef3be676c89",
+   "base": "edf4c2e581e6e05b04545b15df00e2e4cedab23f",
+   "cluster": "garrytan/gstack#3593",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3593-noloss-b1",
+     "paths": [
+      "lib/ship-budget.ts"
+     ],
+     "file": "lib/ship-budget.ts",
+     "line": 306,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B2",
+     "case": "gstack-3593-noloss-b2",
+     "paths": [
+      "lib/ship-budget.ts"
+     ],
+     "file": "lib/ship-budget.ts",
+     "line": 242,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3583@f5bcdf71a765",
+   "repo": "garrytan/gstack",
+   "pr": 3583,
+   "head": "f5bcdf71a765db9ddf56f76d7995b7650a6a7e2e",
+   "base": "4729f4752ba6aa6524f52fa49f51c28779a3ea24",
+   "cluster": "garrytan/gstack#3583",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3583-noloss-b1",
+     "paths": [
+      "lib/autoplan-carry.ts"
+     ],
+     "file": "lib/autoplan-carry.ts",
+     "line": 114,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B2",
+     "case": "gstack-3583-noloss-b2",
+     "paths": [
+      "lib/autoplan-carry.ts"
+     ],
+     "file": "lib/autoplan-carry.ts",
+     "line": 85,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3524@205ea0e2e82f",
+   "repo": "garrytan/gstack",
+   "pr": 3524,
+   "head": "205ea0e2e82f8239a97fd07b77fec49eddc2e2b0",
+   "base": "10b77de4f2e8a2377f21adea6ac2bbd91b8a30df",
+   "cluster": "garrytan/gstack#3524",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3524-noloss-b1",
+     "paths": [
+      "scripts/skill-bin-drift.ts"
+     ],
+     "file": "scripts/skill-bin-drift.ts",
+     "line": 124,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3431@8f4cbb8db01c",
+   "repo": "garrytan/gstack",
+   "pr": 3431,
+   "head": "8f4cbb8db01c25a0deb0aeee9e5de0e02c283e70",
+   "base": "1c28c09b763307fb4c125fef595dc297d7d10446",
+   "cluster": "garrytan/gstack#3431",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3431-review-9a79ceef",
+     "paths": [
+      "bin/gstack-timeline-log"
+     ],
+     "file": "bin/gstack-timeline-log",
+     "line": 23,
+     "location": "unknown",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3516@ee73419c3295",
+   "repo": "garrytan/gstack",
+   "pr": 3516,
+   "head": "ee73419c3295e4d47ab09864fd99be7efbd428e1",
+   "base": "3e4240a76f301e5bb5afbd2476233345c2d20dc4",
+   "cluster": "garrytan/gstack#3516",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3516-noloss-b1",
+     "paths": [
+      "test/skill-e2e-ship-docsync.test.ts",
+      "test/helpers/docsync-contract.ts"
+     ],
+     "file": "test/skill-e2e-ship-docsync.test.ts",
+     "line": 84,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B2",
+     "case": "gstack-3516-noloss-b2",
+     "paths": [
+      "scripts/resolvers/plan-gates.ts"
+     ],
+     "file": "scripts/resolvers/plan-gates.ts",
+     "line": 566,
+     "location": "context",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3564@e97b8573502b",
+   "repo": "garrytan/gstack",
+   "pr": 3564,
+   "head": "e97b8573502b785a5df3e9e8e05efe55a00656d3",
+   "base": "4c745eec108abf7072f1ff755dce09bc8ba400a9",
+   "cluster": "garrytan/gstack#3564",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3564-noloss-b1",
+     "paths": [
+      "bin/gstack-ship-receipt"
+     ],
+     "file": "bin/gstack-ship-receipt",
+     "line": 396,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#1808@b17f340a457a",
+   "repo": "garrytan/gstack",
+   "pr": 1808,
+   "head": "b17f340a457ac6273f0b5e2d09b45eb454ff9ee6",
+   "base": "b88223677b8d30874d8855e3c1c5aa98a6ceb965",
+   "cluster": "garrytan/gstack#1808",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-1808-fixed-by-3386",
+     "paths": [
+      "bin/gstack-gbrain-sync.ts"
+     ],
+     "file": "bin/gstack-gbrain-sync.ts",
+     "line": 763,
+     "location": "unknown",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3534@a76620148c19",
+   "repo": "garrytan/gstack",
+   "pr": 3534,
+   "head": "a76620148c194ce9f8123d34213b8220d2c8cf45",
+   "base": "6f27f0c269cb33ad60b300ec10df63c2b9f296ba",
+   "cluster": "garrytan/gstack#3534",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3534-noloss-b1",
+     "paths": [
+      "lib/pregate/lane-selection.ts"
+     ],
+     "file": "lib/pregate/lane-selection.ts",
+     "line": 109,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B2",
+     "case": "gstack-3534-noloss-b2",
+     "paths": [
+      "lib/pregate/import-graph.ts",
+      "lib/pregate/lane-selection.ts"
+     ],
+     "file": "lib/pregate/import-graph.ts",
+     "line": 481,
+     "location": "context",
+     "counts": "blocking"
+    },
+    {
+     "id": "B3",
+     "case": "gstack-3534-noloss-b3",
+     "paths": [
+      "lib/pregate/import-graph.ts",
+      "lib/pregate/lane-selection.ts"
+     ],
+     "file": "lib/pregate/import-graph.ts",
+     "line": 496,
+     "location": "context",
+     "counts": "blocking"
+    },
+    {
+     "id": "B4",
+     "case": "gstack-3534-noloss-b4",
+     "paths": [
+      "lib/pregate/lane-selection.ts",
+      "lib/pregate/import-graph.ts"
+     ],
+     "file": "lib/pregate/lane-selection.ts",
+     "line": 115,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3545@d4f0ea3c314f",
+   "repo": "garrytan/gstack",
+   "pr": 3545,
+   "head": "d4f0ea3c314f4506097f3968ff65cdf1a1fdaa47",
+   "base": "4b8c03bea9d1c7b51257f6267a4831ee0da8aa20",
+   "cluster": "garrytan/gstack#3545",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3545-noloss-b1",
+     "paths": [
+      "browse/test/process-liveness-windows.test.ts"
+     ],
+     "file": "browse/test/process-liveness-windows.test.ts",
+     "line": 154,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gstack#3573@f3a130c760f8",
+   "repo": "garrytan/gstack",
+   "pr": 3573,
+   "head": "f3a130c760f8b4539f131c35aabb6ce80eaf394b",
+   "base": "29f8ca053e7417d4702a094ce867f00cb7081a46",
+   "cluster": "garrytan/gstack#3573",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gstack-3573-noloss-b1",
+     "paths": [
+      "bin/gstack-capy-session"
+     ],
+     "file": "bin/gstack-capy-session",
+     "line": 115,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gbrain#7878@d43d2497a65c",
+   "repo": "garrytan/gbrain",
+   "pr": 7878,
+   "head": "d43d2497a65cb4b5fec162cd7460225c1769488a",
+   "base": "5af37ba4445547b150ba1a4432f07fafe01c43c6",
+   "cluster": "garrytan/gbrain#7878",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gbrain-7878-review-748bf631",
+     "paths": [
+      "src/core/cycle/synthesize-source-routing.ts"
+     ],
+     "file": "src/core/cycle/synthesize-source-routing.ts",
+     "line": 69,
+     "location": "unknown",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gbrain#7684@ac3c2af65960",
+   "repo": "garrytan/gbrain",
+   "pr": 7684,
+   "head": "ac3c2af65960dc401988daf6600c849bce2344ce",
+   "base": "a642d5d891d93d8a6a9b024df20d4223ecbc2f1f",
+   "cluster": "garrytan/gbrain#7684",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gbrain-7684-review-de9eb9dd",
+     "paths": [
+      "src/core/persistence/git-door.ts"
+     ],
+     "file": "src/core/persistence/git-door.ts",
+     "line": 407,
+     "location": "unknown",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gbrain#7511@6b01f793f2bc",
+   "repo": "garrytan/gbrain",
+   "pr": 7511,
+   "head": "6b01f793f2bcd86437e227f7de042ab59b8952e1",
+   "base": "ade6d63879f9fe3736f77266c5958ff461a897cd",
+   "cluster": "garrytan/gbrain#7511",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gbrain-7511-review-55279fb3",
+     "paths": [
+      "src/commands/trust.ts"
+     ],
+     "file": "src/commands/trust.ts",
+     "line": 181,
+     "location": "unknown",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gbrain#7901@40461c875975",
+   "repo": "garrytan/gbrain",
+   "pr": 7901,
+   "head": "40461c875975d8e6673632acfb6c2104c17519db",
+   "base": "7a929e2b21ea960fb5f596ca68e06e3351d4103b",
+   "cluster": "garrytan/gbrain#7901",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gbrain-7901-review-8923ce6b",
+     "paths": [
+      "scripts/pregate-remote-gate.sh"
+     ],
+     "file": "scripts/pregate-remote-gate.sh",
+     "line": 21,
+     "location": "unknown",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gbrain#7789@49eb4da5f7c8",
+   "repo": "garrytan/gbrain",
+   "pr": 7789,
+   "head": "49eb4da5f7c805cb78924aa77163fd642deca43d",
+   "base": "82c419b6bbff5b2e719b399e95941253aa505045",
+   "cluster": "garrytan/gbrain#7789",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gbrain-7789-review-751f6d54",
+     "paths": [
+      "src/core/outside-content.ts"
+     ],
+     "file": "src/core/outside-content.ts",
+     "line": 65,
+     "location": "unknown",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/gbrain#7794@2d801d54cee4",
+   "repo": "garrytan/gbrain",
+   "pr": 7794,
+   "head": "2d801d54cee4577ca2a34d89ca538e40a549d333",
+   "base": "af87170126d52f1c7c532732b1156ee8b5e2c2a5",
+   "cluster": "garrytan/gbrain#7794",
+   "group": "H-stacks-r1",
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "gbrain-7794-review-e85621a0",
+     "paths": [
+      "src/core/trust/owner-actions.ts"
+     ],
+     "file": "src/core/trust/owner-actions.ts",
+     "line": 111,
+     "location": "unknown",
+     "counts": "blocking"
+    }
+   ],
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "gstack-evals stacks-r1 (wiki/plans/2026-10-31-geva-76-stacks-round-1-prereg/stacks-r1.json)",
+   "rank": null
+  },
+  {
+   "id": "garrytan/harness-evals#206@478d5959a455",
+   "repo": "garrytan/harness-evals",
+   "pr": 206,
+   "head": "478d5959a45561a09dea642afa0e27e90b16af34",
+   "base": "3230ddfdee39711c8ca47437f308fe4928005c60",
+   "cluster": "garrytan/harness-evals#206",
+   "group": "H-206",
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "harness-evals #206 /ship review record",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-garrytan-harness-evals-206-b1-478d595",
+     "paths": [
+      "scripts/seal-heldout.ts"
+     ],
+     "file": "scripts/seal-heldout.ts",
+     "line": 196,
+     "location": "added",
+     "counts": "blocking"
+    },
+    {
+     "id": "B2",
+     "case": "rrb-garrytan-harness-evals-206-b2-478d595",
+     "paths": [
+      "scripts/sealed/seal.ts"
+     ],
+     "file": "scripts/sealed/seal.ts",
+     "line": 328,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ]
+  },
+  {
+   "id": "garrytan/harness-evals#206@67790b484c61",
+   "repo": "garrytan/harness-evals",
+   "pr": 206,
+   "head": "67790b484c61b186e2e6938c1a24d8a5eb70a63c",
+   "base": "3230ddfdee39711c8ca47437f308fe4928005c60",
+   "cluster": "garrytan/harness-evals#206",
+   "group": "H-206",
+   "stratum": "H",
+   "repro_confirmed": null,
+   "evidence": "harness-evals #206 /ship review record",
+   "rank": null,
+   "blockers": [
+    {
+     "id": "B1",
+     "case": "rrb-garrytan-harness-evals-206-b1-67790b4",
+     "paths": [
+      "scripts/sealed/rekey.ts"
+     ],
+     "file": "scripts/sealed/rekey.ts",
+     "line": 143,
+     "location": "added",
+     "counts": "blocking"
+    }
+   ]
+  }
+ ],
+ "ineligible": [],
+ "excluded": [
+  {
+   "ref": "apache/datafusion#25005@3f500825abd06b77832972f29abf127dc6d49ca6 bug 1",
+   "reason": "same defect as an earlier blocker in this unit (same file, within 3 lines)"
+  },
+  {
+   "ref": "simstudioai/sim#7764@98cac46fe7b2",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "seaweedfs/seaweedfs#11182@e83972b78995",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "gptme/gptme#3807@9126637d34f1",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "gptme/gptme#3720@dbfcf040231a",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "simstudioai/sim#7726@fe50edb003a6",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "Project-N-E-K-O/N.E.K.O#3048@34d26bbc51ab",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "simstudioai/sim#7483@ba9140495c9b",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "simstudioai/sim#8742@198a8b7ae9bf",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "seaweedfs/seaweedfs#11168@eceb96844adc",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "simstudioai/sim#7800@e631110bbcb8",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "seaweedfs/seaweedfs#11161@f6e503c04470",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "Project-N-E-K-O/N.E.K.O#3224@2bd956928303",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "seaweedfs/seaweedfs#11166@db03ac7986ce",
+   "reason": "over the 4-units-per-repository limit"
+  },
+  {
+   "ref": "garrytan/gstack#3596@0be7c3d44339",
+   "reason": "stacks-r1 unit not drawn for H (seed 2665, 18 units)"
+  },
+  {
+   "ref": "garrytan/gstack#3527@2684974602c1",
+   "reason": "stacks-r1 unit not drawn for H (seed 2665, 18 units)"
+  },
+  {
+   "ref": "garrytan/gstack#3540@115355a38bd6",
+   "reason": "stacks-r1 unit not drawn for H (seed 2665, 18 units)"
+  },
+  {
+   "ref": "garrytan/gstack#3578@0ff98dba1fdd",
+   "reason": "stacks-r1 unit not drawn for H (seed 2665, 18 units)"
+  },
+  {
+   "ref": "garrytan/gbrain#7674@af88cba164b0",
+   "reason": "stacks-r1 unit not drawn for H (seed 2665, 18 units)"
+  },
+  {
+   "ref": "garrytan/gbrain#7872@f61d1a5fd5fa",
+   "reason": "stacks-r1 unit not drawn for H (seed 2665, 18 units)"
+  },
+  {
+   "ref": "garrytan/gbrain#7884@d3b843389bd6",
+   "reason": "stacks-r1 unit with no blocking blocker"
+  },
+  {
+   "ref": "garrytan/gstack#3381@8a52c271ad81",
+   "reason": "stacks-r1 unit not drawn for H (seed 2665, 18 units)"
+  },
+  {
+   "ref": "garrytan/gstack#3448@b476ae9e4b66",
+   "reason": "stacks-r1 unit not drawn for H (seed 2665, 18 units)"
+  },
+  {
+   "ref": "garrytan/gstack#3475@fc69d3ff0bfe",
+   "reason": "stacks-r1 unit with no blocking blocker"
+  },
+  {
+   "ref": "garrytan/gstack#3494@c555ce3a8324",
+   "reason": "stacks-r1 unit with no blocking blocker"
+  },
+  {
+   "ref": "garrytan/gstack#3507@8c021d124220",
+   "reason": "stacks-r1 unit with no blocking blocker"
+  },
+  {
+   "ref": "garrytan/gstack#3516@3712b7971126",
+   "reason": "second head of a stacks-r1 PR already in the draw pool"
+  },
+  {
+   "ref": "garrytan/gstack#3556@95d9c6d06ef1",
+   "reason": "stacks-r1 unit with no blocking blocker"
+  },
+  {
+   "ref": "garrytan/gstack#3557@7459bb48317d",
+   "reason": "stacks-r1 unit with no blocking blocker"
+  }
+ ],
+ "frozen_bars": []
+}

@@ -2,10 +2,11 @@
 // small git repository built here, and fake transports in the Anthropic Messages and OpenAI Responses shapes.
 import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXTRA_TURNS, MAX_EXTRA_TURNS, parseJudge, promptFor, readOnce, RepoView, requestBody, runSession, SUBMIT, TOOL_BUDGET, toolSpecs, validateRuling, type JudgeItem, type Transport } from '../../scripts/review-bugs/tool-judge.ts';
+import { appendDurable, EXTRA_TURNS, MAX_EXTRA_TURNS, meteredRead, parseJudge, promptFor, readOnce, RepoView, requestBody, runSession, SUBMIT, TOOL_BUDGET, tallied, toolSpecs, validateRuling, type JudgeItem, type Transport } from '../../scripts/review-bugs/tool-judge.ts';
+import { score } from '../../scripts/review-bugs/rejudge.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'tool-judge-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
@@ -193,5 +194,57 @@ describe('sessions', () => {
     expect(r.outcome).toBe('unanswered');
     expect(t.bodies.length).toBe(3);
     expect(t.bodies[1].input.at(-1)).toEqual({ role: 'user', content: [{ type: 'input_text', text: 'Call submit_ruling now with your ruling.' }] });
+  });
+});
+
+describe('stage 2 Amendment 4', () => {
+  const openai = parseJudge('openai:gpt-6-astra');
+  const anthropic = parseJudge('anthropic:claude-opus-5-5');
+  const ok = (body: unknown) => ({ status: 200, text: JSON.stringify(body) });
+  const tu = (name: string, input: object, id = 't1') => ({ type: 'tool_use', id, name, input });
+  const bad = (type: string) => ({ status: 400, text: JSON.stringify({ type: 'error', error: { type, message: 'request ' + Math.random() } }) });
+  const ruled = () => ok({ content: [tu('submit_ruling', submit)], stop_reason: 'tool_use', usage: { input_tokens: 10, output_tokens: 2 } });
+  test('fix 2: the same 4xx twice ends the read as provider_error, after one more try and with no fresh session', async () => {
+    const t = scripted([() => bad('invalid_request_error')]);
+    const r = await readOnce(judgeView, anthropic, 'P', t, 0);
+    expect(r).toMatchObject({ outcome: 'provider_error', attempts: 1, ruled: null, turns: 1 });
+    expect(r.note).toMatch(/^HTTP 400 twice \(invalid_request_error\/\)/);
+    expect(t.bodies.length).toBe(2);
+    expect(t.bodies[1]).toEqual(t.bodies[0]);
+  });
+  test('fix 2: a 4xx that clears on the second try goes on; a different error class is a failed read, asked once more', async () => {
+    const clears = scripted([() => bad('invalid_request_error'), ruled]);
+    expect(await readOnce(judgeView, anthropic, 'P', clears, 0)).toMatchObject({ outcome: 'ruled', attempts: 1 });
+    expect(clears.bodies.length).toBe(2);
+    const differs = scripted([() => bad('invalid_request_error'), () => bad('not_found_error'), ruled]);
+    expect(await readOnce(judgeView, anthropic, 'P', differs, 0)).toMatchObject({ outcome: 'ruled', attempts: 2 });
+  });
+  test('fix 2: the proxy\'s 402 and 403 and the transport-retried 429 and 5xx are not sent again here', async () => {
+    for (const status of [402, 403, 429, 500]) {
+      const t = scripted([() => ({ status, text: '{"error":{"type":"x"}}' })]);
+      expect((await runSession(judgeView, openai, 'P', t, 0)).outcome).toBe('failed');
+      expect(t.bodies.length).toBe(1);
+    }
+  });
+  const k = { item: 'u1-F1', role: 'judge' as const, judge: 'anthropic:claude-opus-5-5', key: 'tool-judge:r:judge:opus:u1-F1', prompt_sha256: 'p' };
+  test('fix 3: each read is appended to rulings.jsonl the moment it ends, and a ruling survives a finalize that throws', async () => {
+    const file = join(tmp, 'a4-rulings.jsonl');
+    writeFileSync(file, '');
+    const m = await meteredRead(k, () => readOnce(judgeView, anthropic, 'P', scripted([ruled]), 0), async () => { throw new Error('proxy gone'); },
+      { input: 0, cached: 0, cache_write: 0, output: 0 }, (row) => appendDurable(file, JSON.stringify(row)));
+    expect(m.stop).toMatch(/finalize failed: proxy gone/);
+    const rows = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ item: 'u1-F1', outcome: 'ruled', ruling: 'defect', usd: null, note: '; finalize failed: proxy gone' });
+    expect(() => score([rows[0], { ...rows[0], ruling: 'not-defect' }], k.judge, 'openai:gpt-6-astra', 1, 0.6)).toThrow(/two usable judge reads/);
+  });
+  test('fix 4: a read that throws records the meter\'s cost and the tokens of every answer it got', async () => {
+    const tally = { input: 0, cached: 0, cache_write: 0, output: 0 };
+    let n = 0;
+    const send = tallied(async () => { if (n++) throw new Error('socket closed'); return ok({ content: [tu('list_dir', { path: '' })], stop_reason: 'tool_use', usage: { input_tokens: 70, cache_read_input_tokens: 30, output_tokens: 5 } }); }, tally);
+    let row: Record<string, unknown> = {};
+    const m = await meteredRead(k, () => readOnce(judgeView, anthropic, 'P', send, 0), async () => ({ usd: 0.42, requests: 2 }), tally, (r) => { row = r; });
+    expect(m.stop).toMatch(/socket closed/);
+    expect(row).toMatchObject({ outcome: 'failed', usd: 0.42, requests: 2, usage: { input: 100, cached: 30, cache_write: 0, output: 5 } });
   });
 });

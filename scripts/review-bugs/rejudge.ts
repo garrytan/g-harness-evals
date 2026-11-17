@@ -12,11 +12,18 @@
  *   sample       a seeded draw of n items: items ordered by sha256("<seed>:<item>"), the first n kept.
  *   score        from tool-judge rulings: per role and model the outcomes, rulings, can't-tell rate, tool calls, cost and
  *                tokens per read (cost, tokens and tool calls include failed reads that were read again); labeller agreement and kappa; the agreed labels; each judge against the labels (can't
- *                tell counted as a disagreement, and apart); the two judges against each other; and the R78 check.
+ *                tell counted as a disagreement, and apart); the two judges against each other; and the R78 check, which
+ *                compares the unrounded kappa with --min-kappa, less 1e-12 of floating-point slack (rounding is for
+ *                display only). provider_error reads
+ *                (a provider answered the same 4xx twice) are counted apart: outside the can't-tell and unsure rates,
+ *                outside R78's n and its not-read count, and reported by name.
  *   adjudication the primary judge's rulings as noloss adjudication.tsv files, one per arm, with can't-tell (and any read
  *                that ended without a ruling) mapped to defect or to not-defect, so the guards can be scored both ways. It
  *                refuses to write while any finding has no usable read (never read, or failed for a machine or network
- *                reason), so read those again and pass every --rulings file.
+ *                reason), so read those again and pass every --rulings file. A provider_error read is final and is
+ *                written as defect in both readings, never as not-defect. --cant-tell has no default, and each reading
+ *                is written under its own directory, <out>/cant-tell-<defect|not-defect>/<arm>/adjudication.tsv, so the
+ *                two readings can't overwrite or stand in for each other. The counted reading is --cant-tell defect.
  *
  *   A failed read gives way to a later read of the same item; two usable reads of one item are refused, because no rerun
  *   may change a verdict.
@@ -25,7 +32,7 @@
  *       --pr-context <dir> --clone <owner/repo>=<git dir>... --out <dir>
  *   bun scripts/review-bugs/rejudge.ts sample --items <items.jsonl> --n 20 --seed 2665 --out <items.jsonl>
  *   bun scripts/review-bugs/rejudge.ts score --rulings <rulings.jsonl>... --primary <provider:model> --second <provider:model>
- *       [--usage <usage.ndjson>...] [--min-agreed 60] [--min-kappa 0.6] [--json]
+ *       [--min-agreed 60] [--min-kappa 0.6] [--json]
  *   bun scripts/review-bugs/rejudge.ts adjudication --rulings <rulings.jsonl>... --items-key <items-key.json>
  *       --judge <provider:model> --cant-tell defect|not-defect --batch <batch sha256> --out <dir>
  */
@@ -110,6 +117,9 @@ export function kappa(a: string[], b: string[]): number | null {
 }
 
 const CANT = 'cant-tell';
+const PROVIDER_ERROR = 'provider_error';
+/** No ruling, and not a provider_error, which is counted apart. */
+const unruled = (r: RulingRow) => !r.ruling && r.outcome !== PROVIDER_ERROR;
 
 export function readsOf(rows: RulingRow[], role: string, judge: string): Map<string, RulingRow> {
   const m = new Map<string, RulingRow>();
@@ -120,6 +130,8 @@ export function readsOf(rows: RulingRow[], role: string, judge: string): Map<str
   }
   return m;
 }
+/** Floating-point slack only: a kappa of exactly 0.6 computes as 0.5999999999999996 on some tables. */
+export const KAPPA_FLOAT_SLACK = 1e-12;
 const r4 = (x: number | null) => (x === null ? null : Math.round(x * 10000) / 10000);
 
 export function score(rows: RulingRow[], primary: string, second: string, minAgreed = 60, minKappa = 0.6) {
@@ -134,7 +146,7 @@ export function score(rows: RulingRow[], primary: string, second: string, minAgr
     const count = (k: (r: RulingRow) => string) => rs.reduce((m, r) => ({ ...m, [k(r)]: (m[k(r)] ?? 0) + 1 }), {} as Record<string, number>);
     const mean = (k: (r: RulingRow) => number) => r4(all.reduce((s, r) => s + k(r), 0) / rs.length);
     reads[role + ' ' + judge] = { reads: rs.length, replaced_failed_reads: all.length - rs.length, outcomes: count((r) => r.outcome), rulings: count((r) => r.ruling ?? '(none)'),
-      cant_tell_rate: r4(ruled.length ? ruled.filter((r) => r.ruling === CANT).length / ruled.length : null), cant_tell_or_unruled_rate: r4(rs.filter((r) => r.ruling === CANT || !r.ruling).length / rs.length),
+      cant_tell_rate: r4(ruled.length ? ruled.filter((r) => r.ruling === CANT).length / ruled.length : null), cant_tell_or_unruled_rate: r4(rs.filter((r) => r.ruling === CANT || unruled(r)).length / rs.length), provider_errors: rs.filter((r) => r.outcome === PROVIDER_ERROR).length,
       usd_total: r4(all.reduce((s, r) => s + Number(r.usd ?? 0), 0)), usd_per_read: mean((r) => Number(r.usd ?? 0)), tool_calls_per_read: mean((r) => r.tool_calls),
       tokens_per_read: { input: mean((r) => r.usage.input), cached: mean((r) => r.usage.cached), output: mean((r) => r.usage.output) },
       cache_read_share: r4(all.reduce((s, r) => s + r.usage.cached, 0) / Math.max(1, all.reduce((s, r) => s + r.usage.input, 0))) };
@@ -145,20 +157,23 @@ export function score(rows: RulingRow[], primary: string, second: string, minAgr
   const labels = new Map(decided.filter((i) => la.get(i)!.ruling === lb.get(i)!.ruling).map((i) => [i, la.get(i)!.ruling!]));
   const labRows = [...la.values(), ...lb.values()];
   const labellers = { items: items.length, both_ruled: both.length,
-    unsure_rate: r4(labRows.length ? labRows.filter((r) => r.ruling === CANT || !r.ruling).length / labRows.length : null),
-    unsure_rate_by_labeller: { [primary]: r4(la.size ? [...la.values()].filter((r) => r.ruling === CANT || !r.ruling).length / la.size : null), [second]: r4(lb.size ? [...lb.values()].filter((r) => r.ruling === CANT || !r.ruling).length / lb.size : null) },
+    unsure_rate: r4(labRows.length ? labRows.filter((r) => r.ruling === CANT || unruled(r)).length / labRows.length : null),
+    unsure_rate_by_labeller: { [primary]: r4(la.size ? [...la.values()].filter((r) => r.ruling === CANT || unruled(r)).length / la.size : null), [second]: r4(lb.size ? [...lb.values()].filter((r) => r.ruling === CANT || unruled(r)).length / lb.size : null) },
+    provider_errors: labRows.filter((r) => r.outcome === PROVIDER_ERROR).length,
     raw_agreement_all: r4(both.length ? both.filter((i) => la.get(i)!.ruling === lb.get(i)!.ruling).length / both.length : null),
     kappa_all: r4(kappa(both.map((i) => la.get(i)!.ruling!), both.map((i) => lb.get(i)!.ruling!))),
     kappa_decided: r4(kappa(decided.map((i) => la.get(i)!.ruling!), decided.map((i) => lb.get(i)!.ruling!))),
     agreed_labels: labels.size, label_counts: [...labels.values()].reduce((m, v) => ({ ...m, [v]: (m[v] ?? 0) + 1 }), {} as Record<string, number>), dropped: items.length - labels.size };
   const vsLabels = (judge: string) => {
     const j = by('judge', judge);
-    const its = [...labels.keys()].filter((i) => j.has(i) && j.get(i)!.outcome !== 'failed');
+    const providerErrors = [...labels.keys()].filter((i) => j.get(i)?.outcome === PROVIDER_ERROR).length;
+    const its = [...labels.keys()].filter((i) => j.has(i) && j.get(i)!.outcome !== 'failed' && j.get(i)!.outcome !== PROVIDER_ERROR);
     const ruling = (i: string) => j.get(i)!.ruling ?? CANT;
     const exCant = its.filter((i) => j.get(i)!.ruling && j.get(i)!.ruling !== CANT);
+    const k = kappa(its.map(ruling), its.map((i) => labels.get(i)!));
     return { n: its.length, raw_agreement: r4(its.length ? its.filter((i) => ruling(i) === labels.get(i)).length / its.length : null),
-      kappa: r4(kappa(its.map(ruling), its.map((i) => labels.get(i)!))), judge_cant_tell: its.filter((i) => j.get(i)!.ruling === CANT).length,
-      judge_unruled: its.filter((i) => !j.get(i)!.ruling).length, not_read: labels.size - its.length,
+      kappa: r4(k), kappa_unrounded: k, judge_cant_tell: its.filter((i) => j.get(i)!.ruling === CANT).length,
+      judge_unruled: its.filter((i) => !j.get(i)!.ruling).length, judge_provider_error: providerErrors, not_read: labels.size - its.length - providerErrors,
       kappa_without_cant_tell: r4(kappa(exCant.map((i) => j.get(i)!.ruling!), exCant.map((i) => labels.get(i)!))) };
   };
   const jp = by('judge', primary), js = by('judge', second);
@@ -166,8 +181,8 @@ export function score(rows: RulingRow[], primary: string, second: string, minAgr
   const primaryCheck = vsLabels(primary);
   return { reads, labellers, judge_vs_labels: { [primary]: primaryCheck, [second]: vsLabels(second) },
     judges: { both_ruled: jboth.length, kappa: r4(kappa(jboth.map((i) => jp.get(i)!.ruling!), jboth.map((i) => js.get(i)!.ruling!))) },
-    r78: { rule: 'primary judge against agreed labels, can\'t-tell and a read with no ruling counted as a disagreement, every agreed item read: kappa >= ' + minKappa + ' on >= ' + minAgreed + ' items', n: primaryCheck.n, not_read: primaryCheck.not_read, kappa: primaryCheck.kappa,
-      pass: primaryCheck.n >= minAgreed && primaryCheck.not_read === 0 && primaryCheck.kappa !== null && primaryCheck.kappa >= minKappa },
+    r78: { rule: 'primary judge against agreed labels, can\'t-tell and a read with no ruling counted as a disagreement, provider_error reads counted apart, every other agreed item read: unrounded kappa >= ' + minKappa + ' on >= ' + minAgreed + ' items', n: primaryCheck.n, not_read: primaryCheck.not_read, provider_error: primaryCheck.judge_provider_error, kappa: primaryCheck.kappa,
+      pass: primaryCheck.n >= minAgreed && primaryCheck.not_read === 0 && primaryCheck.kappa_unrounded !== null && primaryCheck.kappa_unrounded >= minKappa - KAPPA_FLOAT_SLACK },
     labels: Object.fromEntries(labels) };
 }
 
@@ -180,8 +195,9 @@ export function adjudicationTsv(rows: RulingRow[], keys: ItemKey[], judge: strin
   for (const k of keys) {
     const r = ruled.get(k.item);
     const raw = r?.ruling ?? null;
-    const ruling = raw === null || raw === CANT ? cantTell : raw;
-    const note = raw === null ? 'no ruling (' + r!.outcome + '), counted as ' + cantTell : raw === CANT ? 'cant-tell, counted as ' + cantTell : '';
+    const providerError = r!.outcome === PROVIDER_ERROR;
+    const ruling = providerError ? 'defect' : raw === null || raw === CANT ? cantTell : raw;
+    const note = providerError ? 'provider_error, never counted as not-defect' : raw === null ? 'no ruling (' + r!.outcome + '), counted as ' + cantTell : raw === CANT ? 'cant-tell, counted as ' + cantTell : '';
     out.set(k.arm, [...(out.get(k.arm) ?? []), [String(k.pr), k.finding, String(k.pass), ruling, judge.replace(':', '/'), 'no', '1', batch, note].join('\t')]);
   }
   return new Map([...out].map(([arm, lines]) => [arm, [head, ...lines].join('\n') + '\n']));
@@ -218,6 +234,8 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (cmd === 'score') {
+    const unknown = [...f.keys()].filter((k) => !['--rulings', '--primary', '--second', '--min-agreed', '--min-kappa', '--json'].includes(k));
+    if (unknown.length) throw new Error('rejudge score does not take ' + unknown.join(', '));
     const rows = (f.get('--rulings') ?? []).flatMap((p) => readJsonl<RulingRow>(p));
     const s = score(rows, one('--primary'), one('--second'), Number(f.get('--min-agreed')?.[0] ?? 60), Number(f.get('--min-kappa')?.[0] ?? 0.6));
     console.log(f.has('--json') ? JSON.stringify(s, null, 2) : JSON.stringify({ ...s, labels: Object.keys(s.labels).length + ' labels' }, null, 2));
@@ -228,8 +246,9 @@ async function main(argv: string[]): Promise<number> {
     if (cant !== 'defect' && cant !== 'not-defect') throw new Error('--cant-tell takes defect or not-defect');
     const rulings = (f.get('--rulings') ?? [one('--rulings')]).flatMap((p) => readJsonl<RulingRow>(p));
     const files = adjudicationTsv(rulings, JSON.parse(readFileSync(one('--items-key'), 'utf8')), one('--judge'), cant, one('--batch'));
-    for (const [arm, text] of files) { mkdirSync(join(one('--out'), arm), { recursive: true }); writeFileSync(join(one('--out'), arm, 'adjudication.tsv'), text); }
-    console.log('wrote ' + [...files.keys()].map((a) => a + '/adjudication.tsv').join(', '));
+    const dir = join(one('--out'), 'cant-tell-' + cant);
+    for (const [arm, text] of files) { mkdirSync(join(dir, arm), { recursive: true }); writeFileSync(join(dir, arm, 'adjudication.tsv'), text); }
+    console.log((cant === 'defect' ? 'counted reading' : 'can\'t-tell as a false blocker') + ': wrote ' + [...files.keys()].map((a) => 'cant-tell-' + cant + '/' + a + '/adjudication.tsv').join(', '));
     return 0;
   }
   throw new Error('usage: rejudge.ts items|sample|score|adjudication ... (see the file head)');

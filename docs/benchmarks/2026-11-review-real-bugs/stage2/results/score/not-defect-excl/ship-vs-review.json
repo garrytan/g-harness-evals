@@ -1,0 +1,136 @@
+{
+  "record": "review-bugs-score-mc",
+  "version": 1,
+  "cell": "ship-vs-review",
+  "suite": {
+    "id": "rrb-s2-ship-vs-review",
+    "sha256": "46b054b7ca950e941f587700480ba960425efe96deebfea1736ed471da699349"
+  },
+  "reference": {
+    "id": "T5",
+    "passes": 2,
+    "tree_sha256": "72edc8bbe37def438a897a88b27ff15ad3235268328c453d4f6094740c9510e9"
+  },
+  "inputs": {
+    "seed": 2665,
+    "draws": 10000,
+    "mc_seed": 2665,
+    "mc_draws": 10000,
+    "mdd_points": 18,
+    "kappa": "pass",
+    "limit_per_pr": 0.5
+  },
+  "holm": {
+    "family": [
+      "blocking",
+      "any_severity"
+    ],
+    "on": "two-sided Monte Carlo sign-flip p, the two co-primaries together within each comparison"
+  },
+  "comparisons": [
+    {
+      "variant": {
+        "id": "K4",
+        "passes": 2,
+        "tree_sha256": "afacd763a65dbb743d13cd1340c000ca6f08bc5afa8a9890c67eb1a305a33769"
+      },
+      "exposure": "pass",
+      "blocking": {
+        "bugs": 54,
+        "clusters": 52,
+        "recall": {
+          "variant": 0.3704,
+          "reference": 0.4444
+        },
+        "delta": -0.0741,
+        "ci95": [
+          -0.1509,
+          0
+        ],
+        "sign_flip": {
+          "p_greater": 0.9852014798520148,
+          "p_less": 0.0494950504949505,
+          "p_two_sided": 0.0994900509949005,
+          "mc_se": {
+            "greater": 0.001207456995069178,
+            "less": 0.002168992634184192,
+            "two_sided": 0.002993188613300749
+          },
+          "informative_clusters": 12,
+          "seed": 2665,
+          "draws": 10000
+        },
+        "sign_flip_reason": null,
+        "p_holm": 0.140586
+      },
+      "any_severity": {
+        "bugs": 54,
+        "clusters": 52,
+        "recall": {
+          "variant": 0.6204,
+          "reference": 0.7222
+        },
+        "delta": -0.1019,
+        "ci95": [
+          -0.2037,
+          -0.0094
+        ],
+        "sign_flip": {
+          "p_greater": 0.9861013898610139,
+          "p_less": 0.035896410358964105,
+          "p_two_sided": 0.07029297070292971,
+          "mc_se": {
+            "greater": 0.0011707023009796536,
+            "less": 0.0018603187383431088,
+            "two_sided": 0.002556401161255541
+          },
+          "informative_clusters": 13,
+          "seed": 2665,
+          "draws": 10000
+        },
+        "sign_flip_reason": null,
+        "p_holm": 0.140586
+      },
+      "false_alarms_per_decoy": {
+        "scope": "decoys",
+        "role": "guard",
+        "limit": 0.5,
+        "prs": 15,
+        "per_pr": {
+          "variant": 0.1667,
+          "reference": 0.2333
+        },
+        "difference": -0.0667,
+        "ci95": [
+          -0.2,
+          0
+        ],
+        "within_limit": true,
+        "reasons": []
+      },
+      "false_blockers_per_bug_pr": {
+        "scope": "bug_prs",
+        "role": "guard",
+        "limit": 0.5,
+        "prs": 52,
+        "per_pr": {
+          "variant": 0.1346,
+          "reference": 0.1442
+        },
+        "difference": -0.0096,
+        "ci95": [
+          -0.1058,
+          0.0865
+        ],
+        "within_limit": true,
+        "reasons": []
+      },
+      "verdict": {
+        "label": "LOSS",
+        "rule": "the any-severity recall interval is below zero"
+      },
+      "keep_holds_after_holm": null,
+      "unadjusted_verdict": null
+    }
+  ]
+}

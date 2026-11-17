@@ -20,7 +20,10 @@
  * unanswered too. An unanswered or failed session is asked once more in a fresh session, and the read reports both
  * attempts' tokens, turns and tool calls; a refusal (a cyber_policy
  * error, an Anthropic "refusal" stop or an empty HTTP 200 answer with no output tokens) is a result and is never retried
- * or sent to another model (R95).
+ * or sent to another model (R95). A provider's 4xx answer other than 401, 402, 403, 408 and 429 (which the transport
+ * retries, or which come from the proxy's lease) is sent once more after PROVIDER_RETRY_MS; when that answer has the same
+ * status and error class, the read ends as provider_error, a result of its own that is never read again and never
+ * counted as not-defect (stage 2 Amendment 4).
  *
  * Request settings: OpenAI Responses with store false, encrypted reasoning carried between turns, reasoning effort medium,
  * a prompt_cache_key per read and strict function tools; Anthropic Messages with no temperature or thinking field,
@@ -32,15 +35,18 @@
  *   bun scripts/review-bugs/tool-judge.ts prompt --items <items.jsonl> --item <id> --role judge|labeller --brief <role>=<file>
  *
  * run sends every read through runner/proxy/metering-proxy.ts in lease mode, one bound slot and meter key per read
- * (tool-judge:<run id>:<role>:<judge slug>:<item>), and writes <out>/rulings.jsonl (one row per read), <out>/sessions/
+ * (tool-judge:<run id>:<role>:<judge slug>:<item>), and writes <out>/rulings.jsonl (one row per read, appended and
+ * fsynced the moment the read ends, so a crash keeps every finished read), <out>/sessions/
  * (each read's tool calls, final entry and usage), <out>/usage.ndjson (the proxy's log) and <out>/run.json. --dry-run
  * builds every first request, prints the worst case of one turn and sends nothing.
- * run exits 3 when it stopped early or any read failed (a read that throws is written as failed), so read those again
- * with a new --out and pass every rulings.jsonl to rejudge.ts.
+ * run exits 3 when it stopped early or any read failed (a read that throws is written as failed, with the meter's cost
+ * and the tokens of every answer it got), so read those again with a new --out and pass every rulings.jsonl to
+ * rejudge.ts. A read that ruled keeps its ruling even when the meter's finalize call throws afterwards (its usd is then
+ * null and the run stops), so it can't be read again.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { priceRequest, reservationUsd } from '../../runner/ledger/budget-ledger.ts';
@@ -62,6 +68,7 @@ export const GREP_LINES = 200;
 export const LOG_COMMITS = 40;
 export const MAX_OUTPUT_TOKENS = 16_000;
 export const REASONING_EFFORT = 'medium';
+export const PROVIDER_RETRY_MS = 5_000;
 export const ROUTE = { anthropic: '/v1/messages', openai: '/v1/responses' } as const;
 const HOSTS = { anthropic: 'https://api.anthropic.com', openai: 'https://api.openai.com' } as const;
 type Provider = keyof typeof ROUTE;
@@ -289,7 +296,7 @@ export function validateRuling(args: Record<string, unknown>, item: JudgeItem): 
 export type Transport = (j: Judge, body: Record<string, unknown>) => Promise<{ status: number; text: string }>;
 export interface Usage { input: number; cached: number; cache_write: number; output: number }
 export interface SessionResult {
-  item: string; role: Role; judge: string; outcome: 'ruled' | 'unanswered' | 'refused' | 'filtered' | 'failed';
+  item: string; role: Role; judge: string; outcome: 'ruled' | 'unanswered' | 'refused' | 'filtered' | 'failed' | 'provider_error';
   ruled: Ruled | null; tool_calls: number; turns: number; usage: Usage; calls: Array<{ name: string; args: unknown }>; note: string;
 }
 interface Call { id: string; name: string; args: Record<string, unknown> }
@@ -328,7 +335,13 @@ export function requestBody(j: Judge, prompt: string, history: unknown[], tools:
 }
 
 /** One read: a fresh session that ends in a ruling, a refusal, a filter stop, or neither. */
-export async function runSession(view: RepoView, j: Judge, prompt: string, send: Transport): Promise<SessionResult> {
+/** A provider answer's error class: the JSON error's type and code, or "not-json". */
+export function errorClass(text: string): string {
+  try { const e = JSON.parse(text)?.error; return e && typeof e === 'object' ? String(e.type ?? '') + '/' + String(e.code ?? '') : 'no-error-object'; } catch { return 'not-json'; }
+}
+const providerRetryable = (status: number) => status >= 400 && status < 500 && ![401, 402, 403, 408, 429].includes(status);
+
+export async function runSession(view: RepoView, j: Judge, prompt: string, send: Transport, retryMs = PROVIDER_RETRY_MS): Promise<SessionResult> {
   const role = view.role, budget = TOOL_BUDGET[role];
   const res: SessionResult = { item: view.item.item, role, judge: j.id, outcome: 'unanswered', ruled: null, tool_calls: 0, turns: 0, usage: { input: 0, cached: 0, cache_write: 0, output: 0 }, calls: [], note: '' };
   const history: unknown[] = [];
@@ -338,8 +351,17 @@ export async function runSession(view: RepoView, j: Judge, prompt: string, send:
     if (res.turns >= budget + MAX_EXTRA_TURNS) { res.note = 'no accepted submit_ruling within ' + (budget + MAX_EXTRA_TURNS) + ' turns'; return res; }
     if (res.tool_calls >= budget && afterBudget++ >= EXTRA_TURNS) { res.note = 'no submit_ruling within ' + EXTRA_TURNS + ' turns after the tool budget'; return res; }
     const tools = res.tool_calls >= budget ? [SUBMIT] : toolSpecs(role);
-    const r = await send(j, requestBody(j, prompt, history, tools, cacheKey));
+    const body = requestBody(j, prompt, history, tools, cacheKey);
+    let r = await send(j, body);
     res.turns++;
+    if (r.status !== 200 && !/cyber_policy/.test(r.text) && providerRetryable(r.status)) {
+      const first = r;
+      await new Promise((done) => setTimeout(done, retryMs));
+      r = await send(j, body);
+      if (r.status === first.status && errorClass(r.text) === errorClass(first.text)) {
+        res.outcome = 'provider_error'; res.note = 'HTTP ' + r.status + ' twice (' + errorClass(r.text) + '): ' + r.text.slice(0, 300); return res;
+      }
+    }
     if (r.status !== 200) {
       if (/cyber_policy/.test(r.text)) { res.outcome = 'refused'; res.note = 'cyber_policy: ' + r.text.slice(0, 200); return res; }
       res.outcome = 'failed'; res.note = 'HTTP ' + r.status + ': ' + r.text.slice(0, 300); return res;
@@ -374,16 +396,51 @@ export async function runSession(view: RepoView, j: Judge, prompt: string, send:
 }
 
 /** A read, asked once more in a fresh session when it ended unanswered or failed. */
-export async function readOnce(view: RepoView, j: Judge, prompt: string, send: Transport): Promise<SessionResult & { attempts: number }> {
-  const first = await runSession(view, j, prompt, send);
+export async function readOnce(view: RepoView, j: Judge, prompt: string, send: Transport, retryMs = PROVIDER_RETRY_MS): Promise<SessionResult & { attempts: number }> {
+  const first = await runSession(view, j, prompt, send, retryMs);
   if (first.outcome !== 'unanswered' && first.outcome !== 'failed') return { ...first, attempts: 1 };
-  const second = await runSession(view, j, prompt, send);
+  const second = await runSession(view, j, prompt, send, retryMs);
   const usage = Object.fromEntries(Object.keys(second.usage).map((k) => [k, first.usage[k as keyof Usage] + second.usage[k as keyof Usage]])) as unknown as Usage;
   return { ...second, usage, turns: first.turns + second.turns, tool_calls: first.tool_calls + second.tool_calls, calls: [...first.calls, ...second.calls], attempts: 2,
     note: 'retried after: ' + first.note + (second.note ? '; ' + second.note : '') };
 }
 
 // ---- the metered run ------------------------------------------------------------------------------------------------
+
+/** A transport that adds the usage of every 200 answer to tally, so a read that throws still reports its tokens. */
+export function tallied(send: Transport, tally: Usage): Transport {
+  return async (j, body) => {
+    const r = await send(j, body);
+    if (r.status === 200) { try { const u = parseTurn(j.provider, JSON.parse(r.text)).usage; for (const k of Object.keys(tally) as Array<keyof Usage>) tally[k] += u[k]; } catch { /* not JSON: no usage */ } }
+    return r;
+  };
+}
+
+/** Append one line to a file and fsync it before returning. */
+export function appendDurable(file: string, line: string): void {
+  const fd = openSync(file, 'a');
+  try { writeSync(fd, line + '\n'); fsyncSync(fd); } finally { closeSync(fd); }
+}
+
+export interface ReadKey { item: string; role: Role; judge: string; key: string; prompt_sha256: string }
+
+/** One metered read, recorded the moment it ends. A read that throws is written as failed with the meter's cost and the
+ *  tallied tokens; a read that ended keeps its outcome and ruling when finalize throws, with usd null. stop says why the
+ *  run must stop, or is null. */
+export async function meteredRead(k: ReadKey, read: () => Promise<SessionResult & { attempts: number }>, finalize: () => Promise<{ usd?: number; requests?: number }>, tally: Usage, append: (row: Record<string, unknown>) => void): Promise<{ row: Record<string, unknown>; session: (SessionResult & { attempts: number }) | null; stop: string | null }> {
+  let s: (SessionResult & { attempts: number }) | null = null, error: string | null = null;
+  try { s = await read(); } catch (e) { error = (e as Error).message; }
+  let meter: { usd?: number; requests?: number } = {}, finalizeError: string | null = null;
+  try { meter = await finalize(); } catch (e) { finalizeError = (e as Error).message; }
+  const after = finalizeError ? '; finalize failed: ' + finalizeError : '';
+  const row = s
+    ? { ...k, outcome: s.outcome, attempts: s.attempts, ruling: s.ruled?.ruling ?? null, test: s.ruled?.test ?? null, tool_calls: s.tool_calls, turns: s.turns, usage: s.usage, usd: meter.usd ?? null, requests: meter.requests ?? null, note: s.note + after }
+    : { ...k, outcome: 'failed', attempts: null, ruling: null, test: null, tool_calls: 0, turns: 0, usage: { ...tally }, usd: meter.usd ?? null, requests: meter.requests ?? null, note: 'tool-judge error: ' + error + after };
+  append(row);
+  const stop = error ? 'stopped on ' + k.key + ': ' + error : finalizeError ? 'stopped on ' + k.key + ': finalize failed: ' + finalizeError
+    : s!.outcome === 'failed' && /HTTP 4(02|03)/.test(s!.note) ? 'stopped on ' + k.key + ': ' + s!.note : null;
+  return { row, session: s, stop };
+}
 
 const REPO_ROOT = join(import.meta.dir, '..', '..');
 
@@ -466,6 +523,8 @@ async function main(argv: string[]): Promise<number> {
   const out = resolve(one('--out'));
   if (existsSync(out)) throw new Error('--out ' + out + ' exists; give each run a new directory');
   mkdirSync(join(out, 'sessions'), { recursive: true });
+  const rulingsFile = join(out, 'rulings.jsonl');
+  writeFileSync(rulingsFile, '');
   const runId = one('--run-id');
   const proxy = await startProxy({ dir: out, ledger: resolve(one('--ledger')), leaseUsd: Number(one('--lease-usd')), runId, judges });
   const ctl = (path: string, body: unknown) => fetch(proxy.base + path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-proxy-control': proxy.token }, body: JSON.stringify(body) });
@@ -483,25 +542,21 @@ async function main(argv: string[]): Promise<number> {
         const b = await ctl('/__proxy/bind', { slot, key, models: [r.j.id] });
         if (!b.ok) { stopped = 'the proxy refused the bind for ' + key; break; }
         try {
-          const s = await readOnce(new RepoView(r.it, r.role), r.j, r.prompt, proxyTransport(proxy, slot));
-          if (s.outcome === 'failed' && /HTTP 4(02|03)/.test(s.note)) stopped = 'stopped on ' + key + ': ' + s.note;
-          const meter = await (await ctl('/__proxy/finalize', { key, timeout_ms: 60_000 })).json() as { usd?: number; requests?: number };
-          const row = { item: r.it.item, role: r.role, judge: r.j.id, outcome: s.outcome, attempts: s.attempts, ruling: s.ruled?.ruling ?? null, test: s.ruled?.test ?? null,
-            tool_calls: s.tool_calls, turns: s.turns, usage: s.usage, usd: meter.usd ?? null, requests: meter.requests ?? null, key, prompt_sha256: sha256(r.prompt), note: s.note };
-          rows.push(row);
-          writeFileSync(join(out, 'sessions', r.role + '.' + r.j.slug + '.' + r.it.item.replace(/[^A-Za-z0-9._-]/g, '_') + '.json'), JSON.stringify({ ...row, ruled: s.ruled, calls: s.calls }, null, 2) + '\n');
-          console.error('tool-judge: ' + r.role + ' ' + r.j.id + ' ' + r.it.item + ': ' + s.outcome + (s.ruled ? ' ' + s.ruled.ruling : '') + ', ' + s.tool_calls + ' tools, $' + Number(meter.usd ?? 0).toFixed(3));
-        } catch (e) {
-          stopped = 'stopped on ' + key + ': ' + (e as Error).message;
-          rows.push({ item: r.it.item, role: r.role, judge: r.j.id, outcome: 'failed', attempts: null, ruling: null, test: null, tool_calls: 0, turns: 0, usage: { input: 0, cached: 0, cache_write: 0, output: 0 },
-            usd: null, requests: null, key, prompt_sha256: sha256(r.prompt), note: 'tool-judge error: ' + (e as Error).message });
+          const tally: Usage = { input: 0, cached: 0, cache_write: 0, output: 0 };
+          const m = await meteredRead({ item: r.it.item, role: r.role, judge: r.j.id, key, prompt_sha256: sha256(r.prompt) },
+            () => readOnce(new RepoView(r.it, r.role), r.j, r.prompt, tallied(proxyTransport(proxy, slot), tally)),
+            async () => await (await ctl('/__proxy/finalize', { key, timeout_ms: 60_000 })).json() as { usd?: number; requests?: number }, tally,
+            (row) => appendDurable(rulingsFile, JSON.stringify(row)));
+          rows.push(m.row);
+          if (m.stop) stopped = m.stop;
+          writeFileSync(join(out, 'sessions', r.role + '.' + r.j.slug + '.' + r.it.item.replace(/[^A-Za-z0-9._-]/g, '_') + '.json'), JSON.stringify({ ...m.row, ruled: m.session?.ruled ?? null, calls: m.session?.calls ?? [] }, null, 2) + '\n');
+          console.error('tool-judge: ' + r.role + ' ' + r.j.id + ' ' + r.it.item + ': ' + m.row.outcome + (m.row.ruling ? ' ' + m.row.ruling : '') + ', ' + m.row.tool_calls + ' tools, $' + Number(m.row.usd ?? 0).toFixed(3));
         } finally { await ctl('/__proxy/unbind', { slot }).catch(() => undefined); }
       }
     })));
   } finally {
     await new Promise<void>((done) => { proxy.child.once('exit', () => done()); proxy.child.kill('SIGTERM'); setTimeout(done, 5_000); });
   }
-  writeFileSync(join(out, 'rulings.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   const usd = rows.reduce((s, r) => s + Number(r.usd ?? 0), 0);
   writeFileSync(join(out, 'run.json'), JSON.stringify({ version: 1, run_id: runId, roles, judges: judges.map((j) => j.id), items: items.length, reads: rows.length, usd, stopped,
     tool_budget: TOOL_BUDGET, items_sha256: sha256(readFileSync(one('--items'))), briefs: Object.fromEntries([...briefs].map(([k, p]) => [k, sha256(readFileSync(p))])) }, null, 2) + '\n');

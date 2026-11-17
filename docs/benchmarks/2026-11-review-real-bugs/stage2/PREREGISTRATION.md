@@ -38,7 +38,7 @@ Approved by Garry on 2026-11-15 ("do it"), word for word:
 
 ## Amendments
 
-Stage 1's three dated amendments, as recorded before each affected step. Amendment 3 sets this stage's adjudication method and the stage 1 re-judge rule.
+Stage 1's three dated amendments, as recorded before each affected step, then stage 2's own. Amendment 3 sets this stage's adjudication method and the stage 1 re-judge rule. Amendment 4 fixes six tooling faults before any stage 2 read.
 
 ### Amendment 1, 2026-11-15 (before any paid trial)
 
@@ -94,6 +94,49 @@ The new rule applies to every review-arm PR-pass in the stage 1 exposure gate. T
 
 **A risk stated in advance.** If most unmatched blocking findings turn out to be real defects (17 of 20 in the dry run), the labels will be lopsided, and kappa can stay under 0.6 even with high raw agreement, because a few disagreements on the rare class weigh heavily. The rule above stays as written: the check is kappa at least 0.6 on at least 60 agreed items, and raw agreement is reported beside it.
 
+### Amendment 4: six tooling fixes, 2026-11-16 (before any stage 2 paid read or trial)
+
+**Why.** The last review of the stage 2 freeze left six open notes in the judging and exposure tools, and each one could change a counted number. All six are fixed here, before any stage 2 paid read, re-judge read or trial. No stage 2 money has been spent since the freeze. Nothing else changes: no brief, prompt, model, arm, budget, threshold or decision rule. Each fix has a keyless test that fails on the freeze commit (816b6033) and passes here, in tests/review-bugs/rejudge.test.ts, tool-judge.test.ts and exposure-skill.test.ts, under "stage 2 Amendment 4".
+
+1. **The R78 check compares the unrounded kappa.** rejudge.ts rounded kappa to 4 decimals before comparing it with 0.6, so a kappa of 0.59996 would have passed. The check now uses the unrounded value. The only slack is 1e-12 for floating-point error, because an exact 0.6 can compute as 0.5999999999999996. Rounding is for display only.
+   - Test: a 97-item table with kappa 2764/4607 (0.59996, shown as 0.6) fails; a 70-item table with kappa exactly 0.6 passes.
+2. **A provider error that repeats is its own outcome, provider_error.** tool-judge.ts marked every non-200 answer other than cyber_policy as a failed read. So a provider that always answered 400 to one request could never be read, which blocked adjudication and failed R78 as "not read". Now:
+   - A 429 or a 5xx still gets two more tries, at 10 and 30 seconds, and a lost connection still ends the read. Either way the read is failed and is read again later, as Amendment 3 says.
+   - Any other 4xx answer gets one more try after 5 seconds. The exceptions are 401, 402, 403 and 408: the proxy's key and lease answers and a timeout stay failed, and a 402 or 403 still stops the run.
+   - If that second answer has the same status and the same error class (the JSON error's type and code), the read ends as **provider_error**. If not, the session goes on, or ends as failed.
+   - A provider_error read is final. It is never read again, and a second read of that finding is refused like any second usable read.
+   - **provider_error reads are reported as their own outcome**, apart from rulings, can't-tell, failed reads, refusals and filter stops. **They are never counted as not-defect.** In both adjudication readings they are written as defect (not a false blocker), with the note "provider_error, never counted as not-defect". R78 leaves them out of its n and its not-read count and reports how many there were. The can't-tell and unsure rates leave them out too.
+   - This narrows one sentence of Amendment 3: a read with no ruling is still treated like can't-tell in both readings, except a provider_error read.
+   - Tests: the same 400 twice ends as provider_error after exactly one more request and no fresh session; a 400 that clears on the second try goes on to a ruling; a different error class is a failed read; 402, 403, 429 and 500 are not sent again here; in rejudge.ts a provider_error read is outside R78's n and not-read count and is written as defect in both readings.
+3. **Every read is saved the moment it ends.** tool-judge.ts wrote rulings.jsonl only when the whole run finished, so a crash lost every finished read. And when the meter's finalize call threw after a ruled read, the paid ruling was thrown away and the finding could be read again. Now:
+   - Each read's row is appended to rulings.jsonl and fsynced as soon as the read ends.
+   - If finalize throws after a read ended, the row keeps its outcome and ruling, with usd null and a note, and the run stops. Because that read is usable, rejudge.ts refuses any second read of the finding.
+   - Test: a ruled read whose finalize throws is on disk with its ruling, and a second read of it is refused.
+4. **A read that throws keeps its cost and tokens.** Such a read was written with usd null and no tokens, so cost was undercounted.
+   - Its row now carries the meter's usd and request count from finalize, and the tokens of every provider answer it got before it threw.
+   - rejudge.ts score documented a --usage option that it never read. The option is removed from the docs, and score now refuses any option it does not take.
+   - Tests: a read that throws after one answer records the meter's $0.42, 2 requests and that answer's tokens; score --usage exits with an error.
+5. **The two adjudication readings can't be swapped.** rejudge.ts adjudication has no default for --cant-tell; it must be passed every time. Each reading is now written to its own directory, cant-tell-defect/<arm>/adjudication.tsv or cant-tell-not-defect/<arm>/adjudication.tsv, so one can't overwrite or stand in for the other. The two reported readings are:
+   - **--cant-tell defect**: the counted reading. A can't-tell ruling, or a read with no ruling, counts as not a false blocker.
+   - **--cant-tell not-defect**: a can't-tell ruling, or a read with no ruling, counts as a false blocker.
+   - **The guard verdict uses both.** Each guard is scored from both files, and both results are reported beside the verdict. Where the two readings give different verdicts, Amendment 3's rule stands: both are reported and the counted reading decides.
+   - Test: adjudication with no --cant-tell exits with an error; the two readings land in their own directories with their own rows.
+6. **The skill-open match takes more shell forms.** exposure.ts counted the /ship preamble only when a space or the end of the command followed `gstack-skill-start --skill ship`. It now also accepts `--skill=ship`, and a `;`, `&`, `|` or `)` right after the name, which covers the `;`, `&&`, `||`, `(...)` and `$(...)` forms. The /review preamble uses the same matcher, so it widens the same way. A longer name (ship-panel, review-bots) still doesn't match, and the PROTO line is still required.
+   - Tests: eight shell forms open /ship and not /review, the same eight open /review and not /ship, and longer names, an error result or a missing PROTO line open nothing.
+   - **Stage 1 scores the same.** Re-reading stage 1's sessions with the new exposure.ts gives byte-identical output to the freeze copy: the 3 C1 and 3 C2 smoke sessions (gate 3/3 and strict 3/3 in each cell) and C1's 178 review-arm PR-passes (gate 163/178, strict 162/178).
+
+**New pins.** Three pinned files change, and the pin table under Pins below now lists the new values. The other seven pins don't change.
+
+| File | Freeze pin | Amendment 4 pin |
+| --- | --- | --- |
+| scripts/review-bugs/tool-judge.ts | 1da25d30c51436d33160f18291b817673e050bfaf6958120b5dcf7df1147f20a | 375d8dd9b15cb645a2dde0b2d9c44cc20b1a60ef0a2be379e064140ccec2aa29 |
+| scripts/review-bugs/rejudge.ts | 5f730165cbb6f081f5c3f0123f699cf5f4311cfc67b1d6aec38773ad8d029fa8 | 69679c823de2602b788b7e305dfd039eb9688dbde9ac23a2b1cddc931d653279 |
+| scripts/review-bugs/exposure.ts | ccf67973d40abfc040a192281d7a7863bdb8c5c55a24bd61c49858d4f5eee231 | b33ffa93a8685b3e8dd7206c0552c5aa10ee4f693f6b187768fe658fa56b805a |
+
+**The dry run, recomputed.** We re-scored the 20-item dry run from its raw rulings (80 reads: 79 ruled, 1 safety-filter stop, no failed read, no read with a missing cost) with the new rejudge.ts. Every number in Amendment 3 and in the dry-run table below is unchanged. The score output only gains new fields: provider_error counts (all 0) and the unrounded kappa against the labels (Astra 1; Opus, the second judge, 0.63415). R78 still fails on the dry run, because 15 agreed items are under the 60 it needs. One smoke read before the dry run ended failed on an HTTP 400 that repeated (a tool schema the provider rejected, fixed before the dry run). Under this amendment it would have been provider_error. It was never counted.
+
+**Why this is allowed.** These are instrument fixes, decided and committed before any stage 2 paid read or trial, as our rules for counted runs allow. The amendment is committed on the results branch, and every stage 2 read and cell runs from that commit.
+
 ## What's different from stage 1 and the approved plan
 
 - **plain-2fam is dropped.** It controlled for the Sol outside voice inside /review, and that voice never runs in the rig (no bubblewrap in the trial image), so there is nothing to control for.
@@ -139,9 +182,9 @@ Code and briefs in this repository, by sha256 at this commit:
 
 | File | sha256 |
 | --- | --- |
-| scripts/review-bugs/tool-judge.ts | 1da25d30c51436d33160f18291b817673e050bfaf6958120b5dcf7df1147f20a |
-| scripts/review-bugs/rejudge.ts | 5f730165cbb6f081f5c3f0123f699cf5f4311cfc67b1d6aec38773ad8d029fa8 |
-| scripts/review-bugs/exposure.ts | ccf67973d40abfc040a192281d7a7863bdb8c5c55a24bd61c49858d4f5eee231 |
+| scripts/review-bugs/tool-judge.ts | 375d8dd9b15cb645a2dde0b2d9c44cc20b1a60ef0a2be379e064140ccec2aa29 (Amendment 4) |
+| scripts/review-bugs/rejudge.ts | 69679c823de2602b788b7e305dfd039eb9688dbde9ac23a2b1cddc931d653279 (Amendment 4) |
+| scripts/review-bugs/exposure.ts | b33ffa93a8685b3e8dd7206c0552c5aa10ee4f693f6b187768fe658fa56b805a (Amendment 4) |
 | scripts/review-bugs/depth.ts | 20704255421884667ac4b777d96abba79afe4a9df9906681b8170a4aa478db60 |
 | scripts/review-bugs/harness-review.ts | bc0344d5a5e254fbc636e496dbd062f947f41d43c51b3ea35f11c83dafd92cc4 |
 | scripts/review-bugs/told.ts | e2b5835adc1ff6d495b5ceeaf1fb063fdb83b7b64ba9be8f1afc63caf33b794e |
@@ -170,7 +213,7 @@ All arms run on the same 89 units at 2 passes, unless the row says otherwise.
 ## Adjudication and judge checks
 
 - **Matching** (which findings hit a known bug) is unchanged from stage 1: noloss judge-run and judge-join at the pinned rig. Stage 1's matching check passed (kappa 1.00 on 111 items) for Astra as primary. C2's primary matcher is Opus, so C2 gets its own 60-item matching label check before its numbers count.
-- **Unmatched blocking findings** are judged by the method in Amendment 3, for every stage 2 arm and for the stage 1 re-judge. The R78 check runs per primary judge on at least 60 agreed labels (kappa at least 0.6, can't-tell counted as a disagreement). If it fails, that cell's false blockers on bug PRs are descriptive and only the decoys guard its verdict, as in stage 1.
+- **Unmatched blocking findings** are judged by the method in Amendment 3, with Amendment 4's fixes, for every stage 2 arm and for the stage 1 re-judge. The R78 check runs per primary judge on at least 60 agreed labels (kappa at least 0.6, can't-tell counted as a disagreement). If it fails, that cell's false blockers on bug PRs are descriptive and only the decoys guard its verdict, as in stage 1.
 - **Blinding check.** For each comparison, Astra guesses the arm on 20 packets (seed 2665); more than 70% correct is a blinding failure. Its AUC is reported beside every verdict, because blinding can't hide how many findings each arm writes (stage 1's AUC was 0.935).
 
 **What the 20-item dry run showed** (seed 2665, not counted; Amendment 3):

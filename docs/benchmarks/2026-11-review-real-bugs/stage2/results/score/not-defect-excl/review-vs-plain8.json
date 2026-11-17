@@ -1,0 +1,136 @@
+{
+  "record": "review-bugs-score-mc",
+  "version": 1,
+  "cell": "review-vs-plain8",
+  "suite": {
+    "id": "rrb-s2-review-vs-plain8",
+    "sha256": "2c67dcd71630b79106a16ce877afadd16d9a09771be54e516d3fbf1c76331e03"
+  },
+  "reference": {
+    "id": "P8",
+    "passes": 1,
+    "tree_sha256": "c9b57d611e39e2baf13054c85371af4b3b736c0a1e0c2a37a8cd0e5eef8b1cbb"
+  },
+  "inputs": {
+    "seed": 2665,
+    "draws": 10000,
+    "mc_seed": 2665,
+    "mc_draws": 10000,
+    "mdd_points": 18,
+    "kappa": "pass",
+    "limit_per_pr": 0.5
+  },
+  "holm": {
+    "family": [
+      "blocking",
+      "any_severity"
+    ],
+    "on": "two-sided Monte Carlo sign-flip p, the two co-primaries together within each comparison"
+  },
+  "comparisons": [
+    {
+      "variant": {
+        "id": "T5",
+        "passes": 2,
+        "tree_sha256": "dfbe5f9727eb57548aa3ccb831b916ece04e6fa454168feeb34896a3423defb9"
+      },
+      "exposure": "pass",
+      "blocking": {
+        "bugs": 54,
+        "clusters": 52,
+        "recall": {
+          "variant": 0.4444,
+          "reference": 0.4444
+        },
+        "delta": 0,
+        "ci95": [
+          -0.1132,
+          0.1071
+        ],
+        "sign_flip": {
+          "p_greater": 0.5687431256874312,
+          "p_less": 0.5616438356164384,
+          "p_two_sided": 1,
+          "mc_se": {
+            "greater": 0.004952518376247806,
+            "less": 0.004961854870212283,
+            "two_sided": 0
+          },
+          "informative_clusters": 15,
+          "seed": 2665,
+          "draws": 10000
+        },
+        "sign_flip_reason": null,
+        "p_holm": 1
+      },
+      "any_severity": {
+        "bugs": 54,
+        "clusters": 52,
+        "recall": {
+          "variant": 0.7222,
+          "reference": 0.7222
+        },
+        "delta": 0,
+        "ci95": [
+          -0.0926,
+          0.0926
+        ],
+        "sign_flip": {
+          "p_greater": 0.5733426657334266,
+          "p_less": 0.5794420557944205,
+          "p_two_sided": 1,
+          "mc_se": {
+            "greater": 0.004945916026209046,
+            "less": 0.004936486197399484,
+            "two_sided": 0
+          },
+          "informative_clusters": 11,
+          "seed": 2665,
+          "draws": 10000
+        },
+        "sign_flip_reason": null,
+        "p_holm": 1
+      },
+      "false_alarms_per_decoy": {
+        "scope": "decoys",
+        "role": "guard",
+        "limit": 0.5,
+        "prs": 15,
+        "per_pr": {
+          "variant": 0.2333,
+          "reference": 1.7333
+        },
+        "difference": -1.5,
+        "ci95": [
+          -3.4333,
+          -0.0667
+        ],
+        "within_limit": true,
+        "reasons": []
+      },
+      "false_blockers_per_bug_pr": {
+        "scope": "bug_prs",
+        "role": "guard",
+        "limit": 0.5,
+        "prs": 52,
+        "per_pr": {
+          "variant": 0.1442,
+          "reference": 0.4231
+        },
+        "difference": -0.2788,
+        "ci95": [
+          -0.6058,
+          0
+        ],
+        "within_limit": true,
+        "reasons": []
+      },
+      "verdict": {
+        "label": "CUT-CANDIDATE",
+        "rule": "the exposure gate passed and the blocking interval's upper bound (10.7 points) is below the MDD (18 points); a candidate until one \"Why null?\" cycle, and one attempt to raise plain's ceiling if plain is near it"
+      },
+      "keep_holds_after_holm": null,
+      "unadjusted_verdict": null
+    }
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "record": "review-bugs-score-mc",
+  "version": 1,
+  "cell": "C1",
+  "suite": {
+    "id": "rrb-s1-nonh",
+    "sha256": "a155300e2c802f6f85d1e5261f2f9c7280f3ceb6a2c7050a56ae6fd6a98312cb"
+  },
+  "reference": {
+    "id": "M2",
+    "passes": 2,
+    "tree_sha256": "68560e32a9d62a8dc9d564200ac92a58e60d065a3b1b7ad87a99d38dac4402e0"
+  },
+  "inputs": {
+    "seed": 2665,
+    "draws": 10000,
+    "mc_seed": 2665,
+    "mc_draws": 10000,
+    "mdd_points": 18,
+    "kappa": "fail",
+    "limit_per_pr": 0.5
+  },
+  "holm": {
+    "family": [
+      "blocking",
+      "any_severity"
+    ],
+    "on": "two-sided Monte Carlo sign-flip p, the two co-primaries together within each comparison"
+  },
+  "comparisons": [
+    {
+      "variant": {
+        "id": "T5",
+        "passes": 2,
+        "tree_sha256": "6774e7668baab2f0bec91d555aaad2e834bd1ca46e2cc84a222bc2ce0c2535c6"
+      },
+      "exposure": "pass",
+      "blocking": {
+        "bugs": 54,
+        "clusters": 52,
+        "recall": {
+          "variant": 0.4444,
+          "reference": 0.2593
+        },
+        "delta": 0.1852,
+        "ci95": [
+          0.0909,
+          0.2818
+        ],
+        "sign_flip": {
+          "p_greater": 0.00039996000399960006,
+          "p_less": 1,
+          "p_two_sided": 0.0011998800119988001,
+          "mc_se": {
+            "greater": 0.0001999500027493875,
+            "less": 0,
+            "two_sided": 0.0003461849650050686
+          },
+          "informative_clusters": 21,
+          "seed": 2665,
+          "draws": 10000
+        },
+        "sign_flip_reason": null,
+        "p_holm": 0.0024
+      },
+      "any_severity": {
+        "bugs": 54,
+        "clusters": 52,
+        "recall": {
+          "variant": 0.7222,
+          "reference": 0.5648
+        },
+        "delta": 0.1574,
+        "ci95": [
+          0.0545,
+          0.2759
+        ],
+        "sign_flip": {
+          "p_greater": 0.0053994600539946005,
+          "p_less": 0.9988001199880012,
+          "p_two_sided": 0.009799020097990201,
+          "mc_se": {
+            "greater": 0.0007328237090269335,
+            "less": 0.00034618496500506536,
+            "two_sided": 0.0009850380349564877
+          },
+          "informative_clusters": 15,
+          "seed": 2665,
+          "draws": 10000
+        },
+        "sign_flip_reason": null,
+        "p_holm": 0.009799
+      },
+      "false_alarms_per_decoy": {
+        "scope": "decoys",
+        "role": "guard",
+        "limit": 0.5,
+        "prs": 15,
+        "per_pr": {
+          "variant": 0.6,
+          "reference": 0.3333
+        },
+        "difference": 0.2667,
+        "ci95": [
+          0.0667,
+          0.5
+        ],
+        "within_limit": true,
+        "reasons": []
+      },
+      "false_blockers_per_bug_pr": {
+        "scope": "bug_prs",
+        "role": "descriptive",
+        "limit": 0.5,
+        "prs": 52,
+        "per_pr": {
+          "variant": 0.7308,
+          "reference": 0.1538
+        },
+        "difference": 0.5769,
+        "ci95": [
+          0.3846,
+          0.7788
+        ],
+        "within_limit": false,
+        "reasons": []
+      },
+      "verdict": {
+        "label": "KEEP (recall only; false blockers on bug PRs unmeasured)",
+        "rule": "both co-primary intervals are above zero, and false alarms on decoys are within the limit; the adjudication kappa check failed, so false blockers on bug PRs are descriptive"
+      },
+      "keep_holds_after_holm": true,
+      "unadjusted_verdict": null
+    }
+  ]
+}

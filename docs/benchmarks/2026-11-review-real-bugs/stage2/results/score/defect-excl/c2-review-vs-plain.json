@@ -1,0 +1,136 @@
+{
+  "record": "review-bugs-score-mc",
+  "version": 1,
+  "cell": "c2-review-vs-plain",
+  "suite": {
+    "id": "rrb-s2-c2-review-vs-plain",
+    "sha256": "664e737a96d584c07261049ab751c751d7fa7a651b8642026b38bf7a85e3f359"
+  },
+  "reference": {
+    "id": "N6",
+    "passes": 2,
+    "tree_sha256": "11e88cacba68176c3b10566493e848004e9f1c4d167b641166aea6f0ada0810a"
+  },
+  "inputs": {
+    "seed": 2665,
+    "draws": 10000,
+    "mc_seed": 2665,
+    "mc_draws": 10000,
+    "mdd_points": 18,
+    "kappa": "fail",
+    "limit_per_pr": 0.5
+  },
+  "holm": {
+    "family": [
+      "blocking",
+      "any_severity"
+    ],
+    "on": "two-sided Monte Carlo sign-flip p, the two co-primaries together within each comparison"
+  },
+  "comparisons": [
+    {
+      "variant": {
+        "id": "R3",
+        "passes": 2,
+        "tree_sha256": "c5a359cbddc9965a1fc511e43b495b7ad02dfe175203530bc76f89a493ecc5a4"
+      },
+      "exposure": "pass",
+      "blocking": {
+        "bugs": 51,
+        "clusters": 49,
+        "recall": {
+          "variant": 0.6176,
+          "reference": 0.1863
+        },
+        "delta": 0.4314,
+        "ci95": [
+          0.29,
+          0.57
+        ],
+        "sign_flip": {
+          "p_greater": 0.00009999000099990002,
+          "p_less": 1,
+          "p_two_sided": 0.00009999000099990002,
+          "mc_se": {
+            "greater": 0.00009999000099990002,
+            "less": 0,
+            "two_sided": 0.00009999000099990002
+          },
+          "informative_clusters": 25,
+          "seed": 2665,
+          "draws": 10000
+        },
+        "sign_flip_reason": null,
+        "p_holm": 0.0002
+      },
+      "any_severity": {
+        "bugs": 51,
+        "clusters": 49,
+        "recall": {
+          "variant": 0.6176,
+          "reference": 0.6471
+        },
+        "delta": -0.0294,
+        "ci95": [
+          -0.0962,
+          0.03
+        ],
+        "sign_flip": {
+          "p_greater": 0.8882111788821118,
+          "p_less": 0.2770722927707229,
+          "p_two_sided": 0.5632436756324367,
+          "mc_se": {
+            "greater": 0.003151064591387505,
+            "less": 0.00447552496752613,
+            "two_sided": 0.0049598411012097875
+          },
+          "informative_clusters": 8,
+          "seed": 2665,
+          "draws": 10000
+        },
+        "sign_flip_reason": null,
+        "p_holm": 0.563244
+      },
+      "false_alarms_per_decoy": {
+        "scope": "decoys",
+        "role": "guard",
+        "limit": 0.5,
+        "prs": 14,
+        "per_pr": {
+          "variant": 0.3214,
+          "reference": 0.0357
+        },
+        "difference": 0.2857,
+        "ci95": [
+          0.0714,
+          0.5714
+        ],
+        "within_limit": false,
+        "reasons": []
+      },
+      "false_blockers_per_bug_pr": {
+        "scope": "bug_prs",
+        "role": "descriptive",
+        "limit": 0.5,
+        "prs": 49,
+        "per_pr": {
+          "variant": 0.449,
+          "reference": 0.051
+        },
+        "difference": 0.398,
+        "ci95": [
+          0.2551,
+          0.551
+        ],
+        "within_limit": false,
+        "reasons": []
+      },
+      "verdict": {
+        "label": "FIX-METHOD",
+        "rule": "recall rose with false alarms over the limit of +0.5 per PR: false alarms per decoy PR upper bound +0.57"
+      },
+      "keep_holds_after_holm": null,
+      "unadjusted_verdict": null
+    }
+  ]
+}

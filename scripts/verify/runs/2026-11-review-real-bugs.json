@@ -1,0 +1,27 @@
+{
+  "run": "2026-11-review-real-bugs",
+  "about": "The real-bugs review test, both stages: score-mc outputs for every comparison and reading, judge checks, exposure rows, the blinding check, session costs and spend.",
+  "steps": [],
+  "not_rebuilt": [
+    {
+      "what": "The score-mc outputs (results/stage1/score-mc.json, results/rejudge/score-mc-*.json, stage2/results/score/)",
+      "reason": "score-mc.ts reads the blinded, judged arm trees (every reviewer finding with its text and the judges' rulings), which hold third-party code excerpts and are not committed; the scored outputs are published as this run's receipts."
+    },
+    {
+      "what": "The judge checks (results/stage1/judge-check.json, results/rejudge/judge-check.json, stage2/results/judge-check-*.json)",
+      "reason": "They were computed from the judges' and labellers' read sessions, which are not in the repository."
+    },
+    {
+      "what": "The exposure rows, clean-arm audits and blinding check (results/stage1/exposure-*.tsv, clean-arm-audit.json, blinding-*.json, stage2/results/exposure-summary.json, clean-arm-audit/, blinding.json)",
+      "reason": "They were read from the review sessions' transcripts, which are not in the repository."
+    },
+    {
+      "what": "Session costs and spend (stage2/results/costs.json, stage2/results/spend.json) and the cost tables in report.md and stage2/report.md",
+      "reason": "They come from the metering ledgers and proxy usage logs on the run machines, which are not committed."
+    },
+    {
+      "what": "The secondary readings and strata (results/stage1/secondary.json, strata.json)",
+      "reason": "They were computed by a grading script from the judged arm trees, which are not committed."
+    }
+  ]
+}

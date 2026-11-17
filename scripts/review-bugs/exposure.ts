@@ -31,7 +31,8 @@
  *                message. Skill open: a Skill call for review (review, gstack:review, gstack-review) whose result is not
  *                an error, a Read (or shell read) of a review SKILL.md whose result shows the file, or a main-agent user
  *                message carrying the skill body (a /review slash command expands to it), or a main-agent Bash call to
- *                the skill's preamble, gstack-skill-start --skill review, whose result has a line starting
+ *                the skill's preamble, gstack-skill-start --skill review (or --skill=review, and followed by a space, ;,
+ *                &&, | or a closing parenthesis, stage 2 Amendment 4), whose result has a line starting
  *                "SKILL_START_PROTO: " (review-real-bugs stage 1, amendment 2: the rig never logs the slash-command
  *                expansion). With --skill ship the same four kinds of signal are read for /ship instead (a Skill call for
  *                ship, a read of ship/SKILL.md, the gstack-skill-start --skill ship preamble), for stage 2's ship-panel
@@ -141,7 +142,7 @@ export interface SessionRead { harness: Harness; files: string[]; skill: SkillOp
 const REVIEW_BODY = /# Pre-Landing PR Review|AUTO-GENERATED from SKILL\.md\.tmpl/;
 export const GATE_SKILLS = ['review', 'ship'] as const;
 export type GateSkill = (typeof GATE_SKILLS)[number];
-const skillStart = (skill: GateSkill) => new RegExp('gstack-skill-start\\s+--skill\\s+["\']?' + skill + '["\']?(?=\\s|$)');
+const skillStart = (skill: GateSkill) => new RegExp('gstack-skill-start\\s+--skill(?:\\s+|=)["\']?' + skill + '["\']?(?=[\\s;&|)]|$)');
 const skillMd = (skill: GateSkill) => new RegExp('(?:^|/)(?:gstack-)?' + skill + '/SKILL\\.md$');
 const REVIEW_SKILL_MD = skillMd('review');
 const REAL_OPENCLAW_SKILL = /gstack\/skills\/gstack-review\/SKILL\.md$/;

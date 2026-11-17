@@ -70,3 +70,39 @@ describe('the CLI takes --skill', () => {
     expect(err).toContain('--skill ship reads only claude-code sessions, not codex');
   });
 });
+
+describe('stage 2 Amendment 4, fix 6: the preamble match takes ;, &&, (...) and --skill=', () => {
+  const forms = (skill: string) => [
+    'gstack-skill-start --skill ' + skill + '; echo started',
+    'gstack-skill-start --skill "' + skill + '"&& echo started',
+    'gstack-skill-start --skill ' + skill + '&&echo started',
+    '(gstack-skill-start --skill ' + skill + ')',
+    'echo "$(~/.claude/skills/gstack/bin/gstack-skill-start --skill \'' + skill + '\')"',
+    'gstack-skill-start --skill=' + skill + ' --model claude',
+    'gstack-skill-start --skill="' + skill + '";',
+    'gstack-skill-start --skill ' + skill + '|| true',
+  ];
+  test('ship: every form opens /ship, and none opens /review', () => {
+    forms('ship').forEach((c, i) => {
+      const f = transcript('a4-ship-' + i, c, 'SKILL_START_PROTO: 1');
+      expect(readClaudeCode(f, 'ship').skill).toMatchObject({ opened: true, how: 'ship skill preamble: gstack-skill-start --skill ship' });
+      expect(readClaudeCode(f).skill.opened).toBe(false);
+    });
+  });
+  test('review shares the matcher: every form opens /review, and none opens /ship', () => {
+    forms('review').forEach((c, i) => {
+      const f = transcript('a4-review-' + i, c, 'SKILL_START_PROTO: 1');
+      expect(readClaudeCode(f).skill.opened).toBe(true);
+      expect(readClaudeCode(f, 'ship').skill.opened).toBe(false);
+    });
+  });
+  test('a longer skill name, an error result or no PROTO line still opens nothing', () => {
+    for (const c of ['gstack-skill-start --skill=ship-panel', 'gstack-skill-start --skill=shipit;', 'gstack-skill-start --skill review-bots&&x', 'gstack-skill-start --skill=reviewer)']) {
+      const f = transcript('a4-neg-' + c.length, c, 'SKILL_START_PROTO: 1');
+      expect(readClaudeCode(f, 'ship').skill.opened).toBe(false);
+      expect(readClaudeCode(f).skill.opened).toBe(false);
+    }
+    expect(readClaudeCode(transcript('a4-err', 'gstack-skill-start --skill=ship;', 'SKILL_START_PROTO: 1', true), 'ship').skill.opened).toBe(false);
+    expect(readClaudeCode(transcript('a4-noproto', 'gstack-skill-start --skill=ship;', 'started'), 'ship').skill.opened).toBe(false);
+  });
+});
