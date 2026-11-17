@@ -58,10 +58,13 @@
 # Each shard runs as a background process with its own log at <dest>/<name>/fanout.log, its lane log at
 # <dest>/<name>/lane.log and its results at <dest>/<name>/results, which is what scripts/merge-shards.ts takes.
 #
-# Quota: before launching, ubi-runner.sh usage is read for the project's vCPUs in use. With --max-vcpus (or UBI_MAX_VCPUS)
-# the fan-out is refused when not one VM fits and batched to as many VMs as fit otherwise, printing the needed, used and
-# maximum vCPUs. Without it the maximum is unknown (the project token cannot read it; only a refused create reports it), so
-# every shard is launched (or --parallel of them at a time) and a shard refused for quota ("quota refused", or "quota preflight refused" when its
+# Quota: shards launch in batches. Each batch reads ubi-runner.sh usage once and launches at most
+# floor((UBI_QUOTA_VCPUS - used) / VM vCPUs) shards (464 unless the caller sets UBI_QUOTA_VCPUS), and with --max-vcpus (or
+# UBI_MAX_VCPUS), this fan-out's own vCPU allowance, only as many as keep its running VMs within it; --parallel caps it too.
+# The runner's per-VM preflight is no lock (shards started together read the same usage), so the batch size is what keeps
+# the project under the limit. An unreadable usage launches nothing. When nothing fits and no shard is running, the
+# fan-out is refused (exit 3) before any launch, or with UBI_QUOTA_WAIT=<seconds> reads usage again every 60 s for that
+# long and then reports the shards it never launched. A shard refused for quota ("quota refused", or "quota preflight refused" when its
 # VM would take the project past UBI_QUOTA_VCPUS, in its lane log) or whose VM never left "waiting for capacity" ("did not reach running" in its lane
 # log) is queued again after the next shard finishes, up to three times. A shard whose lane log for that try also says
 # "failed to destroy" is not queued again: its VM may still be running, so it keeps its failing exit.
@@ -249,22 +252,47 @@ n=${#shards[@]}
 case $size in standard-2) per=2 ;; standard-4) per=4 ;; standard-8) per=8 ;; standard-16) per=16 ;; standard-30) per=30 ;; standard-60) per=60 ;; *) per=16 ;; esac
 needed=$(( n * per ))
 
-# Quota check: used vCPUs from ubi-runner.sh usage (its last line is "total <vms> <vcpus>").
-usage=$(bash "$runner" usage 2>/dev/null || true)
-used=$(awk '$1=="total" {print $3}' <<<"$usage")
-used=${used:-0}
-log "$n shard(s) on $size: $needed vCPUs needed; the project uses $used now${max_vcpus:+ of $max_vcpus}"
-printf '%s\n' "$usage" | sed 's/^/  /' >&2
-if [ -n "$max_vcpus" ]; then
-  fit=$(( (max_vcpus - used) / per ))
-  if [ "$fit" -lt 1 ]; then echo "fanout: refused: not one $size VM fits (needed $needed, used $used, maximum $max_vcpus vCPUs); wait for VMs to finish or use a smaller size" >&2; exit 3; fi
-  if [ "$fit" -lt "$n" ]; then log "only $fit of $n VMs fit the quota (needed $needed, used $used, maximum $max_vcpus); running $fit at a time"; fi
-  [ -n "$parallel" ] && [ "$parallel" -lt "$fit" ] || parallel=$fit
-else
-  log "the vCPU maximum is not readable with this token; launching ${parallel:-all $n} at once, and a shard refused for quota is queued again"
-  parallel=${parallel:-$n}
-fi
+# Quota: the runner's per-VM preflight is no lock (shards started together all read the same usage and all pass it), so
+# each batch reads ubi-runner.sh usage once (its last line is "total <vms> <vcpus>") and launches at most
+# floor((UBI_QUOTA_VCPUS - used) / per) shards, and with --max-vcpus only as many as keep this fan-out's own VMs within it.
+[[ "$UBI_QUOTA_VCPUS" =~ ^[0-9]+$ ]] || { echo "fanout: UBI_QUOTA_VCPUS must be a whole number of vCPUs" >&2; exit 2; }
+[ -z "$max_vcpus" ] || [[ "$max_vcpus" =~ ^[0-9]+$ ]] || { echo "fanout: --max-vcpus must be a whole number of vCPUs" >&2; exit 2; }
+room_wait=${UBI_QUOTA_WAIT:-0}
+[[ "$room_wait" =~ ^[0-9]+$ ]] || { echo "fanout: UBI_QUOTA_WAIT must be a whole number of seconds" >&2; exit 2; }
+parallel=${parallel:-$n}
 [ "$parallel" -gt "$n" ] && parallel=$n
+running=0
+queue=()
+# batch_room: how many queued shards this batch may launch, from one usage read. An unreadable usage launches none. Usage
+# lists a shard only once its VM exists, so a running shard whose shard-vm.json has no created_epoch from this try still
+# holds a VM's worth of room.
+batch_room() {
+  local usage used room k allow pending=0 p name created
+  usage=$(bash "$runner" usage 2>/dev/null) || usage=""
+  used=$(awk '$1=="total" {print $3}' <<<"$usage")
+  if ! [[ "$used" =~ ^[0-9]+$ ]]; then log "batch: the project's vCPU usage is unreadable, so no VM launches this batch"; echo 0; return; fi
+  if [ "$running" -gt 0 ]; then
+    for p in "${!pid_of[@]}"; do
+      IFS=$'\t' read -r name _ <<<"${pid_of[$p]}"
+      created=$(grep -oE '"created_epoch": *[0-9]+' "$dest/$name/shard-vm.json" 2>/dev/null | grep -oE '[0-9]+$' || true)
+      [ "${created:-0}" -ge "${launched_of[$name]}" ] || pending=$(( pending + 1 ))
+    done
+  fi
+  room=$(( (UBI_QUOTA_VCPUS - used) / per - pending )); [ "$room" -gt 0 ] || room=0
+  k=$(( parallel - running )); [ "$room" -ge "$k" ] || k=$room
+  if [ -n "$max_vcpus" ]; then allow=$(( max_vcpus / per - running )); [ "$allow" -ge "$k" ] || k=$allow; fi
+  [ "${#queue[@]}" -ge "$k" ] || k=${#queue[@]}
+  [ "$k" -gt 0 ] || k=0
+  log "batch: the project uses $used of $UBI_QUOTA_VCPUS vCPUs, room for $room $size VM(s)$([ "$pending" -eq 0 ] || echo " after $pending launched shard(s) with no VM yet")${max_vcpus:+; this fan-out runs $running of the $(( max_vcpus / per )) its $max_vcpus vCPUs allow}; launching $k of ${#queue[@]} queued"
+  echo "$k"
+}
+log "$n shard(s) on $size: $needed vCPUs needed; each batch launches only what fits under $UBI_QUOTA_VCPUS project vCPUs${max_vcpus:+ and the $max_vcpus allowed for this fan-out}"
+bash "$runner" usage 2>/dev/null | sed 's/^/  /' >&2 || true
+if [ -n "$max_vcpus" ] && [ "$max_vcpus" -lt "$per" ]; then echo "fanout: refused: --max-vcpus $max_vcpus is less than one $size VM ($per vCPUs)" >&2; exit 3; fi
+if [ "$room_wait" -eq 0 ]; then
+  queue=("${shards[@]}")
+  if [ "$(batch_room)" -lt 1 ]; then echo "fanout: refused: not one $size VM fits under $UBI_QUOTA_VCPUS project vCPUs now (or usage is unreadable); wait for VMs to finish, set UBI_QUOTA_WAIT=<seconds> to wait for room, or use a smaller size" >&2; exit 3; fi
+fi
 
 run_cmd() {
   local name=$1 cells=$2 lease=$3 sargs=${4:-}
@@ -333,10 +361,11 @@ fi
 reservations=$(stage_cap reserve) || exit 2
 declare -A rid_of=()
 while IFS=$'\t' read -r rname rid; do [ -z "$rname" ] || rid_of[$rname]=$rid; done <<<"$reservations"
-declare -A pid_of exit_of tries_of told log_start
+declare -A pid_of exit_of tries_of told log_start launched_of
 queue=("${shards[@]}")
 running=0
 stopping=0
+waited=0
 # An interrupt usually comes as several signals (a cancelled operation or a closed terminal sends TERM, HUP and INT to the
 # group): the first is logged once, and each shard gets one TERM, so a second never cuts into its copy-back and VM destroy.
 on_signal() {
@@ -353,16 +382,25 @@ launch() {
   mkdir -p "$dest/$name"
   tries_of[$name]=$(( ${tries_of[$name]:-0} + 1 ))
   log_start[$name]=$(stat -c %s "$dest/$name/lane.log" 2>/dev/null || echo 0)
+  launched_of[$name]=$(date +%s)
   log "launching shard $name (cells $cells, lease \$$lease, try ${tries_of[$name]}); log $dest/$name/fanout.log"
   UBI_LEASE_RESERVATION=${rid_of[$name]:-} bash -c "$(run_cmd "$name" "$cells" "$lease" "$sargs")" > "$dest/$name/fanout.log" 2>&1 &
   pid_of[$!]=$line
   running=$(( running + 1 ))
 }
 while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
-  while [ "$stopping" -eq 0 ] && [ ${#queue[@]} -gt 0 ] && [ "$running" -lt "$parallel" ]; do
-    launch "${queue[0]}"; queue=("${queue[@]:1}")
-    sleep 2
-  done
+  if [ "$stopping" -eq 0 ] && [ ${#queue[@]} -gt 0 ] && [ "$running" -lt "$parallel" ]; then
+    k=$(batch_room) || k=0
+    if [ "$k" -eq 0 ] && [ "$running" -eq 0 ]; then
+      if [ "$waited" -lt "$room_wait" ]; then sleep 60 || true; waited=$(( waited + 60 )); continue; fi
+      log "no room for a $size VM and no shard running after ${waited}s of waiting; ${#queue[@]} shard(s) not launched"
+      for line in "${queue[@]}"; do IFS=$'\t' read -r name _ <<<"$line"; exit_of[$name]=no-room; done
+      queue=()
+      break
+    fi
+    [ "$k" -eq 0 ] || waited=0
+    for (( i = 0; i < k; i++ )); do [ "$stopping" -eq 0 ] || break; launch "${queue[0]}"; queue=("${queue[@]:1}"); sleep 2 || true; done
+  fi
   [ "$running" -gt 0 ] || break
   done_pid=""
   set +e; wait -n -p done_pid "${!pid_of[@]}"; rc=$?; set -e
@@ -372,7 +410,7 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
   try_log=$(tail -c +$(( ${log_start[$name]:-0} + 1 )) "$dest/$name/lane.log" 2>/dev/null || true)
   if [ "$rc" -eq 3 ] && [ "$stopping" -eq 0 ] && grep -qE 'quota refused|quota preflight refused|did not reach running in .*waiting for capacity' <<<"$try_log" && ! grep -q 'failed to destroy' <<<"$try_log" && [ "${tries_of[$name]}" -lt 3 ]; then
     log "shard $name was refused for vCPU quota or found no VM capacity; queued again (after the next shard finishes)"
-    queue+=("$line"); [ "$running" -gt 0 ] || sleep 60
+    queue+=("$line"); [ "$running" -gt 0 ] || sleep 60 || true
     continue
   fi
   exit_of[$name]=$rc
