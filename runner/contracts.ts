@@ -591,7 +591,9 @@ export interface TrialRecord {
  *  whatever else held), not-installed (no turn's probe passed), not-recalled (installed, finish line missed). */
 export interface TrialInstall {
   arm: 'bare' | 'paste';
-  stable_commit: string;
+  /** The gbrain release tag the first message named, and the commit it names. */
+  tag: string;
+  commit: string;
   nonce: string;
   outcome: 'recalled' | 'harness-memory' | 'not-recalled' | 'not-installed';
   finish: { reply: boolean; gbrain_call: boolean; brain: boolean; outside_brain: string[] };

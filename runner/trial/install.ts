@@ -1,4 +1,4 @@
-// internal-task: one gbrain install trial, start to finish. The agent gets the arm's first message in conversation s1 and installs
+// GST-2715: one gbrain install trial, start to finish. The agent gets the arm's first message in conversation s1 and installs
 // gbrain however it chooses; whenever it ends a turn while the install probe (harnesses/_install/probe.sh, written by the
 // adapter after every turn) still fails, it gets the task's one scripted reply, at most the task's max times. Then s1 saves a
 // fact holding the trial's nonce, a new conversation s2 asks for it back, and only when that misses, a third conversation s3
@@ -11,8 +11,8 @@
 // refused at $0 and counted. After the trial the secret directory is deleted, the token is scrubbed from every file under
 // the trial directory, and a canary scan for the token and the runner's provider keys must come back clean (HE-INSTALL-005).
 //
-// executeRun (runner/trial/run.ts) checks before each trial that gbrain's stable tag still serves the cell's commit
-// (HE-INSTALL-001); a moved stable stops the cell's remaining trials and no record is written for them.
+// executeRun (runner/trial/run.ts) checks before each trial that the cell's gbrain release tag still names the cell's commit
+// (HE-INSTALL-001); a moved tag stops the cell's remaining trials and no record is written for them.
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -40,6 +40,8 @@ export const PROVIDER_KEY_NAMES: readonly string[] = ['ANTHROPIC_API_KEY', 'OPEN
 
 export interface InstallTask {
   arms: { bare: string };
+  /** The line both arms end with, word for word; {tag} becomes the cell's release tag. */
+  version_line: string;
   reply: { text: string; max: number };
   save: string;
   recall: string;
@@ -54,56 +56,65 @@ export function loadInstallTask(repoRoot = '.'): InstallTask {
   catch (e) { throw new RunnerError('HE-TASK-001', `${path} is missing or not JSON (${(e as Error).name}); fix: restore tasks/gbrain-install/task.json`); }
 }
 
-/** The arm's first message: the bare prompt, or the paste file's text, without its final newline. */
+/** The arm's first message: the bare prompt, or the paste file's text, without its final newline, then a blank line and the
+ *  task's version line with the cell's release tag. gbrain's docs install #stable, which can lag the newest release by days, so
+ *  both arms name the release, in the same words. */
 export function armPrompt(cell: Pick<Cell, 'install'>, task: InstallTask, repoRoot = '.'): string {
   const file = cell.install!.arm === 'paste' ? cell.install!.paste_file! : task.arms.bare;
-  return readFileSync(join(repoRoot, file), 'utf8').replace(/\n$/, '');
+  return readFileSync(join(repoRoot, file), 'utf8').replace(/\n$/, '') + '\n\n' + task.version_line.replaceAll('{tag}', cell.install!.tag);
 }
 
-// ---- the stable pin ------------------------------------------------------------------------------------------------
+// ---- the release pin -----------------------------------------------------------------------------------------------
 
-/** git ls-remote of gbrain's stable refs; tests inject their own. */
-export type LsRemote = () => { status: number; stdout: string; stderr: string };
-export const gbrainLsRemote: LsRemote = () => {
-  const r = spawnSync('git', ['ls-remote', GBRAIN_REPO, 'refs/heads/stable', 'refs/tags/stable', 'refs/tags/stable^{}'], { encoding: 'utf8', timeout: 60_000, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmpdir(), GIT_TERMINAL_PROMPT: '0' } });
+/** git ls-remote of one gbrain release tag; tests inject their own. */
+export type LsRemote = (tag: string) => { status: number; stdout: string; stderr: string };
+export const gbrainLsRemote: LsRemote = (tag) => {
+  const r = spawnSync('git', ['ls-remote', GBRAIN_REPO, `refs/tags/${tag}`, `refs/tags/${tag}^{}`], { encoding: 'utf8', timeout: 60_000, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmpdir(), GIT_TERMINAL_PROMPT: '0' } });
   return { status: r.status ?? 1, stdout: r.stdout ?? '', stderr: r.stderr ?? r.error?.message ?? '' };
 };
 
-/** What stable serves: the peeled tag commit, else the tag itself (a lightweight tag), and a branch of that name if any. */
-export function stableRefs(stdout: string): { tag: string | null; branch: string | null } {
+/** The commit a tag names: the peeled commit of an annotated tag, else the tag itself (a lightweight tag); null when there is none. */
+export function tagCommit(stdout: string, tag: string): string | null {
   const refs = new Map(stdout.split('\n').map((l) => l.trim().split(/\s+/)).filter((p) => p.length === 2).map(([sha, ref]) => [ref!, sha!]));
-  return { tag: refs.get('refs/tags/stable^{}') ?? refs.get('refs/tags/stable') ?? null, branch: refs.get('refs/heads/stable') ?? null };
+  return refs.get(`refs/tags/${tag}^{}`) ?? refs.get(`refs/tags/${tag}`) ?? null;
 }
 
-/** null when stable serves the cell's commit; else the HE-INSTALL-001 message. */
-export function stableProblem(cell: Pick<Cell, 'id' | 'install'>, lsRemote: LsRemote = gbrainLsRemote): string | null {
-  const want = cell.install!.stable_commit;
-  const r = lsRemote();
-  if (r.status !== 0) return `HE-INSTALL-001 cell ${cell.id}: git ls-remote ${GBRAIN_REPO} failed (${r.stderr.trim().split('\n').pop() ?? 'no output'}), so the runner cannot confirm stable serves ${want.slice(0, 12)}; the cell's remaining trials are not run. fix: check the network and rerun with --resume`;
-  const { tag, branch } = stableRefs(r.stdout);
-  const served = [tag, branch].filter((s): s is string => !!s);
-  if (served.length && served.every((s) => s === want)) return null;
-  return `HE-INSTALL-001 cell ${cell.id}: gbrain's stable serves ${served.length ? served.map((s) => s.slice(0, 12)).join(' and ') : 'nothing (no stable ref)'}, not the preregistered ${want.slice(0, 12)}; an install now would test another release, so the cell's remaining trials are not run. fix: finish the wave under a dated amendment that pins the new release, or wait for stable to serve the pinned one`;
+/** null when the cell's release tag still names its commit; else the HE-INSTALL-001 message. */
+export function tagProblem(cell: Pick<Cell, 'id' | 'install'>, lsRemote: LsRemote = gbrainLsRemote): string | null {
+  const { tag, commit: want } = cell.install!;
+  const r = lsRemote(tag);
+  if (r.status !== 0) return `HE-INSTALL-001 cell ${cell.id}: git ls-remote ${GBRAIN_REPO} failed (${r.stderr.trim().split('\n').pop() ?? 'no output'}), so the runner cannot confirm ${tag} names ${want.slice(0, 12)}; the cell's remaining trials are not run. fix: check the network and rerun with --resume`;
+  const got = tagCommit(r.stdout, tag);
+  if (got === want) return null;
+  return `HE-INSTALL-001 cell ${cell.id}: gbrain's tag ${tag} names ${got ? got.slice(0, 12) : 'nothing (no such tag)'}, not the preregistered ${want.slice(0, 12)}; an install now would test other code, so the cell's remaining trials are not run. fix: finish the wave under a dated amendment that pins the commit the tag names now`;
 }
 
 // ---- the cold download ---------------------------------------------------------------------------------------------
 
 /** The shell script of the cold download: in a fresh HOME inside the harness image, bun from npm when the image has none, then
- *  gbrain from its stable tag, each timed; one JSON line out. Nothing of it is kept, and no key is in its environment. */
-export const COLD_DOWNLOAD_SCRIPT = [
-  'export HOME="$(mktemp -d)"; export BUN_INSTALL="$HOME/.bun"; export PATH="$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"',
+ *  gbrain at the cell's release tag, each timed; one JSON line out. Nothing of it is kept, and no key is in its environment. */
+export const coldDownloadScript = (tag: string): string => [
+  'export HOME="$(mktemp -d)"; export BUN_INSTALL="$HOME/.bun"; export PATH="$HOME/.npm-global/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH"',
+  'pre=$(command -v gbrain 2>/dev/null || true)',
   'ms() { date +%s%3N; }; t0=$(ms); had=1',
   // An image with no npm (Hermes's Python image) gets Bun's release zip through Python instead.
   'command -v bun >/dev/null 2>&1 || { had=0; if command -v npm >/dev/null 2>&1; then npm install -g --prefix "$HOME/.npm-global" bun >/dev/null 2>&1; else python3 -c "import io, os, urllib.request, zipfile; d = os.path.expanduser(\'~/.bun/bin\'); os.makedirs(d, exist_ok=True); z = zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(\'https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip\', timeout=300).read())); open(os.path.join(d, \'bun\'), \'wb\').write(z.read(\'bun-linux-x64/bun\')); os.chmod(os.path.join(d, \'bun\'), 0o755)" >/dev/null 2>&1; fi; }',
-  't1=$(ms); bun install -g github:garrytan/gbrain#stable >/dev/null 2>&1; rc=$?; t2=$(ms)',
+  `t1=$(ms); bun install -g github:garrytan/gbrain#${tag} >/dev/null 2>&1; rc=$?; t2=$(ms)`,
   'v=$(gbrain --version 2>/dev/null | head -n 1 | tr -cd "0-9.")',
-  'printf \'{"bun_preinstalled":%s,"bun_ms":%s,"gbrain_ms":%s,"exit":%s,"version":"%s"}\\n\' "$([ $had = 1 ] && echo true || echo false)" $((t1 - t0)) $((t2 - t1)) $rc "$v"',
+  'printf \'{"gbrain_preinstalled":"%s","bun_preinstalled":%s,"bun_ms":%s,"gbrain_ms":%s,"exit":%s,"version":"%s"}\\n\' "$pre" "$([ $had = 1 ] && echo true || echo false)" $((t1 - t0)) $((t2 - t1)) $rc "$v"',
 ].join('\n');
 
+/** HE-INSTALL-006 when the cold download found gbrain already on PATH in a fresh HOME of the image, before any install: the pin
+ *  counts read the first gbrain version on PATH, so an image that ships one would make every trial's count wrong. */
+export function preinstalledProblem(result: Record<string, unknown>, image: string): string | null {
+  const path = result.gbrain_preinstalled;
+  return typeof path === 'string' && path ? `HE-INSTALL-006 image ${image}: gbrain is already on PATH (${path}) before any install, so the first version a trial sees is not the agent's. fix: rebuild the image without gbrain` : null;
+}
+
 /** The docker run of the cold download on the run's install network, through the open-egress proxy, as container `name`. */
-export function coldDownloadArgs(image: string, network: { name: string; gateway: string }, egressEnv: Record<string, string>, name = 'he-cold-download'): string[] {
+export function coldDownloadArgs(image: string, network: { name: string; gateway: string }, egressEnv: Record<string, string>, tag: string, name = 'he-cold-download'): string[] {
   return ['docker', 'run', '--rm', '--name', name, '--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`, '--network', network.name, '--add-host', `host.docker.internal:${network.gateway}`,
-    ...Object.entries(egressEnv).flatMap(([k, v]) => ['-e', `${k}=${v}`]), '--entrypoint', 'sh', image, '-c', COLD_DOWNLOAD_SCRIPT];
+    ...Object.entries(egressEnv).flatMap(([k, v]) => ['-e', `${k}=${v}`]), '--entrypoint', 'sh', image, '-c', coldDownloadScript(tag)];
 }
 
 /** Time a cold gbrain download once per image before the first install trial, reported apart from every trial
@@ -111,19 +122,19 @@ export function coldDownloadArgs(image: string, network: { name: string; gateway
  *  Asynchronous on purpose: the open-egress proxy the download goes through runs in this process, so a blocking spawn would
  *  leave every proxied request unanswered. Past the deadline the container is removed, since killing the docker CLI alone
  *  leaves it running. */
-export async function measureColdDownload(image: string, network: { name: string; gateway: string }, egressEnv: Record<string, string>, timeoutMs = 900_000): Promise<Record<string, unknown>> {
+export async function measureColdDownload(image: string, network: { name: string; gateway: string }, egressEnv: Record<string, string>, tag: string, timeoutMs = 900_000): Promise<Record<string, unknown>> {
   const at = new Date().toISOString();
   const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? tmpdir() };
   const name = `he-cold-download-${randomBytes(6).toString('hex')}`;
-  const proc = Bun.spawn(coldDownloadArgs(image, network, egressEnv, name), { env, stdout: 'pipe', stderr: 'pipe' });
+  const proc = Bun.spawn(coldDownloadArgs(image, network, egressEnv, tag, name), { env, stdout: 'pipe', stderr: 'pipe' });
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; Bun.spawnSync(['docker', 'rm', '-f', name], { env, stdout: 'ignore', stderr: 'ignore' }); proc.kill(9); }, timeoutMs);
   const [stdout, stderr, status] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   clearTimeout(timer);
-  if (timedOut) return { at, image, error: `no result within ${timeoutMs / 1000} s; container ${name} removed` };
+  if (timedOut) return { at, image, tag, error: `no result within ${timeoutMs / 1000} s; container ${name} removed` };
   const line = stdout.trim().split('\n').pop() ?? '';
-  try { return { at, image, ...(JSON.parse(line) as Record<string, unknown>) }; }
-  catch { return { at, image, error: `no result line (docker exit ${status}): ${stderr.trim().split('\n').pop()?.slice(0, 200) ?? ''}` }; }
+  try { return { at, image, tag, ...(JSON.parse(line) as Record<string, unknown>) }; }
+  catch { return { at, image, tag, error: `no result line (docker exit ${status}): ${stderr.trim().split('\n').pop()?.slice(0, 200) ?? ''}` }; }
 }
 
 // ---- scans ---------------------------------------------------------------------------------------------------------
@@ -294,7 +305,7 @@ export async function runInstallTrial(ctx: InstallTrialContext): Promise<TrialRe
     const paths: Record<string, string> = { dir: dirs.root, logs: dirs.logs, install_turns: join(dirs.root, 'install-turns.json'), install_classification: join(dirs.root, 'install-classification.json') };
     if (proxy) { paths.usage = join(dirs.root, 'usage.json'); paths.reconcile = join(dirs.root, 'reconcile.json'); }
     if (ctx.egress) paths.egress = join(dirs.root, 'egress.ndjson');
-    log(`install trial ${trial.id}: arm ${cell.install!.arm}, stable ${cell.install!.stable_commit.slice(0, 12)}, ${task.time_budget_s} s per turn, at most ${task.reply.max} scripted replies`);
+    log(`install trial ${trial.id}: arm ${cell.install!.arm}, release ${cell.install!.tag} (${cell.install!.commit.slice(0, 12)}), ${task.time_budget_s} s per turn, at most ${task.reply.max} scripted replies`);
 
     let harness: Harness | null = null;
     let readyFailure: HarnessGone | null = null;
@@ -425,7 +436,7 @@ export async function runInstallTrial(ctx: InstallTrialContext): Promise<TrialRe
 
     const lastIndex = recall ? turns.indexOf(recall) + 1 : turns.length;
     const install: TrialInstall = {
-      arm: cell.install!.arm, stable_commit: cell.install!.stable_commit, nonce, outcome,
+      arm: cell.install!.arm, tag: cell.install!.tag, commit: cell.install!.commit, nonce, outcome,
       finish: { reply: r2.reply, gbrain_call: r2.gbrain_call, brain, outside_brain: outside },
       hinted: { ran: !!hinted, ...(hinted ? hit(hinted) : { reply: false, gbrain_call: false }) },
       scripted_replies: scripted, probe_exhausted: probeExhausted,

@@ -1,4 +1,4 @@
-// internal-task: the gbrain install trial's cell fields and their checks. Kept apart from runner/trial/install.ts so runner/run.ts
+// GST-2715: the gbrain install trial's cell fields and their checks. Kept apart from runner/trial/install.ts so runner/run.ts
 // can import the checks without loading the trial driver.
 
 import { createHash } from 'node:crypto';
@@ -16,13 +16,16 @@ export const INSTALL_HARNESSES: readonly string[] = ['claude-code', 'codex', 'op
 const INSTALL_CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'repetitions', 'ceiling', 'harness_mode', 'adapter', 'network', 'utility_models', 'install']);
 
 export interface InstallCellConfig {
-  /** bare: the first message is exactly the task's bare prompt ("install gbrain"). paste: the README's agent paste prompt, from paste_file. */
+  /** bare: the task's bare prompt ("install gbrain"). paste: the README's agent paste prompt, from paste_file. Both then end with the
+   *  task's version line naming tag (runner/trial/install.ts armPrompt). */
   arm: 'bare' | 'paste';
   /** paste arm: the prompt file, a path from the repository root, and its sha256. */
   paste_file?: string;
   paste_sha256?: string;
-  /** The gbrain commit the stable channel must serve while the cell runs (the peeled commit of refs/tags/stable). */
-  stable_commit: string;
+  /** The gbrain release every trial is asked to install, such as v0.60.733.0: the newest release on gbrain's main branch at freeze. */
+  tag: string;
+  /** The commit the tag names (its peeled commit); the runner checks it before each trial. */
+  commit: string;
   /** Seed of the per-trial nonce (tasks/gbrain-install/nonce.ts). */
   seed: string;
 }
@@ -45,11 +48,12 @@ export function checkInstallCell(c: InstallCellFields, repoRoot = '.'): void {
   if (docker && c.network !== 'install') throw new RunnerError('HE-NET-001', `cell ${c.id}: an ${INSTALL_SLICE} cell in docker mode needs network "install" (the agent downloads gbrain through the run's egress proxy, which blocks direct provider hosts and gbrain.io). fix: add "network": "install" to the cell`);
   if (!docker && c.network !== undefined) throw new RunnerError('HE-NET-001', `cell ${c.id}: network "${c.network}" needs a harness container; harness_mode "${c.harness_mode}" runs none. fix: drop network`);
   const i = c.install as Partial<InstallCellConfig> | undefined;
-  if (!i || typeof i !== 'object' || Array.isArray(i)) throw bad(`an ${INSTALL_SLICE} cell needs install: {arm, stable_commit, seed[, paste_file, paste_sha256]}`);
-  const unknown = Object.keys(i).filter((k) => !['arm', 'paste_file', 'paste_sha256', 'stable_commit', 'seed'].includes(k));
+  if (!i || typeof i !== 'object' || Array.isArray(i)) throw bad(`an ${INSTALL_SLICE} cell needs install: {arm, tag, commit, seed[, paste_file, paste_sha256]}`);
+  const unknown = Object.keys(i).filter((k) => !['arm', 'paste_file', 'paste_sha256', 'tag', 'commit', 'seed'].includes(k));
   if (unknown.length) throw bad(`install has unknown key(s) ${unknown.join(', ')}`);
   if (i.arm !== 'bare' && i.arm !== 'paste') throw bad(`install.arm must be "bare" or "paste" (got ${JSON.stringify(i.arm)})`);
-  if (typeof i.stable_commit !== 'string' || !/^[0-9a-f]{40}$/.test(i.stable_commit)) throw bad(`install.stable_commit must be the full 40-character gbrain commit stable serves (got ${JSON.stringify(i.stable_commit)})`);
+  if (typeof i.tag !== 'string' || !/^v\d+(\.\d+){2,3}$/.test(i.tag)) throw bad(`install.tag must be a gbrain release tag such as "v0.60.733.0" (got ${JSON.stringify(i.tag)})`);
+  if (typeof i.commit !== 'string' || !/^[0-9a-f]{40}$/.test(i.commit)) throw bad(`install.commit must be the full 40-character gbrain commit the tag names (got ${JSON.stringify(i.commit)})`);
   if (typeof i.seed !== 'string' || !/^[A-Za-z0-9._-]{1,64}$/.test(i.seed)) throw bad(`install.seed must be a short name such as "wave1" (got ${JSON.stringify(i.seed)})`);
   if (i.arm === 'bare') {
     if (i.paste_file !== undefined || i.paste_sha256 !== undefined) throw bad('install.paste_file and paste_sha256 belong to the paste arm only');

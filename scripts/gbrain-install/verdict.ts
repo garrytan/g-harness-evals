@@ -60,6 +60,10 @@ export interface CellVerdict {
   agent_turns_median: number | null;
   person_needed: { events: number; by_kind: Record<string, number>; runs_with_none: number };
   harness_memory: number;
+  /** The release pin, from what was installed, never from the commands typed: over counted runs with a tag, the first and the last
+   *  gbrain version the probe saw on PATH (the 1-second watcher and the end-of-turn probe, classification.probe_versions) when it was
+   *  not the pinned release, and the runs where no gbrain version was seen at all. */
+  pin: { first_version_off_pin: number; last_version_off_pin: number; no_version_seen: number };
   non_harness_requests: number;
   hinted: { ran: number; recalled: number };
 }
@@ -76,6 +80,7 @@ export function verdict(records: InstallTrialRecord[]): CellVerdict[] {
     for (const p of counted.flatMap(r => r.install.classification.person_needed)) byKind[p.kind] = (byKind[p.kind] ?? 0) + 1;
     const q = (p: number) => { const x = quantile(times, p); return x === null ? null : s1(x); };
     const hinted = counted.filter(r => r.install.hinted.ran);
+    const pinned = counted.filter(r => !!r.install.tag);
     return {
       cell: rs[0].cell, arm: rs[0].install.arm, harness: rs[0].harness, model: rs[0].model, runs: rs.length, n: counted.length,
       excluded: rs.filter(r => excludedReason(r) !== null).map(r => ({ trial_id: r.trial_id, reason: excludedReason(r)! })),
@@ -84,19 +89,26 @@ export function verdict(records: InstallTrialRecord[]): CellVerdict[] {
       agent_turns_median: median(counted.map(r => r.install.agent_turns)),
       person_needed: { events: Object.values(byKind).reduce((a, b) => a + b, 0), by_kind: byKind, runs_with_none: counted.filter(r => r.install.classification.person_needed.length === 0).length },
       harness_memory: counted.filter(r => r.install.outcome === 'harness-memory').length,
+      pin: {
+        first_version_off_pin: pinned.filter(r => { const v = r.install.classification.probe_versions?.first; return !!v && v !== pinVersion(r); }).length,
+        last_version_off_pin: pinned.filter(r => { const v = r.install.classification.probe_versions?.last; return !!v && v !== pinVersion(r); }).length,
+        no_version_seen: pinned.filter(r => !r.install.classification.probe_versions?.first).length,
+      },
       non_harness_requests: counted.reduce((a, r) => a + (r.install.non_harness_requests ?? 0), 0),
       hinted: { ran: hinted.length, recalled: hinted.filter(r => r.install.hinted.reply && r.install.hinted.gbrain_call).length },
     };
   });
 }
 
+const pinVersion = (r: InstallTrialRecord) => r.install.tag.replace(/^v/, '');
+
 const pct = (x: number | null) => x === null ? 'n/a' : `${Math.round(x * 100)}%`;
 
 export function verdictMarkdown(cells: CellVerdict[]): string {
-  const out = ['| Cell | Arm | n | Finish line (95% interval) | Seconds to finish, median (IQR) | Agent turns, median | Runs needing no person | Person-needed events (reply, blocked step, question) | Harness memory | Non-harness provider requests | Hinted recall (descriptive) |', '|---|---|---|---|---|---|---|---|---|---|---|'];
+  const out = ['| Cell | Arm | n | Finish line (95% interval) | Seconds to finish, median (IQR) | Agent turns, median | Runs needing no person | Person-needed events (reply, blocked step, question) | Harness memory | First gbrain version not the pin | Last gbrain version not the pin | No gbrain version seen | Non-harness provider requests | Hinted recall (descriptive) |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const c of cells) {
     const k = c.person_needed.by_kind;
-    out.push(`| ${c.cell} | ${c.arm} | ${c.n} | ${c.finish.k}/${c.finish.n} (${pct(c.finish.lo)} to ${pct(c.finish.hi)}) | ${c.finish_s.median ?? 'n/a'} (${c.finish_s.q1 ?? 'n/a'} to ${c.finish_s.q3 ?? 'n/a'}) | ${c.agent_turns_median ?? 'n/a'} | ${c.person_needed.runs_with_none}/${c.n} | ${c.person_needed.events} (${k['scripted-reply'] ?? 0}, ${k['blocked-step'] ?? 0}, ${k.question ?? 0}) | ${c.harness_memory} | ${c.non_harness_requests} | ${c.hinted.recalled}/${c.hinted.ran} |`);
+    out.push(`| ${c.cell} | ${c.arm} | ${c.n} | ${c.finish.k}/${c.finish.n} (${pct(c.finish.lo)} to ${pct(c.finish.hi)}) | ${c.finish_s.median ?? 'n/a'} (${c.finish_s.q1 ?? 'n/a'} to ${c.finish_s.q3 ?? 'n/a'}) | ${c.agent_turns_median ?? 'n/a'} | ${c.person_needed.runs_with_none}/${c.n} | ${c.person_needed.events} (${k['scripted-reply'] ?? 0}, ${k['blocked-step'] ?? 0}, ${k.question ?? 0}) | ${c.harness_memory} | ${c.pin.first_version_off_pin} | ${c.pin.last_version_off_pin} | ${c.pin.no_version_seen} | ${c.non_harness_requests} | ${c.hinted.recalled}/${c.hinted.ran} |`);
   }
   const excluded = cells.flatMap(c => c.excluded.map(e => `- ${e.trial_id}: ${e.reason}`));
   if (excluded.length) out.push('', 'Not counted:', ...excluded);

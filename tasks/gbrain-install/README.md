@@ -12,8 +12,9 @@ The gbrain install trial (internal-task). It asks one question: can an agent ins
 
 ## The arms
 
-- **bare** ([arms/bare.md](arms/bare.md)): "install gbrain", nothing else.
-- **paste** ([arms/paste-0.60.722.0.md](arms/paste-0.60.722.0.md)): the paste block from gbrain's README at the release stable serves (0.60.722.0, b82c23a7), byte for byte: the body of the README's one ```` ```text ```` block. It points the agent at gbrain's INSTALL_FOR_AGENTS.md and asks for a remember and recall round trip. A cell names its file in `install.paste_file`, with its `paste_sha256`.
+- **bare** ([arms/bare.md](arms/bare.md)): "install gbrain", then the version line.
+- **paste** ([arms/paste-0.60.722.0.md](arms/paste-0.60.722.0.md)): the paste block from gbrain's README at the release stable serves (0.60.722.0, b82c23a7), byte for byte: the body of the README's one ```` ```text ```` block. It points the agent at gbrain's INSTALL_FOR_AGENTS.md and asks for a remember and recall round trip. A cell names its file in `install.paste_file`, with its `paste_sha256`. The version line follows it.
+- **The version line** (`version_line`). Both arms end with it, after a blank line, word for word, with the cell's `install.tag` in place of `{tag}`. Evals of gbrain run on its newest release at launch, and gbrain's docs install `#stable`, which can lag that release by days, so the line names the release. It is the same in both arms, so the comparison between them stays fair. How often an agent installs `#stable` anyway is scored (scripts/gbrain-install/README.md, "Release pin").
 
 ## The finish line
 
@@ -24,5 +25,5 @@ A trial is `recalled` when the recall reply holds the nonce, the recall turn mad
 - `conversations`: which conversation each message goes to.
 - `time_budget_s`: the time limit per turn.
 
-The gbrain release is not pinned here. Each cell names it in `install.stable_commit`, and the runner refuses the cell (HE-INSTALL-001) when gbrain's `stable` tag no longer serves that commit. When stable moves, the change is a new paste file and a new preregistration pin, with no runner or task change.
+The gbrain release is not pinned here. Each cell names it in `install.tag`, with the commit the tag names in `install.commit`, and the runner refuses the cell (HE-INSTALL-001) when the tag no longer names that commit. A new release is a new paste file and a new preregistration pin, with no runner or task change.
 - `egress.json`: the hosts the run's egress proxy blocks.

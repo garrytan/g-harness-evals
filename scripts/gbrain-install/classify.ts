@@ -13,7 +13,7 @@ import { gbrainArgvFromShell, githubRateLimited, isGbrainCall, norm, unwrapShell
 export interface Probe { harness: string; at: string; binary: string | null; version: string | null; brain: boolean; brain_path: string | null; mcp: boolean; instructions: boolean; hook: boolean; wired: string[]; ok: boolean }
 export interface InstallTurn { turn: number; session: 's1' | 's2' | 's3'; role: 'arm' | 'reply' | 'save' | 'recall' | 'hinted'; text: string; reply_text: string | null; exit: number; started_at: string; ended_at: string; probe: Probe | null; events: NEvent[] }
 export interface EgressLine { at: string; trial: string | null; method: string; host: string; port: number; decision: 'allowed' | 'blocked' | 'failed'; status?: number }
-export interface InstallClassification { route: string | null; version: string | null; install_doc: Array<{ url: string; ref: string | null; sha256: string | null }>; stalls: Array<{ kind: 'blocked-step' | 'question'; step: string; label: string; turn: number }>; person_needed: Array<{ turn: number; step: string; kind: 'scripted-reply' | 'blocked-step' | 'question' }>; failed_commands: number; retried_commands: number; question_types: Record<string, number>; saved_to_harness_memory: boolean; last_gbrain_code: string | null; steps: { binary_ms: number | null; brain_ms: number | null; wired_ms: number | null; saved_ms: number | null; recalled_ms: number | null }; died_at_step: string | null; infra: string | null }
+export interface InstallClassification { route: string | null; install_attempts: Array<{ route: string; ref: string | null; ok: boolean }>; probe_versions: { first: string | null; last: string | null }; version: string | null; install_doc: Array<{ url: string; ref: string | null; sha256: string | null }>; stalls: Array<{ kind: 'blocked-step' | 'question'; step: string; label: string; turn: number }>; person_needed: Array<{ turn: number; step: string; kind: 'scripted-reply' | 'blocked-step' | 'question' }>; failed_commands: number; retried_commands: number; question_types: Record<string, number>; saved_to_harness_memory: boolean; last_gbrain_code: string | null; steps: { binary_ms: number | null; brain_ms: number | null; wired_ms: number | null; saved_ms: number | null; recalled_ms: number | null }; died_at_step: string | null; infra: string | null }
 
 export const ASK_RE = /(\?\s*$|\b(waiting (on|for) your|your (choice|decision|answer|call)|which (one|option|mode)|would you like|do you want|shall i|should i|want me to|let me know|your (approval|permission|confirmation|go-ahead|ok)|approve|confirm|okay to proceed|ok to proceed|before i (run|proceed|spend|do)|please (run|provide|share|paste|grant|restart|stop|reconnect|mount|tell me|confirm)|you('ll| will)? need to|you can run|you'?d need to|ask (your|the) (admin|administrator|host|owner))\b)/im;
 
@@ -57,6 +57,18 @@ export const ROUTES: ReadonlyArray<{ id: string; re: RegExp }> = [
   { id: 'bun-github', re: /\bbunx?\s+(add|install|i)\b[^;&|\n]*?(github:|github\.com\/|(?<![\w@:\/.-])[\w.-]+\/gbrain\b)/i },
   { id: 'npm', re: /\b(npm\s+(i|install|add)|pnpm\s+(add|install|i)|yarn\s+(global\s+)?add|bun\s+(add|install|i))\b[^;&|\n]*(?<![\w\/:.-])(@[\w-]+\/)?gbrain(@[\w.^~-]+)?(?![\w\/.-])/i },
 ];
+
+const CHECKOUT_RE = /\bgit\s+(?:-C\s+\S+\s+)?(?:checkout|switch)\s+(?:(?:--detach|--quiet|-d|-q)\s+)*["']?(\w[\w.\/-]*)/i;
+
+/** The gbrain ref an install command names: the #ref of a GitHub source, git clone's --branch or -b, a git checkout or switch in the
+ *  same command, or an npm version (gbrain@x); null when it names none (the default branch, npm's latest, or a hosted or plugin route). */
+export function installRef(command: string): string | null {
+  return command.match(/gbrain(?:\.git)?#([\w.\/-]+)/i)?.[1]
+    ?? command.match(/\bgit\s+clone\b[^;&|\n]*?(?:--branch[= ]|-b\s+)["']?([\w.\/-]+)/i)?.[1]
+    ?? command.match(/(?<![\w\/:.-])gbrain@([\w.^~-]+)/i)?.[1]
+    ?? command.match(CHECKOUT_RE)?.[1]
+    ?? null;
+}
 
 const BROWSER_RE = /\b(open|visit|go to|click)\b[^.\n]{0,60}\b(link|URL|page|browser)\b|\b(sign|log) ?in\b[^.\n]{0,60}\b(browser|URL|link|account)\b|\bin (your|a) browser\b|\b(oauth|device code)\b/i;
 const PASTE_RE = /\bpaste\b|\b(send me|give me|share|provide|enter|copy)\b[^.\n]{0,60}\b(key|token|secret|credential|password|code|output)s?\b/i;
@@ -132,13 +144,21 @@ export function classifyInstall(o: { harness: string; turns: InstallTurn[]; watc
     if (!succeeded(e)) failedBefore.add(c);
   }
 
-  let route: string | null = null, attempted: string | null = null;
-  for (const e of shells) {
-    const r = ROUTES.find(x => x.re.test(unwrapShell(e.input)));
-    if (!r) continue;
-    attempted = r.id;
-    if (succeeded(e)) { route = r.id; break; }
-  }
+  const attempts = shells.flatMap((e, i) => {
+    const c = unwrapShell(e.input);
+    const r = ROUTES.find(x => x.re.test(c));
+    if (!r) return [];
+    let ref = installRef(c);
+    if (ref === null && r.id === 'git-clone') {
+      for (const s of shells.slice(i + 1)) {
+        const later = unwrapShell(s.input);
+        if (ROUTES.some(x => x.re.test(later))) break;
+        const m = succeeded(s) ? later.match(CHECKOUT_RE)?.[1] : undefined;
+        if (m) { ref = m; break; }
+      }
+    }
+    return [{ route: r.id, ref, ok: succeeded(e) }];
+  });
 
   const versionOut = shells.filter(e => succeeded(e) && gbrainArgvFromShell(e.input).some(a => ['--version', '-v', '-V', 'version'].includes(a[0] ?? ''))).map(e => e.output.match(/\bv?(\d+\.\d+\.\d+(?:\.\d+)?)\b/)?.[1]).filter((v): v is string => !!v);
   const version = [...turns].reverse().find(t => t.probe?.version)?.probe?.version ?? versionOut.at(-1) ?? null;
@@ -160,12 +180,15 @@ export function classifyInstall(o: { harness: string; turns: InstallTurn[]; watc
     for (const m of e.output.matchAll(GBRAIN_CODE_RE)) lastCode = m[1];
   }
 
+  const seen = [...o.watch, ...turns.flatMap(t => t.probe ? [t.probe] : [])].filter(p => p.version).sort((a, b) => a.at.localeCompare(b.at));
   const everOk = turns.some(t => t.probe?.ok) || o.watch.some(p => p.ok);
   const lastProbe = [...turns].reverse().find(t => t.probe)?.probe ?? o.watch.at(-1) ?? null;
   const rateLimited = githubRateLimited(events) || o.egress.some(l => GITHUB_HOST_RE.test(l.host) && (l.status === 403 || l.status === 429));
 
   return {
-    route: route ?? attempted,
+    route: attempts.find(a => a.ok)?.route ?? attempts.at(-1)?.route ?? null,
+    install_attempts: attempts,
+    probe_versions: { first: seen[0]?.version ?? null, last: seen.at(-1)?.version ?? null },
     version,
     install_doc: installDoc,
     stalls,

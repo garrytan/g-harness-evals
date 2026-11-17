@@ -11,8 +11,8 @@ These scripts score the gbrain install eval: a fresh agent is told "install gbra
 |---|---|
 | `transcript.ts` | Turns one turn file into a flat event list (`parseTurn`). Also: `isGbrainCall` (a gbrain MCP tool, or the gbrain CLI in command position), `isGbrainServed` (the finish line's gbrain call: a gbrain MCP tool, or a shell command that is one gbrain invocation, with gbrain as the command word, optionally after `cd <dir> &&` and optionally piped into `head` or `tail` with no file, and otherwise no `;`, `&&`, `||`, `|`, subshell or command substitution), `hasToken` (whole-word match, case and punctuation ignored), `githubRateLimited`, `norm`. |
 | `steps.ts` | `stepOf` (the first install step a probe has not passed) and the time to each step. |
-| `classify.ts` | `classifyInstall`: one trial's route, version, fetched install doc, stalls, person-needed events, failed and retried commands, question types, harness-memory saves, last gbrain error code, step times, the step a failed install died at, and infra flags. |
-| `verdict.ts` | Per cell and arm: n, finish-line rate with a Wilson 95% interval, median and IQR of time to finish, median agent turns, person-needed counts, harness-memory count, hinted recall. |
+| `classify.ts` | `classifyInstall`: one trial's route, install attempts, version, fetched install doc, stalls, person-needed events, failed and retried commands, question types, harness-memory saves, last gbrain error code, step times, the step a failed install died at, and infra flags. |
+| `verdict.ts` | Per cell and arm: n, finish-line rate with a Wilson 95% interval, median and IQR of time to finish, median agent turns, person-needed counts, harness-memory count, the three release-pin counts, hinted recall. |
 | `failure-table.ts` | One row per step (binary, brain, wired, saved, recalled): failed runs, person-needed events, top gbrain error codes, two example trials, and empty "as read" and "reader note" columns for the independent reader. |
 | `real-image-check.ts`, `real-image-check.sh` | The keyless check of the four real harness images, described under [Real-image check](#real-image-check). Not part of scoring. |
 
@@ -50,6 +50,8 @@ Every run is counted except those [docs/methodology.md](../../docs/methodology.m
 
 **Routes** (from shell commands; the first that succeeded, else the last tried): bun-github, npm, git-clone, clawhub, hosted (gbrain.io, gbrainio, terminalwire), codex-plugin, curl-script.
 
+**Release pin.** Both arms end with a line naming the pinned release tag, while gbrain's docs say `#stable`. The counts use what was installed, never the commands the agent typed: per cell and arm, over counted runs, the verdict counts runs whose **first** gbrain version on PATH was not the pin (it installed `#stable` or another build first), runs whose **last** version was not the pin (it never reached the pin), and runs where **no** gbrain version was seen. The versions are `probe_versions`, the earliest and latest `gbrain --version` the probe recorded (the 1-second watcher and the end-of-turn probe). Two limits: the watcher samples once a second, so a build replaced in under a second can be missed; and the harness image must start with no gbrain on PATH, which the runner checks before the first install trial of each image (HE-INSTALL-006). `install_attempts` (every shell command that matches a route, with the gbrain ref it seems to name and whether it succeeded) is descriptive only and feeds no count.
+
 **Other fields.**
 
 - **Install doc:** each INSTALL_FOR_AGENTS.md URL a tool fetched, with the git ref from the URL path. The sha256 is filled only when the tool output holds the body (curl or wget to stdout, normalised to end in one newline, or a printed sha256sum). It is null for WebFetch, which returns a summary.
@@ -72,11 +74,11 @@ It runs six install cases: Claude Code, Codex and OpenClaw on one model each, an
 A seventh case, **WebFetch** on Claude Code, installs nothing. The fake model loads WebFetch with Claude Code's ToolSearch (Claude Code 2.1.312 declares WebFetch only after that), then calls it once on gbrain's INSTALL_FOR_AGENTS.md (raw.githubusercontent.com). It passes **a** and **fetch**: the page host was admitted by the egress proxy, the page reached a model request, and the tool result is not an error. It also reports, from the egress log, whether Claude Code's own domain check before a fetch (its preflight to api.anthropic.com or claude.ai) was blocked. The preflight is reported, never failed on: the blocklist refuses api.anthropic.com on purpose.
 
 ```bash
-scripts/gbrain-install/real-image-check.sh --out ~/ric            # build the images, run all seven cases
-scripts/gbrain-install/real-image-check.sh --out ~/ric --skip-build --harness hermes
+scripts/gbrain-install/real-image-check.sh --out ~/ric --tag v0.60.733.0   # build the images, run all seven cases
+scripts/gbrain-install/real-image-check.sh --out ~/ric --tag v0.60.733.0 --skip-build --harness hermes
 ```
 
-It needs Docker and internet access, so it runs on a fresh VM, not in CI. Without `--commit` it installs the commit gbrain's stable tag serves now. The report is `<out>/real-image-check.json`: per case the four checks with their evidence, every marker, the trial's outcome and the run directory. Exit 0 means every case passed, here and with `--codex-semantic`. Tests: `bun test tests/gbrain-install-real-image-check.test.ts`.
+It needs Docker and internet access, so it runs on a fresh VM, not in CI. `--tag` names the gbrain release the run pins; without `--commit` it installs the commit that tag names now. The report is `<out>/real-image-check.json`: per case the four checks with their evidence, every marker, the trial's outcome and the run directory. Exit 0 means every case passed, here and with `--codex-semantic`. Tests: `bun test tests/gbrain-install-real-image-check.test.ts`.
 
 ## Known limits
 

@@ -77,7 +77,7 @@ async function answer(req: { turn: number; text: string; channel: { id: string }
     body: JSON.stringify({ model: env.HE_MODEL_NAME, max_tokens: 16, messages: [{ role: 'user', content: req.text }] }) }).then((r) => r.text()).catch(() => '');
   if (play === 'nop') return 'OK.';
   const t = req.text;
-  if (/^install gbrain$|^Add GBrain memory/.test(t)) {
+  if (/^install gbrain\n|^Add GBrain memory/.test(t)) {
     if (play === 'ask-first') return 'Which search mode would you like, keyword or vector?';
     tool('Bash', { command: 'bun install -g github:garrytan/gbrain#stable' }, 'installed gbrain@0.60.717.0\nBlocked 1 postinstall. Run `bun pm untrusted` for details.');
     install();

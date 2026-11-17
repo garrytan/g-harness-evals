@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// internal-task: the keyless real-image check for the gbrain install trial. It runs each install-mode harness image built from
+// GST-2715: the keyless real-image check for the gbrain install trial. It runs each install-mode harness image built from
 // this tree through the runner's own install trial (docker mode, network "install", the metering proxy and the open-egress
 // proxy) against a scripted fake model upstream in this process, so no request reaches a model provider and nothing is
 // spent. The fake answers the install turn with shell tool calls that install gbrain for real (bun, then bun install -g from
@@ -18,7 +18,7 @@
 // The report is <out>/real-image-check.json. Exit 0 when every case passes, 1 when any fails, 2 on a usage error; the same
 // for --codex-semantic.
 //
-//   bun scripts/gbrain-install/real-image-check.ts --out <dir> [--harness claude-code,hermes] [--commit <gbrain commit>]
+//   bun scripts/gbrain-install/real-image-check.ts --out <dir> --tag <gbrain release tag> [--harness claude-code,hermes] [--commit <the commit it names>]
 //
 // scripts/gbrain-install/real-image-check.sh builds the four images from this tree first; see scripts/gbrain-install/README.md.
 
@@ -26,7 +26,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join, resolve } from 'node:path';
 import type { TrialRecord } from '../../runner/contracts.ts';
 import { buildManifest, loadPrereg } from '../../runner/run.ts';
-import { gbrainLsRemote, stableRefs } from '../../runner/trial/install.ts';
+import { gbrainLsRemote, tagCommit } from '../../runner/trial/install.ts';
 import { trialKey } from '../../runner/trial/proxy.ts';
 import { executeRun } from '../../runner/trial/run.ts';
 import { SHELL_TOOLS, reply, shellTool, sse } from '../frontier-harbor/fake-upstream.ts';
@@ -375,7 +375,7 @@ export function evaluateWebFetch(w: WebFetchState, egress: Array<{ host: string;
   return { preflight, fetch: { ok, detail: 'WebFetch ' + (w.id ? 'called' : 'never called (not offered' + (w.searched ? ' after a ToolSearch for it)' : ', and no ToolSearch to load it)')) + '; tool result ' + result + '; ' + new URL(WEBFETCH_URL).hostname + ' ' + (show(page) || 'never contacted') + '; ' + w.page_requests + ' model request(s) carried the page' } };
 }
 
-// ---- Codex semantic search after gbrain setup codex (internal-task, gbrain#9396) ---------------------------------------------
+// ---- Codex semantic search after gbrain setup codex (GBRA-108, gbrain#9396) ---------------------------------------------
 // One keyless case per gbrain version, outside the install trial: the Codex image installs gbrain at the commit, a brain is
 // made with OpenAI embeddings pointed at this process (OPENAI_BASE_URL, a dummy OPENAI_API_KEY), "gbrain setup codex" wires
 // Codex, one page goes in, and a headless "codex exec" against this process's fake model calls gbrain's query tool over MCP.
@@ -564,7 +564,7 @@ const readJsonLines = (path: string): Array<Record<string, any>> => existsSync(p
 async function main(argv: string[]): Promise<number> {
   const flag = (name: string) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
   const out = flag('--out');
-  if (!out) { console.error('usage: bun scripts/gbrain-install/real-image-check.ts --out <dir> [--harness claude-code,codex,openclaw,hermes] [--commit <gbrain commit>]'); return 2; }
+  if (!out) { console.error('usage: bun scripts/gbrain-install/real-image-check.ts --out <dir> --tag <gbrain release tag> [--harness claude-code,codex,openclaw,hermes] [--commit <the commit it names>]'); return 2; }
   const semantic = flag('--codex-semantic')?.split(',');
   if (semantic) {
     const unknown = semantic.filter((v) => !SEMANTIC_VERSIONS[v]);
@@ -586,11 +586,13 @@ async function main(argv: string[]): Promise<number> {
   if (!cases.length) { console.error('--harness names no install-mode harness (claude-code, codex, openclaw, hermes)'); return 2; }
   const repoRoot = resolve(import.meta.dir, '..', '..');
   process.chdir(repoRoot);
+  const tag = flag('--tag');
+  if (!tag || !/^v\d+(\.\d+){2,3}$/.test(tag)) { console.error('--tag must name the gbrain release the run pins, such as v0.60.733.0'); return 2; }
   let commit = flag('--commit');
   if (!commit) {
-    const r = gbrainLsRemote();
-    commit = r.status === 0 ? stableRefs(r.stdout).tag ?? undefined : undefined;
-    if (!commit) { console.error('git ls-remote of gbrain stable failed; pass --commit <40-hex commit>'); return 2; }
+    const r = gbrainLsRemote(tag);
+    commit = r.status === 0 ? tagCommit(r.stdout, tag) ?? undefined : undefined;
+    if (!commit) { console.error('git ls-remote found no gbrain tag ' + tag + '; pass --commit <40-hex commit>'); return 2; }
   }
   if (!/^[0-9a-f]{40}$/.test(commit)) { console.error('--commit must be a full 40-character commit'); return 2; }
   const outDir = resolve(out);
@@ -607,9 +609,9 @@ async function main(argv: string[]): Promise<number> {
       const runDir = join(dir, 'run');
       mkdirSync(runDir, { recursive: true });
       const preregPath = join(dir, 'prereg.json');
-      writeFileSync(preregPath, JSON.stringify({ schema_version: 1, run_id: runId, question: 'keyless real-image check of the gbrain install trial (internal-task)', tasks: {}, spend_cap_usd: 100,
+      writeFileSync(preregPath, JSON.stringify({ schema_version: 1, run_id: runId, question: 'keyless real-image check of the gbrain install trial (GST-2715)', tasks: {}, spend_cap_usd: 100,
         wall_clock_s: { 'gbrain-install': 900 }, drop_order: [], minimum_v01: [],
-        cells: [{ id: 'check', harness: c.harness, model: c.model, slice: 'gbrain-install', split: 'dev', repetitions: 1, ceiling: { input_tokens: 10000000, output_tokens: 1000000 }, network: 'install', install: { arm: 'bare', stable_commit: commit, seed: 'real-image-check' } }] }, null, 1));
+        cells: [{ id: 'check', harness: c.harness, model: c.model, slice: 'gbrain-install', split: 'dev', repetitions: 1, ceiling: { input_tokens: 10000000, output_tokens: 1000000 }, network: 'install', install: { arm: 'bare', tag, commit, seed: 'real-image-check' } }] }, null, 1));
       const { prereg, sha256 } = loadPrereg(preregPath);
       const manifestPath = join(runDir, 'manifest.json');
       writeFileSync(manifestPath, JSON.stringify(buildManifest(prereg, sha256), null, 1));
@@ -646,7 +648,7 @@ async function main(argv: string[]): Promise<number> {
   }
   const ok = results.length === cases.length && results.every((r) => r.ok);
   const reportPath = join(outDir, 'real-image-check.json');
-  writeFileSync(reportPath, JSON.stringify({ schema: 'gbrain-install-real-image-check/1', at: new Date().toISOString(), gbrain_commit: commit, ok, cases: results }, null, 1) + '\n');
+  writeFileSync(reportPath, JSON.stringify({ schema: 'gbrain-install-real-image-check/1', at: new Date().toISOString(), gbrain_tag: tag, gbrain_commit: commit, ok, cases: results }, null, 1) + '\n');
   console.log('real-image check: ' + (ok ? 'pass' : 'FAIL') + ' (' + results.filter((r) => r.ok).length + '/' + cases.length + ' cases); ' + reportPath);
   return ok ? 0 : 1;
 }

@@ -38,7 +38,7 @@ import { checkoutProvenance } from './provenance.ts';
 import { routeTextsFor } from './routes.ts';
 import { type EgressAllowlist, cursorTransport, isCursorCell, keyValueFound, startEgressAllowlist } from './cursor.ts';
 import { INSTALL_SLICE } from './install-cell.ts';
-import { InstallLeak, type LsRemote, measureColdDownload, runInstallTrial, stableProblem } from './install.ts';
+import { InstallLeak, type LsRemote, measureColdDownload, preinstalledProblem, runInstallTrial, tagProblem } from './install.ts';
 import { type OpenEgress, loadBlocklist, openEgressEnv, startOpenEgress } from './egress.ts';
 
 export interface RunOptions {
@@ -222,12 +222,12 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       const trialDir = trialDirFor(runDir, trial);
       if (stoppedCells.has(cell.id)) { log(`trial ${trial.id} not run: its cell stopped (${stoppedCells.get(cell.id)!.slice(0, 15)})`); continue; }
       if (cell.slice === INSTALL_SLICE) {
-        const problem = stableProblem(cell, opts.installLsRemote);
+        const problem = tagProblem(cell, opts.installLsRemote);
         if (problem) {
           stoppedCells.set(cell.id, problem);
           log(problem);
           console.error(problem);
-          appendFileSync(join(runDir, 'install-stops.jsonl'), JSON.stringify({ at: new Date().toISOString(), cell: cell.id, trial: trial.id, stable_commit: cell.install!.stable_commit, error: problem }) + '\n');
+          appendFileSync(join(runDir, 'install-stops.jsonl'), JSON.stringify({ at: new Date().toISOString(), cell: cell.id, trial: trial.id, tag: cell.install!.tag, commit: cell.install!.commit, error: problem }) + '\n');
           exit = 3;
           continue;
         }
@@ -240,12 +240,14 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
           turnGraceS: opts.turnGraceS ?? 60, stopGraceS: opts.stopGraceS ?? 60, harnessEnv: opts.harnessEnv, captureDns: opts.capture?.dns ?? undefined, repoRoot: opts.repoRoot, ...(network ? { network } : {}), ...(cursorTrial ? { cursor: cursorTrial } : {}) });
       if (cell.slice === INSTALL_SLICE && openEgress && network && docker) {
         const image = opts.image ?? `harness-eval/${cell.harness}:dev`;
-        if (!downloaded.has(image)) {
-          downloaded.add(image);
+        if (!downloaded.has(`${image} ${cell.install!.tag}`)) {
+          downloaded.add(`${image} ${cell.install!.tag}`);
           openEgress.setTrial(null);
-          const result = await measureColdDownload(image, network, openEgressEnv(openEgress.proxyUrl));
+          const result = await measureColdDownload(image, network, openEgressEnv(openEgress.proxyUrl), cell.install!.tag);
           appendFileSync(join(runDir, 'install-download.jsonl'), JSON.stringify(result) + '\n');
           log(`cold gbrain download in ${image}: ${JSON.stringify(result)}`);
+          const preinstalled = preinstalledProblem(result, image);
+          if (preinstalled) throw new RunnerError('HE-INSTALL-006', preinstalled);
         }
       }
       openEgress?.setTrial(cell.slice === INSTALL_SLICE ? trial.id : null);

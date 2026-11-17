@@ -1,7 +1,7 @@
 // internal-task: the gbrain install trial through the runner (runner/trial/install.ts), keyless. A process-mode fixture adapter
 // (tests/fixtures/gbrain-install/install-adapter.ts) plays the agent against a fake Anthropic endpoint in capture mode:
 // the oracle reaches the finish line, the nop does not, the harness-memory decoy scores a miss, the scripted reply fires
-// on probe state only, a moved stable stops the cell, and the token canary holds. Also the cell checks, the open-egress
+// on probe state only, a moved release tag stops the cell, and the token canary holds. Also the cell checks, the open-egress
 // proxy, the state-store scan and the token scrub.
 
 import { afterAll, describe, expect, test } from 'bun:test';
@@ -15,7 +15,7 @@ import { join, resolve } from 'node:path';
 import { buildManifest, cellTasks, loadPrereg, renderPlan } from '../runner/run.ts';
 import { executeRun } from '../runner/trial/run.ts';
 import { blockedBy, loadBlocklist, startOpenEgress } from '../runner/trial/egress.ts';
-import { COLD_DOWNLOAD_SCRIPT, canaryScan, coldDownloadArgs, filesHolding, measureColdDownload, outsideBrain, scrubToken, stableProblem, stableRefs } from '../runner/trial/install.ts';
+import { armPrompt, canaryScan, coldDownloadArgs, coldDownloadScript, filesHolding, loadInstallTask, measureColdDownload, outsideBrain, preinstalledProblem, scrubToken, tagCommit, tagProblem } from '../runner/trial/install.ts';
 import { spawnSync } from 'node:child_process';
 import { installNonce } from '../tasks/gbrain-install/nonce.ts';
 import type { TrialRecord } from '../runner/contracts.ts';
@@ -23,10 +23,12 @@ import type { TrialRecord } from '../runner/contracts.ts';
 const ROOT = resolve(import.meta.dir, '..');
 const ADAPTER = join(ROOT, 'tests', 'fixtures', 'gbrain-install', 'install-adapter.ts');
 const ENV = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? tmpdir() };
-const STABLE = 'b82c23a7330bb9468720617a89af08c329fe6b10';
+const PIN = 'b82c23a7330bb9468720617a89af08c329fe6b10';
+const TAG = 'v0.60.733.0';
+const LINE = 'Install gbrain release v0.60.733.0 (`github:garrytan/gbrain#v0.60.733.0`) wherever the docs say #stable.';
 const PASTE = 'tasks/gbrain-install/arms/paste-0.60.722.0.md';
 const PASTE_SHA = createHash('sha256').update(readFileSync(join(ROOT, PASTE))).digest('hex');
-const lsServes = (sha: string) => () => ({ status: 0, stdout: `3f1e000000000000000000000000000000000000\trefs/tags/stable\n${sha}\trefs/tags/stable^{}\n`, stderr: '' });
+const lsServes = (sha: string) => (tag: string) => ({ status: 0, stdout: `3f1e000000000000000000000000000000000000\trefs/tags/${tag}\n${sha}\trefs/tags/${tag}^{}\n`, stderr: '' });
 const scratch = () => mkdtempSync(join(tmpdir(), 'gbrain-install-'));
 
 let seen = 0;
@@ -37,7 +39,7 @@ const fake = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: async () => {
 afterAll(() => fake.stop(true));
 
 const cellOf = (extra: Record<string, unknown> = {}) => ({ id: 'cc-bare', harness: 'claude-code', model: 'anthropic:claude-opus-5-5', slice: 'gbrain-install', split: 'dev', repetitions: 1,
-  ceiling: { input_tokens: 1000, output_tokens: 100 }, harness_mode: 'process', adapter: ADAPTER, install: { arm: 'bare', stable_commit: STABLE, seed: 'test' }, ...extra });
+  ceiling: { input_tokens: 1000, output_tokens: 100 }, harness_mode: 'process', adapter: ADAPTER, install: { arm: 'bare', tag: TAG, commit: PIN, seed: 'test' }, ...extra });
 const preregFile = (dir: string, runId: string, cells: unknown[]) => {
   const file = join(dir, 'prereg.json');
   writeFileSync(file, JSON.stringify({ schema_version: 1, run_id: runId, question: 'keyless test', tasks: {}, spend_cap_usd: 1, wall_clock_s: { 'gbrain-install': 900 }, drop_order: [], minimum_v01: [], cells }));
@@ -45,7 +47,7 @@ const preregFile = (dir: string, runId: string, cells: unknown[]) => {
 };
 
 let runs = 0;
-async function runPlay(play: string, o: { reps?: number; ls?: () => { status: number; stdout: string; stderr: string }; keyEnv?: Record<string, string>; harnessEnv?: Record<string, string>; cell?: Record<string, unknown>; manifestCell?: Record<string, unknown>; log?: (line: string) => void } = {}) {
+async function runPlay(play: string, o: { reps?: number; ls?: (tag: string) => { status: number; stdout: string; stderr: string }; keyEnv?: Record<string, string>; harnessEnv?: Record<string, string>; cell?: Record<string, unknown>; manifestCell?: Record<string, unknown>; log?: (line: string) => void } = {}) {
   const dir = scratch();
   const runId = `gbrain-install-${play}-${++runs}`;
   const { prereg, sha256 } = loadPrereg(preregFile(dir, runId, [cellOf({ repetitions: o.reps ?? 1, ...o.cell })]));
@@ -58,7 +60,7 @@ async function runPlay(play: string, o: { reps?: number; ls?: () => { status: nu
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 1));
   let thrown: Error | null = null;
   const result = await executeRun(JSON.parse(readFileSync(manifestPath, 'utf8')), manifestPath, { harnessMode: 'process', proxyEnv: ENV, turnGraceS: 1, stopGraceS: 2, readyTimeoutS: 20, repoRoot: ROOT, leaseUsd: 1, newLease: true,
-    capture: { upstream: { anthropic: 'http://127.0.0.1:' + fake.port }, dns: null }, harnessEnv: { HE_FIXTURE_PLAY: play, ...o.harnessEnv }, installLsRemote: o.ls ?? lsServes(STABLE), installKeyEnv: o.keyEnv ?? {}, ...(o.log ? { log: o.log } : {}) })
+    capture: { upstream: { anthropic: 'http://127.0.0.1:' + fake.port }, dns: null }, harnessEnv: { HE_FIXTURE_PLAY: play, ...o.harnessEnv }, installLsRemote: o.ls ?? lsServes(PIN), installKeyEnv: o.keyEnv ?? {}, ...(o.log ? { log: o.log } : {}) })
     .catch((e: Error) => { thrown = e; return null; });
   const lines = existsSync(join(runDir, 'trials.jsonl')) ? readFileSync(join(runDir, 'trials.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as TrialRecord) : [];
   return { result, record: lines[0]!, lines, runDir, runLog: readFileSync(join(runDir, 'run.log'), 'utf8'), thrown: thrown as Error | null };
@@ -76,7 +78,7 @@ describe('the install trial through the runner (fixture adapter, capture mode)',
     expect(existsSync(join(record.paths.dir!, 'secret'))).toBe(false);
     const turns = JSON.parse(readFileSync(record.paths.install_turns!, 'utf8')) as Array<{ session: string; role: string; text: string }>;
     expect(turns.map((t) => [t.session, t.role])).toEqual([['s1', 'arm'], ['s1', 'save'], ['s2', 'recall']]);
-    expect(turns[0]!.text).toBe('install gbrain');
+    expect(turns[0]!.text).toBe('install gbrain\n\n' + LINE);
     expect(turns[1]!.text).toBe(`Remember that my sister's new cat is called ${i.nonce}.`);
     expect(JSON.parse(readFileSync(record.paths.install_classification!, 'utf8'))).toEqual(i.classification);
   }, 60_000);
@@ -102,10 +104,10 @@ describe('the install trial through the runner (fixture adapter, capture mode)',
     expect({ outcome: i.outcome, replies: i.scripted_replies, exhausted: i.probe_exhausted, turns: i.agent_turns }).toEqual({ outcome: 'recalled', replies: 1, exhausted: false, turns: 4 });
   }, 60_000);
 
-  test('the paste arm sends the pinned paste prompt, without its final newline, as the first message', async () => {
-    const { record } = await runPlay('oracle', { cell: { id: 'cc-paste', install: { arm: 'paste', paste_file: PASTE, paste_sha256: PASTE_SHA, stable_commit: STABLE, seed: 'test' } } });
+  test('the paste arm sends the pinned paste prompt, without its final newline, then the version line, as the first message', async () => {
+    const { record } = await runPlay('oracle', { cell: { id: 'cc-paste', install: { arm: 'paste', paste_file: PASTE, paste_sha256: PASTE_SHA, tag: TAG, commit: PIN, seed: 'test' } } });
     const turns = JSON.parse(readFileSync(record.paths.install_turns!, 'utf8')) as Array<{ text: string }>;
-    expect(turns[0]!.text).toBe(readFileSync(join(ROOT, PASTE), 'utf8').replace(/\n$/, ''));
+    expect(turns[0]!.text).toBe(readFileSync(join(ROOT, PASTE), 'utf8').replace(/\n$/, '') + '\n\n' + LINE);
     expect({ arm: record.install!.arm, outcome: record.install!.outcome }).toEqual({ arm: 'paste', outcome: 'recalled' });
   }, 60_000);
 
@@ -174,14 +176,14 @@ describe('the install trial through the runner (fixture adapter, capture mode)',
     expect(r.record.install!.outcome).toBe('not-installed');
   }, 60_000);
 
-  test('a moved stable stops the cell before any trial: no record, the stop in install-stops.jsonl and run.log, exit 3', async () => {
+  test('a moved release tag stops the cell before any trial: no record, the stop in install-stops.jsonl and run.log, exit 3', async () => {
     const moved = await runPlay('oracle', { reps: 2, ls: lsServes('0'.repeat(40)) });
     expect(moved.lines).toEqual([]);
     expect(moved.result!.exit).toBe(3);
-    expect(moved.runLog).toContain('HE-INSTALL-001 cell cc-bare: gbrain\'s stable serves 000000000000, not the preregistered ' + STABLE.slice(0, 12));
+    expect(moved.runLog).toContain('HE-INSTALL-001 cell cc-bare: gbrain\'s tag v0.60.733.0 names 000000000000, not the preregistered ' + PIN.slice(0, 12));
     expect(moved.runLog).toMatch(/r2 not run: its cell stopped/);
     const stops = readFileSync(join(moved.runDir, 'install-stops.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-    expect(stops.map((s) => [s.cell, s.stable_commit])).toEqual([['cc-bare', STABLE]]);
+    expect(stops.map((s) => [s.cell, s.tag, s.commit])).toEqual([['cc-bare', TAG, PIN]]);
     const down = await runPlay('oracle', { ls: () => ({ status: 128, stdout: '', stderr: 'fatal: unable to access' }) });
     expect(down.lines).toEqual([]);
     expect(down.runLog).toContain('git ls-remote https://github.com/garrytan/gbrain failed (fatal: unable to access)');
@@ -204,7 +206,7 @@ p=$(cat)
 if [ "$PLAY" = decoy ]; then save='run: mkdir -p "$HOME/notes" && printf "%s\\n" "$FACT" >> "$HOME/notes/facts.md"'; recall='run: cat "$HOME/notes/facts.md"'
 else save='run: gbrain remember "$FACT"'; recall='run: gbrain recall cat'; fi
 case "$p" in
-  "install gbrain") cmds=$'run: gbrain init\nrun: gbrain setup ${cli === 'claude' ? 'claude-code' : cli}' ;;
+  "install gbrain"$'\\n'*) cmds=$'run: gbrain init\nrun: gbrain setup ${cli === 'claude' ? 'claude-code' : cli}' ;;
   "Remember that "*) export FACT="\${p#Remember that }"; cmds=$save ;;
   *"cat called?") cmds=$recall ;;
   *) cmds=$p ;;
@@ -238,10 +240,12 @@ describe('the install trial through the real Claude Code and Codex adapters (sta
 describe('install cells in the preregistration', () => {
   const load = (cell: Record<string, unknown>) => loadPrereg(preregFile(scratch(), 'install-cells', [cellOf(cell)]));
   test('a paste cell needs the prompt file and its sha256; a bare cell takes neither', () => {
-    expect(() => load({ install: { arm: 'paste', paste_file: PASTE, paste_sha256: PASTE_SHA, stable_commit: STABLE, seed: 'w1' } })).not.toThrow();
-    expect(() => load({ install: { arm: 'paste', paste_file: PASTE, paste_sha256: 'f'.repeat(64), stable_commit: STABLE, seed: 'w1' } })).toThrow(/HE-PREREG-007.*does not match/);
-    expect(() => load({ install: { arm: 'bare', paste_file: PASTE, stable_commit: STABLE, seed: 'w1' } })).toThrow(/paste arm only/);
-    expect(() => load({ install: { arm: 'bare', stable_commit: 'stable', seed: 'w1' } })).toThrow(/40-character/);
+    expect(() => load({ install: { arm: 'paste', paste_file: PASTE, paste_sha256: PASTE_SHA, tag: TAG, commit: PIN, seed: 'w1' } })).not.toThrow();
+    expect(() => load({ install: { arm: 'paste', paste_file: PASTE, paste_sha256: 'f'.repeat(64), tag: TAG, commit: PIN, seed: 'w1' } })).toThrow(/HE-PREREG-007.*does not match/);
+    expect(() => load({ install: { arm: 'bare', paste_file: PASTE, tag: TAG, commit: PIN, seed: 'w1' } })).toThrow(/paste arm only/);
+    expect(() => load({ install: { arm: 'bare', tag: TAG, commit: 'stable', seed: 'w1' } })).toThrow(/40-character/);
+    expect(() => load({ install: { arm: 'bare', tag: 'stable', commit: PIN, seed: 'w1' } })).toThrow(/release tag such as/);
+    expect(() => load({ install: { arm: 'bare', stable_commit: PIN, seed: 'w1' } })).toThrow(/unknown key\(s\) stable_commit/);
     expect(() => load({ install: undefined })).toThrow(/needs install/);
   });
   test('the harness must have an install mode, and nothing of our own wiring rides along', () => {
@@ -256,12 +260,12 @@ describe('install cells in the preregistration', () => {
     expect(() => loadPrereg(preregFile(scratch(), 'x', [{ id: 'm', harness: 'claude-code', model: 'anthropic:claude-opus-5-5', slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 1, output_tokens: 1 }, network: 'install' }]))).toThrow(/HE-NET-001.*for gbrain-install cells only/);
     expect(() => loadPrereg(preregFile(scratch(), 'x', [{ id: 'm', harness: 'claude-code', model: 'anthropic:claude-opus-5-5', slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 1, output_tokens: 1 }, install: { arm: 'bare' } }]))).toThrow(/install belongs to gbrain-install cells only/);
   });
-  test('one task per cell, priced per trial, and the plan line names the arm, the stable commit and the seed', () => {
-    const { prereg, sha256 } = load({ repetitions: 3, install: { arm: 'paste', paste_file: PASTE, paste_sha256: PASTE_SHA, stable_commit: STABLE, seed: 'w1' } });
+  test('one task per cell, priced per trial, and the plan line names the arm, the release tag and commit, and the seed', () => {
+    const { prereg, sha256 } = load({ repetitions: 3, install: { arm: 'paste', paste_file: PASTE, paste_sha256: PASTE_SHA, tag: TAG, commit: PIN, seed: 'w1' } });
     expect(cellTasks(prereg, prereg.cells[0]!)).toEqual(['gbrain-install']);
     const m = buildManifest(prereg, sha256, '2026-11-15T00:00:00Z');
     expect(m.trials.map((t) => t.id)).toEqual([1, 2, 3].map((r) => `install-cells/cc-bare/gbrain-install/r${r}`));
-    expect(renderPlan(m)).toContain(`install_arm=paste stable_commit=${STABLE.slice(0, 12)} seed=w1 paste_sha256=${PASTE_SHA.slice(0, 12)} reps=3`);
+    expect(renderPlan(m)).toContain(`install_arm=paste tag=v0.60.733.0 commit=${PIN.slice(0, 12)} seed=w1 paste_sha256=${PASTE_SHA.slice(0, 12)} reps=3`);
   });
   test('the nonce is a made-up word, the same for a trial id and seed, different across trials', () => {
     const a = installNonce('w1', 'r/c/gbrain-install/r1');
@@ -273,13 +277,22 @@ describe('install cells in the preregistration', () => {
 
 describe('the cold download', () => {
   test('runs in the harness image on the install network through the egress proxy, with no key, and its script parses', () => {
-    const args = coldDownloadArgs('harness-eval/claude-code:dev', { name: 'he-net-x', gateway: '172.30.0.1' }, { HTTPS_PROXY: 'http://host.docker.internal:9' });
+    const args = coldDownloadArgs('harness-eval/claude-code:dev', { name: 'he-net-x', gateway: '172.30.0.1' }, { HTTPS_PROXY: 'http://host.docker.internal:9' }, TAG);
     expect(args.slice(0, 5)).toEqual(['docker', 'run', '--rm', '--name', 'he-cold-download']);
     expect(args).toContain('he-net-x');
     expect(args).toContain('HTTPS_PROXY=http://host.docker.internal:9');
     expect(args.join(' ')).not.toMatch(/API_KEY|HE_MODEL/);
-    expect(spawnSync('sh', ['-n', '-c', COLD_DOWNLOAD_SCRIPT]).status).toBe(0);
-    expect(COLD_DOWNLOAD_SCRIPT).toContain('bun install -g github:garrytan/gbrain#stable');
+    expect(spawnSync('sh', ['-n', '-c', coldDownloadScript(TAG)]).status).toBe(0);
+    expect(args.at(-1)).toBe(coldDownloadScript(TAG));
+    expect(coldDownloadScript(TAG)).toContain('bun install -g github:garrytan/gbrain#v0.60.733.0 ');
+    expect(coldDownloadScript(TAG)).not.toContain('#stable');
+    expect(coldDownloadScript(TAG).indexOf('pre=$(command -v gbrain')).toBeLessThan(coldDownloadScript(TAG).indexOf('bun install -g'));
+  });
+
+  test('an image with gbrain already on PATH stops the run (HE-INSTALL-006); an empty path or a failed download does not', () => {
+    expect(preinstalledProblem({ gbrain_preinstalled: '/usr/local/bin/gbrain', exit: 0 }, 'harness-eval/hermes:dev')).toMatch(/^HE-INSTALL-006 image harness-eval\/hermes:dev: gbrain is already on PATH \(\/usr\/local\/bin\/gbrain\)/);
+    expect(preinstalledProblem({ gbrain_preinstalled: '', exit: 0 }, 'img')).toBeNull();
+    expect(preinstalledProblem({ error: 'no result within 900 s' }, 'img')).toBeNull();
   });
 
   // A stand-in docker on PATH: "run" fetches through the HTTPS_PROXY it was given (the egress proxy lives in this process, as in
@@ -306,29 +319,42 @@ describe('the cold download', () => {
     const dir = fakeDocker();
     const egress = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('ok', { status: 207 }) });
     try {
-      const r = await withPath(dir, () => measureColdDownload('img', { name: 'n', gateway: '127.0.0.1' }, { HTTPS_PROXY: 'http://127.0.0.1:' + egress.port }, 30_000));
-      expect(r).toMatchObject({ image: 'img', exit: 0, version: '207' });
+      const r = await withPath(dir, () => measureColdDownload('img', { name: 'n', gateway: '127.0.0.1' }, { HTTPS_PROXY: 'http://127.0.0.1:' + egress.port }, TAG, 30_000));
+      expect(r).toMatchObject({ image: 'img', tag: TAG, exit: 0, version: '207' });
     } finally { egress.stop(true); }
   });
 
   test('past its deadline removes the container, which a killed docker CLI would leave running', async () => {
     const dir = fakeDocker();
     const t0 = Date.now();
-    const r = await withPath(dir, () => measureColdDownload('hang-img', { name: 'n', gateway: '127.0.0.1' }, { HTTPS_PROXY: 'http://127.0.0.1:9' }, 500));
+    const r = await withPath(dir, () => measureColdDownload('hang-img', { name: 'n', gateway: '127.0.0.1' }, { HTTPS_PROXY: 'http://127.0.0.1:9' }, TAG, 500));
     expect(Date.now() - t0).toBeLessThan(10_000);
     expect(String(r.error)).toMatch(/^no result within 0\.5 s; container he-cold-download-[0-9a-f]{12} removed$/);
     expect(readFileSync(join(dir, 'removed'), 'utf8').trim()).toMatch(/^he-cold-download-[0-9a-f]{12}$/);
   });
 });
 
-describe('the stable pin', () => {
-  test('the peeled tag wins over the tag object, and a branch of the same name must agree', () => {
-    expect(stableRefs(`aaaa\trefs/tags/stable\n${STABLE}\trefs/tags/stable^{}\n`)).toEqual({ tag: STABLE, branch: null });
-    expect(stableRefs(`${STABLE}\trefs/tags/stable\n`)).toEqual({ tag: STABLE, branch: null });
-    const cell = { id: 'c', install: { arm: 'bare' as const, stable_commit: STABLE, seed: 's' } };
-    expect(stableProblem(cell, lsServes(STABLE))).toBeNull();
-    expect(stableProblem(cell, () => ({ status: 0, stdout: `${STABLE}\trefs/tags/stable^{}\nbbbb\trefs/heads/stable\n`, stderr: '' }))).toMatch(new RegExp('HE-INSTALL-001.*serves ' + STABLE.slice(0, 12) + ' and bbbb'));
-    expect(stableProblem(cell, () => ({ status: 0, stdout: '', stderr: '' }))).toMatch(/serves nothing/);
+describe('the release pin', () => {
+  test('the peeled commit of an annotated tag wins, a lightweight tag names its own commit, and only the cell\'s tag counts', () => {
+    expect(tagCommit(`aaaa\trefs/tags/${TAG}\n${PIN}\trefs/tags/${TAG}^{}\n`, TAG)).toBe(PIN);
+    expect(tagCommit(`${PIN}\trefs/tags/${TAG}\n`, TAG)).toBe(PIN);
+    expect(tagCommit(`${PIN}\trefs/tags/stable^{}\n`, TAG)).toBeNull();
+    const cell = { id: 'c', install: { arm: 'bare' as const, tag: TAG, commit: PIN, seed: 's' } };
+    const asked: string[] = [];
+    expect(tagProblem(cell, (t) => { asked.push(t); return lsServes(PIN)(t); })).toBeNull();
+    expect(asked).toEqual([TAG]);
+    expect(tagProblem(cell, lsServes('b'.repeat(40)))).toMatch(new RegExp('HE-INSTALL-001.*tag v0\\.60\\.733\\.0 names bbbbbbbbbbbb, not the preregistered ' + PIN.slice(0, 12)));
+    expect(tagProblem(cell, () => ({ status: 0, stdout: '', stderr: '' }))).toMatch(/names nothing \(no such tag\)/);
+  });
+});
+
+describe('the version line', () => {
+  test('both arms end with the same line naming the cell\'s tag, after the arm\'s own text', () => {
+    const task = loadInstallTask(ROOT);
+    const bare = armPrompt({ install: { arm: 'bare', tag: TAG, commit: PIN, seed: 's' } }, task, ROOT);
+    const paste = armPrompt({ install: { arm: 'paste', paste_file: PASTE, paste_sha256: PASTE_SHA, tag: TAG, commit: PIN, seed: 's' } }, task, ROOT);
+    expect(bare).toBe('install gbrain\n\n' + LINE);
+    expect(paste).toBe(readFileSync(join(ROOT, PASTE), 'utf8').replace(/\n$/, '') + '\n\n' + LINE);
   });
 });
 

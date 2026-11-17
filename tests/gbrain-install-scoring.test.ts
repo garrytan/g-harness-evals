@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { asksForInput, classifyInstall, refOf, type InstallTurn, type Probe } from '../scripts/gbrain-install/classify.ts';
+import { asksForInput, classifyInstall, installRef, refOf, type InstallTurn, type Probe } from '../scripts/gbrain-install/classify.ts';
 import { failureCsv, failureMarkdown, failureTable } from '../scripts/gbrain-install/failure-table.ts';
 import { stepOf } from '../scripts/gbrain-install/steps.ts';
 import { gbrainArgvFromShell, githubRateLimited, hasToken, isGbrainCall, isGbrainServed, parseHermes, parseTurn, type NEvent } from '../scripts/gbrain-install/transcript.ts';
@@ -224,6 +224,47 @@ describe('routes, version, install doc, memory, codes and infra', () => {
     expect(routeOf(['npm install -g gbrain', 243])).toBe('npm');
   });
 
+  test('probe versions: the first and last version on PATH across the watcher and the end-of-turn probes, by time', () => {
+    const at = (s: number) => new Date(Date.parse(T0) + s * 1000).toISOString();
+    const pr = (s: number, version: string | null) => ({ harness: 'claude-code', at: at(s), binary: version ? '/home/u/.bun/bin/gbrain' : null, version, brain: false, brain_path: null, mcp: false, instructions: false, hook: false, wired: [], ok: false });
+    const c = classify([turn(1, 'arm', [], pr(30, '0.60.733.0'))], 'claude-code', { watch: [pr(1, null), pr(5, '0.60.728.0'), pr(20, '0.60.733.0')] });
+    expect(c.probe_versions).toEqual({ first: '0.60.728.0', last: '0.60.733.0' });
+    expect(classify([turn(1, 'arm', [], null)]).probe_versions).toEqual({ first: null, last: null });
+  });
+
+  test('install attempts: every route command in order, with the gbrain ref it names and whether it succeeded', () => {
+    expect([
+      'bun install -g github:garrytan/gbrain#stable', 'bun install -g "github:garrytan/gbrain#v0.60.733.0"', 'bun add -g https://github.com/garrytan/gbrain.git#master',
+      'git clone --branch stable https://github.com/garrytan/gbrain.git ~/gbrain', 'git clone -b v0.60.733.0 https://github.com/garrytan/gbrain', 'git clone https://github.com/garrytan/gbrain',
+      'npm install -g gbrain@0.60.733', 'bun install -g github:garrytan/gbrain', 'curl -fsSL https://gbrainio.terminalwire.sh | bash',
+    ].map(installRef)).toEqual(['stable', 'v0.60.733.0', 'master', 'stable', 'v0.60.733.0', null, '0.60.733', null, null]);
+    const c = classify([turn(1, 'arm', [shell('bun install -g github:garrytan/gbrain#stable', '', 1), shell('ls ~/.bun/bin', '', 0), shell('bun install -g github:garrytan/gbrain#v0.60.733.0', '', 0)], null)]);
+    expect(c.install_attempts).toEqual([{ route: 'bun-github', ref: 'stable', ok: false }, { route: 'bun-github', ref: 'v0.60.733.0', ok: true }]);
+    expect(c.route).toBe('bun-github');
+  });
+
+  test('install attempts: a plain clone takes the ref of a git checkout in the same command or a later one', () => {
+    expect(installRef('git clone https://github.com/garrytan/gbrain.git && cd gbrain && git checkout v0.60.733.0 && bun install && bun link')).toBe('v0.60.733.0');
+    expect(installRef('git clone https://github.com/garrytan/gbrain && git -C gbrain switch --detach tags/v0.60.733.0')).toBe('tags/v0.60.733.0');
+    expect(installRef('git clone https://github.com/garrytan/gbrain && cd gbrain && git checkout -b mine')).toBeNull();
+    const c = classify([turn(1, 'arm', [shell('git clone https://github.com/garrytan/gbrain.git', '', 0), shell('cd gbrain && git checkout v0.60.733.0', '', 0)], null)]);
+    expect(c.install_attempts).toEqual([{ route: 'git-clone', ref: 'v0.60.733.0', ok: true }]);
+  });
+
+  test('install attempts: a plain clone takes no ref from a failed checkout or from one after the next install attempt', () => {
+    const failed = classify([turn(1, 'arm', [shell('git clone https://github.com/garrytan/gbrain.git', '', 0), shell('cd gbrain && git checkout v0.60.733.0', '', 1)], null)]);
+    expect(failed.install_attempts).toEqual([{ route: 'git-clone', ref: null, ok: true }]);
+    const after = classify([turn(1, 'arm', [shell('git clone https://github.com/garrytan/gbrain.git', '', 0), shell('bun install -g github:garrytan/gbrain#stable', '', 0), shell('cd gbrain && git checkout v0.60.733.0', '', 0)], null)]);
+    expect(after.install_attempts).toEqual([{ route: 'git-clone', ref: null, ok: true }, { route: 'bun-github', ref: 'stable', ok: true }]);
+  });
+
+  test('install attempts: quoted refs are read', () => {
+    expect([
+      'git clone --branch "v0.60.733.0" https://github.com/garrytan/gbrain', "git clone -b 'v0.60.733.0' https://github.com/garrytan/gbrain",
+      'git clone https://github.com/garrytan/gbrain && cd gbrain && git checkout "v0.60.733.0"',
+    ].map(installRef)).toEqual(['v0.60.733.0', 'v0.60.733.0', 'v0.60.733.0']);
+  });
+
   test('version from the latest probe, else from gbrain --version output', () => {
     expect(classify([turn(1, 'arm', [], BIN)]).version).toBe('0.60.717.0');
     expect(classify([turn(1, 'arm', [shell('gbrain --version', 'gbrain v0.60.722.0')], null)]).version).toBe('0.60.722.0');
@@ -288,8 +329,8 @@ describe('verdict and failure table', () => {
     expect(wilson(0, 0)).toBeNull();
   });
 
-  const cls = (o: Partial<InstallTrialRecord['install']['classification']> = {}): InstallTrialRecord['install']['classification'] => ({ route: 'bun-github', version: '0.60.717.0', install_doc: [], stalls: [], person_needed: [], failed_commands: 0, retried_commands: 0, question_types: {}, saved_to_harness_memory: false, last_gbrain_code: null, steps: { binary_ms: 1000, brain_ms: 2000, wired_ms: 3000, saved_ms: 4000, recalled_ms: 5000 }, died_at_step: null, infra: null, ...o });
-  const rec = (id: string, outcome: InstallTrialRecord['install']['outcome'], c = cls(), extra: Partial<InstallTrialRecord> = {}, finish_ms: number | null = null): InstallTrialRecord => ({ trial_id: 'run/' + id, cell: 'claude-code-opus-install', harness: 'claude-code', model: 'claude-opus-5-5', termination: 'completed', wall_ms: 100000, started_at: T0, paths: { dir: 'trials/' + id }, install: { arm: 'bare', stable_commit: 'abc', nonce: 'Vorlimb', outcome, finish: { reply: outcome === 'recalled', gbrain_call: outcome === 'recalled', brain: true, outside_brain: [] }, hinted: { ran: outcome !== 'recalled', reply: false, gbrain_call: false }, scripted_replies: c.person_needed.filter(p => p.kind === 'scripted-reply').length, probe_exhausted: false, finish_ms, agent_turns: 4, model_requests: 12, non_harness_requests: 0, watcher: 'ok', classification: c }, ...extra });
+  const cls = (o: Partial<InstallTrialRecord['install']['classification']> = {}): InstallTrialRecord['install']['classification'] => ({ route: 'bun-github', install_attempts: [{ route: 'bun-github', ref: 'v0.60.717.0', ok: true }], probe_versions: { first: '0.60.717.0', last: '0.60.717.0' }, version: '0.60.717.0', install_doc: [], stalls: [], person_needed: [], failed_commands: 0, retried_commands: 0, question_types: {}, saved_to_harness_memory: false, last_gbrain_code: null, steps: { binary_ms: 1000, brain_ms: 2000, wired_ms: 3000, saved_ms: 4000, recalled_ms: 5000 }, died_at_step: null, infra: null, ...o });
+  const rec = (id: string, outcome: InstallTrialRecord['install']['outcome'], c = cls(), extra: Partial<InstallTrialRecord> = {}, finish_ms: number | null = null): InstallTrialRecord => ({ trial_id: 'run/' + id, cell: 'claude-code-opus-install', harness: 'claude-code', model: 'claude-opus-5-5', termination: 'completed', wall_ms: 100000, started_at: T0, paths: { dir: 'trials/' + id }, install: { arm: 'bare', tag: 'v0.60.717.0', commit: 'abc', nonce: 'Vorlimb', outcome, finish: { reply: outcome === 'recalled', gbrain_call: outcome === 'recalled', brain: true, outside_brain: [] }, hinted: { ran: outcome !== 'recalled', reply: false, gbrain_call: false }, scripted_replies: c.person_needed.filter(p => p.kind === 'scripted-reply').length, probe_exhausted: false, finish_ms, agent_turns: 4, model_requests: 12, non_harness_requests: 0, watcher: 'ok', classification: c }, ...extra });
   const records: InstallTrialRecord[] = [
     rec('t1', 'recalled', cls(), {}, 90000),
     rec('t2', 'not-installed', cls({ died_at_step: 'binary', steps: { binary_ms: null, brain_ms: null, wired_ms: null, saved_ms: null, recalled_ms: null }, person_needed: [{ turn: 2, step: 'binary', kind: 'scripted-reply' }] })),
@@ -322,9 +363,29 @@ describe('verdict and failure table', () => {
 
   test('verdict: counted n, finish line with its interval, median finish time, person-needed share, excluded runs listed apart', () => {
     const [c] = verdict(records);
-    expect(c).toMatchObject({ cell: 'claude-code-opus-install', arm: 'bare', runs: 9, n: 7, finish: { k: 2, n: 7 }, finish_s: { median: 105, q1: 97.5, q3: 112.5 }, agent_turns_median: 4, person_needed: { events: 2, by_kind: { 'scripted-reply': 1, question: 1 }, runs_with_none: 5 }, harness_memory: 1, hinted: { ran: 5, recalled: 0 } });
+    expect(c).toMatchObject({ cell: 'claude-code-opus-install', arm: 'bare', runs: 9, n: 7, finish: { k: 2, n: 7 }, finish_s: { median: 105, q1: 97.5, q3: 112.5 }, agent_turns_median: 4, person_needed: { events: 2, by_kind: { 'scripted-reply': 1, question: 1 }, runs_with_none: 5 }, harness_memory: 1, pin: { first_version_off_pin: 0, last_version_off_pin: 0, no_version_seen: 0 }, hinted: { ran: 5, recalled: 0 } });
     expect(c.excluded).toEqual([{ trial_id: 'run/t7', reason: 'infra_error' }, { trial_id: 'run/t8', reason: 'infra: github-rate-limit' }]);
-    expect(verdictMarkdown([c])).toContain('| claude-code-opus-install | bare | 7 | 2/7 (8% to 64%) | 105 (97.5 to 112.5) | 4 | 5/7 | 2 (1, 0, 1) | 1 | 0 | 0/5 |');
+    expect(verdictMarkdown([c])).toContain('| claude-code-opus-install | bare | 7 | 2/7 (8% to 64%) | 105 (97.5 to 112.5) | 4 | 5/7 | 2 (1, 0, 1) | 1 | 0 | 0 | 0 | 0 | 0/5 |');
+  });
+
+  test('release pin: the first and last gbrain version the probe saw, never the commands typed; no version seen is its own count', () => {
+    const v = (first: string | null, last: string | null) => cls({ probe_versions: { first, last } });
+    const runs = [
+      rec('p1', 'recalled', v('0.60.728.0', '0.60.717.0'), {}, 90000),
+      rec('p2', 'recalled', v('0.60.728.0', '0.60.728.0'), {}, 90000),
+      rec('p3', 'not-installed', v(null, null)),
+      rec('p4', 'recalled', cls({ install_attempts: [{ route: 'bun-github', ref: 'stable', ok: true }] }), {}, 90000),
+      rec('p5', 'recalled', v('0.60.728.0', '0.60.728.0'), { termination: 'infra_error' }, 90000),
+    ];
+    const [c] = verdict(runs);
+    expect(c.pin).toEqual({ first_version_off_pin: 2, last_version_off_pin: 1, no_version_seen: 1 });
+    expect(verdictMarkdown([c])).toContain('| 0 | 2 | 1 | 1 | 0 |');
+  });
+
+  test('release pin: a record with no install.tag is left out of the pin counts', () => {
+    const old = rec('o1', 'recalled', cls({ probe_versions: { first: '0.60.728.0', last: '0.60.728.0' } }), {}, 90000);
+    (old.install as { tag?: string }).tag = undefined;
+    expect(verdict([old])[0]!.pin).toEqual({ first_version_off_pin: 0, last_version_off_pin: 0, no_version_seen: 0 });
   });
 
   test('a timeout or another harness_error counts as a miss; an HE-INSTALL-003 refusal and model_error, infra_error and exam_fault are listed apart', () => {
