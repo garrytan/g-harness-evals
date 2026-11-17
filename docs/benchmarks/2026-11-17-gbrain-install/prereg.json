@@ -1,0 +1,355 @@
+{
+  "schema_version": 1,
+  "run_id": "gbrain-install-2026-11",
+  "question": "Can a fresh AI agent on a clean Linux machine get from one instruction to working gbrain memory by itself, how long does each step take, and where does it need a person? gbrain v0.60.734.0 (a278ddf45887e10f70e91e6c78e63d6822d4e492), the newest release on gbrain's main branch at freeze. Arm bare: \"install gbrain\". Arm paste: gbrain's README agent paste prompt at that commit, which points at master's INSTALL_FOR_AGENTS.md. Both arms then end with one identical line telling the agent to install that release tag wherever the docs say #stable. Claude Code with Opus 5.5 and Codex with GPT-6.1 Sol, 20 runs per arm; OpenClaw and Hermes with Opus 5.5, GPT-6.1 Sol and particle-1, 10 runs per arm. 200 counted runs. Finish line: in a new conversation the reply holds the run's made-up word, a successful gbrain call in that conversation returned it, the brain holds it and no file outside the brain does. Measured mechanically, no model judge: finish-line rate, time and agent turns to each step (binary, brain, wired, saved, recalled), needed-a-person events, and provider requests that were not the harness's own. Dev, one public task.",
+  "tasks": {},
+  "wall_clock_s": {
+    "gbrain-install": 900
+  },
+  "spend_cap_usd": 450,
+  "drop_order": [],
+  "minimum_v01": [
+    "claude-code-opus-bare-gbrain-install",
+    "claude-code-opus-paste-gbrain-install",
+    "codex-sol-bare-gbrain-install",
+    "codex-sol-paste-gbrain-install",
+    "openclaw-opus-bare-gbrain-install",
+    "openclaw-opus-paste-gbrain-install",
+    "openclaw-sol-bare-gbrain-install",
+    "openclaw-sol-paste-gbrain-install",
+    "openclaw-particle-bare-gbrain-install",
+    "openclaw-particle-paste-gbrain-install",
+    "hermes-opus-bare-gbrain-install",
+    "hermes-opus-paste-gbrain-install",
+    "hermes-sol-bare-gbrain-install",
+    "hermes-sol-paste-gbrain-install",
+    "hermes-particle-bare-gbrain-install",
+    "hermes-particle-paste-gbrain-install"
+  ],
+  "order": {
+    "kind": "interleave-task",
+    "seed": 2715
+  },
+  "cells": [
+    {
+      "id": "claude-code-opus-bare-gbrain-install",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 20,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "bare",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715"
+      }
+    },
+    {
+      "id": "claude-code-opus-paste-gbrain-install",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 20,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "paste",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715",
+        "paste_file": "tasks/gbrain-install/arms/paste-0.60.734.0.md",
+        "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+      }
+    },
+    {
+      "id": "codex-sol-bare-gbrain-install",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 20,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "bare",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715"
+      }
+    },
+    {
+      "id": "codex-sol-paste-gbrain-install",
+      "harness": "codex",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 20,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "paste",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715",
+        "paste_file": "tasks/gbrain-install/arms/paste-0.60.734.0.md",
+        "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+      }
+    },
+    {
+      "id": "openclaw-opus-bare-gbrain-install",
+      "harness": "openclaw",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "bare",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715"
+      }
+    },
+    {
+      "id": "openclaw-opus-paste-gbrain-install",
+      "harness": "openclaw",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "paste",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715",
+        "paste_file": "tasks/gbrain-install/arms/paste-0.60.734.0.md",
+        "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+      }
+    },
+    {
+      "id": "openclaw-sol-bare-gbrain-install",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "bare",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715"
+      }
+    },
+    {
+      "id": "openclaw-sol-paste-gbrain-install",
+      "harness": "openclaw",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "paste",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715",
+        "paste_file": "tasks/gbrain-install/arms/paste-0.60.734.0.md",
+        "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+      }
+    },
+    {
+      "id": "openclaw-particle-bare-gbrain-install",
+      "harness": "openclaw",
+      "model": "particle:particle-1",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "bare",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715"
+      }
+    },
+    {
+      "id": "openclaw-particle-paste-gbrain-install",
+      "harness": "openclaw",
+      "model": "particle:particle-1",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "paste",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715",
+        "paste_file": "tasks/gbrain-install/arms/paste-0.60.734.0.md",
+        "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+      }
+    },
+    {
+      "id": "hermes-opus-bare-gbrain-install",
+      "harness": "hermes",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "bare",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715"
+      }
+    },
+    {
+      "id": "hermes-opus-paste-gbrain-install",
+      "harness": "hermes",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "paste",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715",
+        "paste_file": "tasks/gbrain-install/arms/paste-0.60.734.0.md",
+        "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+      }
+    },
+    {
+      "id": "hermes-sol-bare-gbrain-install",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "bare",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715"
+      }
+    },
+    {
+      "id": "hermes-sol-paste-gbrain-install",
+      "harness": "hermes",
+      "model": "openai:gpt-6.1-sol",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "paste",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715",
+        "paste_file": "tasks/gbrain-install/arms/paste-0.60.734.0.md",
+        "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+      }
+    },
+    {
+      "id": "hermes-particle-bare-gbrain-install",
+      "harness": "hermes",
+      "model": "particle:particle-1",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "bare",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715"
+      }
+    },
+    {
+      "id": "hermes-particle-paste-gbrain-install",
+      "harness": "hermes",
+      "model": "particle:particle-1",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 10,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "paste",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715",
+        "paste_file": "tasks/gbrain-install/arms/paste-0.60.734.0.md",
+        "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+      }
+    }
+  ]
+}

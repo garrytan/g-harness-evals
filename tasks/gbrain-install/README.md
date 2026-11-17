@@ -13,7 +13,7 @@ The gbrain install trial (internal-task). It asks one question: can an agent ins
 ## The arms
 
 - **bare** ([arms/bare.md](arms/bare.md)): "install gbrain", then the version line.
-- **paste** ([arms/paste-0.60.722.0.md](arms/paste-0.60.722.0.md)): the paste block from gbrain's README at the release stable serves (0.60.722.0, b82c23a7), byte for byte: the body of the README's one ```` ```text ```` block. It points the agent at gbrain's INSTALL_FOR_AGENTS.md and asks for a remember and recall round trip. A cell names its file in `install.paste_file`, with its `paste_sha256`. The version line follows it.
+- **paste** (`arms/paste-<version>.md`, one file per pinned release: [arms/paste-0.60.734.0.md](arms/paste-0.60.734.0.md) at v0.60.734.0, a278ddf4, for the 2026-11-17 run, and the earlier [arms/paste-0.60.722.0.md](arms/paste-0.60.722.0.md) at 0.60.722.0, b82c23a7): the paste block from gbrain's README at the pinned release, byte for byte: the body of the README's one ```` ```text ```` block. It points the agent at gbrain's INSTALL_FOR_AGENTS.md and asks for a remember and recall round trip. A cell names its file in `install.paste_file`, with its `paste_sha256`. The version line follows it.
 - **The version line** (`version_line`). Both arms end with it, after a blank line, word for word, with the cell's `install.tag` in place of `{tag}`. Evals of gbrain run on its newest release at launch, and gbrain's docs install `#stable`, which can lag that release by days, so the line names the release. It is the same in both arms, so the comparison between them stays fair. How often an agent installs `#stable` anyway is scored (scripts/gbrain-install/README.md, "Release pin").
 
 ## The finish line

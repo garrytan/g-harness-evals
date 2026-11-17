@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "run_id": "gbrain-install-smoke-2026-11",
+  "question": "Uncounted smoke of gbrain-install-2026-11: Claude Code with Claude Fable 5.2, 2 runs per arm, labelled a smoke with no claim. Same task, release pin, arms and finish line as the counted run.",
+  "tasks": {},
+  "wall_clock_s": {
+    "gbrain-install": 900
+  },
+  "spend_cap_usd": 20,
+  "drop_order": [],
+  "minimum_v01": [
+    "claude-code-fable-bare-gbrain-install",
+    "claude-code-fable-paste-gbrain-install"
+  ],
+  "order": {
+    "kind": "interleave-task",
+    "seed": 2715
+  },
+  "cells": [
+    {
+      "id": "claude-code-fable-bare-gbrain-install",
+      "harness": "claude-code",
+      "model": "anthropic:claude-fable-5-2",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 2,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "bare",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715-smoke"
+      }
+    },
+    {
+      "id": "claude-code-fable-paste-gbrain-install",
+      "harness": "claude-code",
+      "model": "anthropic:claude-fable-5-2",
+      "slice": "gbrain-install",
+      "split": "dev",
+      "repetitions": 2,
+      "ceiling": {
+        "input_tokens": 80000,
+        "output_tokens": 6000
+      },
+      "network": "install",
+      "install": {
+        "arm": "paste",
+        "tag": "v0.60.734.0",
+        "commit": "a278ddf45887e10f70e91e6c78e63d6822d4e492",
+        "seed": "gst2715-smoke",
+        "paste_file": "tasks/gbrain-install/arms/paste-0.60.734.0.md",
+        "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+      }
+    }
+  ]
+}
