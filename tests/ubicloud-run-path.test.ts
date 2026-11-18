@@ -135,10 +135,15 @@ describe('ubicloud/run-shard.sh mid-run replication', () => {
     const r = shard({ pulls: ['ok:v1', 'ok:v2'], exitAfter: 1, seeds: [capture, record, job], workload: 'frontier-harbor' });
     expect(r.code, r.err).toBe(0);
     for (const f of [capture, record, job]) expect(read(join(r.dest, f))).toBe('local only\n');
-    expect(read(join(r.rep, 's1', 'results', 'trials.jsonl'))).toBe('v2\n');
-    expect(read(join(r.rep, 's1', record))).toBe('local only\n');
-    expect(existsSync(join(r.rep, 's1', capture))).toBe(false);
-    expect(existsSync(join(r.rep, 's1', 'results', 'run'))).toBe(false);
+    // A frontier-harbor replica is packed (Amendment 1, added 2026-11-15 (3)): read it from results.tar.zst or .gz.
+    expect(existsSync(join(r.rep, 's1', 'results'))).toBe(false);
+    const view = tmp('he-rep-view-');
+    const packed = ['zst', 'gz'].map((e) => join(r.rep, 's1', 'results.tar.' + e)).find((f) => existsSync(f))!;
+    expect(spawnSync('tar', ['-C', view, packed.endsWith('.zst') ? '--zstd' : '-z', '-xf', packed]).status).toBe(0);
+    expect(read(join(view, 'results', 'trials.jsonl'))).toBe('v2\n');
+    expect(read(join(view, record))).toBe('local only\n');
+    expect(existsSync(join(view, capture))).toBe(false);
+    expect(existsSync(join(view, 'results', 'run'))).toBe(false);
   }, 120_000);
 
   test('key-shaped text in the results stops the mirror and keeps the previous one', () => {

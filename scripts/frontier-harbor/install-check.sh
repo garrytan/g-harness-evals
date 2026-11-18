@@ -3,7 +3,12 @@
 # is read or passed; every model call goes to scripts/frontier-harbor/fake-upstream.ts through the metering proxy.
 # Run on a fresh Ubicloud VM after scripts/ubicloud/bootstrap.sh, from the repository root:
 #
-#   bash scripts/frontier-harbor/install-check.sh <out dir> [--baselines three|all]
+#   bash scripts/frontier-harbor/install-check.sh <out dir> [--baselines three|all] [--prereg <cells file>]
+#
+# --prereg runs step 1 (and 1b) on another frontier-harbor/1 file in place of install-check-prereg.json, for example a
+# run's own install check with only the harness and model pairs it uses (the gstack delivery run's install-check-harbor.json,
+# whose results its shards take as --zdr-gate). Every cell of that file must be a cell of install-check-prereg.json,
+# field for field, so it can only drop cells; anything else exits 2 before the check fetches or runs anything.
 #
 # It checks, and writes <out>/install-check.json (the committed copy is scripts/frontier-harbor/install-check.json):
 #   1. agents: vm-run.sh on install-check-prereg.json (each agent class, Claude Code on Opus 5.5 and Fable 5.1, Codex on GPT-6.1 Sol and GPT-6
@@ -53,12 +58,29 @@ set -euo pipefail
 umask 077
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
-out=${1:?usage: install-check.sh <out dir> [--baselines three|all]}
+usage() { echo "usage: install-check.sh <out dir> [--baselines three|all] [--prereg <cells file>]" >&2; exit 2; }
+out=${1:?usage: install-check.sh <out dir> [--baselines three|all] [--prereg <cells file>]}
+shift
 baselines=three
-if [ $# -gt 1 ]; then
-  [ "$2" = "--baselines" ] && [ $# -eq 3 ] && { [ "$3" = three ] || [ "$3" = all ]; } || { echo "usage: install-check.sh <out dir> [--baselines three|all]" >&2; exit 2; }
-  baselines=$3
-fi
+cells_file=$here/install-check-prereg.json
+while [ $# -gt 0 ]; do
+  case $1 in
+    --baselines) { [ "${2:-}" = three ] || [ "${2:-}" = all ]; } || usage; baselines=$2; shift 2 ;;
+    --prereg) [ -f "${2:-}" ] || usage; cells_file=$(cd "$(dirname "$2")" && pwd)/$(basename "$2"); shift 2 ;;
+    *) usage ;;
+  esac
+done
+python3 - "$cells_file" "$here/install-check-prereg.json" <<'PY' || exit 2
+import json, os, sys
+path, full_path = sys.argv[1], sys.argv[2]
+if os.path.realpath(path) == os.path.realpath(full_path): sys.exit(0)
+full = json.load(open(full_path))["cells"]
+cells = json.load(open(path)).get("cells") or []
+bad = [c.get("id") for c in cells if c not in full]
+if not cells or bad:
+    print(f"install-check: cell {','.join(map(str, bad)) or '(none)'} of {path} is not a cell of install-check-prereg.json; a --prereg file can only drop its cells", file=sys.stderr)
+    sys.exit(1)
+PY
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 rm -f "$out/install-check.json"
@@ -77,15 +99,16 @@ fi
 say "terminal-bench-2-1 at $(git -C "$tb21" rev-parse HEAD); kernel $(uname -r); $(docker --version)"
 
 # 1. every agent class against the fake upstream
+say "agents: the cells of ${cells_file#"$repo"/}"
 set +e
-"${safe_env[@]}" bash "$here/vm-run.sh" --prereg "$here/install-check-prereg.json" --name install-check --lease-usd 200 --out "$out/agents" \
+"${safe_env[@]}" bash "$here/vm-run.sh" --prereg "$cells_file" --name install-check --lease-usd 200 --out "$out/agents" \
   --tb21 "$tb21" --fake-upstream --uncounted "install check (keyless, fake upstream)"
 agents_rc=$?
 set -e
 say "agents: vm-run.sh exited $agents_rc"
-zdr_cells=$(python3 -c 'import json,sys; print(",".join(c["id"] for c in json.load(open(sys.argv[1]))["cells"] if c["model"].startswith("openai:") and c["harness"] != "mini-swe-agent"))' "$here/install-check-prereg.json")
+zdr_cells=$(python3 -c 'import json,sys; print(",".join(c["id"] for c in json.load(open(sys.argv[1]))["cells"] if c["model"].startswith("openai:") and c["harness"] != "mini-swe-agent"))' "$cells_file")
 set +e
-(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/zdr-check.ts --smoke "$out" --prereg "$here/install-check-prereg.json" --cells "$zdr_cells" --out "$out/zdr.json") >> "$out/install-check.log" 2>&1
+(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/zdr-check.ts --smoke "$out" --prereg "$cells_file" --cells "$zdr_cells" --out "$out/zdr.json") >> "$out/install-check.log" 2>&1
 zdr_rc=$?
 set -e
 say "zdr: zdr-check.ts exited $zdr_rc (cells $zdr_cells)"
@@ -138,7 +161,7 @@ set -e
 
 # 4 and 5. the canary scan, then install-check.json
 canary_files=$( [ -s "$out/agents/canary.txt" ] && grep -rlF -f "$out/agents/canary.txt" "$out/agents" --exclude=canary.txt 2>/dev/null | sed "s#^$out/##" || true)
-python3 - "$out" "$here/pin.json" "$repo" "$agents_rc" "$canary_files" "$ids" "$gstack_rc" <<'PY'
+python3 - "$out" "$here/pin.json" "$repo" "$agents_rc" "$canary_files" "$ids" "$gstack_rc" "$cells_file" <<'PY'
 import glob, json, os, subprocess, sys
 out, pin_path, repo, agents_rc, canary_files = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), [f for f in sys.argv[5].splitlines() if f]
 gstack_rc = int(sys.argv[7])
@@ -194,7 +217,7 @@ for t in trials:
 for a in agents.values():
     if replay_checked(a):
         a["replay_verdict"] = {"seen": replay_seen(a), "declared": replay_declared(a)}
-planned = [c["id"] for c in json.load(open(os.path.join(os.path.dirname(pin_path), "install-check-prereg.json")))["cells"]]
+planned = [c["id"] for c in json.load(open(sys.argv[8] if len(sys.argv) > 8 else os.path.join(os.path.dirname(pin_path), "install-check-prereg.json")))["cells"]]
 for c in planned:
     agents.setdefault(c, {"ran": False, "termination": None, "note": "no trial record"})
 upstream = jl(f"{out}/agents/fake-upstream.jsonl")

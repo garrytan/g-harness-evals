@@ -14,7 +14,8 @@
 # ~/terminal-bench-2-1 (the install check uses it whatever the run's source). When the preregistration's task_list names
 # a second task source's pin (schema frontier-harbor-source/1, today pin-swe-rebench-07-2026.json), vm-run.sh gets
 # --tasks-src ~/<source name> in place of --tb21 and fetches that source's pinned tasks there. With --install-check the lane is the keyless install check and nothing else:
-# scripts/frontier-harbor/install-check.sh ~/shard/results with every key unset (fake upstream, no spend), its output in
+# scripts/frontier-harbor/install-check.sh ~/shard/results --prereg <the manifest's preregistration> with every key unset
+# (fake upstream, no spend; install-check-prereg.json, or a file whose every cell is one of its cells), its output in
 # ~/shard/results/run.stdout.log and its exit code the shard's. Otherwise the smoke is that same keyless install check
 # into ~/shard/smoke (--no-smoke skips it; retried only after an AgentSetupTimeoutError; exit 4 when it fails), then the web-tools check on the smoke's captured
 # requests (scripts/frontier-harbor/web-tools-check.ts; exit 4 when a cell offers a web tool or has no captured tool list,
@@ -149,7 +150,6 @@ fi
 
 if [ "$workload" = frontier-harbor ]; then
   [ ${#sealed[@]} -eq 0 ] || { log "frontier-harbor takes no sealed flags"; finish 2; }
-  if [ "$install_check" -eq 1 ] && [ "$(realpath "$prereg")" != "$(realpath scripts/frontier-harbor/install-check-prereg.json)" ]; then log "--install-check runs scripts/frontier-harbor/install-check-prereg.json; the manifest names $prereg"; finish 2; fi
   planned=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(",".join(next((s["cells"] for s in p["shards"] if s["name"] == sys.argv[2]), [])))' "$prereg" "$name")
   [ "$planned" = "$cells" ] || { log "shard $name of $prereg has cells '$planned', not the manifest's '$cells'"; finish 2; }
   read -r tb_repo tb_commit <<< "$(python3 -c 'import json,sys; t=json.load(open(sys.argv[1]))["terminal_bench"]; print(t["repo"], t["commit"])' scripts/frontier-harbor/pin.json)"
@@ -164,7 +164,7 @@ if [ "$workload" = frontier-harbor ]; then
     mkdir -p "$shard/results"
     phase run_start
     log "install check: scripts/frontier-harbor/install-check.sh (keyless, fake upstream)"
-    "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/results" ${extra[@]+"${extra[@]}"} > "$shard/results/run.stdout.log" 2>&1
+    "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/results" --prereg "$prereg" ${extra[@]+"${extra[@]}"} > "$shard/results/run.stdout.log" 2>&1
     rc=$?
     phase run_end
     tail -3 "$shard/results/run.stdout.log"

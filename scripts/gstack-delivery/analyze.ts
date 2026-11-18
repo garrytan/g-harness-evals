@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The preregistered analysis of the gstack delivery eval (internal-task, plan decisions 6 and 8, gate changes d2, d5, d12, d14),
+// The preregistered analysis of the gstack delivery eval (HARN-61, plan decisions 6 and 8, gate changes d2, d5, d12, d14),
 // modelled on scripts/matrix-analysis.ts and scripts/instruction-followed-h10.ts and built on runner/stats/paired.ts.
 //
 //   bun scripts/gstack-delivery/analyze.ts --trials <trials.jsonl> --probes <probes.jsonl> [--pi-delivery-passed]
@@ -10,12 +10,13 @@
 // consent_violation, usd} (usd may sit at usage.usd, as in a TrialRecord). probes.jsonl: scripts/gstack-delivery/probes.ts
 // output, joined on trial_id. Writes delivery-analysis.json and delivery-analysis.md to --out (default: stdout, Markdown).
 //
-// Values. Pass is grade pass with no consent violation; harness_error is a fail (0). Compliance is the probe's share of
-// applicable markers met. Excluded, pairwise and counted by reason (methodology item 9, d12, d13): a trial ending
-// model_error, infra_error or exam_fault; on a hook, startup or placebo arm, a trial whose probe says route_not_delivered,
-// or whose delivery could not be confirmed (no probe row, or an unparsed capture); for compliance also an unparsed capture
-// and a trial whose compliance is null (a marker unobservable or unscorable). Exclusion is pairwise: a trial pairs with the
-// trial of the other arm at the same harness, model, task and rep, and when either side is excluded both are dropped.
+// Values. Pass is grade pass with no consent violation; a trial that ended in timeout or harness_error is a fail (0),
+// whatever its grade. Compliance is the probe's share of applicable markers met. Excluded, pairwise and counted by reason
+// (methodology item 9, d12, d13): a trial ending model_error, infra_error or exam_fault; on a hook, startup or placebo arm,
+// a trial whose probe says route_not_delivered, or whose delivery could not be confirmed (no probe row, or an unparsed
+// capture); for compliance also an unparsed capture and a trial whose compliance is null (a marker unobservable or
+// unscorable). Exclusion is pairwise: a trial pairs with the trial of the other arm at the same harness, model, task and
+// rep, and when either side is excluded both are dropped.
 //
 // Estimator. For a contrast B minus A over a set of harness-model pairs: one item per pair and task, each side the mean over
 // its kept reps, clustered on the task, so a task is one cluster however many pairs carry it. runner/stats/paired.ts
@@ -87,7 +88,7 @@ export function trialValue(t: DeliveryTrial, probe: ProbeResult | undefined, end
     if (!probe || probe.status !== 'scored') return { excluded: 'delivery_unconfirmed' };
     if (probe.infra_class === 'route_not_delivered') return { excluded: 'route_not_delivered' };
   }
-  if (endpoint === 'pass') return { value: t.grade === 'pass' && !t.consent_violation ? 1 : 0 };
+  if (endpoint === 'pass') return { value: t.grade === 'pass' && !t.consent_violation && t.termination !== 'timeout' && t.termination !== 'harness_error' ? 1 : 0 };
   if (!probe) return { excluded: 'no_probe' };
   if (probe.status !== 'scored') return { excluded: 'unparsed' };
   return probe.compliance.share === null ? { excluded: 'unobservable' } : { value: probe.compliance.share };

@@ -510,3 +510,152 @@ describe('Hermes hook and placebo: the card appended to a tool result does not h
   });
 });
 
+
+describe('Amendment 1 (2026-11-15): pytest only as the command word, read-only review.json checks, a test step before ||', () => {
+  const ship = (steps: Step[]) => states(probe(anthropic(steps), 'ship'));
+  const isTest = (c: string) => shellActions(c, '/work/repo').some((a) => a.t === 'test');
+  test('words that name pytest without running tests are no test or suite run', () => {
+    for (const c of ['pip install pytest', 'pip install -q pytest pytest-cov', 'which pytest', 'grep pytest setup.cfg', 'cat pytest.ini', 'pytest --collect-only', 'pytest --collect-only -q tests', 'pytest --co -q', 'pytest --version', 'python -m pytest --version', 'ls .venv/bin | grep pytest', 'echo pytest']) expect(isTest(c)).toBe(false);
+    expect(shellActions('cat pytest.ini', '/work/repo')).toEqual([{ t: 'read', path: '/work/repo/pytest.ini', limited: false }]);
+    for (const c of ['pip install pytest', 'which pytest', 'grep pytest setup.cfg', 'cat pytest.ini', 'pytest --collect-only', 'pytest --version']) {
+      expect(ship([bash('git merge origin/main'), bash(c), bash('git push origin feature/x')])['ship.fresh_verification']).toBe('not_met');
+    }
+  });
+  test('an actual pytest invocation as the command word of a segment is a run', () => {
+    for (const c of ['pytest', 'pytest -q', 'py.test', 'python -m pytest -q', 'python3 -m pytest', 'python3.11 -m pytest -x', '.venv/bin/pytest -q', '/usr/bin/python3 -m pytest', 'PYTHONPATH=. python -m pytest', 'timeout 600 pytest -q', 'pytest -q 2>&1 | tail -20', "bash -lc 'pytest -q'"]) expect(shellActions(c, '/work/repo')).toMatchObject([{ t: 'test', suite: true }]);
+    expect(shellActions('cd /work/repo && pip install -q pytest && python -m pytest -q', null)).toMatchObject([{ t: 'test', suite: true, cwd: '/work/repo' }]);
+    expect(ship([bash('git merge origin/main'), bash('pip install pytest'), bash('python -m pytest -q'), bash('git push origin feature/x')])['ship.fresh_verification']).toBe('met');
+  });
+  test('tox, nox, make test and unittest count only as the command word too; a run inside $( ) is a run', () => {
+    for (const c of ['cat tox.ini', 'rg --files -g tox.ini -g pytest.ini', 'pip install tox nox', 'grep -n unittest setup.cfg']) expect(isTest(c)).toBe(false);
+    for (const c of ['tox -e py311', 'nox -s tests', 'make test', 'python -m unittest discover', 'echo "all: $(python -m pytest -q 2>&1 | tail -1)"']) expect(shellActions(c, '/work/repo')).toMatchObject([{ t: 'test', suite: true }]);
+    expect(shellActions("echo '$(pytest -q)'", '/work/repo')).toEqual([]);
+  });
+  test('a python command that only reads review.json is no write of it; real writes still are', () => {
+    const good = [bash('cd /work/repo && git diff main...feature/change-1'), bash("python3 -c 'import schedule; print(schedule.every)'")];
+    const readOnly = ["python3 -c \"import json; d = json.load(open('/work/out/review.json')); print(len(d))\"", "python3 - <<'PY'\nimport json\nwith open('/work/out/review.json') as f:\n    print(json.load(f))\nPY", "python -m json.tool /work/out/review.json"];
+    for (const c of readOnly) {
+      expect(shellActions(c).filter((a) => a.t === 'write')).toEqual([]);
+      const r = scored(probe(anthropic([...good, writeReview('[]'), bash(c)]), 'review'));
+      expect(r.markers['review.test_per_finding']!.state).toBe('n/a');
+      expect(r.compliance).toEqual({ met: 2, applicable: 2, share: 1, followed: true });
+    }
+    const writes = ["python3 - <<'PY'\nimport json\njson.dump(rows, open('/work/out/review.json', 'w'))\nPY", "python3 -c \"from pathlib import Path; Path('/work/out/review.json').write_text('[]')\"", "python3 -c \"import json; f = open('/work/out/review.json', mode='w'); f.write('[]')\"", 'python3 make_review.py --out /work/out/review.json', "python3 -c 'print(1)' > /work/out/review.json"];
+    for (const c of writes) expect(shellActions(c).filter((a) => a.t === 'write' && /review\.json$/.test(a.path))).toHaveLength(1);
+    expect(scored(probe(anthropic([...good, writeReview('[]'), bash(writes[0]!)]), 'review')).markers['review.test_per_finding']!.state).toBe('unscorable');
+  });
+  test('a test step after && followed by || is unobservable, never met: only a step that closes an all-&& chain with a shown exit 0 counts', () => {
+    for (const c of ['git add -A && python -m pytest -q || echo failed', 'git status && python -m pytest -q || true', 'git status && python -m pytest -q && git diff --stat || echo failed', "bash -lc 'git status && python -m pytest -q' || echo failed"]) {
+      expect(ship([bash('git merge origin/main'), bash(c), bash('git push origin feature/x')])['ship.fresh_verification']).toBe('unobservable');
+    }
+    expect(ship([bash('git merge origin/main'), bash('git status && python -m pytest -q'), bash('git push origin feature/x')])['ship.fresh_verification']).toBe('met');
+  });
+  test('a crediting step that a || follows is unobservable even first in its chain: the || branch alone can make the exit 0', () => {
+    for (const c of ['python -m pytest -q || true', 'pytest || echo failed', 'cd /work/repo && python -m pytest -q || true', "bash -lc 'python -m pytest -q || true'", 'python -m pytest -q || python -m pytest -q --lf']) {
+      expect(ship([bash('git merge origin/main'), bash(c), bash('git push origin feature/x')])['ship.fresh_verification']).toBe('unobservable');
+    }
+    expect(ship([bash('git merge origin/main'), bash('python -m pytest -q'), bash('git commit -am done'), bash('git diff origin/main || true'), bash('git push origin feature/x')])['ship.final_diff_after_commit']).toBe('unobservable');
+    expect(ship([bash('git merge origin/main'), bash('python -m pytest -q; echo done || true'), bash('git push origin feature/x')])['ship.fresh_verification']).toBe('met');
+    expect(ship([bash('git merge origin/main'), bash('python -m pytest -q || true'), bash('python -m pytest -q'), bash('git push origin feature/x')])['ship.fresh_verification']).toBe('met');
+  });
+  test('an empty heredoc ends at its own delimiter line and does not swallow the next write', () => {
+    expect(shellActions("cat > a.py <<'EOF'\nEOF\nrm a.py\ncat > b.py <<'EOF'\ny = 2\nEOF", '/work/out/tests')).toEqual([
+      { t: 'write', path: '/work/out/tests/a.py', content: '' },
+      { t: 'write', path: '/work/out/tests/a.py', content: null },
+      { t: 'write', path: '/work/out/tests/b.py', content: 'y = 2' },
+    ]);
+    expect(shellActions("cat > b.py <<EOF\ny = 2\nEOF")).toEqual([{ t: 'write', path: 'b.py', content: 'y = 2' }]);
+  });
+});
+
+
+describe('Amendment 1, added 2026-11-15 (3): Hermes execute_code runs hermes_tools calls that count as the native tools do', () => {
+  const ec = (code: string): Step => ({ name: 'execute_code', input: { code } });
+  const term = (command: string): Step => ({ name: 'terminal', input: { command } });
+  const reviewOf = (...tests: string[]) => JSON.stringify(tests.map((t, k) => ({ file: 'pkg/export.py', line: k + 1, summary: 'x', test: t })));
+  const A = '/work/out/tests/test_escape.py', B = '/work/out/tests/test_name.py';
+  const hermesWrite = (content: string): Step => ({ name: 'write_file', input: { path: '/work/out/review.json', content } });
+  const perFinding = (steps: Step[]) => scored(probe(anthropic(steps), 'review')).markers['review.test_per_finding']!;
+  const fresh = (steps: Step[]) => states(probe(anthropic(steps), 'ship'))['ship.fresh_verification'];
+  // Cut from a pre-smoke review trial (Opus on Hermes): the tests are written and run from Python, then review.json by the native tool.
+  const LOOP = [
+    'from hermes_tools import write_file, terminal',
+    'tests = {',
+    '"test_escape.py": \'\'\'',
+    'from pkg.export import render',
+    '',
+    'def test_cells_are_escaped(tmp_path):',
+    '    assert "<script>" not in render([["<script>"]])',
+    '\'\'\',',
+    '"test_name.py": \'\'\'',
+    'from pytest import raises',
+    '',
+    'def test_name_with_separator_is_refused(tmp_path):',
+    '    with raises(ValueError):',
+    '        render([[1]], name="a/b")',
+    '\'\'\',',
+    '}',
+    'import os',
+    'os.makedirs("/work/out/tests", exist_ok=True)',
+    'for n,c in tests.items():',
+    '    write_file("/work/out/tests/"+n, c.lstrip())',
+    'print(terminal("cd /work/repo && python -m pytest -q /work/out/tests -p no:cacheprovider 2>&1 | tail -30")["output"])',
+  ].join('\n');
+  const LITERAL = [
+    'from hermes_tools import write_file, terminal',
+    "write_file('/work/out/tests/test_escape.py', '''def test_cells_are_escaped():\n    assert True\n''')",
+    'write_file(path="/work/out/tests/test_name.py", content="def test_name():\\n    assert True\\n")',
+    'print(terminal("cd /work/repo && python -m pytest -q /work/out/tests -p no:cacheprovider 2>&1 | tail -30")["output"])',
+  ].join('\n');
+  const before = [term('cd /work/repo && git diff main...HEAD --stat')];
+
+  test('literal write_file and terminal calls are the test writes and the test run, in their order inside the call', () => {
+    expect(perFinding([...before, ec(LITERAL), hermesWrite(reviewOf(A, B))]).state).toBe('met');
+    const late = LITERAL.replace('print(terminal', "write_file('/work/out/review.json', '[]')\nprint(terminal");
+    expect(perFinding([...before, ec(late), hermesWrite(reviewOf(A, B))]).state).toBe('met');
+    const runFirst = ['from hermes_tools import write_file, terminal', 'terminal("cd /work/repo && python -m pytest -q /work/out/tests")', "write_file('/work/out/tests/test_escape.py', 'def test_x(): pass')"].join('\n');
+    expect(perFinding([...before, ec(runFirst), hermesWrite(reviewOf(A))]).state).toBe('not_met');
+  });
+
+  test('the captured loop over a dict of tests writes to a computed path: unobservable, never met or not met', () => {
+    const r = perFinding([...before, ec(LOOP), hermesWrite(reviewOf(A, B))]);
+    expect(r.state).toBe('unobservable');
+    expect(r.reason).toContain('execute_code step whose path or command the capture does not show');
+    expect(scored(probe(anthropic([...before, ec(LOOP), hermesWrite(reviewOf(A, B))]), 'review')).compliance.share).toBeNull();
+  });
+
+  test('patch is a write, terminal a command with test and diff detection, read_file a read', () => {
+    const merge = term('cd /work/repo && git merge origin/main'), push = term('cd /work/repo && git push origin feature/x');
+    const suite = ec('from hermes_tools import terminal\nterminal("cd /work/repo && python -m pytest -q")');
+    expect(fresh([merge, suite, push])).toBe('met');
+    expect(fresh([merge, suite, ec("from hermes_tools import patch\npatch('/work/repo/CHANGELOG.md', 'a', 'b')"), push])).toBe('not_met');
+    expect(fresh([merge, suite, ec("from hermes_tools import patch\npatch(path='/tmp/notes.txt', old_string='a', new_string='b')"), push])).toBe('met');
+    const diffFirst = (code: string) => states(probe(anthropic([ec(code), hermesWrite('[]')]), 'review'))['review.full_diff_first'];
+    expect(diffFirst('from hermes_tools import terminal\nterminal("git diff main...HEAD", workdir="/work/repo")')).toBe('met');
+    expect(diffFirst('from hermes_tools import terminal, read_file\nterminal("cd /work/repo && git diff main...HEAD > /tmp/d.txt")\nread_file("/tmp/d.txt")')).toBe('met');
+    expect(diffFirst('from hermes_tools import terminal, read_file\nterminal("cd /work/repo && git diff main...HEAD > /tmp/d.txt")\nread_file("/tmp/d.txt", limit=40)')).toBe('not_met');
+    expect(diffFirst('from hermes_tools import terminal\nterminal("cd /work/repo && git diff main...HEAD --stat")')).toBe('not_met');
+  });
+
+  test('a computed command, working directory or path is unobservable, the way a step that a || follows is', () => {
+    const merge = term('cd /work/repo && git merge origin/main'), push = term('cd /work/repo && git push origin feature/x');
+    const suite = ec('from hermes_tools import terminal\nterminal("cd /work/repo && python -m pytest -q")');
+    expect(fresh([merge, ec('from hermes_tools import terminal\nd = "/work/repo"\nterminal(f"cd {d} && python -m pytest -q")'), push])).toBe('unobservable');
+    expect(fresh([merge, ec('from hermes_tools import terminal\nd = "/work/repo"\nterminal("python -m pytest -q", workdir=d)'), push])).toBe('unobservable');
+    expect(fresh([merge, ec('from hermes_tools import terminal\ncmd = "python -m pytest -q"\nterminal(cmd)'), push])).toBe('unobservable');
+    expect(fresh([merge, suite, ec('from hermes_tools import write_file\np = "/work/repo/CHANGELOG.md"\nwrite_file(p, "x")'), push])).toBe('unobservable');
+    expect(fresh([merge, ec('from hermes_tools import terminal\nterminal("cd /work/repo && python -m pytest -q " + "-x")'), push])).toBe('unobservable');
+    expect(fresh([merge, ec('from hermes_tools import terminal\nterminal("cd /work/repo && python -m pytest " "-q")'), push])).toBe('met');
+  });
+
+  test('imports: an alias, the module, and a name imported by an earlier execute_code call; strings, comments, defs and other objects are no call', () => {
+    const merge = term('cd /work/repo && git merge origin/main'), push = term('cd /work/repo && git push origin feature/x');
+    expect(fresh([merge, ec('from hermes_tools import terminal as sh\nsh("cd /work/repo && python -m pytest -q")'), push])).toBe('met');
+    expect(fresh([merge, ec('import json, hermes_tools as ht\nht.terminal("cd /work/repo && python -m pytest -q")'), push])).toBe('met');
+    expect(fresh([merge, ec('from hermes_tools import (\n    read_file,\n    terminal,\n)\nprint(1)'), ec('terminal("cd /work/repo && python -m pytest -q")'), push])).toBe('met');
+    expect(fresh([merge, ec('terminal("cd /work/repo && python -m pytest -q")'), push])).toBe('not_met');
+    const notCalls = ['from hermes_tools import terminal', 's = "terminal(\'python -m pytest -q\')"', '# terminal("python -m pytest -q")', 'def terminal2(c): pass', 'proc.terminal("python -m pytest -q")', "t = '''", 'terminal("python -m pytest -q")', "'''"].join('\n');
+    expect(fresh([merge, ec(notCalls), push])).toBe('not_met');
+  });
+});
+

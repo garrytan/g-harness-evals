@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Step-compliance probes for the gstack delivery eval (internal-task, plan decision 5 and gate changes d5, d12, d13): what the agent
+// Step-compliance probes for the gstack delivery eval (HARN-61, plan decision 5 and gate changes d5, d12, d13): what the agent
 // did, read from the metering proxy's request captures, scored against the steps-card lines the task text does not already
 // demand. Keyless; it reads files and never calls a model.
 //
@@ -39,12 +39,24 @@
 // action unobservable, and a marker that one more action could turn from not met to met reads "unobservable", not 0.
 //
 // Chains: a step that earns a marker (a test, check, diff or read) and runs only if an earlier command of its && or || chain
-// succeeded or failed counts only when the capture shows it ran: the call's exit status (Claude Code's is_error, an
-// "Exit code N" line or a JSON exit_code in the tool result) is 0 and the step sits in an all-&& chain at the end of the
-// command. When the status shows the call failed, the step earns nothing. When the capture shows no status that settles it
-// (Codex's exec tool, a chain after ||, a chain that a later ; or newline follows), a marker that only such a step would
-// meet reads "unobservable", as for the unseen last action, never met. A cd is no gate. Writes, merges, commits and pushes
-// in a chain always count, since they may have run.
+// succeeded or failed counts only when the capture shows it ran: the call's exit status (Claude Code's is_error, an "Exit
+// code N" line or a JSON exit_code in the tool result) is 0 and the step sits in an all-&& chain at the end of the command.
+// When the status shows the call failed, the step earns nothing. When the capture shows no status that settles it (Codex's
+// exec tool, a step before or after || in its chain, a chain that a later ; or newline follows), a marker that only such a
+// step would meet reads "unobservable", as for the unseen last action, never met. A step that a later || of its chain
+// follows reads the same even when it ran unconditionally (first in its chain, or after a cd), because the || branch alone
+// can make the call's exit 0. A cd is no gate. Writes, merges, commits and pushes in a chain always count, since they may
+// have run.
+//
+// Hermes execute_code (Amendment 1, added 2026-11-15 (3)): its Python calls Hermes's own tools through hermes_tools. A
+// write_file or patch call is a write, terminal a command (test runs, diffs and writes read as for the native tool, with no
+// exit status, as for Codex's exec tool) and read_file a read, in source order right after the execute_code call, whose
+// Python is still read as a python heredoc. Only literal string arguments are read. A path built at run time is a write or
+// read the capture does not show; a command or working directory built at run time may be any file write, test, check, diff
+// or read, never a merge, commit or push. A marker that only such a step could meet, or a met marker that only such a write
+// could undo, reads "unobservable", as for the steps of a chain above. Names imported from hermes_tools (with their aliases,
+// or the module) in this or an earlier execute_code call of the session count, since its kernel persists; text in strings
+// and comments, definitions and other objects' methods are no calls.
 //
 // Markers (each on one card line; a step the task text already demands has none):
 //   review.full_diff_first      a full diff of the branch against the base (git diff <base-ish ref>, or git log -p over a range;
@@ -77,6 +89,11 @@
 // headroom check, where the none arm already met it in 87.5% of ship trials):
 //   ship.tests_after_merge      a full test-suite run after the last merge or rebase of the base and before the last push
 // git show is not counted as a diff view: it shows one commit, not the branch against the base.
+// pytest counts only as the command word of a segment (pytest, py.test or python -m pytest, after a cd, env, sudo, timeout
+// or VAR= prefix), never as a word inside another command (pip install pytest, which pytest, grep pytest setup.cfg, cat
+// pytest.ini), and never with an option that runs no test (--collect-only, --version). A Python command that names
+// review.json writes it only when it runs a script file or its code shows a write (an open in a write mode, json.dump, a
+// write method, a copy, move or rename); a read-only check such as json.load(open(...)) is no write.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
@@ -323,6 +340,123 @@ export function execNestedCalls(src: string): { calls: Array<{ name: string; arg
   return { calls, whole: whole || calls.length === 0 };
 }
 
+/** A path, command or working directory that Hermes's execute_code computes at run time, so the capture cannot show it. */
+export const UNREAD = '<unread>';
+
+/** The parameters of the hermes_tools functions that write, run a command or read, in their positional order. */
+const HERMES_PARAMS: Record<string, string[]> = { write_file: ['path', 'content'], patch: ['path', 'old_string', 'new_string', 'replace_all'], read_file: ['path', 'offset', 'limit'], terminal: ['command', 'timeout', 'workdir'] };
+
+/** A Python string literal at s[i] (prefixes r, b, u and f, single or triple quotes): its value, the index after it, and
+ *  whether it is literal (an f-string with a substitution is not); null when no string starts there. */
+function pyString(s: string, i: number): { value: string; end: number; literal: boolean } | null {
+  const m = /^([rRbBuUfF]{0,2})('''|"""|'|")/.exec(s.slice(i, i + 5));
+  if (!m) return null;
+  const raw = /r/i.test(m[1]!), f = /f/i.test(m[1]!), q = m[2]!;
+  const esc: Record<string, string> = { n: '\n', t: '\t', r: '\r', a: '\x07', b: '\b', f: '\f', v: '\v', 0: '\0', '\n': '', '\\': '\\', "'": "'", '"': '"' };
+  let out = '', literal = true;
+  for (let j = i + m[0].length; j < s.length; j++) {
+    if (s.startsWith(q, j)) return { value: out, end: j + q.length, literal };
+    const ch = s[j]!;
+    if (q.length === 1 && ch === '\n') return null;
+    if (f && (ch === '{' || ch === '}') && s[j + 1] === ch) { out += ch; j++; continue; }
+    if (f && ch === '{') literal = false;
+    if (ch !== '\\') { out += ch; continue; }
+    const n = s[++j] ?? '';
+    if (raw) out += '\\' + n;
+    else if (n in esc) out += esc[n];
+    else if (n === 'x') { out += String.fromCharCode(parseInt(s.slice(j + 1, j + 3), 16)); j += 2; }
+    else if (n === 'u') { out += String.fromCharCode(parseInt(s.slice(j + 1, j + 5), 16)); j += 4; }
+    else out += '\\' + n;
+  }
+  return null;
+}
+
+/** The value of a Python argument that is only string literals (adjacent ones joined); null when anything else is in it. */
+function pyLiteral(text: string): string | null {
+  let out = '', i = 0, any = false;
+  for (;;) {
+    while (/\s/.test(text[i] ?? '')) i++;
+    if (i >= text.length) return any ? out : null;
+    const lit = pyString(text, i);
+    if (!lit || !lit.literal) return null;
+    out += lit.value; i = lit.end; any = true;
+  }
+}
+
+/** The index after a string or comment at s[i], or null when neither starts there. */
+function pySkip(s: string, i: number): number | null {
+  if (s[i] === '#') { const nl = s.indexOf('\n', i); return nl < 0 ? s.length : nl; }
+  if (/[\w]/.test(s[i - 1] ?? '') && /[rRbBuUfF]/.test(s[i]!)) return null;
+  const lit = pyString(s, i);
+  return lit ? lit.end : null;
+}
+
+/** The argument texts of a Python call whose '(' is at s[open], split at top-level commas. */
+function pyArgs(s: string, open: number): string[] {
+  const args: string[] = [];
+  let depth = 0, start = open + 1;
+  for (let j = open + 1; j < s.length; j++) {
+    const skip = pySkip(s, j);
+    if (skip !== null) { j = skip - 1; continue; }
+    const ch = s[j]!;
+    if ('([{'.includes(ch)) depth++;
+    else if (')]}'.includes(ch)) { if (depth === 0) { args.push(s.slice(start, j)); break; } depth--; }
+    else if (ch === ',' && depth === 0) { args.push(s.slice(start, j)); start = j + 1; }
+  }
+  return args.filter((a) => a.trim());
+}
+
+/** The names hermes_tools is reachable by in a session: its functions by their imported names, and the module's names. */
+export interface HermesScope { names: Map<string, string>; modules: Set<string> }
+
+/** The hermes_tools calls in the Python of one Hermes execute_code call, in source order, as the native tools' arguments:
+ *  write_file and patch (writes), terminal (a command) and read_file (a read). Imports from earlier execute_code calls of the
+ *  session stay in scope, since its kernel persists. Only literal arguments are read: a path, command or working directory
+ *  built at run time is UNREAD. Calls inside strings and comments, definitions and methods of other objects are no calls. */
+export function hermesToolCalls(src: string, scope: HermesScope = { names: new Map(), modules: new Set() }): Array<{ name: string; args: Record<string, unknown> }> {
+  for (const m of src.matchAll(/^[ \t]*from\s+hermes_tools\s+import\s+(\([^)]*\)|[^\n#;]+)/gm)) {
+    for (const part of m[1]!.replace(/[()]/g, '').split(',')) {
+      const [name, alias] = part.trim().split(/\s+as\s+/);
+      if (name === '*') for (const t of Object.keys(HERMES_PARAMS)) scope.names.set(t, t);
+      else if (name && name in HERMES_PARAMS) scope.names.set(alias ?? name, name);
+    }
+  }
+  for (const m of src.matchAll(/^[ \t]*import\s+([^\n#;]+)/gm)) {
+    for (const part of m[1]!.split(',')) { const [mod, alias] = part.trim().split(/\s+as\s+/); if (mod === 'hermes_tools') scope.modules.add(alias ?? mod); }
+  }
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  for (let i = 0; i < src.length; i++) {
+    const skip = pySkip(src, i);
+    if (skip !== null) { i = skip - 1; continue; }
+    if (!/[A-Za-z_]/.test(src[i]!) || /[\w.]/.test(src[i - 1] ?? '')) continue;
+    const m = /^([A-Za-z_]\w*)(?:\s*\.\s*([A-Za-z_]\w*))?\s*\(/.exec(src.slice(i));
+    const ident = /^[A-Za-z_]\w*/.exec(src.slice(i))![0];
+    const tool = !m ? null : m[2] !== undefined ? (scope.modules.has(m[1]!) && m[2] in HERMES_PARAMS ? m[2] : null) : scope.names.get(m[1]!) ?? null;
+    if (!m || !tool || /\b(?:def|class)\s+$/.test(src.slice(Math.max(0, i - 10), i))) { i += ident.length - 1; continue; }
+    const given: Record<string, string> = {};
+    let spread = false;
+    pyArgs(src, i + m[0].length - 1).forEach((a, k) => {
+      if (/^\s*\*/.test(a)) { spread = true; return; }
+      const kw = /^\s*([A-Za-z_]\w*)\s*=(?!=)([\s\S]*)$/.exec(a);
+      const key = kw ? kw[1]! : HERMES_PARAMS[tool]![k];
+      if (key) given[key] = kw ? kw[2]! : a;
+    });
+    const lit = (k: string) => (spread || given[k] === undefined ? null : pyLiteral(given[k]!));
+    const args: Record<string, unknown> = {};
+    if (tool === 'terminal') {
+      args.command = lit('command') ?? UNREAD;
+      if (given.workdir !== undefined) { const w = lit('workdir'); if (w === null) args.command = UNREAD; else args.workdir = w; }
+    } else {
+      args.path = lit('path') ?? UNREAD;
+      if (tool === 'write_file' && lit('content') !== null) args.content = lit('content');
+      if (tool === 'read_file') for (const k of ['offset', 'limit']) if (given[k] !== undefined || spread) args[k] = given[k] ?? UNREAD;
+    }
+    calls.push({ name: tool, args });
+    i += m[0].length - 1;
+  }
+  return calls;
+}
+
 /** The tool calls in one request body, in order, each with a stable key (its id, else name, arguments and position). */
 export function bodyCalls(b: Pick<CaptureBody, 'seq' | 'body' | 'wire'>): Call[] {
   const found: Array<{ id: string | null; name: string; args: Record<string, unknown>; result?: string }> = [];
@@ -357,8 +491,14 @@ export function bodyCalls(b: Pick<CaptureBody, 'seq' | 'body' | 'wire'>): Call[]
       for (const c of (Array.isArray(m.tool_calls) ? m.tool_calls : []) as Array<{ id?: unknown; function?: { name?: unknown; arguments?: unknown } }>) found.push({ id: typeof c.id === 'string' ? c.id : null, name: str(c.function?.name), args: parseArgs(c.function?.arguments), result: typeof c.id === 'string' ? c.id : undefined });
     }
   }
+  const scope: HermesScope = { names: new Map(), modules: new Set() };
+  const expanded = found.flatMap((f): typeof found => {
+    if (f.name !== 'execute_code' || typeof f.args.code !== 'string') return [f];
+    if (f.args.reset === true) { scope.names.clear(); scope.modules.clear(); }
+    return [f, ...hermesToolCalls(f.args.code, scope).map((c, j) => ({ id: f.id === null ? null : f.id + '/' + (j + 1), name: c.name, args: c.args }))];
+  });
   const seen = new Map<string, number>();
-  return found.map((f) => {
+  return expanded.map((f) => {
     let key: string;
     if (f.id) key = 'id:' + f.id;
     else { const base = f.name + ':' + sha256(JSON.stringify(f.args)).slice(0, 16); const k = (seen.get(base) ?? 0) + 1; seen.set(base, k); key = base + '#' + k; }
@@ -412,8 +552,9 @@ export type Action =
   | { t: 'write'; path: string; content: string | null };
 /** unsure: a step that earns credit (a test, check, diff or read) which ran only if an earlier command of its && or || chain
  *  succeeded or failed, when the capture does not show that it ran: 'failed' when the call's exit status shows it failed,
- *  'unknown' when the capture holds no status that settles it. */
-export type Event = Action & { i: number; unsure?: 'failed' | 'unknown' };
+ *  'unknown' when the capture holds no status that settles it. 'unread': any step from a Hermes execute_code call whose
+ *  path or command is built at run time (UNREAD), a write included. */
+export type Event = Action & { i: number; unsure?: 'failed' | 'unknown' | 'unread' };
 
 const unquote = (s: string) => s.replace(/^(['"])(.*)\1$/, '$2');
 const tokens = (s: string) => (s.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map((t) => unquote(t).replace(/^['"]+|['"]+$/g, '')).filter(Boolean);
@@ -424,8 +565,8 @@ const LIMITED_PIPE = /\|\s*(?:head|tail|grep|wc|sed\s+-n|awk|cut)\b/;
 
 function heredocs(cmd: string): { text: string; bodies: string[] } {
   const bodies: string[] = [];
-  const text = cmd.replace(/<<-?\s*(['"]?)(\w+)\1([^\n]*)\n([\s\S]*?)\n[ \t]*\2[ \t]*(?=\n|$)/g, (_m, _q, _tag, rest: string, body: string) => {
-    bodies.push(body);
+  const text = cmd.replace(/<<-?\s*(['"]?)(\w+)\1([^\n]*)\n(?:([\s\S]*?)\n)??[ \t]*\2[ \t]*(?=\n|$)/g, (_m, _q, _tag, rest: string, body: string | undefined) => {
+    bodies.push(body ?? '');
     return '<<__HEREDOC_' + (bodies.length - 1) + '__' + rest;
   });
   return { text, bodies };
@@ -498,11 +639,17 @@ function writePath(w: string, cwd: string | null): string {
   return /^[~$]/.test(cwd) ? posix.join(cwd, p) : posix.resolve(cwd, p);
 }
 
+/** pytest options that list, describe or report without running a test. */
+const PYTEST_NO_RUN = new Set(['--collect-only', '--co', '--version', '-V', '--help', '-h', '--fixtures', '--fixtures-per-test', '--markers']);
+/** A Python write the code shows: open in a write mode, json.dump, a write method, a copy, move or rename. */
+const PY_WRITES = /\bopen\(.*?,\s*(?:mode\s*=\s*)?['"](?:[wax]|r\+)b?\+?['"]|\.open\(\s*(?:mode\s*=\s*)?['"][wax]|\bjson\.dump\(|\.write(?:_text|_bytes)?\(|\bshutil\.(?:copy\w*|move)\(|\bos\.(?:rename|replace)\(/;
 const PYTEST_VALUE_OPTS = new Set(['-k', '-m', '-p', '-c', '-o', '-n', '-W', '--rootdir', '--deselect', '--ignore', '--junitxml', '--basetemp', '--confcutdir', '--maxfail', '--tb', '-r']);
 
 /** A segment's gate: 'and' when it runs only if every earlier command of its chain succeeded and the call's exit status is
  *  that chain's, 'other' when it is conditional in any other way (after ||, or in a chain that a later ; or newline follows,
- *  whose status the call's does not show). null when it runs unconditionally. A cd before the first command is no gate. */
+ *  whose status the call's does not show) or when a later || of its chain follows it, first in the chain included, since that
+ *  || alone can make the exit 0. null when it runs unconditionally with no later ||. A cd before the first command is no
+ *  gate. */
 type Gate = 'and' | 'other';
 interface Gated { a: Action; gate: Gate | null }
 const worse = (x: Gate | null, y: Gate | null): Gate | null => (x === 'other' || y === 'other' ? 'other' : x ?? y);
@@ -532,9 +679,9 @@ function plainActions(s: string, bodies: string[], cwd: string | null): Action[]
     out.push(...gitActions(git[2]!, args, (redirectAt >= 0 ? tail.slice(redirectAt) : '') + rest));
     return out;
   }
-  const pytest = at(/(?:^|[\s(/"'])(?:python3?(?:\.\d+)?\s+-m\s+)?(?:pytest|py\.test)\b(.*)$/);
-  if (pytest) {
-    const args = tokens(pytest[1]!.replace(/(?:^|[^>&\d])>.*$/, ''));
+  const pytest = at(/(?:^\s*\(?|\$\()\s*(?:[\w.~\/-]*\/)?(?:python3?(?:\.\d+)?\s+(?:-[A-Za-z]+\s+)*-m\s+)?(?:pytest|py\.test)(?=[\s)]|$)(.*)$/);
+  const args = pytest ? tokens(pytest[1]!.replace(/(?:^|[^>&\d])>.*$/, '')) : [];
+  if (pytest && !args.some((a) => PYTEST_NO_RUN.has(a))) {
     const targets: string[] = [];
     let select = false;
     for (let i = 0; i < args.length; i++) {
@@ -547,16 +694,17 @@ function plainActions(s: string, bodies: string[], cwd: string | null): Action[]
     out.push({ t: 'test', suite: !select && targets.every((t) => !t.includes('::') && (!/\.py$/.test(t) || rootTest(t))), targets, cwd });
     return out;
   }
-  if (/(?:^|\s)(?:python3?(?:\.\d+)?\s+-m\s+unittest|tox|nox|make\s+(?:test|check)|hatch\s+test)\b/.test(bare)) { out.push({ t: 'test', suite: true, targets: [], cwd }); return out; }
+  if (/(?:^\s*\(?|\$\()\s*(?:[\w.~\/-]*\/)?(?:python3?(?:\.\d+)?\s+(?:-[A-Za-z]+\s+)*-m\s+unittest|tox|nox|make\s+(?:test|check)|hatch\s+test)(?=[\s)]|$)/.test(bare)) { out.push({ t: 'test', suite: true, targets: [], cwd }); return out; }
   const doc = /__HEREDOC_(\d+)__/.exec(head);
   const docBody = doc ? bodies[Number(doc[1])] ?? null : null;
   const writes: string[] = [];
   for (const m of head.matchAll(/(?:^|[^>&\d<])>{1,2}\s*(['"]?)([^\s'"|;&<>]+)\1/g)) writes.push(m[2]!);
   const tee = /(?:^|[\s|])tee\s+(?:-a\s+)?(\S+)/.exec(s);
   if (tee) writes.push(unquote(tee[1]!));
-  const python = /(?:^|[\s(/"'])python3?(?:\.\d+)?\s+(?!-m\b)(-c\b|-\s*(?:<<|$)|<<|[^\s-]\S*\.py\b)/.test(head);
+  const py = /(?:^|[\s(/"'])python3?(?:\.\d+)?\s+(?!-m\b)(-c\b|-\s*(?:<<|$)|<<|[^\s-]\S*\.py\b)/.exec(head);
+  const python = py !== null;
   const pyText = python ? head + (docBody ? '\n' + docBody : '') : '';
-  if (python && /review\.json/.test(pyText)) writes.push('review.json');
+  if (python && /review\.json/.test(pyText) && (/\.py$/.test(py[1]!) || PY_WRITES.test(pyText))) writes.push('review.json');
   if (python) for (const m of pyText.matchAll(/(['"])([^'"]*out\/tests\/[^'"]+\.py)\1/g)) if (/open\(|write_text|>/.test(pyText)) writes.push(m[2]!);
   if (python && !/review\.json|out\/tests\//.test(pyText) && /\bopen\(.*?,\s*(?:mode\s*=\s*)?['"][wax]b?\+?['"]|\.write_(?:text|bytes)\(|\bshutil\.(?:copy|move)/.test(pyText)) {
     const named = [...pyText.matchAll(/\bopen\(\s*(['"])([^'"]+)\1\s*,\s*(?:mode\s*=\s*)?['"][wax]b?\+?['"]/g), ...pyText.matchAll(/Path\(\s*(['"])([^'"]+)\1\s*\)\.write_(?:text|bytes)\(/g)].map((m) => m[2]!);
@@ -643,14 +791,19 @@ function actionsOf(text: string, bodies: string[], cwd0: string | null, visible:
     const cd = /^\s*cd\s+(\S+)\s*$/.exec(p.text);
     if (cd) { const d = unquote(cd[1]!); cwd = d.startsWith('/') ? d : cwd ? posix.resolve(cwd, d) : d; return; }
     ran = true;
-    const own: Gate | null = gate === 'and' && (!visible || j < lastList) ? 'other' : gate;
-    for (const g of segmentActions(p.text, bodies, cwd, visible && j >= lastList && own !== 'other')) out.push({ a: g.a, gate: worse(own, g.gate) });
+    const next = parts.slice(j + 1);
+    const end = next.findIndex((q) => q.op === ';');
+    const orAfter = (end < 0 ? next : next.slice(0, end)).some((q) => q.op === '||');
+    const shown = visible && j >= lastList && !next.some((q) => q.op === '||');
+    const own: Gate | null = orAfter || (gate === 'and' && !shown) ? 'other' : gate;
+    for (const g of segmentActions(p.text, bodies, cwd, shown && own !== 'other')) out.push({ a: g.a, gate: worse(own, g.gate) });
   });
   return out;
 }
 
 /** The actions of one tool call, each with its gate: a shell command, or a native write, edit, patch or read tool. */
 function callGated(c: Call): Gated[] {
+  if (c.command === UNREAD) return ([{ t: 'write', path: UNREAD, content: null }, { t: 'diff', full: true }, { t: 'test', suite: true, targets: [UNREAD], cwd: null }, { t: 'check' }, { t: 'read', path: UNREAD, limited: false }] as Action[]).map((a) => ({ a, gate: 'other' }));
   if (c.command !== null && /apply_patch/.test(c.command) && /\*\*\* (?:Add|Update|Delete) File:/.test(c.command)) return patchFiles(c.command).map((f) => ({ a: { t: 'write', path: f.path, content: /review\.json$/.test(f.path) ? f.content : null }, gate: null }));
   if (c.command !== null) return gatedActions(c.command, c.cwd);
   if (/read|view|open/i.test(c.name) && !/write|edit/i.test(c.name)) return c.paths.map((p) => ({ a: { t: 'read', path: p, limited: c.args.limit !== undefined || c.args.offset !== undefined || c.args.view_range !== undefined }, gate: null }));
@@ -671,7 +824,7 @@ export function sessionEvents(calls: readonly Call[]): Event[] {
   const diffFiles = new Map<string, { full: boolean; unsure: Event['unsure'] }>();
   for (const c of calls) for (const { a, gate } of callGated(c)) {
     const i = events.length;
-    const unsure: Event['unsure'] = !CREDIT.has(a.t) || gate === null || (gate === 'and' && c.status === 'ok') ? undefined : gate === 'and' && c.status === 'failed' ? 'failed' : 'unknown';
+    const unsure: Event['unsure'] = c.command === UNREAD || ('path' in a && a.path === UNREAD) ? 'unread' : !CREDIT.has(a.t) || gate === null || (gate === 'and' && c.status === 'ok') ? undefined : gate === 'and' && c.status === 'failed' ? 'failed' : 'unknown';
     const mark = (u: Event['unsure']) => (u ? { unsure: u } : {});
     if (a.t === 'diff_to_file') diffFiles.set(a.path, { full: a.full, unsure });
     if (a.t === 'read') { for (const [p, d] of diffFiles) if (samePath(p, a.path)) events.push({ t: 'diff', full: d.full && !a.limited, i, ...mark(d.unsure === 'failed' || unsure === 'failed' ? 'failed' : d.unsure ?? unsure) }); continue; }
@@ -685,7 +838,7 @@ export function sessionEvents(calls: readonly Call[]): Event[] {
 const clean = (p: string) => p.replace(/\/+$/, '').replace(/^\.\//, '');
 export function samePath(a: string, b: string): boolean {
   const x = clean(a), y = clean(b);
-  return x === y || x.endsWith('/' + y) || y.endsWith('/' + x);
+  return a === UNREAD || b === UNREAD || x === y || x.endsWith('/' + y) || y.endsWith('/' + x);
 }
 /** Whether a pytest run with these targets (or none, from cwd) collects the file. */
 export function covers(run: { targets: string[]; cwd: string | null }, file: string): boolean {
@@ -832,9 +985,12 @@ export function probeTrial(input: ProbeInput, sel: Selection = loadSelection()):
     } else sessionEnd = input.termination === 'completed' ? 'assumed_text' : 'unknown';
     const ev = sessionEvents(calls);
     const sure = ev.filter((e) => !e.unsure), seen = ev.filter((e) => e.unsure !== 'failed');
+    const worst = ev.filter((e) => !e.unsure || (e.unsure === 'unread' && e.t === 'write'));
     const score = (m: string): MarkerResult => {
       const r = scoreMarker(m, sure);
+      if (r.state === 'met' && worst.length !== sure.length && scoreMarker(m, worst).state === 'not_met') return { state: 'unobservable', reason: 'met in what was captured, and an execute_code write whose path the capture does not show could undo it' };
       if (r.state !== 'not_met' || seen.length === sure.length || scoreMarker(m, seen).state !== 'met') return r;
+      if (scoreMarker(m, seen.filter((e) => e.unsure !== 'unread')).state !== 'met') return { state: 'unobservable', reason: 'met only by an execute_code step whose path or command the capture does not show (' + r.reason + ')' };
       return { state: 'unobservable', reason: 'met only by a step after && or || that the capture does not show ran (' + r.reason + ')' };
     };
     const lines = markerLines(sel);

@@ -38,7 +38,7 @@
 # follows the preregistration: a task_list naming a second source's pin (pin-swe-rebench-07-2026.json) makes vm-shard.sh
 # pass vm-run.sh --tasks-src, which fetches that source's pinned tasks on the VM. Put
 # --install-check in options for the keyless install check alone (prereg scripts/frontier-harbor/install-check-prereg.json,
-# no key needed or sent); its shard "args" then reach install-check.sh (--baselines all runs oracle and nop on every pinned
+# or a file whose every cell is one of its cells, such as a run's own install check; no key needed or sent); its shard "args" then reach install-check.sh (--baselines all runs oracle and nop on every pinned
 # task). Its records are vm-run.sh's trials.jsonl, which merge-shards.ts does not read, so the end prints
 # the results directories.
 # --replicate-seconds (or UBI_REPLICATE_SECONDS; run-shard.sh's default is 1200) and --replicate-to (or UBI_REPLICATE_TO;

@@ -270,3 +270,23 @@ describe('Pi delivery test (d2), from delivery records only', () => {
     expect(piDeliveryTest(trials.filter((t) => t.harness !== 'pi'), probes).trials).toBe(0);
   });
 });
+
+describe('Amendment 1 (2026-11-15): pass rate and termination', () => {
+  test('a trial that ended in timeout or harness_error scores 0 on pass, whatever its grade (PREREGISTRATION.md, Scoring)', () => {
+    const base: DeliveryTrial = { trial_id: 'x', ...CC, arm: 'none', kind: 'review', task: 'r01', rep: 1, termination: 'completed', grade: 'pass', consent_violation: false, usd: 1 };
+    expect(trialValue(base, undefined, 'pass')).toEqual({ value: 1 });
+    expect(trialValue({ ...base, termination: 'timeout' }, undefined, 'pass')).toEqual({ value: 0 });
+    expect(trialValue({ ...base, termination: 'harness_error' }, undefined, 'pass')).toEqual({ value: 0 });
+    expect(trialValue({ ...base, termination: 'infra_error' }, undefined, 'pass')).toEqual({ excluded: 'infra_error' });
+  });
+  test('the preregistered MDD machinery scores a timeout or harness_error trial as a fail too (paired-mdd.ts deliveryMdd)', () => {
+    const rows = [
+      { task: 'a', kind: 'ship', grade: 'pass', termination: 'timeout' }, { task: 'a', kind: 'ship', grade: 'pass', termination: 'completed' },
+      { task: 'b', kind: 'ship', grade: 'pass', termination: 'harness_error' }, { task: 'b', kind: 'ship', grade: 'fail', termination: 'completed' },
+      { task: 'c', kind: 'ship', pass: 1, termination: 'timeout' }, { task: 'c', kind: 'ship', pass: 1, termination: 'completed' },
+    ];
+    const pass = deliveryMdd(rows).find((m) => m.scope === 'all' && m.endpoint === 'pass')!;
+    expect(pass.rate).toBeCloseTo((0.5 + 0 + 0.5) / 3, 10);
+    expect(pass.tasks_flat).toBe(1);
+  });
+});

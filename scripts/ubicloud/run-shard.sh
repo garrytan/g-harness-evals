@@ -39,6 +39,7 @@
 # and at teardown (without per-trial state/ and workspace/, and only after a scan finds no key-shaped text), and one line
 # per VM event (created, attached, kept, destroyed, down-failed: shard, VM, owner, created_at, dest) is appended to
 # <dir>/vm-map.jsonl as it happens, the created line as soon as the VM exists. --replicate-to is refused for a sealed shard.
+# Before any VM a launch with --replicate-to runs replica_preflight (below) and refuses to start (exit 2) if it fails.
 #
 # --workload qm-driver runs the QM S1 edition driver (harnesses/qm/gstack/s1e-probe.ts) on the VM in place of
 # scripts/run-shard.sh: its keyless --dry-run as the smoke (no key, no spend; it builds the rig images, so the counted run
@@ -74,7 +75,8 @@
 # Terminal-Bench 2.1 at pin.json's commit, runs the keyless install check as the smoke (--no-smoke skips it), then
 # scripts/frontier-harbor/vm-run.sh for the shard under its lease, the arguments after -- passed through (--stage <name>,
 # --done <file>). The shard needs ANTHROPIC_API_KEY and OPENAI_API_KEY here. With --install-check the lane is the keyless
-# install check alone (the preregistration must be scripts/frontier-harbor/install-check-prereg.json): no key is required
+# install check alone (the preregistration is scripts/frontier-harbor/install-check-prereg.json, or a file whose every cell
+# is one of its cells, such as a run's own install check): no key is required
 # here and none goes to the VM; its results (install-check.json, agents/, baselines/, probe/) come back to <dest>/results.
 # --embedded and the sealed flags are refused. A --resume uploads <dest>/results, and vm-run.sh skips every trial already
 # in its trials.jsonl. Stopping the shard waits up to 240 s for vm-run.sh to drain its meter and write its records.
@@ -407,10 +409,26 @@ pull_results() {
 # vm-run.sh writes as records at finish(); mid-run, each finished trial's record reaches the mirror through
 # results/trials.journal.jsonl, which vm-run.sh's to-trials.ts journal appends): a full run's request bodies do
 # not fit a 2 GB Capy drive (internal-task stage 0). It also leaves out each host's installed gstack runtime from the gstack
-# check (smoke/results/gstack/agents/run/gstack/<host>/runtime, and the same under results/gstack/, where an
-# --install-check shard's own check writes it): about 3.5 GB per shard, node_modules hard links the drive mount refuses,
-# and gstack's own key-shaped test text. The rest of that run tree, each host's home and the Harbor jobs included, is
-# still mirrored and scanned. The pull
+# check under results/gstack/agents/run/gstack/<host>/runtime, where an --install-check shard's own check writes it: about
+# 3.5 GB per shard, node_modules hard links the drive mount refuses, and gstack's own key-shaped test text. In the smoke,
+# it leaves out the gstack check's whole Harbor run and trials trees (smoke/results/gstack/agents/run, which holds those
+# runtimes and each host's home, and smoke/results/gstack/agents/trials): about 2,800 of a shard's 4,000 mirrored files,
+# too many across 43 shards. The smoke's install-check.json, the check's gstack-check.json and log, its per-check summary
+# files (trials.jsonl, run-summary.json, manifest.json and the rest beside run/) and every other smoke file are still
+# mirrored and scanned. Each trial's work trees (results/trials/<cell>/<task>/<a>/harbor/artifacts/work/repo and
+# remote.git) are left out until results/trials.jsonl or the journal records the trial as finished. Then
+# scripts/frontier-harbor/work-git.sh packs them against the task's base (tasks/repo/*/*/<task>/environment/work.tar in this
+# checkout) into <trial>/harbor/artifacts/work-git: git bundles of the new commits, refs, HEAD, reflogs and one binary diff
+# of what was left uncommitted, checked by a rebuild before it is written; the raw trees and every new commit's patch text
+# are scanned for key-shaped text too. A trial whose trees cannot be packed (no single base, a base the repository does
+# not contain, a failed check) has its raw trees staged instead, with a log line. work-git.sh rebuild <work-git dir>
+# <work.tar> <out> rebuilds them. A frontier-harbor replica is packed, not a tree: <replicate-to>/<shard>/results.tar.zst and
+# smoke.tar.zst (.tar.gz where zstd is missing), each written to a temp name used once (part_name) and renamed into place,
+# then checked by size (settle), beside the staged
+# top-level files unpacked (shard-vm.json, which fanout.sh's and this script's other-VM guard read, and the logs; a file
+# that fails to copy is logged and the archives are still written);
+# vm-map.jsonl stays at <replicate-to>. A hit keeps every previous archive. to-trials.ts recover --mirror <replicate-to>/<shard>
+# unpacks results.tar.* itself; by hand, tar -C <dir> --zstd -xf <replicate-to>/<shard>/results.tar.zst. The pull
 # into <dest> still brings them back, and so does the teardown pull.
 key_shapes='sk-''ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}|sk-''(proj|svcacct|admin)-[A-Za-z0-9_-]{16,}|sk-''or-v1-[0-9a-f]{64}|xai''-[A-Za-z0-9]{20,}|AI''za[0-9A-Za-z_-]{35}'
 # cursor_scan <dir>: how many files under <dir> hold the literal CURSOR_API_KEY value (whole, first 16, last 12
@@ -442,16 +460,104 @@ cursor_guard() {
   n=$(cursor_scan "$dest/results"); [ "$n" = 0 ] || { log "HE-CURSOR-003 the CURSOR_API_KEY value is in $n file(s) under $dest/results; mirroring stops, and nothing there may be copied or published until it is cleaned (bun scripts/cursor/key-scan.ts $dest/results --list names them)"; echo "$n" > "$dest/CURSOR-KEY-FOUND"; }
   n=$(cursor_scan "$dest/smoke"); [ "$n" = 0 ] || { log "HE-CURSOR-003 the CURSOR_API_KEY value is in $n file(s) under $dest/smoke; mirroring stops"; echo "$n" >> "$dest/CURSOR-KEY-FOUND"; }
 }
+# finished_trees: <trial>/harbor/artifacts, relative to <dest>, of each trial that results/trials.jsonl or
+# results/trials.journal.jsonl records as finished and whose work/repo or work/remote.git is in <dest>; a trial still running
+# has no record yet, so its trees are neither packed nor mirrored until it finishes.
+finished_trees() {
+  python3 - "$dest/results" <<'PY'
+import json, os, sys
+root = sys.argv[1]
+ids = set()
+for f in ('trials.jsonl', 'trials.journal.jsonl'):
+    try: lines = open(os.path.join(root, f), encoding='utf-8', errors='replace').read().splitlines()
+    except OSError: continue
+    for l in lines:
+        try: o = json.loads(l)
+        except ValueError: continue
+        r = o.get('record', o) if isinstance(o, dict) else None
+        t = r.get('trial_id') if isinstance(r, dict) else None
+        if isinstance(t, str) and t.count('/') == 3 and '..' not in t: ids.add(t.split('/', 1)[1])
+for t in sorted(ids):
+    d = 'results/trials/' + t + '/harbor/artifacts'
+    if any(os.path.isdir(os.path.join(root, '..', d, 'work', w)) for w in ('repo', 'remote.git')): print(d)
+PY
+}
+# part_name <dir> <name>: a temp name in <dir> for one write of <name>, never used again. On the Capy drive mount a renamed
+# file keeps the inode of the name it was created under, and a new file created under that name gets that inode again, so
+# with any fixed temp name (X.tmp, X.part) mv -f fails as "the same file" from the second pass on.
+part_name() { printf '%s/.%s.part.%s.%s' "$1" "$2" "$$" "$(date +%s%N)"; }
+# settle <tmp> <target>: renames <tmp> onto <target>, then checks that <target> holds as many bytes as <tmp> did; on a
+# failure or a mismatch it logs, deletes <tmp> and returns 1.
+settle() {
+  local n got
+  n=$(stat -c %s "$1") && mv -f "$1" "$2" || { rm -f "$1"; return 1; }
+  got=$(stat -c %s "$2" 2>/dev/null) || got=none
+  [ "$got" = "$n" ] || { log "WARNING: replicate: $2 holds $got bytes after the rename, not the $n written"; rm -f "$1"; return 1; }
+}
+# replica_preflight: before any VM, a probe is written to <replicate-to>/<shard>/.replica-probe twice through part_name and
+# settle, the way mirror() writes, read back after each pass and deleted, so a mount where that fails costs no VM.
+replica_preflight() {
+  local to=$replicate_to/$name i p
+  mkdir -p "$to" || return 1
+  for i in 1 2; do
+    p=$(part_name "$to" .replica-probe)
+    printf 'replica probe %s %s\n' "$$" "$i" > "$p" && settle "$p" "$to/.replica-probe" && [ "$(cat "$to/.replica-probe")" = "replica probe $$ $i" ] ||
+      { rm -f "$p" "$to/.replica-probe"; return 1; }
+  done
+  rm -f "$to/.replica-probe"
+}
 mirror() {
   [ -n "$replicate_to" ] || return 0
   if [ -e "$dest/CURSOR-KEY-FOUND" ]; then log "WARNING: replicate: $dest/CURSOR-KEY-FOUND exists (the Cursor key scan hit); no mirror to $replicate_to"; return 1; fi
   local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits skip=()
-  [ "$workload" != frontier-harbor ] || skip=(--exclude=proxy-capture --exclude=./results/run --exclude='./smoke/results/gstack/agents/run/gstack/*/runtime' --exclude='./results/gstack/agents/run/gstack/*/runtime')
+  local packs=() raw=() t e b p w task bases rc why ext=gz other=zst comp=(gzip -c)
+  ! command -v zstd >/dev/null 2>&1 || { ext=zst other=gz; comp=(zstd -q -c -T0 -19); }
+  [ "$workload" != frontier-harbor ] || skip=(--exclude=proxy-capture --exclude=./results/run --exclude=./smoke/results/gstack/agents/run --exclude=./smoke/results/gstack/agents/trials --exclude='./results/gstack/agents/run/gstack/*/runtime' --exclude='./results/trials/*/*/*/harbor/artifacts/work/repo' --exclude='./results/trials/*/*/*/harbor/artifacts/work/remote.git')
+  [ "$workload" != frontier-harbor ] || mapfile -t packs < <(finished_trees)
   rm -rf "$stage" && mkdir -p "$stage" &&
     tar -C "$dest" -cf - --exclude='./.pull*' --exclude='./results.partial-*' --exclude=./.mirror --exclude=./smoke/work/gstack-edition --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} . | tar -C "$stage" -xf - ||
     { log "WARNING: replicate: staging $dest for $to failed; the previous mirror stays"; rm -rf "$stage"; return 1; }
-  hits=$(grep -rIlE "$key_shapes" "$stage" 2>/dev/null | sed "s#^$stage/##" | head -3 | paste -sd' ' -)
+  for t in ${packs[@]+"${packs[@]}"}; do
+    task=${t#results/trials/*/}; task=${task%%/*}
+    bases=("$root"/tasks/repo/*/*/"$task"/environment/work.tar)
+    rc=0 why=""
+    if [ ${#bases[@]} -ne 1 ] || [ ! -f "${bases[0]}" ]; then
+      why="no single tasks/repo/*/*/$task/environment/work.tar in $root"
+    else
+      why=$(bash "$root/scripts/frontier-harbor/work-git.sh" pack "$dest/$t/work" "${bases[0]}" "$stage/$t/work-git" --scan "$key_shapes" 2>&1 >/dev/null) || rc=$?
+      [ "$rc" -ne 3 ] || { log "WARNING: replicate: ${why##*work-git: } in $t/work; $to keeps the previous mirror"; rm -rf "$stage"; return 1; }
+      if [ "$rc" -eq 0 ]; then why=""; else why=${why##*work-git: }; fi
+    fi
+    [ -n "$why" ] || continue
+    log "replicate: $t keeps its raw work trees in $to ($why)"
+    rm -rf "$stage/$t/work-git"
+    for w in repo remote.git; do
+      [ ! -d "$dest/$t/work/$w" ] || { mkdir -p "$stage/$t/work" && cp -a "$dest/$t/work/$w" "$stage/$t/work/$w"; } ||
+        { log "WARNING: replicate: staging the work trees of $t failed; $to keeps the previous mirror"; rm -rf "$stage"; return 1; }
+    done
+  done
+  for t in ${packs[@]+"${packs[@]}"}; do for w in repo remote.git; do [ ! -d "$dest/$t/work/$w" ] || raw+=("$dest/$t/work/$w"); done; done
+  hits=$({ grep -rIlE "$key_shapes" "$stage" ${raw[@]+"${raw[@]}"} 2>/dev/null || true; } | sed -e "s#^$stage/##" -e "s#^$dest/##" | sort -u | head -3 | paste -sd' ' -)
   if [ -n "$hits" ]; then log "WARNING: replicate: key-shaped text in $hits; $to keeps the previous mirror"; rm -rf "$stage"; return 1; fi
+  if [ "$workload" = frontier-harbor ]; then
+    mkdir -p "$to" || { log "WARNING: replicate: $to cannot be created; retried at the next interval"; rm -rf "$stage"; return 1; }
+    rc=0
+    for e in "$stage"/*; do
+      [ -e "$e" ] || continue
+      b=${e##*/}
+      if [ -d "$e" ]; then
+        p=$(part_name "$to" "$b.tar.$ext")
+        tar -C "$stage" --sort=name -cf - "$b" | "${comp[@]}" > "$p" && settle "$p" "$to/$b.tar.$ext" && rm -rf "$to/$b" "$to/$b.tar.$other" ||
+          { log "WARNING: replicate: packing $b into $to failed; its previous copy stays, retried at the next interval"; rm -f "$p"; rm -rf "$stage"; return 1; }
+      else
+        p=$(part_name "$to" "$b")
+        cp -p "$e" "$p" && settle "$p" "$to/$b" ||
+          { log "WARNING: replicate: copying $b into $to failed; its previous copy stays, retried at the next interval"; rm -f "$p"; rc=1; }
+      fi
+    done
+    rm -rf "$stage"
+    return "$rc"
+  fi
   rm -rf "$to.new" "$to.old" && cp -a "$stage" "$to.new" && { [ ! -d "$to" ] || mv "$to" "$to.old"; } && mv "$to.new" "$to" && rm -rf "$to.old" "$stage" ||
     { log "WARNING: replicate: mirroring $dest to $to failed; retried at the next interval"; rm -rf "$stage" "$to.new"; return 1; }
 }
@@ -624,6 +730,7 @@ if [ "$attach" -eq 1 ]; then
   log "attaching to $vm ($size), results under $dest"
   map_event attached
 else
+  [ -z "$replicate_to" ] || replica_preflight || { echo "run-shard (ubicloud): refused: the replica preflight could not write, replace and read back a probe file twice in $replicate_to/$name through the mirror's temp-then-rename path, so the mirror would fail there. Nothing was created; check that the folder is writable and the mount renames files" >&2; exit 2; }
   # 1. commit and preregistration
   full=$(git -C "$root" rev-parse --verify --quiet "$commit^{commit}" || true)
   if [ -z "$full" ]; then git -C "$root" fetch -q origin "$commit" 2>/dev/null || true; full=$(git -C "$root" rev-parse --verify --quiet "$commit^{commit}" || true); fi

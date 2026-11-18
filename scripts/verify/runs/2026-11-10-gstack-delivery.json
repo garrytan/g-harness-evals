@@ -1,0 +1,59 @@
+{
+  "run": "2026-11-10-gstack-delivery",
+  "about": "gstack-delivery-2026-11: gstack's review and ship steps delivered by skill, per-request hook or startup file, against no gstack and a placebo, on Claude Code, Codex, Hermes, OpenClaw and Pi with Opus 5.5, GPT-6.1 Sol and particle-1 (the preregistered analysis and the ship push check).",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/gstack-delivery/analyze.ts",
+        "--trials",
+        "{run}/results/trials.jsonl",
+        "--probes",
+        "{run}/results/probes.jsonl",
+        "--pass-kinds",
+        "review",
+        "--pi-delivery-from-probes",
+        "--seed",
+        "7",
+        "--draws",
+        "10000",
+        "--out",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/delivery-analysis.json",
+        "results/delivery-analysis.md"
+      ],
+      "timeout_s": 900
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import json,os,sys,collections\nO=sys.argv[1]+'/results'\nT={json.loads(l)['trial_id']:json.loads(l) for l in open(O+'/trials.jsonl')}\nP=[json.loads(l) for l in open(O+'/probes.jsonl')]\nnopush=collections.Counter(); fv=collections.defaultdict(collections.Counter); fd=collections.defaultdict(collections.Counter)\nfor p in P:\n  t=T[p['trial_id']]\n  if p['kind']!='ship' or p['status']!='scored' or t['termination'] in ('model_error','infra_error','exam_fault'): continue\n  m=p['markers'].get('ship.fresh_verification',{})\n  fv[p['arm']][m.get('state')]+=1\n  fd[p['arm']][p['markers'].get('ship.final_diff_after_commit',{}).get('state')]+=1\n  if m.get('reason')=='no push of the branch': nopush[(p['arm'],t['grade'])]+=1\ndef rate(c):\n  mm=c['met']+c['not_met']\n  return {'met':c['met'],'not_met':c['not_met'],'unobservable':c.get('unobservable',0),'met_share':round(c['met']/mm,3) if mm else None}\nout={'note':'Exploratory, not preregistered. Ship trials with a scored probe, excluding model_error, infra_error and exam_fault terminations. A ship pass needs the pushed branch in the task remote (verifier/task.json remote).','no_push_reading_by_arm_and_grade':{f'{a}/{g}':n for (a,g),n in sorted(nopush.items())},'ship.fresh_verification':{a:rate(c) for a,c in sorted(fv.items())},'ship.final_diff_after_commit':{a:rate(c) for a,c in sorted(fd.items())}}\njson.dump(out,open(O+'/ship-push-check.json','w'),indent=1)\n",
+        "{run}"
+      ],
+      "outputs": [
+        "results/ship-push-check.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "results/trials.jsonl",
+      "reason": "scripts/gstack-delivery/collect.ts reads each shard's Harbor job tree (run/jobs/), which is not committed; it is committed as collect.ts wrote it."
+    },
+    {
+      "what": "results/probes.jsonl",
+      "reason": "scripts/gstack-delivery/probes.ts reads each trial's metering-proxy capture (proxy-capture/proxy-requests.ndjson), which is not committed."
+    },
+    {
+      "what": "results/audit/ (the contamination audit, one audit.json per shard)",
+      "reason": "scripts/frontier-harbor/audit.ts reads each trial's captured requests in its Harbor trial folder, which is not committed."
+    },
+    {
+      "what": "results/shards.json",
+      "reason": "Built from each shard's shard-vm.json on the controller machine, which holds VM names and is not committed."
+    }
+  ]
+}
