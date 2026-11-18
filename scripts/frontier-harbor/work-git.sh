@@ -9,14 +9,16 @@
 # <work dir> holds repo (a work tree) and, for a ship task, remote.git (bare); <base work.tar> is the task's initial /work,
 # tasks/repo/<suite>/<split>/<task>/environment/work.tar. pack writes, for each of repo and remote.git that exists:
 # <w>.refs (every ref: sha, name and symbolic target), <w>.head (HEAD's ref, or its sha when detached), <w>.bundle (git
-# bundle create --all against every commit the same base repository's refs hold; left out when the agent made no new commit), <w>.logs
+# bundle create --all against every commit the same base repository's refs hold; left out when the agent made no new object), <w>.logs
 # (the reflogs, as text); for repo also repo.diff (git diff --binary from HEAD to every non-ignored file in the tree,
 # staged or not, untracked included; left out when empty) and repo.ignored (the paths git ignores, which are listed, not
 # packed: caches such as __pycache__); and base.sha256 (the base's sha256 and its path in this repository). It works on
 # copies whose git config is cut to the repository format and whose hooks, attributes and alternates are removed, so
 # nothing the agent wrote runs here. Before writing, it rebuilds the copy from the pack and checks the rebuilt tree,
-# refs and HEAD against the raw ones. --scan <regex> greps the patch text of every new commit too (exit 3 on a hit, the
-# match never printed), since a bundle is compressed and a file deleted in a later commit is no longer in the tree.
+# refs and HEAD against the raw ones. --scan <regex> greps the raw bytes of every object the bundle carries (commits, trees,
+# blobs, binary ones included, and annotated tags, whatever a ref points at) and the reflogs too (exit 3 on a hit, the match
+# never printed), since a bundle is compressed, a file deleted in a later commit is no longer in the tree, and patch text
+# shows neither a merge's own changes, a binary file's bytes, a tag's message nor a blob a ref names directly.
 # Any other failure (no repo, a base the repo does not contain, a nested repository, a failed check) exits 1 and the
 # caller keeps the raw trees; a repo or remote.git that is a symlink is refused before anything is copied, and pack's temp
 # folder is removed on every exit, failed ones included. rebuild extracts the base (refused when its sha256 differs from base.sha256), unbundles,
@@ -71,7 +73,7 @@ rebuild() {
 }
 
 pack() {
-  local work=$1 tar=$2 out=$3 scan=${4:-} tmp w d b not have bare
+  local work=$1 tar=$2 out=$3 scan=${4:-} tmp w d b not objs bare
   tmp=$(mktemp -d)
   trap "rm -rf -- '$tmp'" EXIT
   mkdir -p "$tmp/base" "$tmp/pack" "$tmp/raw" && tar -C "$tmp/base" -xf "$tar" || die "cannot extract $tar"
@@ -93,14 +95,17 @@ pack() {
       not+=("^$b")
     done
     refs "$d" > "$tmp/pack/$w.refs" && head_of "$d" > "$tmp/pack/$w.head" || die "cannot read the refs of $w"
-    have=$(g -C "$d" rev-list -n 1 --all ${not[@]+"${not[@]}"}) || die "cannot walk the history of $w"
-    if [ -n "$have" ]; then
+    objs=$(g -C "$d" rev-list --objects --all ${not[@]+"${not[@]}"} | cut -d' ' -f1) || die "cannot walk the history of $w"
+    if [ -n "$objs" ]; then
       g -C "$d" bundle create -q "$tmp/pack/$w.bundle" --all ${not[@]+"${not[@]}"} 2>/dev/null || die "cannot bundle $w"
-      if [ -n "$scan" ] && grep -qE -- "$scan" < <(g -C "$d" log -p --binary --all --no-ext-diff --no-textconv ${not[@]+"${not[@]}"}); then
+      if [ -n "$scan" ] && grep -qaE -- "$scan" < <(g -C "$d" cat-file --batch <<< "$objs"); then
         echo "work-git: key-shaped text in a commit of $w" >&2; exit 3
       fi
     fi
     [ ! -d "$(gitdir "$w" "$d")/logs" ] || cp -a "$(gitdir "$w" "$d")/logs" "$tmp/pack/$w.logs"
+    if [ -n "$scan" ] && [ -d "$tmp/pack/$w.logs" ] && grep -rqaE -- "$scan" "$tmp/pack/$w.logs"; then
+      echo "work-git: key-shaped text in a reflog of $w" >&2; exit 3
+    fi
     [ "$w" = repo ] || continue
     [ -n "$(g -C "$d" rev-parse -q --verify HEAD)" ] || die "repo has no HEAD commit"
     tree_of "$d" > "$tmp/tree" || die "cannot index the repo tree"

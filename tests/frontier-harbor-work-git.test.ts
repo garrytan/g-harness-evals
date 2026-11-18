@@ -139,6 +139,54 @@ describe('work-git.sh packs a finished trial\'s work trees against the task base
     expect(p.err).not.toContain(KEY_SHAPED);
   }, 60_000);
 
+  test('key-shaped text that patch text never shows stops the pack: a tag message, a blob a ref names, binary bytes, a merge, a reflog', () => {
+    const shape = 'sk-' + 'ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}';
+    const cases: Array<[string, (repo: string) => void]> = [
+      ['an annotated tag on a base commit', (repo) => sh(repo, ['-c', 'user.name=f', '-c', 'user.email=f@example.invalid', 'tag', '-a', 'v9', '-m', 'release ' + KEY_SHAPED, 'HEAD'])],
+      ['a ref that names a blob', (repo) => {
+        const blob = spawnSync('git', ['hash-object', '-w', '--stdin'], { cwd: repo, input: KEY_SHAPED + '\n', encoding: 'utf8', env: { ...ENV, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).stdout.trim();
+        sh(repo, ['update-ref', 'refs/notes/kept', blob]);
+      }],
+      ['a binary file', (repo) => { writeFileSync(join(repo, 'blob.bin'), Buffer.concat([Buffer.from([0, 1, 0, 255]), Buffer.from(KEY_SHAPED), Buffer.from([0])])); commit(repo, 'binary'); }],
+      ['a file only a merge adds', (repo) => {
+        const main = sh(repo, ['rev-parse', '--abbrev-ref', 'HEAD']);
+        sh(repo, ['checkout', '-q', '-b', 'side']);
+        writeFileSync(join(repo, 'side.txt'), 'side\n'); commit(repo, 'side');
+        sh(repo, ['checkout', '-q', main]);
+        writeFileSync(join(repo, 'main.txt'), 'main\n'); commit(repo, 'main');
+        sh(repo, ['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', 'merge', '-q', '--no-commit', 'side']);
+        writeFileSync(join(repo, 'merged.txt'), KEY_SHAPED + '\n');
+        commit(repo, 'merge side');
+      }],
+      ['a reflog message', (repo) => { writeFileSync(join(repo, 'n.txt'), 'n\n'); commit(repo, 'note ' + KEY_SHAPED); sh(repo, ['reset', '-q', '--hard', 'HEAD~1']); }],
+    ];
+    for (const [what, make] of cases) {
+      const dir = work('gd-dev-ship-01');
+      const repo = join(dir, 'work', 'repo');
+      make(repo);
+      const p = run(['pack', join(dir, 'work'), base('gd-dev-ship-01'), join(dir, 'packed'), '--scan', shape]);
+      expect(p.code, what + ': ' + p.err).toBe(3);
+      expect(p.err).toMatch(what === 'a reflog message' ? /key-shaped text in a reflog of repo/ : /key-shaped text in a commit of repo/);
+      expect(p.err).not.toContain(KEY_SHAPED);
+    }
+  }, 120_000);
+
+  test('a tag or a blob ref with no new commit is still packed, and the rebuild holds it', () => {
+    const dir = work('gd-dev-ship-01');
+    const repo = join(dir, 'work', 'repo');
+    sh(repo, ['-c', 'user.name=f', '-c', 'user.email=f@example.invalid', 'tag', '-a', 'v9', '-m', 'release', 'HEAD']);
+    const blob = spawnSync('git', ['hash-object', '-w', '--stdin'], { cwd: repo, input: 'plain\n', encoding: 'utf8', env: { ...ENV, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).stdout.trim();
+    sh(repo, ['update-ref', 'refs/notes/kept', blob]);
+    const packed = join(dir, 'packed');
+    const p = run(['pack', join(dir, 'work'), base('gd-dev-ship-01'), packed, '--scan', 'sk-' + 'ant-(api|admin|oat)[0-9]{2}-[A-Za-z0-9_-]{16,}']);
+    expect(p.code, p.err).toBe(0);
+    expect(existsSync(join(packed, 'repo.bundle'))).toBe(true);
+    const out = join(dir, 'rebuilt');
+    expect(run(['rebuild', packed, base('gd-dev-ship-01'), out]).code).toBe(0);
+    expect(sh(join(out, 'repo'), ['cat-file', '-t', 'v9'])).toBe('tag');
+    expect(sh(join(out, 'repo'), ['cat-file', 'blob', 'refs/notes/kept'])).toBe('plain');
+  }, 60_000);
+
   test('a repo the base cannot explain fails the pack, so the mirror keeps the raw tree', () => {
     const dir = work('gd-dev-ship-01');
     const repo = join(dir, 'work', 'repo');

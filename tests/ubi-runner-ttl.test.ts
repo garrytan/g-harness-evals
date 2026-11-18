@@ -23,9 +23,9 @@ const ROOT = join(import.meta.dir, '..');
 const RUNNER = join(ROOT, 'scripts', 'ubicloud', 'ubi-runner.sh');
 const PLACEHOLDER = 'placeholder';
 
-// gstack#3652's vm_rows (scripts/ubicloud/ubi-runner.sh at 715e3a1a): owner and creation epoch from the name, the TTL from
-// its -t<hours> tail, expiry = epoch + hours * 3600, and the reaper destroys 600 s after that.
-const GSTACK_OWNED = /^ubirun-([a-z][a-z0-9]{0,11})-([0-9]{10})-/;
+// gstack#3652's vm_rows (scripts/ubicloud/ubi-runner.sh at 715e3a1a, owner up to 31 characters since 67f1f82fb): owner and
+// creation epoch from the name, the TTL from its -t<hours> tail, expiry = epoch + hours * 3600, and the reaper destroys 600 s after that.
+const GSTACK_OWNED = /^ubirun-([a-z][a-z0-9]{0,30})-([0-9]{10})-/;
 const GSTACK_TTL = /-t([0-9]{1,3})$/;
 
 type Fake = { url: string; calls: string[][]; rows: string[]; live: Set<string>; ghosts: boolean };
