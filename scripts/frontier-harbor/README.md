@@ -69,10 +69,18 @@
 ```
 
 - **Task range:** positions `[from, to)` of the shared order (the task list sorted by sha256 of seed and id).
-- **Leases:** the shard leases plus the reserve must fit the cap. Each lease must be at least concurrency x the worst-case reservation of one call.
+- **Leases:** the shard leases plus the reserve must fit the cap. Each lease must be at least concurrency x the worst-case reservation of one call, or concurrency x the shard's cell count x that reservation when `parallel_cells` is on.
 - **Shards:** a cell runs on exactly one shard. vm-run.sh refuses a shard that is not in the preregistration, or a lease above the planned one.
 - **Trial ids:** `<run_id>/<cell>/<task>/a<attempt>`. A stage never changes them.
 - **Harness versions:** optional `"harness_versions": { "claude-code": "2.1.322" }` runs a harness at another release pin.json lists under `harnesses.<h>.releases`. Every job of that harness then names it, agents.py checks the installed binary against that release's sha256, and `plan.ts show` prints it. Without it, cells run pin.json's own version (2.1.312 for Claude Code). plan.ts refuses a version pin.json does not pin.
+
+### Interleaving cells
+
+By default a shard runs its cells one after another. Two optional keys spread them over the same hours instead, so a slow afternoon or a provider outage hits every cell alike. A preregistration may set one of them, not both.
+
+- **`"interleave_chunk": k`:** each cell and attempt runs as several Harbor jobs of at most k tasks, named `<cell>__a<n>__k<i>`, or `<cell>__a<n>__<stage>__k<i>` under a stage (chunk i of the cell's own task order). The jobs alternate across the shard's cells, chunk by chunk.
+- **`"parallel_cells": true`:** vm-run.sh runs every cell of the shard at once, one lane per cell. A lane runs its cell's jobs in attempt order, up to concurrency trials at once, so the shard holds concurrency x cells trials at a time and its lease floor grows to match. A lane is the jobs whose config names that cell id exactly. Each job logs to `harbor-<job>.log` in the run root instead of the shared `harbor.log`.
+- **Reserved stage names:** because a job name ending in `__k<digits>` is read as a chunk, plan.ts refuses a stage named k and digits (`k3`) or ending in `__` and that (`probe__k3`).
 
 ### Stages
 

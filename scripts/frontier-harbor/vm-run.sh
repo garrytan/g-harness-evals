@@ -151,10 +151,11 @@ run_scrubbed() {
   for v in $(compgen -e); do [[ $keep == *" $v "* ]] || unset "$v" 2>/dev/null || true; done
   exec "$@"
 }
-pids=() harbor_pid="" journal_pid="" harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc="" metered=1 cursor_key_dir=""
+pids=() harbor_pid="" journal_pid="" lane_pids=() harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc="" metered=1 cursor_key_dir=""
 cleanup() {
   [ -z "$cursor_key_dir" ] || rm -rf "$cursor_key_dir"
   [ -z "$harbor_pid" ] || kill "$harbor_pid" 2>/dev/null || true
+  for p in ${lane_pids[@]+"${lane_pids[@]}"}; do kill "$p" 2>/dev/null || true; done
   for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done
   for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done
 }
@@ -163,6 +164,9 @@ on_signal() {
   trap - TERM INT HUP
   say "interrupted (exit $1); stopping Harbor and writing the records so far"
   [ -z "$harbor_pid" ] || { kill "$harbor_pid" 2>/dev/null || true; timeout 60 tail --pid="$harbor_pid" -f /dev/null 2>/dev/null || kill -KILL "$harbor_pid" 2>/dev/null || true; wait "$harbor_pid" 2>/dev/null || true; harbor_pid=""; }
+  for p in ${lane_pids[@]+"${lane_pids[@]}"}; do kill "$p" 2>/dev/null || true; done
+  for p in ${lane_pids[@]+"${lane_pids[@]}"}; do timeout 70 tail --pid="$p" -f /dev/null 2>/dev/null || kill -KILL "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; done
+  lane_pids=()
   [ "$harbor_started" -eq 0 ] || finish 1 30000 || true
   exit "$1"
 }
@@ -350,7 +354,8 @@ json.dump({'name': name, 'machine': machine, 'commit': commit, 'images': None, '
 PY
 }
 
-# 7. the Harbor jobs, one per cell and attempt, in plan.ts order
+# 7. the Harbor jobs, one per cell and attempt, in plan.ts order; with parallel_cells, one lane per cell, all lanes at once,
+# each lane its cell's jobs in order (a lane stops its Harbor job when it is told to stop)
 # the Cursor key file: 0600, outside --out, named to the Cursor jobs only; cleanup() removes it on every exit
 cursor_args=()
 if [ -n "${cursor_key:+x}" ]; then
@@ -361,7 +366,9 @@ if [ -n "${cursor_key:+x}" ]; then
   say "cursor: CURSOR_API_KEY is set; it goes to the Cursor task containers only, through a 0600 key file outside $out"
 fi
 jobs=$(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts jobs --prereg "$prereg" --name "$name" --run "$run" --broker-url http://127.0.0.1:8791 ${plan_arg[@]+"${plan_arg[@]}"} ${done_args[@]+"${done_args[@]}"} ${cursor_args[@]+"${cursor_args[@]}"} 2>>"$out/run.log") || { say "plan.ts jobs refused (run.log)"; exit 3; }
-say "harbor: $(printf '%s\n' "$jobs" | grep -c .) job(s); logs in $run/harbor.log and $run/jobs"
+parallel=$(python3 -c 'import json,sys; print(1 if json.load(open(sys.argv[1])).get("parallel_cells") else 0)' "$prereg")
+if [ "$parallel" -eq 1 ]; then harbor_logs="$run/harbor-<job>.log (one per job)"; else harbor_logs="$run/harbor.log"; fi
+say "harbor: $(printf '%s\n' "$jobs" | grep -c .) job(s); logs in $harbor_logs and $run/jobs"
 harbor_env=("${safe_env[@]}" "PYTHONPATH=$here")
 [ -z "${DOCKER_HOST:-}" ] || harbor_env+=("DOCKER_HOST=$DOCKER_HOST")
 # the journal: while Harbor runs, every 60 s, one row per newly finished trial in <out>/trials.journal.jsonl (outside run/,
@@ -369,18 +376,50 @@ harbor_env=("${safe_env[@]}" "PYTHONPATH=$here")
 (cd "$repo" && exec "${safe_env[@]}" bun scripts/frontier-harbor/to-trials.ts journal --prereg "$prereg" --out "$out" --shard "$name" --lease-run-id "$run_id:$name" --every 60) >> "$out/run.log" 2>&1 &
 journal_pid=$!
 pids+=("$journal_pid")
+run_lane() { # <job config>...: the jobs in order; exits with the last failing job's code
+  local cfg code lane_last=0 hp=""
+  trap '[ -z "$hp" ] || { kill "$hp" 2>/dev/null; timeout 60 tail --pid="$hp" -f /dev/null 2>/dev/null || kill -KILL "$hp" 2>/dev/null; }; exit 143' TERM
+  for cfg in "$@"; do
+    (cd "$run" && exec "${harbor_env[@]}" "$venv/bin/harbor" run -y -c "$cfg") >> "$run/harbor-$(basename "$cfg" .json).log" 2>&1 &
+    hp=$!
+    wait "$hp"
+    code=$?
+    hp=""
+    log "harbor job $(basename "$cfg" .json) exited $code"
+    [ "$code" -eq 0 ] || lane_last=$code
+  done
+  exit "$lane_last"
+}
+# a lane is the jobs whose config names that cell (agents[0].kwargs.cell, which plan.ts writes), compared as a string
+lanes=""
+if [ "$parallel" -eq 1 ]; then
+  lanes=$(python3 -c 'import json,sys
+for f in sys.argv[1:]: print(json.load(open(f))["agents"][0]["kwargs"]["cell"] + "\t" + f)' $jobs 2>>"$out/run.log") || { say "could not read the cell of every job config (run.log)"; exit 3; }
+fi
 set +e
 last=0
 harbor_started=1
-for cfg in $jobs; do
-  (cd "$run" && exec "${harbor_env[@]}" "$venv/bin/harbor" run -y -c "$cfg") >> "$run/harbor.log" 2>&1 &
-  harbor_pid=$!
-  wait "$harbor_pid"
-  code=$?
-  harbor_pid=""
-  log "harbor job $(basename "$cfg" .json) exited $code"
-  [ "$code" -eq 0 ] || last=$code
-done
+if [ "$parallel" -eq 1 ]; then
+  for cell in $(cut -f1 <<<"$lanes" | awk '!seen[$0]++'); do
+    lane=()
+    while IFS=$'\t' read -r c cfg; do [ "$c" = "$cell" ] && lane+=("$cfg"); done <<<"$lanes"
+    say "lane $cell: ${#lane[@]} job(s)"
+    ( run_lane "${lane[@]}" ) &
+    lane_pids+=($!)
+  done
+  for p in "${lane_pids[@]}"; do wait "$p"; code=$?; [ "$code" -eq 0 ] || last=$code; done
+  lane_pids=()
+else
+  for cfg in $jobs; do
+    (cd "$run" && exec "${harbor_env[@]}" "$venv/bin/harbor" run -y -c "$cfg") >> "$run/harbor.log" 2>&1 &
+    harbor_pid=$!
+    wait "$harbor_pid"
+    code=$?
+    harbor_pid=""
+    log "harbor job $(basename "$cfg" .json) exited $code"
+    [ "$code" -eq 0 ] || last=$code
+  done
+fi
 rc=$last
 set -e
 finish 8 120000

@@ -7,9 +7,10 @@
 //   bun scripts/canary/baseline-report.ts --suite gstack|gbrain --trials <trials.jsonl> --prev-sha <sha> --prev-version <v>
 //     --new-sha <sha> --new-version <v> [--prereg <prereg-canary.json>] [--tasks <tasks.json>] [--draws 10000] [--out <file.json>]
 //
-// Prints the report as JSON (and writes it to --out). The pass-rate statistics use decide.ts's own functions, and every
+// Prints the report as JSON (and writes it to --out). It refuses (exit 2) a --trials file that is missing, or that holds no
+// T2 trial of the suite, so an empty file never reads as a clean baseline. The pass-rate statistics use decide.ts's own functions, and every
 // same-release pair goes through decide() as a T2 tier, so a false alarm is exactly what the nightly rule would have flagged.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { decide, isExcluded, passed, readTrials, type Arm, type CanaryTrial, type ModelKey, type Suite, type TasksFile, type Thresholds } from './decide.ts';
 import { table } from './simulate.ts';
@@ -70,6 +71,7 @@ export function baselineReport(input: {
 }): BaselineReport {
   const { suite, tasks, thresholds: th } = input;
   const rows = input.trials.filter((t) => t.canary?.suite === suite && t.canary.tier === 'T2');
+  if (!rows.length) throw new Error('baseline-report: no ' + suite + ' T2 trials to report on; the trials file is empty, missing or holds another suite');
   const models = (Object.keys(tasks.models) as ModelKey[]).filter((m) => rows.some((t) => t.canary.model_key === m));
   const real = decide({ suite, tier: 'T2', trials: rows, tasks, thresholds: th, expected: { arms: ['plain', 'prev', 'new'], models }, release: input.release, run_id: 'baseline-report' });
   const out: ModelBaseline[] = [];
@@ -146,10 +148,18 @@ if (import.meta.main) {
   if (suite !== 'gstack' && suite !== 'gbrain') { console.error('baseline-report: bad --suite'); process.exit(2); }
   const prereg = JSON.parse(readFileSync(flag('--prereg') ?? join(DIR, 'prereg-canary.json'), 'utf8')) as { thresholds: Thresholds };
   const tasks = JSON.parse(readFileSync(flag('--tasks') ?? join(DIR, `tasks-${suite}.json`), 'utf8')) as TasksFile;
-  const report = baselineReport({
-    suite, trials: readTrials([need('--trials')]), tasks, thresholds: prereg.thresholds, draws: Number(flag('--draws') ?? 10000),
-    release: { prev: { sha: need('--prev-sha'), version: need('--prev-version') }, new: { sha: need('--new-sha'), version: need('--new-version') } },
-  });
+  const trialsPath = need('--trials');
+  if (!existsSync(trialsPath)) { console.error('baseline-report: ' + trialsPath + ' does not exist'); process.exit(2); }
+  let report: BaselineReport;
+  try {
+    report = baselineReport({
+      suite, trials: readTrials([trialsPath]), tasks, thresholds: prereg.thresholds, draws: Number(flag('--draws') ?? 10000),
+      release: { prev: { sha: need('--prev-sha'), version: need('--prev-version') }, new: { sha: need('--new-sha'), version: need('--new-version') } },
+    });
+  } catch (e) {
+    console.error((e as Error).message);
+    process.exit(2);
+  }
   const text = JSON.stringify(report, null, 2) + '\n';
   const out = flag('--out');
   if (out) writeFileSync(out, text);

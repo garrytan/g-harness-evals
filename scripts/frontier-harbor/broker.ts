@@ -28,7 +28,7 @@ export interface BrokerOptions { proxy: string; gateway: string; models: string[
  *  <job>/<trial>/proxy-capture, beside the trial's agent/ and verifier/ directories and never mounted into its container. */
 export const captureDir = (cell: string, attempt: number, trial: string, job?: string) => (job ?? cell + '__a' + attempt) + '/' + trial + '/proxy-capture';
 
-/** A job name a trial of this cell and attempt may run under: <cell>__a<attempt>, or that plus __<stage> (plan.ts shardJobs). */
+/** A job name a trial of this cell and attempt may run under: <cell>__a<attempt>, or that plus __<stage> and/or __k<chunk> (plan.ts shardJobs). */
 export const jobOk = (job: string, cell: string, attempt: number) => job === cell + '__a' + attempt || (job.startsWith(cell + '__a' + attempt + '__') && SLOT.test(job.slice((cell + '__a' + attempt + '__').length)));
 
 const SLOT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;

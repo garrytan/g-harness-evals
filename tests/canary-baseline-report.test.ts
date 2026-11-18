@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { attemptPairs, baselineReport, flipShare, wilson } from '../scripts/canary/baseline-report.ts';
 import type { Arm, CanaryTrial, ModelKey, TasksFile, Thresholds } from '../scripts/canary/decide.ts';
@@ -66,5 +67,19 @@ describe('canary baseline report', () => {
     expect(r.suite_totals.false_alarms).toBe(2);
     expect(opus.flip.new.rate).toBeCloseTo((0 + 12 / 30 + 12 / 30) / 3, 6);
     expect(opus.modelled?.flip).toBeCloseTo(opus.flip_release!, 6);
+  });
+  test('an empty or missing trials file, or one with no T2 trial of the suite, is refused instead of reading as a clean baseline', () => {
+    expect(() => baselineReport({ suite: 'gstack', trials: [], tasks, thresholds: th, draws: 200, release })).toThrow(/no gstack T2 trials/);
+    expect(() => baselineReport({ suite: 'gbrain', trials: grid(), tasks, thresholds: th, draws: 200, release })).toThrow(/no gbrain T2 trials/);
+    const dir = mkdtempSync(join(tmpdir(), 'baseline-report-'));
+    writeFileSync(join(dir, 'empty.jsonl'), '');
+    const run = (file: string) => Bun.spawnSync(['bun', join(import.meta.dir, '../scripts/canary/baseline-report.ts'), '--suite', 'gstack', '--trials', file,
+      '--prev-sha', release.prev.sha, '--prev-version', release.prev.version, '--new-sha', release.new.sha, '--new-version', release.new.version], { env: { PATH: process.env.PATH ?? '' } });
+    for (const [file, why] of [[join(dir, 'empty.jsonl'), /no gstack T2 trials/], [join(dir, 'missing.jsonl'), /does not exist/]] as const) {
+      const r = run(file);
+      expect(r.exitCode).toBe(2);
+      expect(r.stdout.toString()).toBe('');
+      expect(r.stderr.toString()).toMatch(why);
+    }
   });
 });
