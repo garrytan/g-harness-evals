@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Stand-in for gstack's bin/gstack-config in tests/canary-gstack.test.ts: "key: value" lines in $GSTACK_HOME/config.yaml,
+# with gstack's defaults for the keys the first-run gates read. STUB_IGNORE_SET=1 makes set a no-op, like a release
+# that no longer stores the key.
+set -euo pipefail
+f="${GSTACK_HOME:?}/config.yaml"
+case "$1" in
+  get)
+    v=$(sed -n "s/^$2: //p" "$f" 2>/dev/null | tail -1)
+    if [ -z "$v" ]; then case "$2" in telemetry) v=off ;; update_check) v=true ;; routing_declined) v=false ;; proactive) v=core ;; esac; fi
+    echo "$v" ;;
+  set)
+    [ "${STUB_IGNORE_SET:-}" = 1 ] && exit 0
+    mkdir -p "$GSTACK_HOME"; touch "$f"
+    grep -v "^$2: " "$f" > "$f.tmp" || true
+    echo "$2: $3" >> "$f.tmp"; mv "$f.tmp" "$f" ;;
+  *) exit 1 ;;
+esac

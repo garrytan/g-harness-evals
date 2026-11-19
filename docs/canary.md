@@ -15,6 +15,7 @@ Two exams, one per product, because gstack is for coding work and gbrain is for 
 - **gstack suite:** 30 Terminal-Bench 2.1 tasks per model, Opus 5.5 in Claude Code and GPT-6.1 Sol in Codex. Tasks are ones that model passed on both of #337's attempts, at $1.00 a trial or less, drawn with a fixed seed. Lists: `tasks-gstack.json`.
 - **gbrain suite:** brain tasks from the harness-zero-h2h dev-draw-2 receipts, every task the model's gbrain cell passed: 12 for Opus, 14 for Sol. particle-1 runs Sol's 14 as a labelled third model; it never raises REGRESSION. Lists: `tasks-gbrain.json`.
 - **Three arms in the same window:** plain (no gstack, no gbrain), the previous stable release and the new one. The plain arm is the headroom reading. It never changes a verdict.
+- **Codex arms start answered:** both gstack arms' Codex installs come with gstack's one-time first-run questions already answered (telemetry off, no update check, no routing section), because from gstack 1.102 a skill under `codex exec` stops at a question nobody answers (amendment 9; scripts/canary/gstack/README.md, "First-run answers").
 - **Releases:** gstack's `stable` branch head with its VERSION file; gbrain's `stable` tag, peeled to its commit, with its `stable-v*` tag. Every arm is pinned by commit sha (`scripts/canary/releases.ts`).
 
 ## The tiers
