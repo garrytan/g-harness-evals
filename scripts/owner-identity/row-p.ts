@@ -92,7 +92,7 @@ export async function runRowP(o: { set: string; lease: string; capUsd: number; o
         console.log(`row-p ${o.model} ${task} try ${k}: ${step.label} exit ${exit}, ${usage.requests} call(s), $${usage.usd.toFixed(4)}`);
       }
       const store = join(dir, 'store.json');
-      writeStore(store, dumpGbrainBrain({ brainDir: home, image: o.image }));
+      writeStore(store, dumpGbrainBrain({ brainDir: home, image: o.image, mountAt: '/brain-home' }));
       const verdicts = gradeOwnerIdentityFiles({ store, gold: join(set, 'dev', task, 'gold.json'), people: join(set, 'world', 'people.json'), out: join(dir, 'verdicts.json'), arm: 'P' });
       const row = { task, try: k, model: o.model, extraction_model: model.extraction, formats: gold.formats, steps: results, usd: results.reduce((n, r) => n + Number(r.usd), 0), summary: verdicts.summary };
       writeFileSync(join(dir, 'row.json'), JSON.stringify(row, null, 1) + '\n');

@@ -125,17 +125,18 @@ export function gbrainStoreFrom(doc: Record<string, unknown>): GbrainStore {
 export const DUMP_SCRIPT = resolve(import.meta.dir, '../../gbrain/owner-identity-dump.ts');
 
 /** The docker argv that dumps a stopped brain directory (the copy of the sidecar's /brain) from the gbrain image, offline. */
-export function dumpDockerArgs(image: string, brainDir: string, uidGid: string): string[] {
-  return ['docker', 'run', '--rm', '--user', uidGid, '--network', 'none', '-v', `${resolve(brainDir)}:/brain`, '-v', `${DUMP_SCRIPT}:/he-dump/owner-identity-dump.ts:ro`,
-    '-e', 'GBRAIN_HOME=/brain', '-e', 'HOME=/tmp', '-e', 'GBRAIN_SKIP_STARTUP_HOOKS=1', '-e', 'NO_COLOR=1', '--entrypoint', 'bun', image, '/he-dump/owner-identity-dump.ts'];
+export function dumpDockerArgs(image: string, brainDir: string, uidGid: string, mountAt = '/brain'): string[] {
+  return ['docker', 'run', '--rm', '--user', uidGid, '--network', 'none', '-v', `${resolve(brainDir)}:${mountAt}`, '-v', `${DUMP_SCRIPT}:/he-dump/owner-identity-dump.ts:ro`,
+    '-e', `GBRAIN_HOME=${mountAt}`, '-e', 'HOME=/tmp', '-e', 'GBRAIN_SKIP_STARTUP_HOOKS=1', '-e', 'NO_COLOR=1', '--entrypoint', 'bun', image, '/he-dump/owner-identity-dump.ts'];
 }
 
 /** Dump a stopped brain: from the image (sidecar brains, whose recorded paths are /brain) or with a host gbrain checkout (row P's
  *  fresh gbrain home). The host run gets a scrubbed environment: PATH, HOME, GBRAIN_HOME and HE_GBRAIN_SRC only. */
-export function dumpGbrainBrain(o: { brainDir: string; image?: string; gbrainSrc?: string; uidGid?: string; timeoutMs?: number }): GbrainStore {
+/** mountAt: where the brain was mounted when gbrain wrote it (its config records absolute paths); the sidecar's /brain by default. */
+export function dumpGbrainBrain(o: { brainDir: string; image?: string; gbrainSrc?: string; uidGid?: string; timeoutMs?: number; mountAt?: string }): GbrainStore {
   if (!o.image === !o.gbrainSrc) throw new Error('dumpGbrainBrain needs exactly one of image or gbrainSrc');
   const uidGid = o.uidGid ?? `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
-  const [cmd, ...args] = o.image ? dumpDockerArgs(o.image, o.brainDir, uidGid) : ['bun', DUMP_SCRIPT];
+  const [cmd, ...args] = o.image ? dumpDockerArgs(o.image, o.brainDir, uidGid, o.mountAt) : ['bun', DUMP_SCRIPT];
   const env = o.image ? { PATH: process.env.PATH ?? '/usr/bin:/bin' } : { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: join(resolve(o.brainDir), '.he-home'), GBRAIN_HOME: resolve(o.brainDir), HE_GBRAIN_SRC: resolve(o.gbrainSrc!), GBRAIN_SKIP_STARTUP_HOOKS: '1', NO_COLOR: '1' };
   if (!o.image) mkdirSync(env.HOME!, { recursive: true });
   const r = spawnSync(cmd!, args, { env, encoding: 'utf8', timeout: o.timeoutMs ?? 300_000, maxBuffer: 1 << 30 });

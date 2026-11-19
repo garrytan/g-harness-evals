@@ -428,17 +428,19 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       }
     }
 
-    if (windows.length) {
+    // HARN-116: an owner-identity task (gold.json beside task.toml, people.json beside the world) has no predicates; it is graded
+    // from the dumped store, and its grade.json keeps the n/a grade.
+    const gold = join(task.dir, 'gold.json');
+    const people = join(dirname(world.worldPath), 'people.json');
+    const storeGraded = existsSync(gold) && existsSync(people);
+    if (windows.length && !storeGraded) {
       const evidence: TrialEvidence = { trial_id: trial.id, task_dir: task.dir, split: cell.split, world_path: world.worldPath, bot_member: world.botMember.id, snapshot, events: world.events, turns: windows };
       grade = await ctx.grade(evidence);
     }
     writeAtomic(paths.grade!, JSON.stringify(grade, null, 1) + '\n');
-    // HARN-116: an owner-identity task (gold.json beside task.toml, people.json beside the world) is graded from the dumped store.
-    const gold = join(task.dir, 'gold.json');
-    const people = join(dirname(world.worldPath), 'people.json');
-    if (paths.owner_identity_store && existsSync(gold) && existsSync(people)) {
+    if (paths.owner_identity_store && storeGraded) {
       paths.owner_identity_verdicts = join(dirs.root, 'owner-identity', 'verdicts.json');
-      try { gradeOwnerIdentityFiles({ store: paths.owner_identity_store, gold, people, out: paths.owner_identity_verdicts, reply: windows.at(-1)?.reply_text ?? null }); }
+      try { gradeOwnerIdentityFiles({ store: paths.owner_identity_store, gold, people, out: paths.owner_identity_verdicts, reply: answerText(world.events, world.botMember.id, windows.at(-1)) }); }
       catch (e) { log(`owner-identity grader: ${(e as Error).message}`); }
     }
   } finally {
@@ -507,6 +509,17 @@ export function gbrainUpstream(sidecar: Pick<GbrainSidecar, 'url' | 'token' | 't
  *  for QM's memory-provider config, where gbrain reaches QM only through MEMORY_PROVIDER_CONFIG. */
 export function gbrainHarnessEnv(sidecar: object | null, harnessUrl: string, botToken: string, memoryProvider: boolean): Record<string, string> {
   return sidecar && !memoryProvider ? { HE_GBRAIN_MCP_URL: `${harnessUrl}/gbrain`, HE_GBRAIN_MCP_TOKEN: botToken } : {};
+}
+
+/** The owner-identity answer text for a turn: the reply the runner posted plus every message the bot posted itself during that
+ *  turn, read from the world event log, so a harness that answers in the DM through the world's Slack is graded on what it posted. */
+export function answerText(events: WorldEvent[], bot: string, w: TurnWindow | undefined): string | null {
+  if (!w) return null;
+  const posts = events
+    .filter((e) => e.actor === bot && e.tool === 'chat.postMessage' && e.kind === 'write' && e.outcome === 'ok' && e.seq > w.started_seq && e.seq <= w.ended_seq)
+    .map((e) => String((e.args as { text?: unknown } | undefined)?.text ?? ''));
+  const parts = [w.reply_withheld ? null : w.reply_text, ...posts].filter((s): s is string => !!s);
+  return parts.length ? parts.join('\n') : null;
 }
 
 export function ingestedCounts(ingests: WorldEvent[]): { ok: number; skipped: number; failed: number } {
