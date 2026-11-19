@@ -13,7 +13,7 @@ import { DEV_SEED, digest, generateBank, writeBank, type Gold } from '../world/o
 import { checkBank, PROBE_SEED } from '../world/owner-identity/check.ts';
 import { collides, isEnglish, stem, TokenPool } from '../world/owner-identity/tokens.ts';
 
-const dev = generateBank(DEV_SEED, 'dev', 12);
+const dev = generateBank(DEV_SEED, 'dev', 15);
 const probe = generateBank(PROBE_SEED, 'dev', 42);
 const golds = (bank: Map<string, string>) => [...bank].filter(([k]) => k.endsWith('gold.json')).map(([, v]) => JSON.parse(v) as Gold);
 const people = (bank: Map<string, string>) => JSON.parse(bank.get('world/people.json')!) as { owner: string; people: Array<{ id: string; name: string; role_in_story: string }>; decoys: Array<{ id: string; kind: string }> };
@@ -24,11 +24,11 @@ const of = (h: string) => allFacts.filter((f) => f.hard_case === h);
 
 describe('determinism', () => {
   test('the same seed gives the same bytes and another seed does not', () => {
-    expect(digest(generateBank(DEV_SEED, 'dev', 12))).toBe(digest(dev));
-    expect(digest(generateBank('another-seed', 'dev', 12))).not.toBe(digest(dev));
+    expect(digest(generateBank(DEV_SEED, 'dev', 15))).toBe(digest(dev));
+    expect(digest(generateBank('another-seed', 'dev', 15))).not.toBe(digest(dev));
   });
   test('only the two bank sizes are accepted', () => {
-    expect(() => generateBank(DEV_SEED, 'dev', 13)).toThrow('--tasks must be 12');
+    expect(() => generateBank(DEV_SEED, 'dev', 13)).toThrow('--tasks must be 15');
   });
 });
 
@@ -58,7 +58,7 @@ describe('tokens', () => {
 
 describe('bank validity and coverage', () => {
   test('the dev bank and the 42-task probe bank pass every check', () => {
-    expect(checkBank(dev, 'dev', 12)).toBeNull();
+    expect(checkBank(dev, 'dev', 15)).toBeNull();
     expect(checkBank(probe, 'dev', 42)).toBeNull();
   });
   test('every hard case is in at least one dev task and at least six probe tasks', () => {
@@ -72,7 +72,7 @@ describe('bank validity and coverage', () => {
     try {
       writeBank(dev, dir);
       const ids = readdirSync(join(dir, 'dev'));
-      expect(ids.length).toBe(12);
+      expect(ids.length).toBe(15);
       for (const id of ids) expect(loadTask(join(dir, 'dev', id)).family).toMatch(/^owner_identity_[IL]$/);
       const world = loadWorld(join(dir, 'world', 'world.json'));
       expect(world.files.length).toBeGreaterThan(8);

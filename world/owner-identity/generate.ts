@@ -1,9 +1,9 @@
 // Owner-identity task-bank generator (HARN-116). Keyless and deterministic: the same seed, split and size give the same
 // bytes. Writes one task set: world/ (world.json, people.json, owner-card.md, coverage.json), corpus/<split>/people/
 // (gbrain people pages), <split>/<task>/task.toml and gold.json, and README.md. The dev bank uses the public seed
-// "owner-identity-dev-v1" and 12 tasks; a counted bank takes a 64-hex-digit secret seed from its custodian and 42 tasks.
+// "owner-identity-dev-v1" and 15 tasks; a counted bank takes a 64-hex-digit secret seed from its custodian and 42 tasks.
 //
-//   bun world/owner-identity/generate.ts --seed <string> --split dev|heldout --tasks 12|42 --out <dir>
+//   bun world/owner-identity/generate.ts --seed <string> --split dev|heldout --tasks 15|42 --out <dir>
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
@@ -19,9 +19,9 @@ import { OFFSET_MIN, ZONE, localAt } from './formats/time.ts';
 export const DEV_SEED = 'owner-identity-dev-v1';
 export const TODAY = '2026-09-14';
 export const SET_NAME = 'owner-identity';
-const DEV_I: Array<[Source, number]> = [['agent-session', 0], ['chat-1to1', 4], ['group-chat', 1], ['meeting', 0], ['meeting', 2], ['imessage', 2], ['email', 0], ['email', 1]];
+const DEV_I: Array<[Source, number]> = [['agent-session', 0], ['chat-1to1', 4], ['group-chat', 1], ['meeting', 0], ['meeting', 2], ['imessage', 2], ['email', 0], ['email', 1], ['agent-session', 1], ['agent-session', 3], ['agent-session', 4]];
 export const PROFILES: Record<number, { imports: Array<[Source, number]>; live: number; min: number }> = {
-  12: { imports: DEV_I, live: 4, min: 1 },
+  15: { imports: DEV_I, live: 4, min: 1 },
   42: { imports: SOURCES.flatMap((s) => [0, 1, 2, 3, 4].map((k) => [s, k] as [Source, number])), live: 12, min: 6 },
 };
 export type Split = 'dev' | 'heldout';
@@ -117,7 +117,7 @@ const strip = ({ tpl: _t, commit: _c, ...rest }: Fact) => rest;
 
 export function generateBank(seed: string, split: Split, nTasks: number): Map<string, string> {
   const profile = PROFILES[nTasks];
-  if (!profile) throw new Error(`--tasks must be 12 (dev bank) or 42 (counted bank), not ${nTasks}`);
+  if (!profile) throw new Error(`--tasks must be 15 (dev bank) or 42 (counted bank), not ${nTasks}`);
   const r: Rng = rng(seedWords(seed));
   const cast = makeCast(r);
   const o = cast.owner;
@@ -221,7 +221,7 @@ ${rows}
 ## Regenerate
 
 \`\`\`
-${publicSeed ? `bun world/owner-identity/generate.ts --seed ${DEV_SEED} --split dev --tasks 12 --out <dir>` : 'bun world/owner-identity/generate.ts --seed <secret seed> --split heldout --tasks 42 --out <dir>'}
+${publicSeed ? `bun world/owner-identity/generate.ts --seed ${DEV_SEED} --split dev --tasks 15 --out <dir>` : 'bun world/owner-identity/generate.ts --seed <secret seed> --split heldout --tasks 42 --out <dir>'}
 bun world/owner-identity/check.ts
 \`\`\`
 `;
@@ -282,7 +282,7 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const arg = (name: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
   const seed = arg('seed'), split = arg('split'), n = Number(arg('tasks')), out = arg('out');
-  if (!seed || !out || (split !== 'dev' && split !== 'heldout') || !n) { console.error('usage: bun world/owner-identity/generate.ts --seed <string> --split dev|heldout --tasks 12|42 --out <dir>'); process.exit(2); }
+  if (!seed || !out || (split !== 'dev' && split !== 'heldout') || !n) { console.error('usage: bun world/owner-identity/generate.ts --seed <string> --split dev|heldout --tasks 15|42 --out <dir>'); process.exit(2); }
   if (split === 'heldout' && !/^[0-9a-f]{64}$/.test(seed)) { console.error('a held-out bank needs a 256-bit secret seed as 64 hex digits from its custodian'); process.exit(2); }
   const files = generateBank(seed, split, n);
   writeBank(files, out);

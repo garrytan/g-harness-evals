@@ -139,7 +139,7 @@ export function checkBank(files: Map<string, string>, split: Split, nTasks: numb
 }
 
 export function checkAll(): string {
-  const a = generateBank(DEV_SEED, 'dev', 12), b = generateBank(DEV_SEED, 'dev', 12);
+  const a = generateBank(DEV_SEED, 'dev', 15), b = generateBank(DEV_SEED, 'dev', 15);
   const da = digest(a);
   if (da !== digest(b)) throw new Error('the dev bank is not deterministic: two runs gave different digests');
   if (!existsSync(COMMITTED)) throw new Error(`${COMMITTED} is missing; write the dev bank there with generate.ts`);
@@ -148,13 +148,13 @@ export function checkAll(): string {
     const diff = [...new Set([...committed.keys(), ...a.keys()])].sort().find((k) => committed.get(k) !== a.get(k));
     if (diff) throw new Error(`${COMMITTED}/${diff} differs from the generator's output; regenerate the dev bank`);
   }
-  const dev = checkBank(a, 'dev', 12);
+  const dev = checkBank(a, 'dev', 15);
   if (dev) throw new Error(`dev bank: ${dev}`);
   const probe = generateBank(PROBE_SEED, 'dev', 42);
   const p = checkBank(probe, 'dev', 42);
   if (p) throw new Error(`42-task probe bank: ${p}`);
   const facts = [...a.entries()].filter(([k]) => k.endsWith('gold.json')).reduce((s, [, v]) => s + (JSON.parse(v) as Gold).facts.length, 0);
-  return `PASS owner-identity: dev bank 12 tasks, ${facts} facts, digest ${da.slice(0, 12)}, matches ${COMMITTED}; 42-task probe bank covers every hard case at least 6 times`;
+  return `PASS owner-identity: dev bank 15 tasks, ${facts} facts, digest ${da.slice(0, 12)}, matches ${COMMITTED}; 42-task probe bank covers every hard case at least 6 times`;
 }
 
 if (import.meta.main) {
