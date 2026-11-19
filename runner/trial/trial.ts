@@ -21,9 +21,9 @@
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialGbrainDrain, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
+import type { GbrainLlmReceipt, GradeResult, HarnessMode, Termination, TrialAblation, TrialGbrainDrain, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import { cellModels, taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
+import { cellModels, gbrainLlmModels, taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
 import type { World } from '../../world/types.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
@@ -38,7 +38,7 @@ import { isQmMemoryProvider, memoryProviderWiring, type QmProviderBlock, type Qm
 import { canReadFile } from '../grade/predicates.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
 import type { SlotLimits } from '../proxy/metering-proxy.ts';
-import { RunProxy, embeddingUsage, reconcile, summarizeAblation, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
+import { GBRAIN_CALLER, RunProxy, embeddingUsage, gbrainLlmUsage, reconcile, summarizeAblation, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { wireOfModel } from '../proxy/ablate.ts';
 import { loadTask, type TaskSpec } from './task.ts';
 import { flushIngestAfterFence, runTurns } from './turns.ts';
@@ -170,10 +170,12 @@ const EMPTY_GRADE: GradeResult = { grade: 'n/a', predicates: [], consent_violati
  *  Amendment 2 to v02-heldout-2026-10 (2026-10-25): a cell may preregister utility_models, the models its harness is
  *  documented to call for its own housekeeping (QM's and OpenClaw's Haiku request per turn); those are the trial's own too,
  *  forwarded when the allowlist admits them and priced into the trial (usage.by_model shows them). */
-export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>, embeddingModel: string = 'off', utilityModels: readonly string[] = []): string[] {
+export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>, embeddingModel: string = 'off', utilityModels: readonly string[] = [], sidecarModels: readonly string[] = []): string[] {
   const own = new Set([cellModel.toLowerCase(), embeddingModel.toLowerCase(), ...utilityModels.map((m) => m.toLowerCase())]);
+  // HARN-116: by_model also holds gbrain's own calls, which only the sidecar's slot forwards; its refused lines are not passed in.
+  const sidecar = new Set(sidecarModels.map((m) => m.toLowerCase()));
   const seen = new Set<string>();
-  for (const k of Object.keys(byModel)) if (!own.has(k.toLowerCase())) seen.add(k);
+  for (const k of Object.keys(byModel)) if (!own.has(k.toLowerCase()) && !sidecar.has(k.toLowerCase())) seen.add(k);
   for (const l of lines) if (l.outcome === 'refused' && l.model && !own.has(`${l.provider}:${l.model}`.toLowerCase())) seen.add(`${l.provider}:${l.model}`);
   return [...seen].sort();
 }
@@ -248,16 +250,22 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let infraError: string | null = null;
   const gbrain: ResolvedGbrain | null = cell.gbrain ? resolveGbrain(cell.gbrain) : null;
   let installView: InstallViewManifest | null = null;
+  // HARN-116: the models gbrain's own route may call (the extraction model first), and the sidecar fault that ends the trial before the harness starts.
+  const sidecarModels = gbrainLlmModels(gbrain);
+  let examFault: string | null = null;
   const memoryProvider = isQmMemoryProvider(cell);
   let providerWiring: QmProviderWiring | null = null;
   if (cell.gbrain && gbrain) {
     try {
       if (gbrain.embeddings !== 'off' && !proxy) throw new RunnerError('HE-GBRAIN-005', `cell ${cell.id} has embeddings ${gbrain.embeddings} but the trial runs without a metering proxy; the sidecar's embedding calls must be metered`);
-      // The sidecar slot exists only while an embedded brain needs it; a keyword brain makes no provider call and gets no slot.
-      if (gbrain.embeddings !== 'off') await proxy!.bind(gbrainSlot, key, gbrainToken, [gbrain.embeddings]);
+      if (gbrain.llm === 'proxy' && !proxy) throw new RunnerError('HE-GBRAIN-002', `cell ${cell.id} has gbrain.llm "proxy" but the trial runs without a metering proxy; gbrain's own model calls must be metered`);
+      // The sidecar slot exists only while an embedded brain or gbrain's own model route needs it; a keyword brain makes no provider
+      // call and gets no slot. HARN-116: the model route's slot also takes the caller tag, so its usage lines split from the harness's.
+      if (gbrain.embeddings !== 'off' || sidecarModels.length) await proxy!.bind(gbrainSlot, key, gbrainToken, [...(gbrain.embeddings !== 'off' ? [gbrain.embeddings] : []), ...sidecarModels], undefined, false, {}, false, sidecarModels.length ? GBRAIN_CALLER : undefined);
       sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest, ...(gbrain.access ? { access: gbrain.access } : {}), ...(gbrain.channel_remember ? { channelRemember: gbrain.channel_remember } : {}),
         ...(gbrain.serves ? { serves: gbrain.serves, servesMembers: tokenMembers(world.world, cell.split).map((m) => m.id) } : {}), ...(gbrain.labels ? { labels: gbrain.labels } : {}),
-        surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}), ...(network ? { network } : {}), log });
+        surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}),
+        ...(gbrain.llm === 'proxy' ? { llm: 'proxy' as const, anthropicBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'anthropic', true), proxyToken: gbrainToken, extractionModel: gbrain.extraction_model, extractionPin: gbrain.extraction_pin === true } : {}), ...(network ? { network } : {}), log });
       // Under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'member' || sidecar.scope === 'member-sources') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'), sidecar.brain === 'bot-visible' ? ['bot-visible'] : undefined);
       // gbrain#7481: under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
@@ -274,8 +282,9 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       }
     } catch (e) {
       if (!(e instanceof RunnerError)) { if (sidecar) await sidecar.stop(5_000).catch(() => undefined); if (proxy) { await proxy.finalize(key).catch(() => undefined); await proxy.unbind(slot).catch(() => undefined); await proxy.unbind(gbrainSlot).catch(() => undefined); } world.stop(); throw e; }
-      infraError = e.message;
-      log(infraError);
+      // HARN-116: gbrain resolving another extraction model than the cell names is the exam's fault, not the harness's or the machine's.
+      if (e.code === 'HE-GBRAIN-017') examFault = e.message; else infraError = e.message;
+      log(e.message);
     }
     if (sidecar && !infraError) {
       if (memoryProvider) {
@@ -338,6 +347,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     writeFileSync(paths.turns!, '');
     try {
       if (infraError) throw new HarnessGone(null, infraError);
+      if (examFault) throw new HarnessGone(null, examFault);
       if (mode === 'scripted') {
         if (!trial.script) throw new RunnerError('HE-SCRIPT-001', `trial ${trial.id} is scripted but names no script`);
         harness = startScriptedHarness({ script: loadScript(trial.script), dirs, mcpUrl: `${world.localUrl}/mcp`, botToken: world.botToken });
@@ -360,12 +370,15 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       try { readyTurnHook = String((JSON.parse(readFileSync(join(dirs.logs, 'ready'), 'utf8')) as { gbrain_install?: { turn_hook?: string } }).gbrain_install?.turn_hook ?? 'absent from ready'); } catch { readyTurnHook = 'unreadable ready file'; }
     } catch (e) {
       if (!(e instanceof HarnessGone)) throw e;
-      readyFailure = e;
-      error = infraError ?? `HE-ADAPTER-002 ${e.message}`;
-      if (!infraError) log(error);
+      if (examFault) { endedEarly = 'exam_fault'; error = examFault; }
+      else {
+        readyFailure = e;
+        error = infraError ?? `HE-ADAPTER-002 ${e.message}`;
+        if (!infraError) log(error);
+      }
     }
 
-    if (!readyFailure) {
+    if (!readyFailure && !examFault) {
       const loop = await runTurns({ task, preamble: opts.preamble, world, harness: harness!, turnsDir: dirs.turns, trialId: trial.id, graceS: opts.turnGraceS, log,
         onAnswered: (turn, exit) => { if (readyTurnHook === 'ran') noteAnsweredTurn(answeredHook, dirs.logs, turn, exit); } });
       windows = loop.windows;
@@ -398,7 +411,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       const summary = summarizeUsage(key, meter, lines);
       usage = summary.usage;
       capStop = summary.cap_stop;
-      const foreign = foreignModels(cell.model, usage.by_model, lines, gbrain?.embeddings ?? 'off', cell.utility_models ?? []);
+      const foreign = foreignModels(cell.model, usage.by_model, lines.filter((l) => l.caller !== GBRAIN_CALLER), gbrain?.embeddings ?? 'off', cell.utility_models ?? [], sidecarModels);
       if (foreign.length) {
         modelMismatch = true;
         const msg = `HE-MODEL-001 trial ${trial.id} ran model(s) ${foreign.join(', ')} beside the cell's ${cell.model} (by_model and refused usage lines); the trial is model_error; fix: check the harness's model mapping (QM: PI_MODEL, set from HE_MODEL_NAME), fix the cell's model, or preregister the harness's documented housekeeping model in the cell's utility_models`;
@@ -451,6 +464,11 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     if (!check.ok && !infraError && !readyFailure) semanticError = `HE-GBRAIN-005 trial ${trial.id}: ${check.reason}; the trial is infra_error and leaves the rung (docs/gbrain-arm.md, "The install ladder"); fix: read <trial dir>/gbrain/serve.log and the proxy's usage lines for ${key}`;
   }
   if (semanticError) { error = semanticError; log(semanticError); }
+  if (gbrainRecord && gbrain?.llm === 'proxy') {
+    const receiptPath = join(dirs.root, 'gbrain', 'llm.json');
+    const receipt = existsSync(receiptPath) ? JSON.parse(readFileSync(receiptPath, 'utf8')) as GbrainLlmReceipt : null;
+    gbrainRecord.llm = { mode: 'proxy', expected_extraction_model: gbrain.extraction_model!, ...(receipt ? { receipt } : {}), ...(proxy ? { usage: gbrainLlmUsage(proxy.usageLines(key)) } : {}) };
+  }
   if (gbrainRecord && drainRecord) gbrainRecord.drain = drainRecord;
   if (drainError) error = error ? `${error}; ${drainError}` : drainError;
 

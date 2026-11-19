@@ -23,7 +23,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { HarnessMode, Termination, TrialRecord } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import { SET_WORLDS_FILE, cellModels, gbrainSetWorld, isSealedCell, setWorldPath, setWorldPinProblem, setWorldPins, type Cell, type Manifest, type Trial } from '../run.ts';
+import { SET_WORLDS_FILE, cellModels, gbrainLlmModels, gbrainSetWorld, isSealedCell, resolveGbrain, setWorldPath, setWorldPinProblem, setWorldPins, type Cell, type Manifest, type Trial } from '../run.ts';
 import { type InternalNetwork, ensureInternalNetwork, internalNetworkName, removeInternalNetwork } from './docker.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { defaultPreambleFor, loadPreamble } from './task.ts';
@@ -206,10 +206,12 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       // A cell with embeddings on sends the sidecar's query embeddings through the same proxy, so the embedding model
       // joins the allowlist and the proxy binds every interface (the sidecar is a container whatever the harness mode).
       const embeddingModels: string[] = [...new Set(manifest.cells.map((c) => c.gbrain?.embeddings ?? 'off').filter((m) => m !== 'off'))];
+      // HARN-116: gbrain's own model route joins the allowlist the same way; its slot is a container's whatever the harness mode.
+      const sidecarModels: string[] = [...new Set(manifest.cells.flatMap((c) => gbrainLlmModels(c.gbrain ? resolveGbrain(c.gbrain) : null)))];
       proxy = await RunProxy.start({
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
-        allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
-        reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture, ...(opts.proxyUpstream ? { upstream: opts.proxyUpstream } : {}), logSections,
+        allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels, ...sidecarModels])], maxOutputTokens: opts.maxOutputTokens,
+        reachableFromContainers: docker || embeddingModels.length > 0 || sidecarModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture, ...(opts.proxyUpstream ? { upstream: opts.proxyUpstream } : {}), logSections,
         routeTexts: routeTextsFor(manifest.cells, opts.repoRoot),
         ...(manifest.cells.some((c) => c.ablation) ? { ablationLog: true } : {}),
       });

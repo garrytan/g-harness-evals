@@ -115,11 +115,22 @@ export interface ResolvedGbrain {
   serves?: 'several';
   /** internal-task: present only on a cell of the reader-labelled bot-visible brain. */
   labels?: 'readers';
+  /** HARN-116: present only on a cell with gbrain's own model route, with the extraction model it expects. */
+  llm?: 'proxy';
+  extraction_model?: string;
+  extraction_pin?: true;
+  llm_models?: string[];
 }
 
 /** The cell's gbrain configuration with every default filled in; the cell itself is not changed. */
 export function resolveGbrain(c: GbrainCellConfig): ResolvedGbrain {
-  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}), ...(c.channel_remember === 'conversation' ? { channel_remember: 'conversation' as const } : {}), ...(c.serves ? { serves: c.serves } : {}), ...(c.labels ? { labels: c.labels } : {}) };
+  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}), ...(c.channel_remember === 'conversation' ? { channel_remember: 'conversation' as const } : {}), ...(c.serves ? { serves: c.serves } : {}), ...(c.labels ? { labels: c.labels } : {}),
+    ...(c.llm === 'proxy' ? { llm: 'proxy' as const, extraction_model: c.extraction_model, ...(c.extraction_pin ? { extraction_pin: true as const } : {}), ...(c.llm_models?.length ? { llm_models: c.llm_models } : {}) } : {}) };
+}
+
+/** HARN-116: the models gbrain's own route may call for a cell, the extraction model first; empty without llm "proxy". */
+export function gbrainLlmModels(g: Pick<ResolvedGbrain, 'llm' | 'extraction_model' | 'llm_models'> | null | undefined): string[] {
+  return g?.llm === 'proxy' && g.extraction_model ? [...new Set([g.extraction_model, ...(g.llm_models ?? [])])] : [];
 }
 
 /** What plan prints for a gbrain cell: <surface>/<install>/<embeddings>. */
@@ -512,6 +523,18 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.install !== undefined && c.gbrain.install !== 'mcp' && !installHarnesses.includes(c.harness)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.install "${c.gbrain.install}" is defined for harnesses ${installHarnesses.filter((h) => !h.startsWith('_')).join(', ')} (gbrain documents no ${c.gbrain.install} install for ${c.harness}; gbrain/pin.json "install")`);
       if (c.gbrain.embeddings !== undefined && c.gbrain.embeddings !== 'off' && c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.embeddings ${c.gbrain.embeddings} needs the bot-visible brain; only the bot-visible brains are built with embeddings`);
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
+      // HARN-116: gbrain's own model route. Its calls leave through ANTHROPIC_BASE_URL only, so every model it may call is Anthropic and priced.
+      if (c.gbrain.llm !== undefined && c.gbrain.llm !== 'off' && c.gbrain.llm !== 'proxy') throw bad('llm', c.gbrain.llm, ['off', 'proxy']);
+      if (c.gbrain.llm !== 'proxy' && (c.gbrain.extraction_model !== undefined || c.gbrain.extraction_pin !== undefined || c.gbrain.llm_models !== undefined)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.extraction_model, gbrain.extraction_pin and gbrain.llm_models need gbrain.llm "proxy"; a keyless sidecar makes no model call`);
+      if (c.gbrain.llm === 'proxy') {
+        if (typeof c.gbrain.extraction_model !== 'string') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.llm "proxy" needs gbrain.extraction_model, the facts extraction model gbrain must resolve (for example "anthropic:claude-haiku-5-5", gbrain's measured default through Anthropic); the sidecar refuses any other (HE-GBRAIN-017)`);
+        if (c.gbrain.extraction_pin !== undefined && typeof c.gbrain.extraction_pin !== 'boolean') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.extraction_pin must be true or false; got ${JSON.stringify(c.gbrain.extraction_pin)}`);
+        if (c.gbrain.llm_models !== undefined && !Array.isArray(c.gbrain.llm_models)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.llm_models must be a list of provider:model ids; got ${JSON.stringify(c.gbrain.llm_models)}`);
+        for (const m of [c.gbrain.extraction_model, ...(c.gbrain.llm_models ?? [])]) {
+          if (typeof m !== 'string' || !/^anthropic:[A-Za-z0-9._-]+$/.test(m)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain's own model route serves Anthropic models only (it sets ANTHROPIC_BASE_URL); got ${JSON.stringify(m)}`);
+          if (!canonicalLookup(m)) throw new RunnerError('HE-PIN-002', `cell ${c.id}: gbrain model ${m} has no price in the dated price table runner/pricing/prices-<date>.json; fix: register its list price before any cell runs (a price change is a new dated file)`);
+        }
+      }
       // Company brain: brain and scope are additive; a cell without them is the gbrain arm's cell.
       // Member brain: brain "member" carries member tokens and ingest tokens; ingest "live" needs it.
       if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible", "company" or "member"; got ${JSON.stringify(c.gbrain.brain)}`);
@@ -773,7 +796,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''}${c.install ? ` install_arm=${c.install.arm} tag=${c.install.tag} commit=${c.install.commit.slice(0, 12)} seed=${c.install.seed}${c.install.paste_sha256 ? ` paste_sha256=${c.install.paste_sha256.slice(0, 12)}` : ''}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}${c.gbrain.channel_remember ? ` channel_remember=${c.gbrain.channel_remember}` : ''}${c.gbrain.serves ? ` serves=${c.gbrain.serves}` : ''}${c.gbrain.labels ? ` labels=${c.gbrain.labels}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''}${c.install ? ` install_arm=${c.install.arm} tag=${c.install.tag} commit=${c.install.commit.slice(0, 12)} seed=${c.install.seed}${c.install.paste_sha256 ? ` paste_sha256=${c.install.paste_sha256.slice(0, 12)}` : ''}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}${c.gbrain.channel_remember ? ` channel_remember=${c.gbrain.channel_remember}` : ''}${c.gbrain.serves ? ` serves=${c.gbrain.serves}` : ''}${c.gbrain.labels ? ` labels=${c.gbrain.labels}` : ''}${c.gbrain.llm === 'proxy' ? ` llm=proxy extraction_model=${c.gbrain.extraction_model}${c.gbrain.extraction_pin ? ' pinned' : ''}${c.gbrain.llm_models?.length ? ` llm_models=${c.gbrain.llm_models.join(',')}` : ''}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
@@ -1135,7 +1158,7 @@ async function main(argv: string[]): Promise<number> {
     // Capture mode, refused before anything starts unless the run id is a capture run's.
     const { parseCaptureOptions } = await import('./trial/capture.ts');
     const callingCells = manifest.cells.filter((c) => c.harness_mode !== 'scripted' && mode !== 'scripted' && (cells ? cells.includes(c.id) : true));
-    const providers = callingCells.flatMap((c) => [c.model, ...(c.utility_models ?? []), c.gbrain?.embeddings ?? 'off']).filter((m) => m.includes(':')).map((m) => m.slice(0, m.indexOf(':')));
+    const providers = callingCells.flatMap((c) => [c.model, ...(c.utility_models ?? []), c.gbrain?.embeddings ?? 'off', ...gbrainLlmModels(c.gbrain ? resolveGbrain(c.gbrain) : null)]).filter((m) => m.includes(':')).map((m) => m.slice(0, m.indexOf(':')));
     const capture = parseCaptureOptions({ runId: manifest.run_id, upstream: all('--capture-upstream'), dns: has('--capture-dns') ? (flag('--capture-dns') ?? '') : undefined, providers }) ?? undefined;
     requireRoutedCells(callingCells);
     const offline = has('--cursor-offline');

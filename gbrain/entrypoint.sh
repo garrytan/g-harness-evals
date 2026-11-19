@@ -44,12 +44,21 @@
 #                     key), handed to gbrain as OPENAI_API_KEY so the proxy, which forwards nothing for the slot without it,
 #                     accepts the query embeddings; never logged. Sets GBRAIN_MODEL_DISCOVERY=off beside it, so gbrain
 #                     sends no GET /v1/models through the slot
+#   HE_GBRAIN_LLM     off (default) | proxy (HARN-116): with proxy, gbrain's own model calls (fact extraction and the rest of
+#                     what gbrain calls at its shipped defaults) leave through ANTHROPIC_BASE_URL, the metering proxy's slot URL
+#                     for this trial, and present HE_GBRAIN_PROXY_TOKEN (trial-token:<id>.<32 hex>, nothing else is accepted),
+#                     handed to gbrain as ANTHROPIC_API_KEY, the variable gbrain needs set to treat Anthropic as configured;
+#                     GBRAIN_MODEL_DISCOVERY=off beside it. Before serve, gbrain's resolveFactsExtractionModel is recorded in
+#                     $HE_GBRAIN_OUT/llm.json (model, source, the pin and the route; gbrain/extraction-model.ts); the runner
+#                     refuses a model other than the cell's (HE-GBRAIN-017). Off, the sidecar stays keyless as before
+#   HE_GBRAIN_EXTRACTION_PIN  with proxy only: an anthropic:<model> id set with gbrain config set facts.extraction_model before
+#                     the extraction model is recorded
 #
 # Copies the chosen brain to /brain (the path the brain was built at; gbrain records absolute paths), mints a bearer
 # token for the trial into $HE_GBRAIN_OUT/token (never stdout, never a log), then serves MCP over HTTP on 0.0.0.0:3131
 # with the chosen surface and the rate limits lifted, until SIGTERM. The environment carries no provider key: the image has
 # none and the runner passes none; an embedded brain's calls leave through OPENAI_BASE_URL only, presenting the runner's
-# per-trial proxy token. A company brain is served with GBRAIN_REMOTE_PRIVATE_PAGES=1, so
+# per-trial proxy token, and under HE_GBRAIN_LLM=proxy its own model calls through ANTHROPIC_BASE_URL with the same token. A company brain is served with GBRAIN_REMOTE_PRIVATE_PAGES=1, so
 # the pages whose frontmatter says visibility: private (the five private notes) are served like every other page:
 # gbrain's default hides such pages from every remote caller, and the company-brain run measures the harness and the
 # source grants, not that page-level default (the default is recorded as a finding in the report).
@@ -67,6 +76,7 @@ set -euo pipefail
 : "${HE_GBRAIN_CHANNEL_REMEMBER:=member}"
 : "${HE_GBRAIN_SERVES:=none}"
 : "${HE_GBRAIN_LABELS:=none}"
+: "${HE_GBRAIN_LLM:=off}"
 refuse() { echo "$1" >&2; exit 2; }
 pin=/opt/sidecar/gbrain/pin.json
 case "$HE_GBRAIN_SPLIT" in dev|heldout) ;; *) refuse "HE_GBRAIN_SPLIT must be dev or heldout (got $HE_GBRAIN_SPLIT)" ;; esac
@@ -81,6 +91,14 @@ case "$HE_GBRAIN_ACCESS" in none|rules) ;; *) refuse "HE_GBRAIN_ACCESS must be n
 [ "$HE_GBRAIN_ACCESS" = none ] || { [ "$HE_GBRAIN_BRAIN" = member ] && [ "$HE_GBRAIN_SCOPE" = member ] && [ "$HE_GBRAIN_INGEST" = off ]; } || refuse "HE_GBRAIN_ACCESS=rules needs HE_GBRAIN_BRAIN=member, HE_GBRAIN_SCOPE=member and HE_GBRAIN_INGEST=off (got $HE_GBRAIN_BRAIN, $HE_GBRAIN_SCOPE, $HE_GBRAIN_INGEST); fix: set gbrain: {surface: starter, brain: member, scope: member, access: rules}"
 case "$HE_GBRAIN_SURFACE" in starter|verbs) ;; *) refuse "HE_GBRAIN_SURFACE must be starter or verbs (got $HE_GBRAIN_SURFACE); fix: set gbrain.surface on the cell to one of them" ;; esac
 case "$HE_GBRAIN_EMBEDDINGS" in off) ;; openai:text-embedding-3-small) ;; *) refuse "HE_GBRAIN_EMBEDDINGS must be off or openai:text-embedding-3-small (got $HE_GBRAIN_EMBEDDINGS); fix: set gbrain.embeddings on the cell to one of them" ;; esac
+case "$HE_GBRAIN_LLM" in off|proxy) ;; *) refuse "HE_GBRAIN_LLM must be off or proxy (got $HE_GBRAIN_LLM); fix: set gbrain.llm on the cell to one of them" ;; esac
+if [ "$HE_GBRAIN_LLM" = proxy ]; then
+  [ -n "${ANTHROPIC_BASE_URL:-}" ] || refuse "HE_GBRAIN_LLM=proxy needs ANTHROPIC_BASE_URL (the metering proxy's slot URL); the sidecar never holds a key, so without the route gbrain cannot make its model calls"
+  [[ "${HE_GBRAIN_PROXY_TOKEN:-}" =~ ^trial-token:[^[:space:]]+\.[0-9a-f]{32}$ ]] || refuse "HE_GBRAIN_LLM=proxy needs HE_GBRAIN_PROXY_TOKEN, the proxy slot's per-trial token (trial-token:<id>.<32 hex>); nothing else is accepted as gbrain's model credential"
+  [ -z "${HE_GBRAIN_EXTRACTION_PIN:-}" ] || [[ "$HE_GBRAIN_EXTRACTION_PIN" =~ ^anthropic:[A-Za-z0-9._-]+$ ]] || refuse "HE_GBRAIN_EXTRACTION_PIN must be an anthropic:<model> id (got $HE_GBRAIN_EXTRACTION_PIN); gbrain's model calls leave through ANTHROPIC_BASE_URL only"
+elif [ -n "${ANTHROPIC_BASE_URL:-}${HE_GBRAIN_EXTRACTION_PIN:-}" ]; then
+  refuse "ANTHROPIC_BASE_URL and HE_GBRAIN_EXTRACTION_PIN need HE_GBRAIN_LLM=proxy; a keyless sidecar makes no model call"
+fi
 case "$HE_GBRAIN_SERVES" in none|several) ;; *) refuse "HE_GBRAIN_SERVES must be none or several (got $HE_GBRAIN_SERVES); fix: set gbrain.serves on the cell to several or leave it out" ;; esac
 case "$HE_GBRAIN_LABELS" in none|readers) ;; *) refuse "HE_GBRAIN_LABELS must be none or readers (got $HE_GBRAIN_LABELS); fix: set gbrain.labels on the cell to readers or leave it out" ;; esac
 [ "$HE_GBRAIN_LABELS" = none ] || [ "$HE_GBRAIN_SERVES" = several ] || refuse "HE_GBRAIN_LABELS=$HE_GBRAIN_LABELS needs HE_GBRAIN_SERVES=several; the labels are read only by member-bound keys"
@@ -114,7 +132,7 @@ case "$HE_GBRAIN_INGEST/$HE_GBRAIN_CHANNEL_REMEMBER" in live/*|*/conversation) w
 [ "$want_ingest_tokens" = 0 ] || [ -s "$src/ingest-tokens.json" ] || refuse "no ingest-tokens.json in $src; the member brain was built without ingest tokens; rebuild the image (gbrain/README.md)"
 [ "$want_grants" = 0 ] || [ "$(jq -r '.grants | length' "$src/manifest.json" 2>/dev/null || echo 0)" -gt 0 ] || refuse "no grants in $src/manifest.json; the company brain was built without source grants; rebuild the image (gbrain/README.md)"
 
-for k in ANTHROPIC_API_KEY OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY VOYAGE_API_KEY; do
+for k in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN OPENAI_API_KEY OPENROUTER_API_KEY GEMINI_API_KEY VOYAGE_API_KEY; do
   if [ -n "${!k:-}" ]; then echo "refusing to start: $k is set in the sidecar environment; gbrain must never see a model key" >&2; exit 2; fi
 done
 # An embedded brain presents the proxy slot's per-trial token as its OpenAI credential (2026-10-28: the proxy forwards nothing
@@ -123,12 +141,15 @@ done
 # With a key set, gbrain would also run its OpenAI model discovery (GET /v1/models) before the first embedding; that request
 # would be metered under the trial key and counted among the harness's requests, so discovery is switched off (the embedding
 # model is pinned by the cell).
+# HARN-116: gbrain's own model route presents the same token as its Anthropic credential (checked above to be the runner's shape).
+if [ "$HE_GBRAIN_LLM" = proxy ]; then export ANTHROPIC_API_KEY="$HE_GBRAIN_PROXY_TOKEN" GBRAIN_MODEL_DISCOVERY=off; fi
 if [ "$HE_GBRAIN_EMBEDDINGS" != off ]; then
   case "${HE_GBRAIN_PROXY_TOKEN:-}" in
     trial-token:*) export OPENAI_API_KEY="$HE_GBRAIN_PROXY_TOKEN" GBRAIN_MODEL_DISCOVERY=off; unset HE_GBRAIN_PROXY_TOKEN ;;
     *) refuse "HE_GBRAIN_EMBEDDINGS=$HE_GBRAIN_EMBEDDINGS needs HE_GBRAIN_PROXY_TOKEN (the proxy slot's per-trial token, trial-token:<id>.<hex>); the proxy forwards nothing for the slot without it" ;;
   esac
 fi
+unset HE_GBRAIN_PROXY_TOKEN
 
 mkdir -p "$HE_GBRAIN_OUT"
 log() { printf '%s gbrain-sidecar[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" >> "$HE_GBRAIN_OUT/sidecar.log"; }
@@ -216,6 +237,19 @@ if [ "$want_grants" = 1 ]; then
 fi
 umask 022
 log "token minted (trial-$HE_TRIAL_ID${owner:+, bound to the brain owner $owner}) into $HE_GBRAIN_OUT/token at $(( ($(date +%s%N) - t0) / 1000000 )) ms"
+if [ "$HE_GBRAIN_LLM" = proxy ]; then
+  # HARN-116: the facts extraction model gbrain will use, recorded before serve (after the pin, when the cell asks for one). The
+  # receipt holds the model, gbrain's source for it, the pin and the route URL; never the token.
+  lerr="$HE_GBRAIN_OUT/llm.stderr.log"
+  if [ -n "${HE_GBRAIN_EXTRACTION_PIN:-}" ]; then
+    bun /opt/gbrain/src/cli.ts config set facts.extraction_model "$HE_GBRAIN_EXTRACTION_PIN" >>"$lerr" 2>&1 || { log "gbrain config set facts.extraction_model $HE_GBRAIN_EXTRACTION_PIN failed (see llm.stderr.log)"; echo "gbrain config set facts.extraction_model failed; see $HE_GBRAIN_OUT/sidecar.log" >&2; exit 2; }
+  fi
+  resolved=$(bun /opt/sidecar/gbrain/extraction-model.ts 2>>"$lerr" | tail -1 || true)
+  jq -e '(.model | type) == "string" and (.source | type) == "string"' <<<"$resolved" >/dev/null 2>&1 || { log "gbrain's facts extraction model did not resolve (see llm.stderr.log)"; echo "gbrain's facts extraction model did not resolve; see $HE_GBRAIN_OUT/sidecar.log" >&2; exit 2; }
+  jq -n --argjson e "$resolved" --arg pin "${HE_GBRAIN_EXTRACTION_PIN:-}" --arg url "$ANTHROPIC_BASE_URL"     '{schema_version: 1, extraction: {model: $e.model, source: $e.source}, pinned: (if $pin == "" then null else $pin end), route: {env: "ANTHROPIC_BASE_URL", url: $url}}' > "$HE_GBRAIN_OUT/llm.json.tmp"
+  mv "$HE_GBRAIN_OUT/llm.json.tmp" "$HE_GBRAIN_OUT/llm.json"
+  log "llm proxy: gbrain's model calls leave through ANTHROPIC_BASE_URL=$ANTHROPIC_BASE_URL with the slot's per-trial token; facts extraction resolves to $(jq -r '"\(.extraction.model) (source \(.extraction.source))"' "$HE_GBRAIN_OUT/llm.json")${HE_GBRAIN_EXTRACTION_PIN:+, pinned with gbrain config set facts.extraction_model}"
+fi
 
 GBRAIN_ADMIN_BOOTSTRAP_TOKEN=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
 export GBRAIN_ADMIN_BOOTSTRAP_TOKEN

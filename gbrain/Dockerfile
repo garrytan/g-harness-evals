@@ -80,7 +80,7 @@ RUN git init --quiet /opt/gbrain && cd /opt/gbrain \
     && rm -rf .git \
     && mkdir -p /opt/sidecar \
     && printf '{"gbrain_commit":"%s","gbrain_ref":"%s","gbrain_version":"%s","bun":"%s"}\n' "$resolved" "$GBRAIN_COMMIT" "$version" "$(bun --version)" > /opt/sidecar/image.json
-COPY gbrain/build-brain.ts gbrain/build-install.ts gbrain/pin.json gbrain/entrypoint.sh gbrain/export-install.sh gbrain/rebind-sources.ts /opt/sidecar/gbrain/
+COPY gbrain/build-brain.ts gbrain/build-install.ts gbrain/pin.json gbrain/entrypoint.sh gbrain/export-install.sh gbrain/rebind-sources.ts gbrain/extraction-model.ts /opt/sidecar/gbrain/
 COPY world/types.ts /opt/sidecar/world/types.ts
 COPY --from=world-input /world.json /opt/sidecar/world/seed/world.json
 # The world's digest goes into image.json; a sealed build stops here when the world it received is not the receipt's.
