@@ -44,7 +44,7 @@ export const DEFAULT_GBRAIN_IMAGE = 'harness-eval/gbrain:dev';
 export const GBRAIN_PORT = 3131;
 
 /** A docker call as a child process the event loop keeps running beside: other trials' worlds answer while it runs. */
-async function sh(args: string[], timeoutMs = 120_000): Promise<{ status: number | null; stdout: string; stderr: string }> {
+export async function sh(args: string[], timeoutMs = 120_000): Promise<{ status: number | null; stdout: string; stderr: string }> {
   const proc = Bun.spawn(args, { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   const timer = setTimeout(() => proc.kill('SIGKILL'), timeoutMs);
   try {
@@ -53,7 +53,7 @@ async function sh(args: string[], timeoutMs = 120_000): Promise<{ status: number
   } finally { clearTimeout(timer); }
 }
 
-const uidGid = () => `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
+export const uidGid = () => `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
 
 export interface GbrainSidecarOptions {
   trialId: string;
@@ -123,6 +123,16 @@ export interface GbrainSidecar {
   ready_ms: number;
   /** SIGTERM, wait, collect docker logs into outDir, remove the container and its network. Idempotent. */
   stop(graceMs?: number): Promise<void>;
+  /** HARN-116: SIGTERM and wait, keeping the stopped container and its network so its /brain can be copied out (docker cp) and
+   *  gbrain's CLI can run on the copy before stop removes them. Idempotent; stop halts first. */
+  halt(graceMs?: number): Promise<void>;
+  /** The container's name, and the docker run arguments that put a one-off gbrain CLI container on the sidecar's network and route
+   *  as the same user. */
+  container: string;
+  cliRunArgs: string[];
+  /** The environment a one-off gbrain CLI container needs for gbrain's own model route (docker -e pairs); empty while the sidecar
+   *  is keyless, so a CLI facts drain there defers with no_key and its jobs count as timed out. */
+  cliEnv: string[];
 }
 
 /** The image exists locally (synchronous: a one-off check before anything runs). */
@@ -308,12 +318,19 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     const [status, code] = r.stdout.trim().split(' ');
     return status === 'running' || status === 'created' ? null : `the sidecar exited ${code} before it was ready`;
   };
-  let stopped: Promise<void> | null = null;
-  const stop = (graceMs = 10_000) => {
-    stopped ??= (async () => {
+  let halted: Promise<void> | null = null;
+  const halt = (graceMs = 10_000) => {
+    halted ??= (async () => {
       await sh(['docker', 'stop', '-t', String(Math.ceil(graceMs / 1000)), name], graceMs + 30_000);
       const logs = await sh(['docker', 'logs', name]);
       writeFileSync(join(out, 'docker.log'), `${logs.stdout}\n${logs.stderr}`);
+    })();
+    return halted;
+  };
+  let stopped: Promise<void> | null = null;
+  const stop = (graceMs = 10_000) => {
+    stopped ??= (async () => {
+      await halt(graceMs);
       await sh(['docker', 'rm', '-f', name]);
       await removeOwnNetwork();
     })();
@@ -372,7 +389,8 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
     }
     const ready_ms = Date.now() - started;
     log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, access ${access}${o.serves ? `, serves ${o.serves}` : ''}${o.labels ? `, labels ${o.labels}` : ''}, ingest ${ingest}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}${ingestTokens ? `, ${Object.keys(ingestTokens.tokens.sources).length} ingest tokens` : ''}`);
-    return { url, token, tokenPath, image, image_id, brain, scope, access, surface, embeddings, tokens, grants, ingest: ingest === 'live' ? ingestTokens : null, channelRemember: o.channelRemember === 'conversation' ? ingestTokens : null, ready_ms, stop };
+    const cliRunArgs = ['--user', uidGid(), '--network', network, ...route.filter((a, i) => a !== '-p' && route[i - 1] !== '-p')];
+    return { url, token, tokenPath, image, image_id, brain, scope, access, surface, embeddings, tokens, grants, ingest: ingest === 'live' ? ingestTokens : null, channelRemember: o.channelRemember === 'conversation' ? ingestTokens : null, ready_ms, stop, halt, container: name, cliRunArgs, cliEnv: [] };
   } catch (e) {
     await stop(5_000);
     const tail = existsSync(join(out, 'docker.log')) ? readFileSync(join(out, 'docker.log'), 'utf8').trim().split('\n').slice(-3).join(' | ') : '';

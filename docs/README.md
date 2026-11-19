@@ -87,6 +87,7 @@ Everything below is the full list, including one folder per run. Codes like inte
 - plans/: the approved plan (v2), its review record, decisions D1 to D10, findings, open tasks and every reviewer file, one folder per plan.
 - [private-by-hash.md](private-by-hash.md): the private-by-hash result class. How a run keeps its ledger and usage log private and publishes only their hashes: what its preregistration pins, the results attestation it commits after the run, and the checks in CI and the private lane.
 - [publishing-checklist.md](publishing-checklist.md): what was audited before the repository can be made public (`bun scripts/publish-audit.ts`), how to run it again, the merge record, and what the owner still decides.
+- [owner-identity.md](owner-identity.md): how an owner-identity trial is scored: the owner, person and unattributed surfaces, the false-owner and owner-recall numbers, the store dump, the facts drain before grading and the pilot audit helper.
 - [qm-findings.md](qm-findings.md): product observations about QM v0.1.15 from the source read, the smokes, the inner-harness run and the probe suite, each with its trials and smallest reproduction.
 - [receipts-manifest.json](receipts-manifest.json): the machine-readable receipts list, one entry per counted run with its preregistration commits and hashed artifacts (generated 2026-10-26 beside this index).
 - [report-v0.1.md](report-v0.1.md): the one-page account of the v0.1 multi-user cell: finding, limits, interests, tables with intervals, taxonomy and spend, with every number copied from a named receipt.
@@ -106,6 +107,10 @@ Everything below is the full list, including one folder per run. Codes like inte
 - [verify.md](verify.md): `bun run verify`, which rebuilds every published run's analysis files from its committed receipts and fails when a published value differs: what it checks and does not check, how to read its output, the per-run recipes under `scripts/verify/runs/`, and how it keeps keys and receipts safe.
 
 ## Changelog
+
+### 2026-11-19: owner-identity.md listed
+
+The pages list gains a line for owner-identity.md, the page for the owner-identity grader, store dump and facts drain. Why: the page is new on this branch.
 
 ### 2026-11-15: particle-swap-2026-11 reported
 
