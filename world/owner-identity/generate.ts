@@ -136,7 +136,7 @@ export function generateBank(seed: string, split: Split, nTasks: number): Map<st
     const { qs, text } = questions(cast, L.facts);
     const files = built.files.map((f, j): WorldFile => ({
       id: `F-${id}-${j + 1}`, path: `${folder}/${f.name}`, folder, owner: o.id, team: null, visibility: 'private', kind: 'note', title: f.name,
-      date: new Date(ctx.start).toISOString().slice(0, 10), status: null, accounts: [], split, slug: `imports/${id}`, bytes: Buffer.byteLength(f.text), sha256: sha(f.text), body: f.text,
+      date: new Date(ctx.start).toISOString().slice(0, 10), status: null, accounts: [], split, slug: `imports/${id}`, brain: false, bytes: Buffer.byteLength(f.text), sha256: sha(f.text), body: f.text,
     }));
     tasks.push({
       id, family: 'I', title: `Owner identity, import: ${built.title}`, actors: [o.id], files,

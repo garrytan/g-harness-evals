@@ -271,7 +271,7 @@ export function companyPageList(world: World, split: 'dev' | 'heldout'): ListedC
     for (const slug of c.source_slugs) add({ slug, kind: c.kind === 'dm' ? 'dm' : 'channel', world_id: c.id, world_name: c.name, visibility: c.kind === 'dm' ? 'dm' : 'channel', readers: c.members });
   }
   for (const f of world.files) {
-    if (!loaded(f, split)) continue;
+    if (!loaded(f, split) || f.brain === false) continue;
     add({ slug: f.slug, kind: f.kind, world_id: f.id, world_name: f.title, visibility: f.visibility, readers: fileReaders(world, split, f) });
   }
   for (const m of world.mail) {
@@ -365,7 +365,7 @@ export function pageList(world: World, split: 'dev' | 'heldout'): ListedPage[] {
     for (const slug of c.source_slugs) pages.push({ page_slug: `${split}/${slug}`, slug, kind: 'channel', world_id: c.id, world_name: c.name, visibility: 'channel' });
   }
   for (const f of world.files) {
-    if (f.visibility !== 'public' || !loaded(f, split)) continue;
+    if (f.visibility !== 'public' || !loaded(f, split) || f.brain === false) continue;
     pages.push({ page_slug: `${split}/${f.slug}`, slug: f.slug, kind: 'file', world_id: f.id, world_name: f.title, visibility: 'public' });
   }
   return pages;

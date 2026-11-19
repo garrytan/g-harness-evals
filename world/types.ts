@@ -86,6 +86,9 @@ export interface WorldFile {
   bytes: number;
   sha256: string;
   body: string;
+  /** owner-identity (GST-3217): false for a raw file the world serves through its file tools and no brain imports (an import
+   *  folder's export files, which have no corpus page). Absent, the file is a brain page like any other. */
+  brain?: false;
 }
 
 export interface CalendarEvent {
