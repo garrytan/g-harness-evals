@@ -127,6 +127,12 @@ export interface PredicateResult {
  *  allows, after that many had been answered; the proxy refused it and the trial ended there. A scored outcome, not an error. */
 export type Termination = 'completed' | 'timeout' | 'approval_stop' | 'harness_error' | 'model_error' | 'infra_error' | 'exam_fault' | 'request_cap';
 
+/** Why an infra_error trial is excluded, when the runner names it. gbrain_extraction_dropped (HE-GBRAIN-018): a cell with gbrain's
+ *  model on lost an extraction job (dropped, failed or still queued after the drain), so the store under grade is not what gbrain
+ *  would have written. */
+export const INFRA_CLASSES = ['gbrain_extraction_dropped'] as const;
+export type InfraClass = (typeof INFRA_CLASSES)[number];
+
 export interface GradeResult {
   grade: 'pass' | 'fail' | 'n/a';
   predicates: PredicateResult[];
@@ -486,6 +492,35 @@ export interface TrialGbrain {
    *  memory-provider client (caller "provider"), present only when the log has a provider event; records written before it
    *  counted provider events in the top-level figures. */
   events: TrialGbrainEvents & { provider?: TrialGbrainEvents };
+  /** HARN-116: present on a cell with gbrain's model on (runner/trial/gbrain-drain.ts). */
+  drain?: TrialGbrainDrain;
+}
+
+/** HARN-116: the facts drain before grading. queue_idle: gbrain's facts work went quiet before the timeout (its in-process queue has no
+ *  outside read at gbrain a26eb922, so quiet means no change in the ingest log, the facts-absorb jobs or get_stats for quiet_ms);
+ *  signals: the MCP reads that answered. cli_drain: whether gbrain's own `dream --phase facts_drain` ran on the stopped brain,
+ *  with its outcome. drained: facts-absorb jobs of this trial that completed (the CLI drain's count plus completed job rows);
+ *  dropped: by reason, the facts:absorb ingest-log rows written during the trial (queue_overflow, queue_shutdown, gateway_*,
+ *  parse_failure...; write_pending_accepted is information and left out) and failed or dead facts-absorb jobs of the trial;
+ *  timed_out: this trial's facts-absorb jobs still queued after the CLI drain; preexisting_backlog: queued jobs older than the trial
+ *  (the image's own). Any dropped or timed-out job, a queue that never went quiet, or a drain error is infra class
+ *  gbrain_extraction_dropped. */
+export interface TrialGbrainDrain {
+  queue_idle: boolean;
+  wait_ms: number;
+  quiet_ms: number;
+  timeout_ms: number;
+  polls: number;
+  signals: string[];
+  cli_drain: 'not_needed' | 'ran' | 'failed';
+  cli_outcome?: string;
+  drained: number;
+  dropped: Record<string, number>;
+  timed_out: number;
+  preexisting_backlog: number;
+  facts_rows: number;
+  wall_ms: number;
+  error?: string;
 }
 
 export interface TrialGbrainEvents { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number; degraded?: number; write_errors?: Record<string, number> }
@@ -566,6 +601,8 @@ export interface TrialRecord {
   paths: Record<string, string>;
   /** The HE- line that ended the trial early, when one did. */
   error?: string;
+  /** Set on an infra_error the runner can name (INFRA_CLASSES). */
+  infra_class?: InfraClass;
   /** gbrain arm lane D addition: set on a trial of a cell that carries gbrain. */
   gbrain?: TrialGbrain;
   /** Lane B bridge addition: set on a trial run through the Lane B bridge. */

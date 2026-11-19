@@ -20,8 +20,8 @@
 // record's ablation field. The filter's outcome never changes the termination: the primary analysis is intention to treat.
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
+import { dirname, join, resolve } from 'node:path';
+import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialGbrainDrain, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { cellModels, taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
@@ -30,6 +30,9 @@ import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
 import { type InternalNetwork, startComposeHarness, startDockerHarness } from './docker.ts';
 import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, checkCompanyTokens, checkIngestTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
 import { GBRAIN_WRITE_TOOLS, type GbrainUpstream } from '../../world/services/gbrain-tap.ts';
+import { drainGbrain, drainProblem, gbrainLlmOn } from './gbrain-drain.ts';
+import { storePath } from '../grade/owner-identity-store.ts';
+import { gradeOwnerIdentityFiles } from '../grade/owner-identity.ts';
 import { tokenMembers } from '../../gbrain/build-brain.ts';
 import { isQmMemoryProvider, memoryProviderWiring, type QmProviderBlock, type QmProviderWiring } from '../../harnesses/qm/memory-provider.ts';
 import { canReadFile } from '../grade/predicates.ts';
@@ -119,6 +122,8 @@ export interface TrialOptions {
   /** A Cursor cell (runner/trial/cursor.ts): the egress allowlist's URL, set as the container's HTTPS_PROXY, and the key,
    *  which goes to the container's docker run alone, by name. */
   cursor?: { proxyUrl: string; key: string };
+  /** HARN-116: the bound on the facts drain's wait for gbrain to go quiet on a cell with gbrain's model on (default 120 s). */
+  gbrainDrainTimeoutS?: number;
 }
 
 export interface TrialContext {
@@ -321,6 +326,8 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let ablation: TrialAblation | undefined;
   let capStop = false;
   let modelMismatch = false;
+  let drainRecord: TrialGbrainDrain | undefined;
+  let drainError: string | null = null;
   const paths: Record<string, string> = { dir: dirs.root, trial_json: join(dirs.root, 'trial.json'), events: join(dirs.root, 'events.jsonl'), turns: join(dirs.root, 'turns.jsonl'), snapshot: join(dirs.root, 'snapshot.json'), grade: join(dirs.root, 'grade.json'), logs: dirs.logs };
   if (proxy) { paths.usage = join(dirs.root, 'usage.json'); paths.reconcile = join(dirs.root, 'reconcile.json'); }
   if (sidecar) paths.gbrain = join(dirs.root, 'gbrain');
@@ -375,6 +382,14 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     const snapshot = await world.snapshot();
     writeAtomic(paths.snapshot!, JSON.stringify(snapshot, null, 1) + '\n');
     if (harness) await harness.stop(opts.stopGraceS * 1000);
+    // HARN-116: with gbrain's model on, gbrain finishes its extraction before the sidecar goes and the store is dumped from the stopped brain.
+    if (sidecar && gbrainLlmOn(cell.gbrain)) {
+      const drained = await drainGbrain({ sidecar, trialId: trial.id, trialDir: dirs.root, since: started_at, log, ...(opts.gbrainDrainTimeoutS ? { timeoutMs: opts.gbrainDrainTimeoutS * 1000 } : {}) });
+      drainRecord = drained.record;
+      if (drained.store) paths.owner_identity_store = storePath(dirs.root);
+      drainError = drainProblem(trial.id, drained.record);
+      if (drainError) log(drainError);
+    }
     if (sidecar) await sidecar.stop();
 
     if (proxy) {
@@ -405,6 +420,14 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       grade = await ctx.grade(evidence);
     }
     writeAtomic(paths.grade!, JSON.stringify(grade, null, 1) + '\n');
+    // HARN-116: an owner-identity task (gold.json beside task.toml, people.json beside the world) is graded from the dumped store.
+    const gold = join(task.dir, 'gold.json');
+    const people = join(dirname(world.worldPath), 'people.json');
+    if (paths.owner_identity_store && existsSync(gold) && existsSync(people)) {
+      paths.owner_identity_verdicts = join(dirs.root, 'owner-identity', 'verdicts.json');
+      try { gradeOwnerIdentityFiles({ store: paths.owner_identity_store, gold, people, out: paths.owner_identity_verdicts, reply: windows.at(-1)?.reply_text ?? null }); }
+      catch (e) { log(`owner-identity grader: ${(e as Error).message}`); }
+    }
   } finally {
     if (harness) await harness.stop(opts.stopGraceS * 1000).catch(() => undefined);
     if (sidecar) await sidecar.stop().catch(() => undefined);
@@ -428,9 +451,11 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     if (!check.ok && !infraError && !readyFailure) semanticError = `HE-GBRAIN-005 trial ${trial.id}: ${check.reason}; the trial is infra_error and leaves the rung (docs/gbrain-arm.md, "The install ladder"); fix: read <trial dir>/gbrain/serve.log and the proxy's usage lines for ${key}`;
   }
   if (semanticError) { error = semanticError; log(semanticError); }
+  if (gbrainRecord && drainRecord) gbrainRecord.drain = drainRecord;
+  if (drainError) error = error ? `${error}; ${drainError}` : drainError;
 
   const exits = windows.map((w) => w.exit);
-  const decided = trialTermination({ cellModel: cell.model, fromExits: classify(exits, readyFailure, endedEarly, grade.approval_stop), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) });
+  const decided = trialTermination({ cellModel: cell.model, fromExits: classify(exits, readyFailure, endedEarly, grade.approval_stop), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError || drainError) });
   if (decided.note) { log(decided.note); error = error ? `${error}; ${decided.note}` : decided.note; }
   const termination = decided.termination;
   const ended = Date.now();
@@ -441,6 +466,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     turns: { planned: task.turns.length, run: windows.length, exits },
     usage, wall_ms: ended - started, started_at, ended_at: new Date(ended).toISOString(), paths,
     ...(error ? { error } : {}),
+    ...(drainError && termination === 'infra_error' ? { infra_class: 'gbrain_extraction_dropped' as const } : {}),
     ...(gbrainRecord ? { gbrain: gbrainRecord } : {}),
     ...(ablation ? { ablation } : {}),
   };
