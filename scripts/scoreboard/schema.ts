@@ -113,6 +113,7 @@ export interface ReportRow {
   superseded_by: string | null;
   verdict: (typeof VERDICT_WORDS)[number] | null;
   verdict_quote: string | null;
+  next_time?: string;
   note?: string;
 }
 
@@ -127,6 +128,7 @@ export function validateReports(doc: unknown, where: string): ReportRow[] {
     if (r.verdict !== null && !VERDICT_WORDS.includes(r.verdict)) errors.push(`${where}: ${r.folder}: verdict must be KEEP, FIX-METHOD, CUT-CANDIDATE or null`);
     if ((r.verdict === null) !== (r.verdict_quote === null)) errors.push(`${where}: ${r.folder}: a verdict needs its verdict_quote, and a quote needs its verdict`);
     if (r.verdict_quote !== null && !r.report) errors.push(`${where}: ${r.folder}: verdict_quote needs a report`);
+    if (r.next_time !== undefined && (typeof r.next_time !== 'string' || !/^[\w.-]+\.md(#[\w-]+)?$/.test(r.next_time))) errors.push(`${where}: ${r.folder}: next_time must name a Markdown file in the run folder, optionally with an anchor`);
   }
   if (errors.length) throw new Error(errors.join('\n'));
   return d.reports!;

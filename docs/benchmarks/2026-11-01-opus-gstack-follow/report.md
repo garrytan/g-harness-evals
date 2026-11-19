@@ -44,7 +44,7 @@ Terms used below:
 **Followed 0 of 16 on every arm. Decision: STOP.**
 
 - **One change from the stub run:** the agent passes `system_prompt={"type": "preset", "preset": "claude_code"}`, so Claude Code 2.1.312 uses its own system prompt.
-- **It reached the model.** In the $0 dry run, every captured request carried a 6,340-character system prompt with Claude Code's guidance block, against 137 characters with the unpatched agent (preset, stub).
+- **It reached the model.** In the $0 dry run, every captured request carried a 6,340-character system prompt with Claude Code's guidance block, against 137 characters with the unpatched agent ([preset](results/gn-follow-preset-2026-11/dry-run/preset-system-prompt.txt), [stub](results/gn-follow-preset-2026-11/dry-run/stub-system-prompt.txt)).
 - **The paid trials show it too.** The median first request grew by about 2,150 to 2,250 tokens on every arm: gstack 40,614 to 42,768, none 20,578 to 22,812, placebo 39,535 to 41,781 (`laneb.first_req_prompt_tokens`).
 - **Same tasks, arms and tries as the stub run:** 48 trials.
 
@@ -185,6 +185,19 @@ Terms used below:
 4. **Model: frontier only.** Opus 5.5 is the only model tested. GPT-6.1 Sol was not run in these checks. There is no Haiku or Sonnet arm.
 
 CUT-CANDIDATE: gstack's skill step procedures (/investigate, /qa, /review, /ship) on Opus 5.5, as delivered by skill text alone. The body loads in every session, and 0 of 46 gstack sessions across three checks ran any step (0 of 30 with Claude Code's own system prompt; /investigate 0 of 22; under the preset, /qa, /review and /ship are each 0 of 4, so per-skill bounds are wide (about 0.49)). The deciding run (preset, STOP, 0 of 16) is on gstack-native-v1 dev tasks that Opus 5.5 nearly saturates. The hard-task check was VOID (no-gstack passed 8/8), so its 0 of 14 is descriptive. The fix to test is enforcing the steps with hooks, or dropping them.
+
+## Next time
+
+### What we'd change if we ran this again
+
+- Run a cheap headroom check on the no-gstack arm before picking hard tasks, because the SWE-bench Verified bugs were chosen from older models' public failures, Opus 5.5 solved all 8 with no gstack, and the hard check came back VOID.
+- Run the control-arm preflight on a separate VM or after the shard ends, because on the hard check it ran on the gstack VM during two trials, so their wall times may be perturbed.
+- Put the skill probe in the run's own commit, because the hard check's commit had none, so every trial was re-probed afterwards with code and transcripts that are not in this repository.
+- Keep a per-request log of every model call, because these checks ran behind Harbor's own sidecar with no such log, so a later correction about connections cut by a 15-second timeout could not be sized for them.
+
+### Ideas to improve the eval
+
+- Test skill steps enforced by hooks rather than delivered as skill text alone, because the skill body loaded in every gstack session and 0 of 46 gstack sessions ran a single step.
 
 ## Deviations
 

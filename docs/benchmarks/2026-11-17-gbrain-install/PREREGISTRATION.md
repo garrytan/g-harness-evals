@@ -15,7 +15,7 @@ Status: frozen 2026-11-17T06:14Z, before any counted trial. Run id `gbrain-insta
 
 Each line names what we do differently for each way the result can land (R97). "Arm A" is the bare arm, "arm B" the paste arm. Every line uses the finish line **as scored**.
 
-- **Which step gbrain's maintainers fix first:** the step with the most failed runs in arm A, pooled over harnesses and models. Ties go to the step with more "needed a person" events, then to the larger share of time. The failure table lists every step with counts, gbrain error codes and two example transcripts, and goes to gbrain's maintainers (GST-2714) when the results merge.
+- **Which step gbrain's maintainers fix first:** the step with the most failed runs in arm A, pooled over harnesses and models. Ties go to the step with more "needed a person" events, then to the larger share of time. The failure table lists every step with counts, gbrain error codes and two example transcripts, and goes to gbrain's maintainers (internal-task) when the results merge.
 - **Arm A much worse than arm B** (a gap larger than the detectable difference below): the problem is finding gbrain and its install path, so the first batch of fixes targets discovery (what a search, or a guess like `npm install gbrain` or `clawhub:gbrain`, lands on).
 - **Both arms low and close:** the install flow itself is the problem, and the first batch fixes the worst step.
 - **A "not supported yet" note:** when a harness reaches the finish line in under 20% of runs in both arms on two releases in a row, and its failures sit at the "harness wired" step, gbrain's maintainers add a "not supported yet, use X instead" note to that harness's install route until a working setup path for it lands.
@@ -36,7 +36,7 @@ It also stops after two reruns in a row with no gain (the upper end of the 95% i
 
 ## Approval
 
-- **Garry, 2026-11-15:** "Do it", on plan v2 of GST-2715 (the autoplan run `gst-2715-20261115010356`, gate_rev 1; the approved plan file has sha256 `022edb3ead2d36e1f752fa8b400db6ffba0bb45e1701404ca2f0f2841d44e6de`). The arms, design, decision lines, sample sizes, detectable differences, stop rule, cost and caps here are copied from it. Where this file differs from the plan, [Deviations](#deviations-from-the-plan) says why.
+- **Garry, 2026-11-15:** "Do it", on plan v2 of internal-task (the autoplan run `gst-2715-20261115010356`, gate_rev 1; the approved plan file has sha256 `022edb3ead2d36e1f752fa8b400db6ffba0bb45e1701404ca2f0f2841d44e6de`). The arms, design, decision lines, sample sizes, detectable differences, stop rule, cost and caps here are copied from it. Where this file differs from the plan, [Deviations](#deviations-from-the-plan) says why.
 - **Changed on 2026-11-16, before any counted trial, by Garry's rule that every eval of gbrain runs on its newest release (R100):** the pin is the newest release on gbrain's main branch at freeze, not the release `#stable` serves; both arms end with one identical line naming that release; how often agents install something else is counted; the `#stable` hold window is dropped. See [Release pin](#release-pin).
 - **Decided after the plan (coordinating agent, 2026-11-15 and 2026-11-16):** arm B is the README paste prompt and reads master's install doc; the named stalls; the Fable smoke; the branching install is not an arm; the two preconditions; the PATH design choice; keyword-only search; the accepted departures; the conversation-archive and head-or-tail audits; the sharding and concurrency; the spend ceilings; and the results order. Each is stated below.
 
@@ -107,7 +107,7 @@ Outcomes: `recalled` (the finish line), `harness-memory`, `not-recalled` (instal
 
 - **after both halves of gbrain's large-brain upgrade fix** (gbrain#9472 in v0.60.732.0, and gbrain#9487 with #9490 in v0.60.733.0). Both change only an upgrade from a brain made before v0.51, which a fresh install never runs;
 
-- **after the Codex bun-PATH fix** (gbrain#9421, in v0.60.725.0, GST-2784). Our install-mode PATH entries (below) are then redundant for Codex, but they stay for every harness;
+- **after the Codex bun-PATH fix** (gbrain#9421, in v0.60.725.0, internal-task). Our install-mode PATH entries (below) are then redundant for Codex, but they stay for every harness;
 - **after the conversation archive turned on by default** (v0.60.727.0). On personal brains the install prints a one-time notice, and gbrain's maintenance pass writes one redacted page per conversation per day under `conversations/` (`gbrain transcripts archive off` turns it off). The notice is not a stall unless it ends the turn on a question. Archive pages count toward the brain's page count. Recall served from an archive page is reported separately (see [Analysis](#analysis-and-exclusions-frozen));
 - **after the personal and company branching install** (gbrain#9387, v0.60.724.0). It is not an arm here. If setup asks "personal or company" and the turn ends on that question, it is a named stall like any other question.
 
@@ -296,7 +296,7 @@ Any change to a pinned file before the report is a dated amendment or a new run 
 
 Under `docs/benchmarks/2026-11-17-gbrain-install/results/`: per shard its trials, ledger, proxy usage, egress log, cold-download line, install stops and VM records; the merged trials; the verdict and failure tables; the two audits; the miss readers' notes. The real-image check's report is `preflight/real-image-check.json`. Transcripts pass the token canary scan and the public-safety scan before the results pull request.
 
-**Order.** This preregistration and the results never share a pull request. This file merges to main before the first counted trial; the results and report come in a later pull request, and the per-step failure table goes to gbrain's maintainers (GST-2714) when the results merge.
+**Order.** This preregistration and the results never share a pull request. This file merges to main before the first counted trial; the results and report come in a later pull request, and the per-step failure table goes to gbrain's maintainers (internal-task) when the results merge.
 
 ## Amendments
 

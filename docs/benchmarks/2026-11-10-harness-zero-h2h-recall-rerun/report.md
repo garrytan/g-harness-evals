@@ -47,8 +47,20 @@ On the same four tasks the published runs read -16.7, -16.7 and -8.3 points, so 
 
 **Verdict, by the pre-data note's rule.** Exposure is confirmed, but no spliced interval lies entirely above zero, so FIX-METHOD (dev) stands for all three arms. The ceiling was an upper bound that assumed every affected failure would pass; the rerun shows those failures have another cause.
 
+## Next time
+
+### What we'd change if we ran this again
+
+- Check why cr-02 to cr-04 fail in the no-brain arms before spending a rerun on them, because every arm passed 0 of 9 there with or without gbrain, so the rerun could not show a recall gain on the tasks the ceiling came from.
+- Run the grader audit on this run's trials, because the run was published just before the audit requirement reached main, so its grades were never audited.
+
+### Ideas to improve the eval
+
+- Report a defect's ceiling next to the no-brain pass rate on the same tasks, because the ceiling assumed every affected failure would pass, and the rerun showed those failures have another cause.
+- Set `gbrain.channel_remember` on purpose in every new multi-member gbrain cell and say which value ran, because the default keeps a save private to the member who made it, and 48 of 2,230 earlier trials in such cells had a save that another member needed.
+
 ## Method and receipts
 
 - **Statistics:** the h2h report's method, `clusteredPairedDelta` in [runner/stats/paired.ts](../../../runner/stats/paired.ts), clustered by task, seed 7, 10,000 draws. Rebuild keylessly with `bun scripts/corrections/recall-rerun-analysis.ts --rerun docs/benchmarks/2026-11-10-harness-zero-h2h-recall-rerun/results --published docs/benchmarks/2026-11-06-harness-zero-h2h/results --out <dir>`; [analysis/analysis.md](analysis/analysis.md) is its output.
 - **Configuration:** [prereg.json](prereg.json) lists the five cells. The run's commit was main at 6aab4a298d plus the channel_remember switch (which lands on main in the same change as this page), this config and the pre-data note; the gbrain image was built from `gbrain/` at that commit. Because that commit sits on a dev branch and not on main, this run is not listed in docs/benchmarks/preregistrations.json and is not a counted run.
-- **Receipts:** [results/](results/) holds the merged trials, each shard's ledger, proxy usage and run log, and each shard's one-trial smoke under `<shard>.smoke.*`. fanout-manifest.json is the shard plan.
+- **Receipts:** [results/](results/) holds the merged trials, each shard's ledger, proxy usage and run log, and each shard's one-trial smoke under `<shard>.smoke.*`. [fanout-manifest.json](fanout-manifest.json) is the shard plan.

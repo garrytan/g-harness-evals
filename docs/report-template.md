@@ -25,6 +25,18 @@
 
 ## Why null?
 
+## Next time
+
+<!-- Required. One line per item: "<change>, because <reason>." Keep to the few that matter. -->
+
+### What we'd change if we ran this again
+
+- <change>, because <reason>.
+
+### Ideas to improve the eval
+
+- <change>, because <reason>.
+
 ## Deviations
 
 <!-- No run spend in this file: it goes in spend-internal.md beside it, which the public export leaves out. Cost in the body only where it is the lesson. -->

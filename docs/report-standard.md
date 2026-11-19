@@ -65,6 +65,8 @@ Every reported run also gets a rebuild recipe, scripts/verify/runs/<folder>.json
 ## The end of the report
 
 - **Why null?** before the deviations, when the result is null or negative for a part (CREW.md rule).
+- **Next time**, required, after "Why null?" and before the deviations. A `## Next time` section with two short lists: "What we'd change if we ran this again" and "Ideas to improve the eval". Each item is one line, the change and then its reason: "<change>, because <reason>." Keep to the few that matter, and trace each one to the run's evidence. Every report in a run folder dated 2026-11-16 or later carries it, starting with the frontier shootout (2026-11-16-frontier-shootout) and the gbrain install test (2026-11-17-gbrain-install); `tests/report-next-time.test.ts` fails such a report.md without at least one item.
+  - Reports published before this rule were backfilled. A pinned report.md (a preregistration's results globs name it, as for every preregistered run, so its published text stays as it is) carries the section in a sibling file, `docs/benchmarks/<run>/next-time.md`, which names the run, links the report and holds the same section. An unpinned report.md has the section added in place. Either way, the run's row in docs/scoreboard/reports.json names it under `next_time` (`next-time.md`, or `report.md#next-time`), and the [reports index](reports-index.md) links it. A run with no row yet is linked from [next-time.md](next-time.md) instead.
 - **Deviations** and **Corrections**, dated.
 - **Internal mechanics at the end:** issue codes, lanes, ledgers, gates and leases go in a closing section of the report (an Agent notes section), not in the takeaways or results. Run spend goes in spend-internal.md (see Words and numbers).
 - **Disclosures last**, word for word from the disclosures list, for every subject the report tests, compares or features (R55).
@@ -77,3 +79,4 @@ Tick each of these in the PR body. A results PR with an unticked line isn't read
 - [ ] **Claim check.** A reviewer traced every number and takeaway to its receipt.
 - [ ] **Scoreboard and index.** The scoreboard entry and the docs/scoreboard/reports.json row are in, and `bun scripts/scoreboard/build.ts` ran.
 - [ ] **Spend kept out of report.md.** Run spend is in `spend-internal.md`.
+- [ ] **Next time.** report.md has its `## Next time` section with at least one item.

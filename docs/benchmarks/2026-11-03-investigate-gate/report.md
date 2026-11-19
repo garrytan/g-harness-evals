@@ -23,7 +23,7 @@
 Sources for the numbers below:
 
 - every count, rate and interval: a file under [results/](results/);
-- spend: internal-task's spend ledger, summarised in results/spend.json;
+- spend: internal-task's spend ledger, summarised in [results/spend.json](results/spend.json);
 - internal-task comment ids: [results/amendments.json](results/amendments.json).
 
 ## 1. Verdict under the prereg's decision rule
@@ -153,6 +153,20 @@ All five live in `tests/gates-938-audit.test.ts` on `harn14/gates-938` (`570cd01
   - That leaves Opus with 9 full tasks plus one thin unit, and Sol with 10 full tasks plus one short unit.
 - **Reaper note:** the Phase 3 launcher left `UBI_TTL_HOURS` at its 3-hour default. At 2026-11-03T04:00:36Z, internal-task's gbrain operator reaper destroyed two wave A VMs about 70 minutes past that TTL, with their trial files, ledgers and proxy logs. Wave B and both extra shards ran with `UBI_TTL_HOURS` set to 12, 6 and 3 hours.
 
+## Next time
+
+### What we'd change if we ran this again
+
+- Set each VM's time-to-live above the shard's expected wall time, and copy trials off the VM as they finish, because the launcher kept the 3-hour default and a reaper destroyed two shards with their trial files, losing 13 trials; counting the 11 whose rewards were logged would move Opus's pass-rate gap between the gate arm and gstack without the gate from +7.14 to about -0.3 points.
+- State in the preregistration whether each decision clause is pooled or per model, and whether FIX applies when other KEEP clauses also fail, because this one said neither, so the report had to read both ways.
+- Keep a per-request log of every model call, because this run went through Harbor's own sidecar with no such log, so a later correction about connections cut by a 15-second timeout could not be sized for it.
+
+### Ideas to improve the eval
+
+- Make the gate treat source writes made through Bash as edits, because Opus wrote source through Bash 40 times past the gate, so the run did not cleanly test hook-enforced steps.
+- Pick tasks where GPT-6.1 Sol's no-gstack arm sits well above the floor, because that arm passed 1 of 22, which left little room to show a gain.
+- Set a bar for each model on its own as well as for the pool, because Opus carried about 0.46 of the pooled weight, so an Opus-only effect below about +26 points could not reach the pooled +10 bar.
+
 ## 7. Deviations and amendments
 
 internal-task-a comment ids are given in brackets. The plan file is pilot-plan.md in the Captain drive (handoffs/internal-task-b/gates-938/), and the prereg is frozen at sha256 `9fbafda9...5b1485`.
@@ -192,7 +206,7 @@ internal-task-a comment ids are given in brackets. The plan file is pilot-plan.m
 
 ## 8. Spend
 
-spend.json, from internal-task's spend ledger.
+[spend.json](results/spend.json), from internal-task's spend ledger.
 
 - **Total:** $254.31 of $300. That is $204.60 model (booked) and $49.71 Ubicloud.
 - **Phases 0 to 2:** $74.83 model, $23.39 Ubicloud.
@@ -222,7 +236,7 @@ spend.json, from internal-task's spend ledger.
   - links to the audit, the reconciliation and the analysis scripts, kept on `harn14/gates-938` at `07312a7ed`.
 - **If the scratch branch goes away:** the linked files are kept in the Captain drive at handoffs/internal-task/gates-938/evidence/phase3/, with the sha256s listed in the results README, and can be republished on request.
 - [results/phases-0-2.json](results/phases-0-2.json): Phase 0 smoke, Gate P counts for screen 1, screen 2 and pooled, and the Phase 2 prices.
-- results/spend.json, [results/pins.json](results/pins.json) and [results/amendments.json](results/amendments.json).
+- [results/spend.json](results/spend.json), [results/pins.json](results/pins.json) and [results/amendments.json](results/amendments.json).
 - **Not committed:** transcripts, recorder and gate-state files, ledgers, proxy logs and task content. They are in the Captain drive at handoffs/internal-task/gates-938/evidence/.
 
 ## Disclosures
