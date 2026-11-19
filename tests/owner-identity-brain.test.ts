@@ -63,6 +63,7 @@ describe('build-brain --owner (gbrain stand-in)', () => {
     expect(argvs[set]).toEqual(['access', 'owner', 'set', employee.id, '--json']);
     expect(imp).toBeLessThan(add);
     expect(add).toBeLessThan(set);
+    expect(manifest.pages.every((p) => p.page_slug === p.slug && p.source_path === `${p.slug}.md`)).toBe(true);
     expect(manifest.owner).toMatchObject({ member: employee.id, name: employee.name, email: employee.email, owner_view: { owner: employee.id } });
     expect(calls.flatMap((c) => c.keyish)).toEqual([]);
   });
@@ -71,6 +72,7 @@ describe('build-brain --owner (gbrain stand-in)', () => {
     const { manifest, calls } = build('plain');
     expect(calls.some((c) => c.argv[0] === 'access')).toBe(false);
     expect('owner' in manifest).toBe(false);
+    expect(manifest.pages.every((p) => p.page_slug === `dev/${p.slug}` && p.source_path === `dev/${p.slug}.md`)).toBe(true);
   });
 
   test('a gbrain that reports another owner stops the build', () => {

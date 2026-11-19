@@ -467,7 +467,10 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
     const src = locate(o.corpus, o.split, p.slug);
     if (!src) { missing.push(p.slug); continue; }
     const body = readFileSync(src);
-    const dest = join(o.staging, o.split, `${p.slug}.md`);
+    // An owner brain is laid out the way gbrain lays out a personal brain: people pages at people/<slug>, where gbrain's entity
+    // resolution looks for them, so its pages are staged at the root, not under the split.
+    const rel = ownerMember ? `${p.slug}.md` : `${o.split}/${p.slug}.md`;
+    const dest = join(o.staging, rel);
     mkdirSync(dirname(dest), { recursive: true });
     if (p.readers) {
       const text = body.toString('utf8');
@@ -475,7 +478,7 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
       if (!text.startsWith('---\n') || end < 0 || /^readable_by:/m.test(text.slice(0, end))) throw new Error(`${p.slug}: --labels readers needs frontmatter without readable_by`);
       writeFileSync(dest, `---\nreadable_by: [${p.readers.join(', ')}]\n${text.slice(4)}`);
     } else copyFileSync(src, dest);
-    pages.push({ ...p, source_path: `${o.split}/${p.slug}.md`, sha256: createHash('sha256').update(body).digest('hex'), bytes: body.length });
+    pages.push({ ...p, ...(ownerMember ? { page_slug: p.slug } : {}), source_path: rel, sha256: createHash('sha256').update(body).digest('hex'), bytes: body.length });
   }
   if (missing.length) throw new Error(`${missing.length} listed page(s) missing from ${o.corpus}: ${missing.join(', ')}`);
   log(`${o.split}: staged ${pages.length} pages (${pages.filter((p) => p.kind === 'channel').length} channel pages, ${pages.filter((p) => p.kind === 'file').length} public files) under ${o.staging}`);
