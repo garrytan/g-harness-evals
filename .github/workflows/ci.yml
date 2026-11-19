@@ -26,9 +26,15 @@ on:
 permissions:
   contents: read
 
+# Runners: in garrytan/harness-evals every job runs on a Ubicloud runner (ubuntu 24.04, the image GitHub's ubuntu-latest
+# uses), because GitHub-hosted minutes on this private repository draw on an Actions budget that ran out on 2026-11-19,
+# and Ubicloud runners do not. The exported public copy keeps ubuntu-latest, which is free for public repositories and
+# never puts a fork's pull request on paid runners. public-export runs only here, so it names the Ubicloud runner directly.
+# Artifact storage draws on the same budget and refuses uploads while it is spent, so the two artifact uploads below
+# (the tested tree and the export report) may fail without failing their job.
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'garrytan/harness-evals' && 'ubicloud-standard-4-ubuntu-2404' || 'ubuntu-latest' }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -76,6 +82,7 @@ jobs:
         run: bun scripts/ci-tree-json.ts --junit "$RUNNER_TEMP/junit/builders.xml" --junit "$RUNNER_TEMP/junit/main.xml" --junit "$RUNNER_TEMP/junit/serial.xml" --out "$RUNNER_TEMP/checks-tree/tree.json"
       - name: Upload the tested tree
         if: steps.docs.outputs.docs_only != 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: checks-tree
@@ -95,7 +102,7 @@ jobs:
   # hashes. Keyless: every rebuild step runs with an empty environment. It needs full git history: the analysis scripts
   # look up the commit that added each run's preregistration and refuse to run in a shallow clone.
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'garrytan/harness-evals' && 'ubicloud-standard-2-ubuntu-2404' || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -123,7 +130,7 @@ jobs:
   # The public check took 41 seconds on the public main's 69 experiments on a 4-core machine;
   # most of the timeout is for the full clone.
   prereg:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'garrytan/harness-evals' && 'ubicloud-standard-2-ubuntu-2404' || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -152,7 +159,7 @@ jobs:
   # held-*.tsv files carry held codes and stay on the runner.
   public-export:
     if: github.repository == 'garrytan/harness-evals'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-4-ubuntu-2404
     # Over 41 runs on 2026-11-12 and 13 the export tree step took 12 to 23 minutes, the keyless step 19 to 25 and the rest
     # up to 9. A 50 minute limit cancelled 5 of them, 2 after every step had passed; 70 is 13 minutes above the slowest
     # steps added up.
@@ -196,6 +203,7 @@ jobs:
         run: bun scripts/public-export/ci-gate.ts --report "$RUNNER_TEMP/export/report/tree-report.json" --summary "$GITHUB_STEP_SUMMARY"
       - name: Upload the export report (Markdown only)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: public-export-report
@@ -217,7 +225,7 @@ jobs:
   # Which paths changed, so the docker job runs only when the sidecar image, its build, the fake harness it drives or the
   # image tests could have changed: a pull request is compared with its base, a push to main with the commit before it.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'garrytan/harness-evals' && 'ubicloud-standard-2-ubuntu-2404' || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
       gbrain: ${{ steps.diff.outputs.gbrain }}
@@ -240,7 +248,7 @@ jobs:
   docker-e2e:
     needs: changes
     if: needs.changes.outputs.gbrain == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.repository == 'garrytan/harness-evals' && 'ubicloud-standard-4-ubuntu-2404' || 'ubuntu-latest' }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
