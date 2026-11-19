@@ -128,7 +128,7 @@ export function writeRunRequestTask(row: RequestRow, outDir: string, timeBudgetS
   return outDir;
 }
 
-/** got-skill.json for a trial: got-skill.ts on the four push harnesses (catalog_opened), skill-opens.ts on QM (opened). refused:
+/** got-skill.json for a trial: got-skill.ts on the five push harnesses (catalog_opened), skill-opens.ts on QM (opened). refused:
  *  the body the request cap refused, whose history holds the tool calls of the agent's last step; read with the rest. */
 export function gotSkillRecord(harness: string, catalog: string[], requests: unknown[], trialDir: string, refused: unknown[] = []): { file: Record<string, unknown>; opened: string[] } {
   const source = ['proxy-requests', ...(refused.length ? ['proxy-refused-request'] : []), ...traceFiles(harness, trialDir)];
@@ -137,7 +137,7 @@ export function gotSkillRecord(harness: string, catalog: string[], requests: unk
     const o = skillOpens({ catalog, requests: bodies as Array<Record<string, unknown>> });
     return { file: { schema: 'he-got-skill/1', harness, source, requests: requests.length, opened: o.opened, opens: o.opens, other: o.other, refused: o.refused }, opened: o.opened };
   }
-  if (!['openclaw', 'claude-code', 'codex', 'hermes'].includes(harness)) throw new RunnerError('HE-RUN-002', `skill-requests: no got-skill reader for harness ${harness}`);
+  if (!['openclaw', 'claude-code', 'codex', 'hermes', 'pi'].includes(harness)) throw new RunnerError('HE-RUN-002', `skill-requests: no got-skill reader for harness ${harness}`);
   const g = gotSkill({ harness: harness as Harness, catalog, requests: bodies, traces: readTraces(harness, trialDir) });
   return { file: { schema: 'he-got-skill/1', source, requests: requests.length, ...g }, opened: g.catalog_opened };
 }
@@ -152,16 +152,17 @@ const gstackFile = (t: string) => t.includes('/') && t.split('/').some((seg) => 
  *  or through ~ and $HOME, which the adapters set to /harness-state), the skill trees QM syncs into its sandbox under
  *  .agent-skills/, and the catalog QM's arm images keep under /opt/catalog-layer/skills/ (scripts/skill-resolver/step0/qm/arms). */
 const CATALOG_COPY = [/^\/opt\/skill-resolver\//, /^\/opt\/catalog-layer\/skills\//, /^\$\{?HE_SKILL_KIT_DIR\}?\//, /^\/workspace\/skills\//, /^\/(?:root\/)?workspace\/\.agent-skills\//,
-  /^(?:\/harness-state|~|\$\{?(?:HE_SESSION_STATE_DIR|HOME)\}?)\/(?:claude|codex|hermes)\/skills\//, /^\$\{?(?:CODEX_HOME|HERMES_HOME|CLAUDE_CONFIG_DIR)\}?\/skills\//];
+  /^(?:\/harness-state|~|\$\{?(?:HE_SESSION_STATE_DIR|HOME)\}?)\/(?:claude|codex|hermes|pi)\/skills\//, /^\$\{?(?:CODEX_HOME|HERMES_HOME|CLAUDE_CONFIG_DIR|PI_CODING_AGENT_DIR)\}?\/skills\//];
 /** What a QM tool call reads as files: a files read's path, or the reader arguments of an execute command. */
 const qmReadArgs = (c: { name: string; input: unknown }): string[] => {
   const i = (c.input ?? {}) as Record<string, unknown>;
   if (c.name === 'files' && i.action === 'read' && typeof i.path === 'string') return [i.path];
   return c.name === 'execute' && typeof i.command === 'string' ? shellReadArgs(i.command) : [];
 };
-const READ_HARNESSES = ['openclaw', 'claude-code', 'codex', 'hermes'];
-/** A result line saying a file is missing (cat, the harnesses' file-read tools, Node's ENOENT). */
-const MISSING = /no such file|ENOENT|does not exist|file not found/i;
+const READ_HARNESSES = ['openclaw', 'claude-code', 'codex', 'hermes', 'pi'];
+/** A result line saying a file is missing or could not be opened (cat, the harnesses' file-read tools, Node's ENOENT and
+ *  EACCES). */
+const MISSING = /no such file|ENOENT|does not exist|file not found|permission denied|EACCES/i;
 
 /** The clean-arm count (PREREGISTRATION.md, amendment of 2026-11-11, rule c), taken before the scrub removes the traces: the
  *  trial's reads of a gstack SKILL.md or other gstack skill file outside the trial's own catalog copy, such as the Capy drive's

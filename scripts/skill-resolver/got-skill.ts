@@ -1,55 +1,61 @@
 #!/usr/bin/env bun
 // "Got the skill" (internal-task): which catalog skills a trial opened, from its captured model requests and its tool trace.
 //
-//   bun scripts/skill-resolver/got-skill.ts --harness <openclaw|claude-code|codex|hermes> --catalog <manifest.json | names file>
+//   bun scripts/skill-resolver/got-skill.ts --harness <openclaw|claude-code|codex|hermes|pi> --catalog <manifest.json | names file>
 //       [--requests <fake.ndjson or proxy capture>]... [--trace <harness event log>]... [--json]
 //
 // A skill counts as opened when the agent:
-//   OpenClaw     called skills_read (directly or through tool_call), or read a <name>/SKILL.md file (read, or exec running a reader)
+//   OpenClaw     called skills_read (directly or through tool_call, named by name, tool or id, with or without a
+//                <namespace>:core: prefix), or read a <name>/SKILL.md file (read, or exec running a reader)
 //   Claude Code  called the Skill tool, or read a <name>/SKILL.md file (Read, or Bash running a reader)
 //   Codex        read a <name>/SKILL.md file (its shell tools running a reader; in code mode, a reader command in a string of
 //                exec's JavaScript), or named it as $<name> in a user message
 //   Hermes       called skill_view (a category/name selector counts as name), or read a <name>/SKILL.md file (read_file, or
 //                terminal running a reader)
+//   Pi           read a <name>/SKILL.md file (read, or bash running a reader)
 // Only a read counts (PREREGISTRATION.md, "a SKILL.md read"): the harness's file-read tool (READ_TOOL), or its shell tool
 // (SHELL_TOOL) when the command segment that names the path runs a reader (READERS: cat, head, tail, sed without -i, less, more,
 // nl, awk, bat, tac, as harnesses/qm/skill-opens.ts counts QM's execute reads) and the path is not a redirect target. A Write, Edit or patch, an echo, a grep, find or ls, or any other tool
 // that names the path is not an open.
 // A call whose tool result says the tool or file was not found (or is marked is_error) is listed with ok false and does not
 // count. Tool calls come from every assistant tool call carried in the requests (Anthropic Messages tool_use blocks, Responses
-// function_call, custom_tool_call and local_shell_call items) and, when given, the harness's own trace: Claude Code stream-json
+// function_call, custom_tool_call and local_shell_call items, Chat Completions assistant tool_calls) and, when given, the harness's own trace: Claude Code stream-json
 // (assistant tool_use records) and Codex exec --json events (command_execution items). Calls are deduplicated by call id.
 // A skill that is not in the catalog (a bundled or system skill) is listed under other.
 
 import { existsSync, readFileSync } from 'node:fs';
+import { posix } from 'node:path';
 
-export type Harness = 'openclaw' | 'claude-code' | 'codex' | 'hermes';
+export type Harness = 'openclaw' | 'claude-code' | 'codex' | 'hermes' | 'pi';
 export type ToolCall = { id: string | null; name: string; input: unknown; ok: boolean | null; source: 'request' | 'trace'; result?: string };
 export type Opened = { skill: string; via: string; ok: boolean; call_id: string | null; source: 'request' | 'trace' | 'user'; catalog: boolean };
 export type GotSkill = { harness: Harness; opened: Opened[]; catalog_opened: string[]; other_opened: string[]; failed: Opened[]; tool_calls: number };
 
-const SKILL_TOOL: Record<Harness, string | null> = { openclaw: 'skills_read', 'claude-code': 'Skill', codex: null, hermes: 'skill_view' };
+const SKILL_TOOL: Record<Harness, string | null> = { openclaw: 'skills_read', 'claude-code': 'Skill', codex: null, hermes: 'skill_view', pi: null };
 /** Each harness's file-read tool: any SKILL.md path in its input is a read. */
-const READ_TOOL: Record<Harness, string[]> = { openclaw: ['read'], 'claude-code': ['Read'], codex: [], hermes: ['read_file'] };
+const READ_TOOL: Record<Harness, string[]> = { openclaw: ['read'], 'claude-code': ['Read'], codex: [], hermes: ['read_file'], pi: ['read'] };
 /** Each harness's shell tool (Codex: its exec tools, the Responses local_shell call and its exec --json command_execution items). */
-const SHELL_TOOL: Record<Harness, string[]> = { openclaw: ['exec'], 'claude-code': ['Bash'], codex: ['exec', 'exec_command', 'shell', 'local_shell', 'command_execution'], hermes: ['terminal'] };
+const SHELL_TOOL: Record<Harness, string[]> = { openclaw: ['exec'], 'claude-code': ['Bash'], codex: ['exec', 'exec_command', 'shell', 'local_shell', 'command_execution'], hermes: ['terminal'], pi: ['bash'] };
 const READERS = new Set(['cat', 'head', 'tail', 'sed', 'less', 'more', 'nl', 'awk', 'bat', 'batcat', 'tac']);
 const LEAD = new Set(['env', 'sudo', 'command', 'time', 'nice', 'exec']);
 
 /** The arguments a shell command reads as files: each command segment (split at ; & | newlines, $( and backticks, with a
  *  bash/sh -c wrapper and its quotes taken off) whose program is a reader gives its arguments that are not a redirect target
- *  (> or >>), and, for sed, only without -i. */
+ *  (> or >>), and, for sed, only without -i. A relative argument after a cd in an earlier segment is joined to that folder. */
 export function shellReadArgs(command: string): string[] {
   const out: string[] = [];
+  let cwd: string | null = null;
+  const absolute = (w: string) => /^[/~$]/.test(w);
   for (const seg of command.split(/&&|\|\||[;&|\n]|\$\(|`|[()]/)) {
     const words = seg.replace(/['"]/g, ' ').split(/\s+/).filter(Boolean);
     while (words.length && (LEAD.has(words[0]!) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!))) words.shift();
     while (words.length > 1 && /^(?:ba|z|da)?sh$/.test(words[0]!.split('/').pop()!) && /^-[a-z]*c[a-z]*$/.test(words[1]!)) words.splice(0, 2);
     const prog = words[0]?.split('/').pop();
+    if (prog === 'cd' && words[1]) { cwd = absolute(words[1]) || !cwd ? words[1] : posix.join(cwd, words[1]); continue; }
     if (!prog || !READERS.has(prog) || (prog === 'sed' && words.some((w) => /^-[a-zA-Z]*i/.test(w) || w.startsWith('--in-place')))) continue;
     words.slice(1).forEach((w, i, rest) => {
       if (/^\d*>>?/.test(w) || /^\d*>>?$/.test(rest[i - 1] ?? '')) return;
-      out.push(w);
+      out.push(cwd && !absolute(w) && !w.startsWith('-') ? posix.join(cwd, w) : w);
     });
   }
   return out;
@@ -57,7 +63,7 @@ export function shellReadArgs(command: string): string[] {
 
 /** The skill names whose <name>/SKILL.md a shell command reads (shellReadArgs). */
 export const shellReads = (command: string): string[] => shellReadArgs(command).flatMap((w) => [...w.matchAll(SKILL_MD)].map((m) => m[1]!));
-const FAILED = /\bnot found\b|unknown tool|no such file|ENOENT|does not exist|is not a known skill/i;
+const FAILED = /\bnot found\b|unknown tool|no such file|ENOENT|does not exist|is not a known skill|permission denied|EACCES/i;
 const SKILL_MD = /([A-Za-z0-9._-]+)\/SKILL\.md\b/g;
 
 const parseJson = (s: unknown): unknown => { if (typeof s !== 'string') return s; try { return JSON.parse(s); } catch { return s; } };
@@ -66,12 +72,17 @@ const codeStrings = (code: string): string[] => [...code.matchAll(/"((?:[^"\\\n]
   .map((m) => m[1] !== undefined ? String(parseJson('"' + m[1] + '"')) : (m[2] ?? m[3])!);
 const textOf = (c: unknown): string => typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && typeof x === 'object' ? String((x as { text?: unknown }).text ?? (x as { output?: unknown }).output ?? '') : String(x))).join('\n') : c && typeof c === 'object' ? String((c as { text?: unknown }).text ?? '') : '';
 
-/** Every tool call an Anthropic Messages or Responses request body carries in its history, with the result's verdict and text. */
+/** Every tool call an Anthropic Messages, Chat Completions or Responses request body carries in its history, with the
+ *  result's verdict and text. */
 export function callsFromRequest(body: unknown): ToolCall[] {
   const b = (body ?? {}) as { messages?: unknown[]; input?: unknown[] };
   const calls: ToolCall[] = [], results = new Map<string, boolean>(), texts = new Map<string, string>();
   for (const m of Array.isArray(b.messages) ? b.messages : []) {
-    const content = (m as { content?: unknown }).content;
+    const { content, role, tool_calls: tcs, tool_call_id: tcid } = m as { content?: unknown; role?: string; tool_calls?: unknown; tool_call_id?: unknown };
+    for (const tc of Array.isArray(tcs) ? tcs as { id?: string; function?: { name?: unknown; arguments?: unknown } }[] : []) {
+      if (tc?.function?.name) calls.push({ id: tc.id ?? null, name: String(tc.function.name), input: parseJson(tc.function.arguments), ok: null, source: 'request' });
+    }
+    if (role === 'tool' && tcid) { const text = textOf(content); results.set(String(tcid), !FAILED.test(text.slice(0, 400))); texts.set(String(tcid), text); }
     for (const blk of Array.isArray(content) ? content as Record<string, unknown>[] : []) {
       if (blk?.type === 'tool_use') calls.push({ id: (blk.id as string) ?? null, name: String(blk.name), input: blk.input, ok: null, source: 'request' });
       if (blk?.type === 'tool_result') { results.set(String(blk.tool_use_id), !(blk.is_error === true || FAILED.test(textOf(blk.content).slice(0, 400)))); texts.set(String(blk.tool_use_id), textOf(blk.content)); }
@@ -124,7 +135,8 @@ function unwrap(c: ToolCall): ToolCall[] {
   if (c.name !== 'tool_call' && c.name !== 'call_tool') return [c];
   const i = (c.input ?? {}) as Record<string, unknown>;
   const inner = Array.isArray(i.calls) ? i.calls as Record<string, unknown>[] : [i];
-  return inner.filter((x) => typeof (x.name ?? x.tool) === 'string').map((x) => ({ ...c, name: String(x.name ?? x.tool), input: parseJson(x.arguments ?? x.args ?? x.input ?? {}) }));
+  return inner.filter((x) => typeof (x.name ?? x.tool ?? x.id) === 'string')
+    .map((x) => ({ ...c, name: String(x.name ?? x.tool ?? x.id).replace(/^[\w.-]+:core:/, ''), input: parseJson(x.arguments ?? x.args ?? x.input ?? {}) }));
 }
 
 export function strings(v: unknown, out: string[] = []): string[] {
@@ -206,7 +218,7 @@ if (import.meta.main) {
   const argv = process.argv.slice(2);
   const all = (n: string) => argv.flatMap((a, i) => (a === '--' + n && argv[i + 1] ? [argv[i + 1]!] : []));
   const harness = all('harness')[0] as Harness | undefined, catalog = all('catalog')[0];
-  if (!harness || !SKILL_TOOL.hasOwnProperty(harness) || !catalog) { console.error('usage: got-skill.ts --harness <openclaw|claude-code|codex|hermes> --catalog <manifest.json|names> [--requests <file>]... [--trace <file>]... [--json]'); process.exit(2); }
+  if (!harness || !SKILL_TOOL.hasOwnProperty(harness) || !catalog) { console.error('usage: got-skill.ts --harness <openclaw|claude-code|codex|hermes|pi> --catalog <manifest.json|names> [--requests <file>]... [--trace <file>]... [--json]'); process.exit(2); }
   const missing = [...all('requests'), ...all('trace'), catalog].filter((p) => !existsSync(p));
   if (missing.length) { console.error('got-skill: missing ' + missing.join(', ')); process.exit(2); }
   const r = gotSkill({ harness, catalog: readCatalogNames(catalog), requests: all('requests').flatMap(readRequests), traces: all('trace').map((p) => readFileSync(p, 'utf8').split('\n')) });

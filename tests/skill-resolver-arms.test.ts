@@ -392,7 +392,7 @@ describe('got the skill (got-skill.ts) on fixture traces', () => {
     });
   }
   test('only a read opens a skill: a Write, an edit or patch, an echo, a grep or a search naming the path does not; each harness\'s read does', () => {
-    const P = (h: Harness) => ({ openclaw: '/workspace/skills', 'claude-code': '/harness-state/claude/skills', codex: '/harness-state/codex/skills', hermes: '/harness-state/hermes/skills' })[h] + '/pdf/SKILL.md';
+    const P = (h: Harness) => ({ openclaw: '/workspace/skills', 'claude-code': '/harness-state/claude/skills', codex: '/harness-state/codex/skills', hermes: '/harness-state/hermes/skills', pi: '/harness-state/pi/skills' })[h] + '/pdf/SKILL.md';
     const anthropic = (calls: [string, unknown][]) => ({ messages: [{ role: 'assistant', content: calls.map(([name, input], i) => ({ type: 'tool_use', id: 'c' + i, name, input })) }] });
     const responses = (calls: [string, unknown][]) => ({ input: calls.map(([name, input], i) => ({ type: 'function_call', call_id: 'c' + i, name, arguments: JSON.stringify(input) })) });
     const body = (h: Harness, calls: [string, unknown][]) => h === 'codex' || h === 'hermes' ? responses(calls) : anthropic(calls);
@@ -401,14 +401,16 @@ describe('got the skill (got-skill.ts) on fixture traces', () => {
       'claude-code': [['Write', { file_path: P('claude-code'), content: 'x' }], ['Edit', { file_path: P('claude-code') }], ['Grep', { pattern: 'name', path: P('claude-code') }], ['Bash', { command: 'echo "see ' + P('claude-code') + '"' }], ['Bash', { command: 'ls ' + P('claude-code') + ' && find / -name SKILL.md' }]],
       codex: [['exec', { cmd: 'echo ' + P('codex') }], ['exec', { cmd: 'rg -n pdf ' + P('codex') }], ['apply_patch', { input: '*** Update File: ' + P('codex') }], ['exec', { cmd: 'printf x >> ' + P('codex') }]],
       hermes: [['write_file', { path: P('hermes'), content: 'x' }], ['search_files', { pattern: 'pdf', path: P('hermes') }], ['patch', { path: P('hermes') }], ['terminal', { command: 'echo ' + P('hermes') }]],
+      pi: [['write', { path: P('pi'), content: 'x' }], ['edit', { path: P('pi') }], ['bash', { command: 'echo ' + P('pi') }], ['bash', { command: 'grep -n name ' + P('pi') }]],
     };
     const reads: Record<Harness, [string, unknown][]> = {
       openclaw: [['read', { path: P('openclaw') }], ['exec', { command: 'cd /workspace && cat ' + P('openclaw') + ' | head -50' }]],
       'claude-code': [['Read', { file_path: P('claude-code') }], ['Bash', { command: 'sed -n 1,80p ' + P('claude-code') }]],
       codex: [['exec', { cmd: "bash -lc 'cat " + P('codex') + "'" }], ['shell', { command: ['bash', '-lc', 'head -40 ' + P('codex')] }]],
       hermes: [['read_file', { path: P('hermes') }], ['terminal', { command: 'tail -n +1 ' + P('hermes') }]],
+      pi: [['read', { path: P('pi') }], ['bash', { command: 'sed -n 1,80p ' + P('pi') }]],
     };
-    for (const h of ['openclaw', 'claude-code', 'codex', 'hermes'] as Harness[]) {
+    for (const h of ['openclaw', 'claude-code', 'codex', 'hermes', 'pi'] as Harness[]) {
       expect([h, gotSkill({ harness: h, catalog: ['pdf'], requests: [body(h, notReads[h])] }).catalog_opened]).toEqual([h, []]);
       for (const call of reads[h]) expect([h, call[0], gotSkill({ harness: h, catalog: ['pdf'], requests: [body(h, [call])] }).catalog_opened]).toEqual([h, call[0], ['pdf']]);
     }
