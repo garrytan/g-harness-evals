@@ -18,7 +18,6 @@ import { OFFSET_MIN, ZONE, localAt } from './formats/time.ts';
 
 export const DEV_SEED = 'owner-identity-dev-v1';
 export const TODAY = '2026-09-14';
-export const BOT = { id: 'moss', name: 'Moss', handle: 'moss' };
 export const SET_NAME = 'owner-identity';
 const DEV_I: Array<[Source, number]> = [['agent-session', 0], ['chat-1to1', 4], ['group-chat', 1], ['meeting', 0], ['meeting', 2], ['imessage', 2], ['email', 0], ['email', 1]];
 export const PROFILES: Record<number, { imports: Array<[Source, number]>; live: number; min: number }> = {
@@ -89,17 +88,17 @@ function live(c: Ctx, v: number): { members: Person[]; turns: Turn[] } {
   const GC: HardCase = 'group_chat';
   const ask = (text: string) => (text.startsWith('my ') ? `note for later: ${text}` : `remember that ${text}`);
   const t: Array<[Person, string]> = [
-    [a, `@moss ${ask(L.own(a, GC, true))}`],
-    [o, `@moss ${ask(L.own(o, GC, true))}`],
-    [b, `@moss ${ask(L.own(b, f === 0 ? 'similar_name_decoy' : GC, true))}`],
-    [o, `@moss ${L.relay(o, a, 'owner_quotes_other', (th) => `${a.first} told me ${th(THEY)}.`)}`],
+    [a, `${ask(L.own(a, GC, true))}`],
+    [o, `${ask(L.own(o, GC, true))}`],
+    [b, `${ask(L.own(b, f === 0 ? 'similar_name_decoy' : GC, true))}`],
+    [o, `${L.relay(o, a, 'owner_quotes_other', (th) => `${a.first} told me ${th(THEY)}.`)}`],
   ];
-  if (f === 0) t.push([x, `@moss on behalf of ${o.first}: ${L.relay(x, o, 'assistant_on_behalf', (th) => `${o.first} asked me to tell you that ${th(named(o.first))}.`)}`], [b, `@moss the other ${o.first} here, ${ask(L.own(b, 'similar_name_decoy', true))}`]);
-  if (f === 1) t.push([x, `@moss my scheduling agent sent this brief, can you keep it handy? You are working for ${o.name}. ${L.agent('agent:orchestrator', 'agent_brief_in_user_seat', o.id, 'brief')}`], [b, `@moss heads up: ${L.relay(b, o, 'owner_quoted_by_other', (th) => `${o.first} told me ${th(THEY)}.`)}`]);
-  if (f === 2) t.push([x, `@moss heads up: ${L.relay(x, o, 'owner_quoted_by_other', (th) => `${o.first} told me ${th(THEY)}.`)}`], [x, `@moss and ${ask(L.own(x, 'control', true))}`]);
-  if (f === 3) t.push([x, `@moss ${x.nick} here, ${ask(L.own(x, 'similar_name_decoy', true))}`], [x, `@moss also, ${ask(L.own(x, 'similar_name_decoy', true))}`]);
-  t.push([o, `@moss ${ask(L.own(o, GC, true))}`]);
-  return { members, turns: t.map(([p, text]) => ({ actor: p.id, channel: '', text, advance_clock_s: 300 })) };
+  if (f === 0) t.push([x, `on behalf of ${o.first}: ${L.relay(x, o, 'assistant_on_behalf', (th) => `${o.first} asked me to tell you that ${th(named(o.first))}.`)}`], [b, `the other ${o.first} here, ${ask(L.own(b, 'similar_name_decoy', true))}`]);
+  if (f === 1) t.push([x, `my scheduling agent sent this brief, can you keep it handy? You are working for ${o.name}. ${L.agent('agent:orchestrator', 'agent_brief_in_user_seat', o.id, 'brief')}`], [b, `heads up: ${L.relay(b, o, 'owner_quoted_by_other', (th) => `${o.first} told me ${th(THEY)}.`)}`]);
+  if (f === 2) t.push([x, `heads up: ${L.relay(x, o, 'owner_quoted_by_other', (th) => `${o.first} told me ${th(THEY)}.`)}`], [x, `and ${ask(L.own(x, 'control', true))}`]);
+  if (f === 3) t.push([x, `${x.nick} here, ${ask(L.own(x, 'similar_name_decoy', true))}`], [x, `also, ${ask(L.own(x, 'similar_name_decoy', true))}`]);
+  t.push([o, `${ask(L.own(o, GC, true))}`]);
+  return { members, turns: t.map(([p, text]) => ({ actor: p.id, channel: '', text: text.replace(/^./, (ch) => ch.toUpperCase()), advance_clock_s: 300 })) };
 }
 
 function locate(fact: Fact, texts: Array<{ file: string; text: string }>): { file: string; line: number } {
@@ -122,7 +121,7 @@ export function generateBank(seed: string, split: Split, nTasks: number): Map<st
   const r: Rng = rng(seedWords(seed));
   const cast = makeCast(r);
   const o = cast.owner;
-  const pool = new TokenPool(r, [...cast.people.flatMap((p) => [p.first, p.last, p.nick ?? '', p.discord]), BOT.name, 'Notetaker']);
+  const pool = new TokenPool(r, [...cast.people.flatMap((p) => [p.first, p.last, p.nick ?? '', p.discord]), 'Notetaker']);
   const order = r.shuffle(profile.imports.map((_, i) => i));
   const iIds = profile.imports.map((_, i) => `oi-${String(order[i]! + 1).padStart(2, '0')}-import`);
   const today = localAt(`${TODAY}T09:00:00`);
@@ -207,7 +206,7 @@ function readme(nI: number, nL: number, split: Split, publicSeed: boolean, cover
 
 ## Layout
 
-- \`world/world.json\`: the trial world. The owner, the agent (\`moss\`), 14 contacts, the live-task channels and every import file under \`members/<owner>/imports/<task>/\`.
+- \`world/world.json\`: the trial world. The owner, 14 contacts, the live-task channels and every import file under \`members/<owner>/imports/<task>/\`. The files are private to the owner; \`bot_reads_files_of\` names the owner, so the agent reads what the owner can read, as a personal agent does. The runner adds the agent itself.
 - \`world/people.json\`, \`world/owner-card.md\`: the cast with every handle, and the card each harness gets about its owner.
 - \`world/coverage.json\`: how many tasks carry each hard case, by source.
 - \`corpus/${split}/people/\`: one gbrain people page per person, plus a second page with the owner's name and nothing else.
@@ -237,11 +236,10 @@ function writeOut(cast: Cast, split: Split, tasks: TaskOut[], min: number, publi
     coverage[h] = { total: 0, ...Object.fromEntries([...SOURCES, 'live'].map((s) => [s, 0])) };
     for (const t of tasks) if (t.gold.hard_cases.includes(h)) { coverage[h]!.total!++; coverage[h]![t.gold.source]!++; }
   }
-  const bot: Member = { id: BOT.id, slack_id: 'UOIMOSS000', name: BOT.name, first: BOT.name, handle: BOT.handle, email: 'moss@example.net', role: "the owner's agent; the harness under test speaks as it", kind: 'agent', org: 'personal', team: null, cluster: null, org_wide: false, is_admin: false, split };
-  const world: World = {
-    world_id: `owner-identity-${split}`, today: TODAY, time_zone: { name: ZONE, offset_minutes: OFFSET_MIN },
+  const world: World & { bot_reads_files_of: string } = {
+    world_id: `owner-identity-${split}`, bot_reads_files_of: o.id, today: TODAY, time_zone: { name: ZONE, offset_minutes: OFFSET_MIN },
     source: { dataset: 'owner-identity', path: 'world/owner-identity/generate.ts', inputs: tasks.reduce((s, t) => s + t.files.length, 0) },
-    teams: [], members: [memberOf(o, split), bot, ...cast.people.slice(1).map((p) => memberOf(p, split))], accounts: [],
+    teams: [], members: cast.people.map((p) => memberOf(p, split)), accounts: [],
     channels: tasks.flatMap((t) => (t.channel ? [t.channel] : [])), messages: [], files: tasks.flatMap((t) => t.files), calendar: [], mail: [],
   };
   files.set('world/world.json', JSON.stringify(world, null, 2) + '\n');

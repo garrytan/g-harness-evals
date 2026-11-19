@@ -11,7 +11,7 @@
 
 ## Layout
 
-- `world/world.json`: the trial world. The owner, the agent (`moss`), 14 contacts, the live-task channels and every import file under `members/<owner>/imports/<task>/`.
+- `world/world.json`: the trial world. The owner, 14 contacts, the live-task channels and every import file under `members/<owner>/imports/<task>/`. The files are private to the owner; `bot_reads_files_of` names the owner, so the agent reads what the owner can read, as a personal agent does. The runner adds the agent itself.
 - `world/people.json`, `world/owner-card.md`: the cast with every handle, and the card each harness gets about its owner.
 - `world/coverage.json`: how many tasks carry each hard case, by source.
 - `corpus/dev/people/`: one gbrain people page per person, plus a second page with the owner's name and nothing else.

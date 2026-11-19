@@ -31,7 +31,8 @@ export function checkBank(files: Map<string, string>, split: Split, nTasks: numb
     const ownerId = people.owner;
     const memberIds = new Set(world.members.map((m) => m.id));
     for (const m of world.members) for (const k of ['id', 'slack_id', 'name', 'first', 'handle', 'email', 'role', 'kind', 'org', 'split'] as const) if (typeof m[k] !== 'string' || !m[k]) return `world member ${m.id} lacks ${k}`;
-    if (!world.members.some((m) => m.id === ownerId && m.kind === 'employee') || !world.members.some((m) => m.kind === 'agent')) return 'world lacks the owner (employee) or the agent member';
+    if (!world.members.some((m) => m.id === ownerId && m.kind === 'employee') || world.members.some((m) => m.kind === 'agent')) return 'world lacks the owner (employee) or carries an agent member the runner adds itself';
+    if ((world as typeof world & { bot_reads_files_of?: string }).bot_reads_files_of !== ownerId) return 'world.json does not set bot_reads_files_of to the owner';
     if (world.members.filter((m) => m.kind === 'contact').length < 12) return 'world has fewer than 12 contacts';
     for (const f of world.files) {
       if (new Bun.CryptoHasher('sha256').update(f.body).digest('hex') !== f.sha256 || Buffer.byteLength(f.body) !== f.bytes) return `file ${f.path} has a wrong sha256 or byte count`;
@@ -76,7 +77,7 @@ export function checkBank(files: Map<string, string>, split: Split, nTasks: numb
         if (t.turns.length < 6 || t.turns.length > 10) return `${id}: a live task needs 5 to 9 turns before the questions`;
         const ch = world.channels.find((c) => c.name === t.turns[0]!.channel);
         if (!ch || !ch.members.includes(ownerId) || ch.members.length !== 4) return `${id}: its channel is missing or not the owner plus three`;
-        if (t.turns.slice(0, -1).some((tt) => !tt.text.startsWith('@moss') || !ch.members.includes(tt.actor))) return `${id}: a channel turn does not mention the bot or comes from outside the channel`;
+        if (t.turns.slice(0, -1).some((tt) => tt.text.includes('@moss') || !ch.members.includes(tt.actor))) return `${id}: a channel turn names a bot handle or comes from outside the channel`;
         if (t.turns.slice(0, -1).filter((tt) => tt.actor !== ownerId && /(remember that I|note for later: my)/i.test(tt.text)).length < 2) return `${id}: fewer than two non-owners ask the bot to remember their own facts`;
         material.set(id, t.turns.slice(0, -1).map((tt) => tt.text).join('\n'));
         for (const fact of gold.facts) {
