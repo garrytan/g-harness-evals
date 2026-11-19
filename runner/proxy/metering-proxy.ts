@@ -37,7 +37,7 @@
  * Attribution across processes (lease mode): the harness binds a slot (the
  * path segment a shim's base URL carries) to a key around each question or
  * namespace ingest and reads the key's meter afterwards, through
- * `POST /__proxy/bind {slot, key, token?, models?, ablation?, max_requests?, collect_requests?, install?}`, `POST /__proxy/unbind {slot}`,
+ * `POST /__proxy/bind {slot, key, token?, models?, ablation?, max_requests?, collect_requests?, install?, caller?}`, `POST /__proxy/unbind {slot}`,
  * `POST /__proxy/finalize {key}` and `POST /__proxy/requests {key}` (HARN-52 Phase B, SlotLimits). With `--control-token` (or
  * SHOOTOUT_PROXY_CONTROL_TOKEN) these need the `x-proxy-control` header, so a
  * vendor container cannot move charges.
@@ -56,7 +56,8 @@
  * in-process mode ignores it) forwards only requests for those models: any other priced model, or a free count_tokens request for one, is refused 403 before
  * reserving or forwarding, logged with its model and the reason, at $0, inside the run-wide
  * `--allow-models` bound, which still applies. A bind without `models` adds no
- * per-slot limit.
+ * per-slot limit. A slot bound with `caller` (HARN-116: "gbrain" for the sidecar's own model route) writes that name
+ * as `caller` on every usage line of its requests, so a trial key's lines split by who made the call.
  *
  * Prompt archaeology: a lease proxy started with `--ablation-log <file>` accepts a bind with
  * `ablation: {map, map_sha256, layers}`. It recomputes the map file's sha256 and refuses the bind (400) on a
@@ -336,10 +337,16 @@ export interface RouteTexts { copies: string[]; listing: string[] }
  *  agent's last step, which no forwarded body does. */
 export interface SlotLimits { max_requests?: number; collect_requests?: boolean }
 export const REQUEST_CAP = 'request_cap';
-type SlotBinding = { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null; routes?: boolean; maxRequests?: number; sent?: number; collect?: boolean; capture?: string; install?: boolean };
+/** HARN-116: a bind's caller tag. */
+const CALLER_RE = /^[a-z][a-z0-9-]{0,31}$/;
+
+type SlotBinding = { key: string; token: string | null; models: string[] | null; ablation: AblationBinding | null; routes?: boolean; maxRequests?: number; sent?: number; collect?: boolean; capture?: string; install?: boolean; caller?: string };
 
 export interface UsageLine {
   at: string; key: string; provider: string; route: string; model: string | null;
+  /** HARN-116: on every line of a slot bound with a caller (the gbrain sidecar's own model route binds "gbrain"), so a trial's
+   *  lines split by who made the call. Absent on every other slot, whose lines are as before. */
+  caller?: string;
   /** `estimated`: a countTokens request the proxy answered itself with a local estimate (HARN-99); nothing reached a provider,
    *  so it is neither a model request nor a model response. */
   outcome: 'forwarded' | 'refused' | 'failed' | 'estimated';
@@ -660,13 +667,13 @@ export class MeteringProxy {
    *  `routes` (HARN-18), count route copies on its usage lines when the proxy has route texts; with `install` (GST-2715, lease
    *  mode, needs `token` and `models`), record every request and refuse the ones that are not the harness's own model call.
    *  Throws, binding nothing, when an install bind lacks one of those or the proxy refuses hosted web tools. */
-  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false, limits: SlotLimits = {}, capture: string | null = null, install = false) {
+  bind(slot: string, key: string, token: string | null = null, models: string[] | null = null, ablation: AblationBinding | null = null, routes = false, limits: SlotLimits = {}, capture: string | null = null, install = false, caller: string | null = null) {
     if (install) {
       const missing = !this.options.policy ? 'a lease proxy' : !token ? 'a token' : !models?.length ? 'models' : null;
       if (missing) throw new Error(`bind install refused: an install slot needs ${missing}, which tells the harness's own model call apart from any other request`);
       if (this.options.policy!.refuseHostedTools) throw new Error('bind install refused: this proxy was started with --refuse-hosted-tools, and an install slot meters hosted web tools instead of refusing them; start the install proxy without the flag');
     }
-    this.bindings.set(slot, { key, token, models, ablation, ...(routes ? { routes } : {}), ...(limits.max_requests ? { maxRequests: limits.max_requests, sent: 0 } : {}), ...(limits.collect_requests ? { collect: true } : {}), ...(capture ? { capture } : {}), ...(install ? { install } : {}) });
+    this.bindings.set(slot, { key, token, models, ablation, ...(routes ? { routes } : {}), ...(limits.max_requests ? { maxRequests: limits.max_requests, sent: 0 } : {}), ...(limits.collect_requests ? { collect: true } : {}), ...(capture ? { capture } : {}), ...(install ? { install } : {}), ...(caller ? { caller } : {}) });
   }
   /** The request bodies collected for `key` since its slot was bound with collect_requests, in order, and the first body the
    *  request cap refused (refused, empty when none was); drops them. */
@@ -796,7 +803,7 @@ export class MeteringProxy {
 
   private async control(path: string, req: Request): Promise<Response> {
     if (this.options.controlToken && req.headers.get('x-proxy-control') !== this.options.controlToken) return json(403, 'invalid_request', 'control endpoints need the x-proxy-control token');
-    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; capture?: unknown; timeout_ms?: number; max_requests?: unknown; collect_requests?: unknown; install?: unknown };
+    let body: { slot?: string; key?: string; token?: string; models?: unknown; ablation?: unknown; routes?: unknown; capture?: unknown; timeout_ms?: number; max_requests?: unknown; collect_requests?: unknown; install?: unknown; caller?: unknown };
     try { body = await req.json() as typeof body; } catch { return json(400, 'invalid_request', 'control body is not JSON'); }
     if (path === '/__proxy/bind' && body.slot && body.key) {
       if (body.models !== undefined && (!Array.isArray(body.models) || body.models.some(m => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(m)))) return json(400, 'invalid_request', 'bind models must be a list of provider:model ids');
@@ -809,6 +816,7 @@ export class MeteringProxy {
       if (body.max_requests !== undefined && !(Number.isInteger(body.max_requests) && (body.max_requests as number) > 0)) return json(400, 'invalid_request', 'bind max_requests must be a positive whole number');
       if (body.max_requests !== undefined && !(Array.isArray(body.models) && body.models.length)) return json(400, 'invalid_request', 'bind max_requests needs models: the cap counts requests for the first model');
       if (body.install !== undefined && typeof body.install !== 'boolean') return json(400, 'invalid_request', 'bind install must be true or false');
+      if (body.caller !== undefined && (typeof body.caller !== 'string' || !CALLER_RE.test(body.caller))) return json(400, 'invalid_request', 'bind caller must be a short lowercase name such as "gbrain"');
       let capture: string | null = null;
       if (body.capture !== undefined) {
         const root = this.options.policy?.captureRoot;
@@ -821,7 +829,7 @@ export class MeteringProxy {
       }
       try {
         this.bind(body.slot, body.key, typeof body.token === 'string' && body.token ? body.token : null, body.models === undefined ? null : body.models as string[], ablation, body.routes === true,
-          { ...(body.max_requests !== undefined ? { max_requests: body.max_requests as number } : {}), ...(body.collect_requests === true ? { collect_requests: true } : {}) }, capture, body.install === true);
+          { ...(body.max_requests !== undefined ? { max_requests: body.max_requests as number } : {}), ...(body.collect_requests === true ? { collect_requests: true } : {}) }, capture, body.install === true, typeof body.caller === 'string' ? body.caller : null);
       } catch (e) { return json(400, 'invalid_request', (e as Error).message); }
       return Response.json({ ok: true });
     }
@@ -888,7 +896,7 @@ export class MeteringProxy {
   }
 
   /** Lease mode, POST /anthropic/v1/messages/count_tokens: forwarded with the proxy's key, never priced, reserved or metered. */
-  private async forwardCount(req: Request, route: string, search: string, key: string, send: Send, realKey: string, raw: string | undefined, model: string | null, at: string, install?: InstallTag): Promise<Response> {
+  private async forwardCount(req: Request, route: string, search: string, key: string, send: Send, realKey: string, raw: string | undefined, model: string | null, at: string, install?: InstallTag, caller?: string): Promise<Response> {
     const headers = new Headers(req.headers);
     for (const h of ['host', 'content-length', 'accept-encoding', 'connection', ...CREDENTIAL_HEADERS]) headers.delete(h);
     headers.set('x-api-key', realKey);
@@ -897,11 +905,11 @@ export class MeteringProxy {
     let res: Response;
     try { res = await send(`${this.options.upstream?.anthropic ?? UPSTREAM.anthropic}${route}${search}`, { method: 'POST', headers, body: raw, timeout: false, signal: AbortSignal.timeout(UPSTREAM_DEADLINE_MS) } as RequestInit); }
     catch (e) {
-      this.log({ at, key, provider: 'anthropic', route, model, outcome: 'failed', reason: `count_tokens (free): ${(e as Error).message.slice(0, 300)}`, reserved_usd: 0, actual_usd: 0 }, install);
+      this.log({ at, key, provider: 'anthropic', route, model, outcome: 'failed', reason: `count_tokens (free): ${(e as Error).message.slice(0, 300)}`, reserved_usd: 0, actual_usd: 0, ...(caller ? { caller } : {}) }, install);
       return json(502, 'product_error', `upstream failed: ${(e as Error).message}`);
     }
     const text = await res.text();
-    this.log({ at, key, provider: 'anthropic', route, model, outcome: 'forwarded', status: res.status, reserved_usd: 0, actual_usd: 0, reason: 'count_tokens: free, never metered', ...NO_EXTRAS }, install);
+    this.log({ at, key, provider: 'anthropic', route, model, outcome: 'forwarded', status: res.status, reserved_usd: 0, actual_usd: 0, reason: 'count_tokens: free, never metered', ...NO_EXTRAS, ...(caller ? { caller } : {}) }, install);
     const out = new Headers(res.headers);
     for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
     return new Response(text, { status: res.status, headers: out });
@@ -912,8 +920,10 @@ export class MeteringProxy {
     const capture = binding?.capture ?? null;
     const p = this.options.policy!;
     const at = new Date().toISOString();
+    // A slot bound with a caller (HARN-116: the gbrain sidecar's own model route) stamps it on every line it writes.
+    const log = (line: UsageLine, tag?: InstallTag) => this.log(binding?.caller ? { ...line, caller: binding.caller } : line, tag);
     const refuse = (status: number, kind: string, reason: string, model: string | null = null) => {
-      this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status }, install);
+      log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status }, install);
       return json(status, kind, reason);
     };
     // Gemini also takes a key as ?key=; the inbound one is never the real key and the real one never rides in a URL.
@@ -930,7 +940,7 @@ export class MeteringProxy {
       let parsed: Record<string, any>;
       try { parsed = JSON.parse(await req.text()); } catch { return refuse(400, 'invalid_request', 'request body is not JSON', counted); }
       const estimate = countTokensEstimate(parsed);
-      this.log({ at, key, provider: prov, route, model: counted, outcome: 'estimated', status: 200, reserved_usd: 0, actual_usd: 0, local_estimate: true,
+      log({ at, key, provider: prov, route, model: counted, outcome: 'estimated', status: 200, reserved_usd: 0, actual_usd: 0, local_estimate: true,
         reason: `countTokens answered by the proxy's local estimate (${estimate.totalTokens} tokens at four characters per token); never forwarded or charged`, ...NO_EXTRAS });
       return Response.json(estimate);
     }
@@ -951,14 +961,14 @@ export class MeteringProxy {
     if (countRoute) {
       if (p.allowModels && !p.allowModels.includes(`anthropic:${model}`)) return refuse(403, 'budget', `anthropic:${model} is not on this cell's model allowlist`, model);
       if (slotModels && !slotModels.includes(`anthropic:${model}`)) return refuse(403, 'budget', `anthropic:${model} is not on slot ${slot}'s model list (${slotModels.join(', ') || 'none'})`, model);
-      return this.forwardCount(req, route, search, key, send, realKey, raw, model, at, install);
+      return this.forwardCount(req, route, search, key, send, realKey, raw, model, at, install, binding?.caller);
     }
     const streamed = prov === 'google' ? route.endsWith(':streamGenerateContent') : body?.stream === true;
     if (streamed && (p.streaming ?? 'meter') === 'refuse') return refuse(400, 'invalid_request', 'streaming is disabled for this cell', model);
     const hosted = p.refuseHostedTools || prov === 'google' || prov === 'xai' ? hostedWebTools(body, prov) : [];
     if (hosted.length) {
       const reason = `HE-PROXY-006 the request declares a provider-hosted tool (${hosted.join(', ')}); this proxy refuses hosted search, fetch and code execution, which run outside the trial's egress rules and audit (docs/errors.md). fix: turn the harness's hosted tools off`;
-      this.log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status: 400, ...effortFields(body) });
+      log({ at, key, provider: prov, route, model, outcome: 'refused', reason, status: 400, ...effortFields(body) });
       return json(400, 'invalid_request', reason);
     }
     if (prov === 'google' && streamed && new URLSearchParams(search).get('alt') !== 'sse') return refuse(400, 'invalid_request', 'HE-PROXY-013 streamGenerateContent without alt=sse answers one JSON array, which this proxy does not meter as a stream (docs/errors.md). fix: request ?alt=sse', model);
@@ -1076,7 +1086,7 @@ export class MeteringProxy {
       const elsewhere = facts.served_elsewhere ? `HE-PROXY-009 OpenRouter answered from ${facts.served_provider ?? 'an unnamed provider'}${facts.served_tier ? ' at its ' + facts.served_tier + ' tier' : ''}, not the pinned ${OPENROUTER_PINS[upModel ?? '']?.served ?? 'endpoint'}${OPENROUTER_PINS[upModel ?? '']?.service_tier ? ' at its standard tier' : ''}; the trial is infra_error (docs/errors.md)` : undefined;
       const limited = facts.openrouter_limit_source ? `HE-PROXY-014 OpenRouter refused the request for its spend limit (${facts.openrouter_limit_source}); no model ran, and new trials wait for the limit to reset (docs/errors.md)` : undefined;
       const why = [elsewhere, limited, reason].filter(Boolean).join('; ');
-      this.log({ at, key, provider: prov, route, model: named, outcome: 'forwarded', ...(why ? { reason: why } : {}), status, reserved_usd: reserved, actual_usd: usd,
+      log({ at, key, provider: prov, route, model: named, outcome: 'forwarded', ...(why ? { reason: why } : {}), status, reserved_usd: reserved, actual_usd: usd,
         input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged,
         ...(charged ? { usage_unknown: true as const, reported_usd: cost?.usd ?? 0 } : {}), streamed: isStream, ...knobs,
         ...facts, ...(cost?.reported_usd !== undefined ? { openrouter_cost_usd: cost.reported_usd } : {}), ...safetyStop(response), ...lineExtrasFor(upProv, upRoute, response, request), ...web }, install);
@@ -1086,7 +1096,7 @@ export class MeteringProxy {
       if (entry) p.lease.settle(entry, null);
       this.charge(key, prov, named ?? null, reserved, !!bounded);
       this.observe(key, 'failed');
-      this.log({ at, key, provider: prov, route, model, outcome: 'failed', reason: message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded,
+      log({ at, key, provider: prov, route, model, outcome: 'failed', reason: message.slice(0, 300), reserved_usd: reserved, actual_usd: reserved, charged_reservation: !!bounded,
         ...(bounded ? { usage_unknown: true as const, reported_usd: 0 } : {}), ...knobs }, install);
       return json(502, 'product_error', `upstream failed: ${message}`);
     };

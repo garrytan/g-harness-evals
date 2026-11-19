@@ -377,6 +377,20 @@ export interface GbrainCellConfig {
    *  pages. Needs serves "several" on the member-key shape (bot-visible brain, scope "member") and split dev; preflight lists
    *  every page under each member key (HE-GBRAIN-002). */
   labels?: 'readers';
+  /** HARN-116 addition: "proxy" gives gbrain its own model route. The sidecar gets the metering proxy's slot URL as
+   *  ANTHROPIC_BASE_URL and the slot's per-trial token as ANTHROPIC_API_KEY (never a provider key), so gbrain's fact extraction
+   *  and its other model calls run at its shipped defaults, metered under the trial key and tagged caller "gbrain". Absent or
+   *  "off": the sidecar is keyless and gbrain makes no model call, as before. */
+  llm?: 'off' | 'proxy';
+  /** With llm "proxy" (required): the facts extraction model (provider:model, Anthropic) gbrain must resolve at sidecar start
+   *  (resolveFactsExtractionModel); another model ends the trial as an exam_fault before the harness starts (HE-GBRAIN-017). */
+  extraction_model?: string;
+  /** With llm "proxy": true pins extraction_model with gbrain config set facts.extraction_model before the check, so gbrain
+   *  resolves it from config instead of its shipped default. */
+  extraction_pin?: boolean;
+  /** With llm "proxy": other models gbrain's own calls may use through its route (such as its utility tier for query expansion),
+   *  metered and tagged like the extraction calls; any other model gbrain asks for is refused at $0 and counted. */
+  llm_models?: string[];
 }
 
 /** The install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
@@ -446,6 +460,32 @@ export interface TrialEmbeddingUsage {
   failed: number;
 }
 
+/** HARN-116: the sidecar's own model calls (caller "gbrain", not embeddings) for one trial, from the proxy's usage lines. */
+export interface TrialGbrainLlmUsage {
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  usd: number;
+  /** Requests per provider:model, forwarded or failed. */
+  by_model: Record<string, number>;
+  /** Lines the proxy refused (a model not on the sidecar's slot, for example) or that failed upstream. */
+  refused: number;
+  failed: number;
+}
+
+/** HARN-116: the sidecar's receipt of gbrain's facts extraction model (<trial dir>/gbrain/llm.json). */
+export interface GbrainLlmReceipt {
+  schema_version: 1;
+  /** What resolveFactsExtractionModel returned at sidecar start: the model and gbrain's own name for what chose it
+   *  (measured_default, config_key, tier_config, models_default, env, tier_default, fallback, ...). */
+  extraction: { model: string; source: string };
+  /** The model the sidecar pinned with gbrain config set facts.extraction_model, or null. */
+  pinned: string | null;
+  /** The variable gbrain's model calls leave through, and its value (the proxy slot URL, never a key). */
+  route: { env: 'ANTHROPIC_BASE_URL'; url: string };
+}
+
 /** gbrain arm lane D addition: what the runner records about a trial's sidecar in trials.jsonl. */
 export interface TrialGbrain {
   /** The resolved surface. */
@@ -460,6 +500,9 @@ export interface TrialGbrain {
   install_bundle?: TrialGbrainInstall;
   embedding_usage?: TrialEmbeddingUsage;
   semantic_check?: { search_calls: number; embedding_requests: number; degraded_calls: number; ok: boolean; reason?: string };
+  /** HARN-116, present only when the cell set llm "proxy": the extraction model the cell expected, gbrain's receipt (absent
+   *  when the sidecar never wrote one) and gbrain's own metered model calls, apart from the harness's usage. */
+  llm?: { mode: 'proxy'; expected_extraction_model: string; receipt?: GbrainLlmReceipt; usage?: TrialGbrainLlmUsage };
   /** Company brain additions, absent in records written before them: the brain and scope the sidecar ran with and the docker
    *  image id behind the tag, so a record names the exact brain it was served from. */
   brain?: 'bot-visible' | 'company' | 'member';

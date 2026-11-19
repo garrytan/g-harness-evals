@@ -29,6 +29,12 @@
 // checks before any trial: gbrain access check per token, gbrain access rule list per source and gbrain access who-can-read per page
 // (run in a second container from the image, never the serving one), and the rows search, query, recall and list_pages return under
 // each token the tap would present; accessRulesProblems turns that into the fail-closed verdict (HE-GBRAIN-002).
+//
+// HARN-116 (gbrain's own model route): with llm "proxy" the sidecar gets HE_GBRAIN_LLM=proxy, the metering proxy's slot URL as
+// ANTHROPIC_BASE_URL and the slot's per-trial token (HE_GBRAIN_PROXY_TOKEN, which the entrypoint hands to gbrain as
+// ANTHROPIC_API_KEY), never a provider key. Before serve the entrypoint records the facts extraction model gbrain resolves
+// in <out>/llm.json, after pinning it when the cell asks; startGbrainSidecar reads that receipt and refuses a model other than the
+// cell's (HE-GBRAIN-017, the trial's exam fault). sidecarEnvArgs composes every -e argument, so a test can scan them.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -36,7 +42,7 @@ import { dirname, join, resolve } from 'node:path';
 import { RunnerError } from '../errors.ts';
 import { memberTokenName, type BrainIngest, type CompanyBrainManifest, type CompanyTokens, type IngestTokens } from '../../gbrain/build-brain.ts';
 import { verifyFiles, type InstallFile, type InstallerRecord } from '../../gbrain/build-install.ts';
-import type { GbrainCellConfig } from '../contracts.ts';
+import type { GbrainCellConfig, GbrainLlmReceipt } from '../contracts.ts';
 import type { InternalNetwork } from './docker.ts';
 import { isHostAddress } from './world.ts';
 
@@ -87,6 +93,13 @@ export interface GbrainSidecarOptions {
   embeddings?: NonNullable<GbrainCellConfig['embeddings']>;
   openaiBaseUrl?: string;
   proxyToken?: string;
+  /** HARN-116: "proxy" routes gbrain's own model calls through anthropicBaseUrl (the metering proxy's slot URL as the container
+   *  reaches it) with proxyToken as its credential; extractionModel is the facts extraction model gbrain must resolve, pinned
+   *  first with gbrain config set when extractionPin is true. */
+  llm?: 'proxy';
+  anthropicBaseUrl?: string;
+  extractionModel?: string;
+  extractionPin?: boolean;
   /** The run's internal network; unset, a bridge network of the sidecar's own with its port published on the loopback. */
   network?: InternalNetwork;
   readyTimeoutMs?: number;
@@ -260,6 +273,37 @@ export function servesEnv(o: Pick<GbrainSidecarOptions, 'serves' | 'servesMember
   return ['-e', 'HE_GBRAIN_SERVES=several', '-e', `HE_GBRAIN_MEMBERS=${members.join(',')}`, ...(o.labels ? ['-e', `HE_GBRAIN_LABELS=${o.labels}`] : [])];
 }
 
+/** Every -e argument of the sidecar's docker run, checked: the brain, scope, surface and embeddings as before, and with llm
+ *  "proxy" (HARN-116) HE_GBRAIN_LLM, ANTHROPIC_BASE_URL and the per-trial token, appended after the others, so a cell without
+ *  llm gets exactly the arguments it got before. No provider key is ever among them. */
+export function sidecarEnvArgs(o: GbrainSidecarOptions): string[] {
+  const embeddings = o.embeddings ?? 'off';
+  const serves = servesEnv(o);
+  if (embeddings !== 'off' && !o.openaiBaseUrl) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the metering proxy's slot URL as OPENAI_BASE_URL; the runner passes none without a proxy`);
+  if (embeddings !== 'off' && !o.proxyToken) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the proxy slot's per-trial token as HE_GBRAIN_PROXY_TOKEN; the proxy forwards nothing for the slot without it`);
+  if (o.llm === 'proxy' && !o.anthropicBaseUrl) throw new RunnerError('HE-GBRAIN-002', `gbrain's own model route (llm "proxy") needs the metering proxy's slot URL as ANTHROPIC_BASE_URL; the runner passes none without a proxy`);
+  if (o.llm === 'proxy' && !o.proxyToken) throw new RunnerError('HE-GBRAIN-002', `gbrain's own model route (llm "proxy") needs the proxy slot's per-trial token as HE_GBRAIN_PROXY_TOKEN; the proxy forwards nothing for the slot without it`);
+  if (o.llm === 'proxy' && !o.extractionModel) throw new RunnerError('HE-GBRAIN-002', `gbrain's own model route (llm "proxy") needs the facts extraction model the cell expects; the sidecar checks it before serve`);
+  return [
+    '-e', `HE_GBRAIN_SPLIT=${o.split}`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', `HE_TRIAL_ID=${o.trialId}`,
+    '-e', `HE_GBRAIN_BRAIN=${o.brain ?? 'bot-visible'}`, '-e', `HE_GBRAIN_SCOPE=${o.scope ?? 'none'}`, '-e', `HE_GBRAIN_INGEST=${o.ingest ?? 'off'}`, ...(o.access === 'rules' ? ['-e', 'HE_GBRAIN_ACCESS=rules'] : []),
+    '-e', `HE_GBRAIN_SURFACE=${o.surface ?? 'starter'}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
+    ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`, '-e', `HE_GBRAIN_PROXY_TOKEN=${o.proxyToken}`] : []),
+    ...(o.channelRemember === 'conversation' ? ['-e', 'HE_GBRAIN_CHANNEL_REMEMBER=conversation'] : []), ...serves,
+    ...(o.llm === 'proxy' ? ['-e', 'HE_GBRAIN_LLM=proxy', '-e', `ANTHROPIC_BASE_URL=${o.anthropicBaseUrl}`, ...(embeddings === 'off' ? ['-e', `HE_GBRAIN_PROXY_TOKEN=${o.proxyToken}`] : []),
+      ...(o.extractionPin ? ['-e', `HE_GBRAIN_EXTRACTION_PIN=${o.extractionModel}`] : [])] : []),
+  ];
+}
+
+/** HARN-116: why the sidecar's llm.json does not show the cell's extraction model (null when it does). */
+export function extractionModelProblem(receipt: unknown, expected: string): string | null {
+  const r = receipt as Partial<GbrainLlmReceipt> | null;
+  const model = r?.extraction?.model;
+  if (r?.schema_version !== 1 || typeof model !== 'string' || typeof r.extraction?.source !== 'string') return `llm.json is not a schema 1 receipt with extraction.model and extraction.source (got ${JSON.stringify(receipt).slice(0, 200)})`;
+  if (model.toLowerCase() !== expected.toLowerCase()) return `gbrain resolved facts extraction to ${model} (source ${r.extraction.source}), the cell expects ${expected}`;
+  return null;
+}
+
 export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<GbrainSidecar> {
   const image = o.image ?? DEFAULT_GBRAIN_IMAGE;
   const brain = o.brain ?? 'bot-visible';
@@ -268,9 +312,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const access = o.access ?? 'none';
   const surface = o.surface ?? 'starter';
   const embeddings = o.embeddings ?? 'off';
-  const serves = servesEnv(o);
-  if (embeddings !== 'off' && !o.openaiBaseUrl) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the metering proxy's slot URL as OPENAI_BASE_URL; the runner passes none without a proxy`);
-  if (embeddings !== 'off' && !o.proxyToken) throw new RunnerError('HE-GBRAIN-002', `an embedded brain (${embeddings}) needs the proxy slot's per-trial token as HE_GBRAIN_PROXY_TOKEN; the proxy forwards nothing for the slot without it`);
+  const envArgs = sidecarEnvArgs(o);
   const log = o.log ?? (() => undefined);
   const name = `he-gbrain-${o.trialSlug}`.toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
   const network = o.network?.name ?? `${name}-net`;
@@ -290,13 +332,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const route = o.network ? ['--add-host', `host.docker.internal:${o.network.gateway}`] : ['--add-host', 'host.docker.internal:host-gateway', '-p', `127.0.0.1:0:${GBRAIN_PORT}`];
   // host.docker.internal is the route to the metering proxy for an embedded brain; the entrypoint logs the URL, never a key.
   const run = await sh(['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', network, ...route,
-    '-v', `${out}:/he-gbrain`,
-    '-e', `HE_GBRAIN_SPLIT=${o.split}`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', `HE_TRIAL_ID=${o.trialId}`,
-    '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`, '-e', `HE_GBRAIN_INGEST=${ingest}`, ...(access === 'rules' ? ['-e', 'HE_GBRAIN_ACCESS=rules'] : []),
-    '-e', `HE_GBRAIN_SURFACE=${surface}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
-    ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`, '-e', `HE_GBRAIN_PROXY_TOKEN=${o.proxyToken}`] : []),
-    ...(o.channelRemember === 'conversation' ? ['-e', 'HE_GBRAIN_CHANNEL_REMEMBER=conversation'] : []), ...serves,
-    image]);
+    '-v', `${out}:/he-gbrain`, ...envArgs, image]);
   const image_id = (await sh(['docker', 'image', 'inspect', '-f', '{{.Id}}', image])).stdout.trim();
   if (run.status !== 0) {
     await removeOwnNetwork();
@@ -370,11 +406,25 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
       }
       tokens = JSON.parse(readFileSync(tokensPath, 'utf8')) as CompanyTokens;
     }
+    let llm: GbrainLlmReceipt | null = null;
+    if (o.llm === 'proxy') {
+      const llmPath = join(out, 'llm.json');
+      while (!existsSync(llmPath) || !readFileSync(llmPath, 'utf8').trim()) {
+        if (Date.now() > deadline) throw new Error(`no llm.json at ${llmPath} after ${Math.round(timeout / 1000)} s`);
+        const gone = await exited(); if (gone) throw new Error(gone);
+        await Bun.sleep(100);
+      }
+      const receipt = JSON.parse(readFileSync(llmPath, 'utf8')) as GbrainLlmReceipt;
+      const problem = extractionModelProblem(receipt, o.extractionModel!);
+      if (problem) throw new RunnerError('HE-GBRAIN-017', `${problem}; the trial does not start (${llmPath}); fix: build the image at the gbrain commit the preregistration names, or correct the cell's gbrain.extraction_model`);
+      llm = receipt;
+    }
     const ready_ms = Date.now() - started;
-    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, access ${access}${o.serves ? `, serves ${o.serves}` : ''}${o.labels ? `, labels ${o.labels}` : ''}, ingest ${ingest}, surface ${surface}, embeddings ${embeddings}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}${ingestTokens ? `, ${Object.keys(ingestTokens.tokens.sources).length} ingest tokens` : ''}`);
+    log(`gbrain sidecar ${name} (${o.split}, ${image}, brain ${brain}, scope ${scope}, access ${access}${o.serves ? `, serves ${o.serves}` : ''}${o.labels ? `, labels ${o.labels}` : ''}, ingest ${ingest}, surface ${surface}, embeddings ${embeddings}${llm ? `, llm proxy, facts extraction ${llm.extraction.model} (${llm.extraction.source})` : ''}) healthy at ${url} after ${ready_ms} ms; token in ${tokenPath}${tokens ? `, ${Object.keys(tokens.members ?? {}).length} member tokens in ${tokensPath}` : ''}${ingestTokens ? `, ${Object.keys(ingestTokens.tokens.sources).length} ingest tokens` : ''}`);
     return { url, token, tokenPath, image, image_id, brain, scope, access, surface, embeddings, tokens, grants, ingest: ingest === 'live' ? ingestTokens : null, channelRemember: o.channelRemember === 'conversation' ? ingestTokens : null, ready_ms, stop };
   } catch (e) {
     await stop(5_000);
+    if (e instanceof RunnerError && e.code === 'HE-GBRAIN-017') throw e;
     const tail = existsSync(join(out, 'docker.log')) ? readFileSync(join(out, 'docker.log'), 'utf8').trim().split('\n').slice(-3).join(' | ') : '';
     throw new RunnerError('HE-GBRAIN-002', `the gbrain sidecar did not become ready: ${(e as Error).message}${tail ? ` (${tail})` : ''}; fix: read ${join(out, 'sidecar.log')} and ${join(out, 'docker.log')}, rebuild the image (gbrain/README.md)`);
   }
