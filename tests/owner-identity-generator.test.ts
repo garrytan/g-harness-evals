@@ -76,7 +76,8 @@ describe('bank validity and coverage', () => {
       for (const id of ids) expect(loadTask(join(dir, 'dev', id)).family).toMatch(/^owner_identity_[IL]$/);
       const world = loadWorld(join(dir, 'world', 'world.json'));
       expect(world.files.length).toBeGreaterThan(8);
-      expect(world.files.every((f) => f.visibility === 'private' && f.owner === people(dev).owner)).toBe(true);
+      expect(world.files.filter((f) => f.folder !== 'people').every((f) => f.visibility === 'private' && f.owner === people(dev).owner)).toBe(true);
+      expect(world.files.filter((f) => f.folder === 'people').every((f) => f.visibility === 'public' && f.kind === 'profile')).toBe(true);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
