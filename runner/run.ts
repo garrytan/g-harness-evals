@@ -59,7 +59,7 @@
  * Every error prints one line starting with its HE- code (docs/errors.md) and
  * exits non-zero. Exit 3 is the budget stop (HE-BUDGET-001).
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, join, relative, resolve } from 'node:path';
@@ -174,6 +174,10 @@ export interface Cell {
   gbrain?: GbrainCellConfig;
   /** Alternative preamble for this cell, a path relative to the repository root; default tasks/multiuser/_shared/preamble.md (or --preamble). */
   preamble?: string;
+  /** owner-identity (GST-3217): the owner card, a path relative to the repository root (tasks/multiuser/<set>/world/owner-card.md).
+   *  The runner hands it to the adapter as HE_OWNER_CARD_B64 and the adapter appends it to the harness's startup file, after
+   *  anything the gbrain installer wrote there. Claude Code and Codex only for now (OWNER_CARD_HARNESSES). */
+  owner_card?: string;
   /** Multi-user task set: "v0.1" (the default, tasks/multiuser/<split>/) or the name of a tree under tasks/multiuser/, such as "v0.2" (tasks/multiuser/v0.2/<split>/). */
   task_set?: string;
   /** How the adapter keys the harness session: "conversation" (the default, one session per DM or channel) or "turn" (a fresh session per turn, the memoryless contrast; HE_SESSION_SCOPE in the adapter). */
@@ -216,8 +220,12 @@ export interface Cell {
   install?: InstallCellConfig;
 }
 
-const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap', 'install']);
+const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap', 'install', 'owner_card']);
 export const DEFAULT_TASK_SET = 'v0.1';
+/** The adapters that read HE_OWNER_CARD_B64 (Cell.owner_card). */
+export const OWNER_CARD_HARNESSES = ['claude-code', 'codex'] as const;
+/** The adapters refuse a larger card. */
+export const OWNER_CARD_MAX_BYTES = 4000;
 
 /** The cells whose harness pin has no `transport` entry (model_particle, model_openrouter), the declaration an adapter makes
  *  when it routes <proxy>/<slot>/particle or <proxy>/<slot>/openrouter as Chat Completions. Any other adapter falls back to
@@ -487,6 +495,12 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (!scripted && !canonicalLookup(c.model)) throw new RunnerError('HE-PIN-002', `cell ${c.id}: model ${c.model} has no price in the dated price table runner/pricing/prices-<date>.json; fix: register its list price before any cell runs (a price change is a new dated file)`);
     if (!(c.repetitions >= 1)) throw new RunnerError('HE-PREREG-005', `cell ${c.id}: repetitions must be >= 1`);
     if (c.preamble !== undefined && (typeof c.preamble !== 'string' || !existsSync(c.preamble))) throw new RunnerError('HE-TASK-002', `cell ${c.id}: preamble not found at ${String(c.preamble)}; fix: name a committed file such as tasks/multiuser/_shared/preamble.md`);
+    if (c.owner_card !== undefined) {
+      if (typeof c.owner_card !== 'string' || !existsSync(c.owner_card) || !statSync(c.owner_card).isFile()) throw new RunnerError('HE-TASK-002', `cell ${c.id}: owner_card not found at ${String(c.owner_card)}; fix: name a committed file such as tasks/multiuser/owner-identity/world/owner-card.md`);
+      const bytes = statSync(c.owner_card).size;
+      if (bytes === 0 || bytes > OWNER_CARD_MAX_BYTES) throw new RunnerError('HE-TASK-002', `cell ${c.id}: owner_card ${c.owner_card} is ${bytes} bytes; the adapters take 1 to ${OWNER_CARD_MAX_BYTES}`);
+      if (!(OWNER_CARD_HARNESSES as readonly string[]).includes(c.harness)) throw new RunnerError('HE-PREREG-005', `cell ${c.id}: owner_card is read by the ${OWNER_CARD_HARNESSES.join(' and ')} adapters only, not ${c.harness}`);
+    }
     if (c.gbrain !== undefined) {
       // Surface, install and embeddings are the ladder's orthogonal fields; HE-GBRAIN-001 names the field, the value and the allowed set.
       const bad = (field: string, value: unknown, allowed: readonly string[]) => new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.${field} must be one of ${allowed.map((v) => JSON.stringify(v)).join(', ')} (gbrain/pin.json); got ${JSON.stringify(value)}`);

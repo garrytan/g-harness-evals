@@ -305,6 +305,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     ...(installViewPath && installKind ? { HE_GBRAIN_INSTALL: installKind, HE_GBRAIN_SPLIT: cell.split, HE_GBRAIN_INSTALL_DIR: docker ? '/he-gbrain-install' : resolve(installViewPath) } : {}),
     ...(docker ? {} : { HE_WORKSPACE_DIR: resolve(dirs.workspace) }),
     ...(opts.cursor ? cursorEgressEnv(opts.cursor.proxyUrl) : {}),
+    ...(cell.owner_card ? { HE_OWNER_CARD_B64: readFileSync(resolve(opts.repoRoot ?? '.', cell.owner_card)).toString('base64') } : {}),
     ...(opts.harnessEnv ?? {}),
   };
 

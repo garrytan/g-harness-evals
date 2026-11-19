@@ -158,7 +158,11 @@ log "brain $HE_GBRAIN_BRAIN scope $HE_GBRAIN_SCOPE access $HE_GBRAIN_ACCESS serv
 
 # The token is printed once by gbrain; it goes to the token file and nowhere else.
 umask 077
-tok=$(bun /opt/gbrain/src/cli.ts auth create "trial-$HE_TRIAL_ID" 2>>"$HE_GBRAIN_OUT/auth.stderr.log" | grep -oE 'gbrain_[0-9a-f]+' | head -1 || true)
+# owner-identity: a brain built with --owner (gbrain/build-brain.ts) names its owner in the manifest; the trial token is the
+# owner's agent's credential, so it is bound to that member (gbrain auth create --member), the way gbrain binds its owner's agents.
+owner=$(jq -r '.owner.member // empty' /brain/manifest.json)
+[ -z "$owner" ] || [ "$HE_GBRAIN_SERVES" = none ] || refuse "the brain at $src names the owner $owner; HE_GBRAIN_SERVES=$HE_GBRAIN_SERVES labels the trial token as an unbound shared-bot key, which an owner brain never runs"
+tok=$(bun /opt/gbrain/src/cli.ts auth create "trial-$HE_TRIAL_ID" ${owner:+--member "$owner"} 2>>"$HE_GBRAIN_OUT/auth.stderr.log" | grep -oE 'gbrain_[0-9a-f]+' | head -1 || true)
 [ -n "$tok" ] || { log "gbrain auth create printed no token (see auth.stderr.log)"; echo "gbrain auth create failed; see $HE_GBRAIN_OUT/sidecar.log" >&2; exit 2; }
 printf '%s' "$tok" > "$HE_GBRAIN_OUT/token.tmp"
 mv "$HE_GBRAIN_OUT/token.tmp" "$HE_GBRAIN_OUT/token"
@@ -211,7 +215,7 @@ if [ "$want_grants" = 1 ]; then
   log "source grants copied ($(jq -r '.grants | length' "$HE_GBRAIN_OUT/manifest.json") grants over $(jq -r '.sources | length' "$HE_GBRAIN_OUT/manifest.json") sources) into $HE_GBRAIN_OUT/manifest.json; the tap adds source_ids per request"
 fi
 umask 022
-log "token minted (trial-$HE_TRIAL_ID) into $HE_GBRAIN_OUT/token at $(( ($(date +%s%N) - t0) / 1000000 )) ms"
+log "token minted (trial-$HE_TRIAL_ID${owner:+, bound to the brain owner $owner}) into $HE_GBRAIN_OUT/token at $(( ($(date +%s%N) - t0) / 1000000 )) ms"
 
 GBRAIN_ADMIN_BOOTSTRAP_TOKEN=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
 export GBRAIN_ADMIN_BOOTSTRAP_TOKEN

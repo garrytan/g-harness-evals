@@ -128,12 +128,14 @@ COPY --from=corpus /opt/corpus/eval/data/messy-company-v1/corpus /opt/corpus
 RUN mkdir -m 0777 /brain
 
 # One stage per split: the brain is built at /brain, the path it is served from, with no key in the environment.
+# owner-identity: OWNER_MEMBER (build-gbrain-image.sh --world, from the set's world/people.json) names the brain's owner.
 FROM builder AS brain-dev
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
+ARG OWNER_MEMBER=
 RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev \
       --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
-      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
+      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT" ${OWNER_MEMBER:+--owner "$OWNER_MEMBER"}
 
 FROM builder AS brain-heldout
 ARG GBRAIN_COMMIT

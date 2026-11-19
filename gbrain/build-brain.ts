@@ -98,12 +98,18 @@ export interface BrainManifest {
   embeddings: 'off' | BrainEmbeddings;
   /** internal-task: present only when every page carries its world readers in its frontmatter (--labels readers). */
   labels?: 'readers';
+  /** owner-identity: present only on a brain built with --owner: the world member gbrain names as the brain's owner
+   *  (gbrain access member add, then gbrain access owner set); the sidecar binds the trial token to it. */
+  owner?: BrainOwner;
   pages: BrainPage[];
   counts: { channel_pages: number; public_files: number; total: number };
   import: Record<string, unknown>;
 }
 
 export type ListedPage = Omit<BrainPage, 'sha256' | 'bytes' | 'source_path'>;
+
+/** owner-identity: the brain's owner as gbrain recorded it, read back from gbrain access owner --json. */
+export interface BrainOwner { member: string; name: string; email: string; owner_view: Record<string, unknown> }
 
 // ---- the company brain --------------------------------------------------------------------
 
@@ -430,6 +436,8 @@ export interface BuildOptions {
   access?: 'rules';
   /** internal-task: "readers" writes each page's readers (labelledPageList) into its frontmatter as readable_by; bot-visible only. */
   labels?: 'readers';
+  /** owner-identity: a world member id (kind employee) gbrain names as the brain's owner; keyword bot-visible only. */
+  owner?: string;
   log?: (line: string) => void;
 }
 
@@ -440,11 +448,14 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
   if (o.access !== undefined && o.access !== 'rules') throw new Error(`--access must be "rules" (got ${String(o.access)})`);
   if (o.access && o.brain !== 'member' && o.brain !== 'company') throw new Error(`--access rules needs --brain member or company; the ${o.brain ?? 'bot-visible'} brain has no reader sets to gate`);
   if (o.labels !== undefined && (o.labels !== 'readers' || (o.brain ?? 'bot-visible') !== 'bot-visible' || o.embeddings)) throw new Error(`--labels must be "readers" on the keyword bot-visible brain (got --labels ${String(o.labels)} --brain ${o.brain ?? 'bot-visible'}${o.embeddings ? ` --embeddings ${o.embeddings}` : ''})`);
+  if (o.owner !== undefined && ((o.brain ?? 'bot-visible') !== 'bot-visible' || o.embeddings || o.labels)) throw new Error(`--owner is for the keyword bot-visible brain only (got --brain ${o.brain ?? 'bot-visible'}${o.embeddings ? ` --embeddings ${o.embeddings}` : ''}${o.labels ? ` --labels ${o.labels}` : ''})`);
   if ((o.brain === 'company' || o.brain === 'member') && o.embeddings) throw new Error(`--embeddings is for bot-visible brains only; the ${o.brain} brains are keyword-only`);
   if (o.brain === 'company' || o.brain === 'member') return buildScopedBrain(o, o.brain);
   if (o.embeddings && !(EMBEDDING_MODELS as readonly string[]).includes(o.embeddings)) throw new Error(`--embeddings must be one of ${EMBEDDING_MODELS.join(', ')} (got ${o.embeddings})`);
   const log = o.log ?? ((l) => console.error(l));
   const world = JSON.parse(readFileSync(o.worldPath, 'utf8')) as World;
+  const ownerMember = o.owner === undefined ? undefined : world.members.find((m) => m.id === o.owner);
+  if (o.owner !== undefined && (!ownerMember || ownerMember.kind !== 'employee' || !SOURCE_ID_RE.test(ownerMember.id))) throw new Error(`--owner ${o.owner} names no employee member of ${o.worldPath}`);
   const listed: Array<ListedPage & { readers?: string[] }> = o.labels ? labelledPageList(world, o.split) : pageList(world, o.split);
   if (!listed.length) throw new Error(`no bot-visible pages for split ${o.split} in ${o.worldPath}`);
 
@@ -510,6 +521,16 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
     log(`gbrain embed: ${embedSummary.embedded} chunks over ${embedSummary.pages_processed} pages, ${config.embedding_dimensions} dims, through OPENAI_BASE_URL`);
   }
 
+  let owner: BrainOwner | undefined;
+  if (ownerMember) {
+    run([...o.gbrain, 'access', 'member', 'add', ownerMember.id, '--name', ownerMember.name, '--email', ownerMember.email, '--json'], env, `gbrain access member add ${ownerMember.id}`);
+    run([...o.gbrain, 'access', 'owner', 'set', ownerMember.id, '--json'], env, `gbrain access owner set ${ownerMember.id}`);
+    const view = lastJsonObject(run([...o.gbrain, 'access', 'owner', '--json'], env, 'gbrain access owner').stdout);
+    if (view?.owner !== ownerMember.id) throw new Error(`gbrain access owner reports owner ${JSON.stringify(view?.owner ?? null)}, expected ${ownerMember.id}`);
+    owner = { member: ownerMember.id, name: ownerMember.name, email: ownerMember.email, owner_view: view };
+    log(`gbrain access owner: ${ownerMember.id} (${ownerMember.name})`);
+  }
+
   const version = run([...o.gbrain, '--version'], env, 'gbrain --version').stdout.trim().match(/\d+\.\d+\.\d+(\.\d+)?/)?.[0] ?? null;
   const manifest: BrainManifest = {
     schema_version: 1,
@@ -521,6 +542,7 @@ export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifes
     built_at: new Date().toISOString(),
     embeddings,
     ...(o.labels ? { labels: o.labels } : {}),
+    ...(owner ? { owner } : {}),
     pages,
     counts: { channel_pages: pages.filter((p) => p.kind === 'channel').length, public_files: pages.filter((p) => p.kind === 'file').length, total: pages.length },
     import: summary,
@@ -693,7 +715,7 @@ if (import.meta.main) {
   const brain = arg('brain', 'bot-visible');
   const access = arg('access');
   const labels = arg('labels');
-  if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company' && brain !== 'member') || (access !== undefined && access !== 'rules') || (labels !== undefined && labels !== 'readers')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company|member] [--access rules] [--labels readers] [--embeddings openai:text-embedding-3-small] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
+  if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company' && brain !== 'member') || (access !== undefined && access !== 'rules') || (labels !== undefined && labels !== 'readers')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company|member] [--access rules] [--labels readers] [--owner <member id>] [--embeddings openai:text-embedding-3-small] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
   const home = brain === 'bot-visible' ? `${split}${labels ? '-labelled' : ''}` : `${split}-${brain}${access ? '-acl' : ''}`;
   const pin = JSON.parse(readFileSync(join(import.meta.dir, 'pin.json'), 'utf8')) as { gbrain: { commit: string }; corpus: { repo: string; commit: string } };
   try {
@@ -706,6 +728,7 @@ if (import.meta.main) {
       brain,
       ...(access ? { access } : {}),
       ...(labels ? { labels: 'readers' as const } : {}),
+      ...(arg('owner') ? { owner: arg('owner') } : {}),
       embeddings: arg('embeddings'),
       gbrain: (arg('gbrain', 'gbrain')!).split(' ').filter(Boolean),
       commit: arg('commit', pin.gbrain.commit)!,

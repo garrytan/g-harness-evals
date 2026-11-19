@@ -426,6 +426,44 @@ JS
   route_json=$(printf ',"instruction_route":{"config":"%s","driver":"cli","route":"%s","bytes_sha256":"%s","files":%s,"hook":"%s"}' "$route_config" "$route" "$route_sha" "$route_files" "$route_hook")
 fi
 
+# owner-identity (GST-3217): HE_OWNER_CARD_B64 is the cell's owner card (Cell.owner_card, base64 of the set's world/owner-card.md,
+# runner/trial/owner-card.ts). It is appended to $CODEX_HOME/AGENTS.md (Codex's global instructions) after anything the gbrain installer wrote there: a blank line
+# when the file already has bytes, the card, a newline. $HE_LOG_DIR/owner-card.json records the card's sha256 and length, the file,
+# whether it existed and its sha256 after; ready carries owner_card. A card that is empty, over 4,000 bytes or not canonical base64
+# is HE-ADAPTER-007, exit 2 before ready. Unset, nothing here runs.
+owner_card_json=''
+if [ -n "${HE_OWNER_CARD_B64:-}" ]; then
+  set +e
+  owner_card_line=$(node - "$CODEX_HOME/AGENTS.md" "$HE_LOG_DIR/owner-card.json" <<'JS'
+const fs = require("fs"), path = require("path"), crypto = require("crypto");
+const [file, recPath] = process.argv.slice(2);
+const b64 = process.env.HE_OWNER_CARD_B64;
+const card = Buffer.from(b64, "base64");
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const rec = { file, card_sha256: sha(card), card_bytes: card.length, existed: fs.existsSync(file) };
+if (!card.length || card.length > 4000 || card.toString("base64") !== b64) {
+  Object.assign(rec, { status: "error", code: "HE-ADAPTER-007", error: "HE_OWNER_CARD_B64 is empty, over 4,000 bytes or not canonical base64" });
+  fs.writeFileSync(recPath, JSON.stringify(rec) + "\n");
+  console.log("HE-ADAPTER-007 " + rec.error);
+  process.exit(2);
+}
+fs.mkdirSync(path.dirname(file), { recursive: true });
+const before = rec.existed ? fs.readFileSync(file) : Buffer.alloc(0);
+const after = Buffer.concat([before, Buffer.from(before.length ? "\n\n" : ""), card, Buffer.from("\n")]);
+fs.writeFileSync(file, after);
+Object.assign(rec, { bytes_before: before.length, file_sha256: sha(after), status: "ok", code: null });
+fs.writeFileSync(recPath, JSON.stringify(rec) + "\n");
+console.log("ok " + rec.card_sha256 + " " + rec.existed);
+JS
+)
+  owner_card_code=$?
+  set -e
+  log "owner card: ${owner_card_line:-HE-ADAPTER-007 the owner card could not be written; see stderr.log}"
+  [ "$owner_card_code" -eq 0 ] || exit 2
+  read -r _ owner_card_sha owner_card_existed <<< "$owner_card_line"
+  owner_card_json=$(printf ',"owner_card":{"file":"%s","card_sha256":"%s","appended_to_existing":%s}' "$CODEX_HOME/AGENTS.md" "$owner_card_sha" "$owner_card_existed")
+fi
+
 # HARN-52, the skill-resolver arms (scripts/skill-resolver/ARMS.md). HE_HARNESS_CONFIG skills-<arm> reads the kit at
 # ${HE_SKILL_KIT_DIR:-/opt/skill-resolver} (scripts/skill-resolver/build-kit.ts):
 #   skills-native      the catalog in $CODEX_HOME/skills; a UserPromptSubmit group of its own in hooks.json, trusted by its own
@@ -689,7 +727,7 @@ mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 # Install mode: the watcher starts before ready and stops by itself once this process is gone.
 if [ "$install_mode" = 1 ]; then bash "$HE_INSTALL_DIR/probe.sh" watch codex "$HE_LOG_DIR/install-watch.ndjson" $$ > /dev/null 2>> "$HE_LOG_DIR/install-watch.stderr.log" & fi
 printf '{"harness":"codex","version":"%s","trial":"%s","ready_at":"%s","session_keys":"codex exec (first turn of a key) | codex exec resume <thread id>; dm:<member> | channel:<id>","mcp_servers":%s,"adapter_sha256":"%s"%s}\n' \
-  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$skill_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
+  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$owner_card_json$skill_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

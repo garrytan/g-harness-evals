@@ -35,7 +35,9 @@
 # corpus directory as the named contexts world-input and dev-corpus, and their digests as WORLD_SHA256 and DEV_CORPUS_SHA256
 # (the Dockerfile checks both and records dev_corpus_sha256 in image.json). The image is tagged
 # harness-eval/gbrain:world-<first 12 of the world sha256>, the tag the runner defaults to for that set's dev gbrain cells
-# and checks against those digests (HE-GBRAIN-002). It refuses --sealed-root and --embedded.
+# and checks against those digests (HE-GBRAIN-002). It refuses --sealed-root and --embedded. When the set's world directory
+# holds people.json with an owner (the owner-identity set), the dev bot-visible brain names that member as gbrain's owner
+# (OWNER_MEMBER, gbrain/build-brain.ts --owner) and the sidecar binds each trial token to it.
 # --dry-run prints the paths and digests, never file contents. The image is never pushed: an image built with --sealed-root
 # holds the plaintext heldout corpus and stays on the machine that built it.
 set -euo pipefail
@@ -102,6 +104,13 @@ if [ -n "$world_file" ]; then
   [ "$tag" != harness-eval/gbrain:dev ] || tag="harness-eval/gbrain:world-${world_sha:0:12}"
   world_args=(--build-context "world-input=$root/$(dirname "$world_rel")" --build-context "dev-corpus=$world_corpus"
     --build-arg "WORLD_SHA256=$world_sha" --build-arg "DEV_CORPUS_SHA256=$world_corpus_sha")
+  # owner-identity: a set whose world/people.json names an owner gets a dev bot-visible brain with that owner (build-brain.ts --owner).
+  people_file="$root/$(dirname "$world_rel")/people.json"
+  if [ -f "$people_file" ]; then
+    owner_member=$(jq -r '.owner // empty' "$people_file")
+    [[ "$owner_member" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "build-gbrain-image: $people_file names no owner member id (got '$owner_member')" >&2; exit 2; }
+    world_args+=(--build-arg "OWNER_MEMBER=$owner_member")
+  fi
 fi
 [ -n "$out" ] || out="$root/gbrain/.build"
 mkdir -p "$out"
@@ -134,6 +143,7 @@ plan() {
   echo "output:            $out (build.log${embedded:+, ledger.sqlite, proxy-usage.ndjson, brains/<split>-embedded})"
   [ -z "$sealed_root" ] || echo "sealed root:       $sealed_root (world_sha256 $sealed_world, heldout_corpus_sha256 $sealed_corpus, both match opening-receipt.json)"
   [ -z "$world_file" ] || echo "set world:         $world_rel (world_sha256 $world_sha, dev_corpus_sha256 $world_corpus_sha)"
+  [ -z "${owner_member:-}" ] || echo "brain owner:       $owner_member (from $(dirname "$world_rel")/people.json)"
   echo "keyword build:     docker build $nocache --build-arg GBRAIN_COMMIT=$gbrain ${hermes_args[*]}${sealed_root:+ ${sealed_args[*]}}${world_file:+ ${world_args[*]}} --target keyword -t $tag -f gbrain/Dockerfile ."
   if [ "$embedded" = 1 ]; then
     echo "embedded build:    docker build --build-arg GBRAIN_COMMIT=$gbrain --target builder -t $tag-builder -f gbrain/Dockerfile ."
