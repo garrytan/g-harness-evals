@@ -43,7 +43,7 @@ function weave(c: Ctx, beats: Beat[], speakers: Person[], label: (p: Person) => 
 
 const lead = (c: Ctx, s: string) => c.r.pick(LEAD) + s;
 const others = (c: Ctx, n: number) => c.r.shuffle([...c.cast.contacts]).slice(0, n);
-const uid = (c: Ctx) => { const h = c.r.int(0, 0xffffffff).toString(16).padStart(8, '0') + c.r.int(0, 0xffffffff).toString(16).padStart(8, '0'); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(1, 4)}-${h}${h.slice(0, 4)}`; };
+const uid = (c: Ctx) => { const h = Array.from({ length: 4 }, () => c.r.int(0, 0xffffffff).toString(16).padStart(8, '0')).join(''); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`; };
 const youRelay = (third: (w: { s: string; p: string }) => string) => `You told me ${third({ s: 'you', p: 'your' })}.`;
 const theyRelay = (name: string) => (third: (w: { s: string; p: string }) => string) => `${name} told me ${third(THEY)}.`;
 

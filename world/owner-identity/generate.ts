@@ -206,7 +206,7 @@ function readme(nI: number, nL: number, split: Split, publicSeed: boolean, cover
 
 ## Layout
 
-- \`world/world.json\`: the trial world. The owner, 14 contacts, the live-task channels and every import file under \`members/<owner>/imports/<task>/\`. The files are private to the owner; \`bot_reads_files_of\` names the owner, so the agent reads what the owner can read, as a personal agent does. The runner adds the agent itself.
+- \`world/world.json\`: the trial world. The owner, 13 other people, the live-task channels and every import file under \`members/<owner>/imports/<task>/\`. The files are private to the owner; \`bot_reads_files_of\` names the owner, so the agent reads what the owner can read, as a personal agent does. The runner adds the agent itself. Each people page is also a public world file (\`people/<slug>.md\`), so the gbrain image build lists it.
 - \`world/people.json\`, \`world/owner-card.md\`: the cast with every handle, and the card each harness gets about its owner.
 - \`world/coverage.json\`: how many tasks carry each hard case, by source.
 - \`corpus/${split}/people/\`: one gbrain people page per person, plus a second page with the owner's name and nothing else.
@@ -236,14 +236,19 @@ function writeOut(cast: Cast, split: Split, tasks: TaskOut[], min: number, publi
     coverage[h] = { total: 0, ...Object.fromEntries([...SOURCES, 'live'].map((s) => [s, 0])) };
     for (const t of tasks) if (t.gold.hard_cases.includes(h)) { coverage[h]!.total!++; coverage[h]![t.gold.source]!++; }
   }
+  const decoyPage = `${o.id}-2`;
+  const pages = new Map<string, string>([...cast.people.map((p) => [p.id, personPage(p, o)] as [string, string]), [decoyPage, ['---', 'type: person', `title: ${toml(o.name)}`, '---', '', `# ${o.name}`, ''].join('\n')]]);
+  const pageFiles = [...pages].map(([slug, body]): WorldFile => ({
+    id: `F-people-${slug}`, path: `people/${slug}.md`, folder: 'people', owner: o.id, team: null, visibility: 'public', kind: 'profile', title: body.match(/^# (.+)$/m)![1]!,
+    date: null, status: null, accounts: [], split, slug: `people/${slug}`, bytes: Buffer.byteLength(body), sha256: sha(body), body,
+  }));
   const world: World & { bot_reads_files_of: string } = {
     world_id: `owner-identity-${split}`, bot_reads_files_of: o.id, today: TODAY, time_zone: { name: ZONE, offset_minutes: OFFSET_MIN },
-    source: { dataset: 'owner-identity', path: 'world/owner-identity/generate.ts', inputs: tasks.reduce((s, t) => s + t.files.length, 0) },
+    source: { dataset: 'owner-identity', path: 'world/owner-identity/generate.ts', inputs: tasks.reduce((s, t) => s + t.files.length, 0) + pageFiles.length },
     teams: [], members: cast.people.map((p) => memberOf(p, split)), accounts: [],
-    channels: tasks.flatMap((t) => (t.channel ? [t.channel] : [])), messages: [], files: tasks.flatMap((t) => t.files), calendar: [], mail: [],
+    channels: tasks.flatMap((t) => (t.channel ? [t.channel] : [])), messages: [], files: [...tasks.flatMap((t) => t.files), ...pageFiles], calendar: [], mail: [],
   };
   files.set('world/world.json', JSON.stringify(world, null, 2) + '\n');
-  const decoyPage = `${o.id}-2`;
   files.set('world/people.json', JSON.stringify({
     owner: o.id,
     people: cast.people.map((p) => ({ id: p.id, name: p.name, first: p.first, aliases: p.aliases, handles: { emails: p.emails, phones: p.phones, slack: p.slack, telegram: p.telegram, imessage: p.imessage, whatsapp_name: p.whatsapp_name, discord: p.discord }, page_slug: `people/${p.id}`, role_in_story: p.role_in_story })),
@@ -257,8 +262,7 @@ function writeOut(cast: Cast, split: Split, tasks: TaskOut[], min: number, publi
   }, null, 2) + '\n');
   files.set('world/owner-card.md', ownerCard(o));
   files.set('world/coverage.json', JSON.stringify({ tasks: tasks.length, imports: iSlugs.length, live: tasks.length - iSlugs.length, required_min_per_hard_case: min, by_hard_case: coverage }, null, 2) + '\n');
-  for (const p of cast.people) files.set(`corpus/${split}/people/${p.id}.md`, personPage(p, o));
-  files.set(`corpus/${split}/people/${decoyPage}.md`, ['---', 'type: person', `title: ${toml(o.name)}`, '---', '', `# ${o.name}`, ''].join('\n'));
+  for (const [slug, body] of pages) files.set(`corpus/${split}/people/${slug}.md`, body);
   for (const t of tasks) {
     files.set(`${split}/${t.id}/task.toml`, taskToml(t, split, iSlugs.filter((s) => s !== `imports/${t.id}`)));
     files.set(`${split}/${t.id}/gold.json`, JSON.stringify(t.gold, null, 2) + '\n');

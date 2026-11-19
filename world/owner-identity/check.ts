@@ -36,8 +36,14 @@ export function checkBank(files: Map<string, string>, split: Split, nTasks: numb
     if (world.members.filter((m) => m.kind === 'contact').length < 12) return 'world has fewer than 12 contacts';
     for (const f of world.files) {
       if (new Bun.CryptoHasher('sha256').update(f.body).digest('hex') !== f.sha256 || Buffer.byteLength(f.body) !== f.bytes) return `file ${f.path} has a wrong sha256 or byte count`;
+      if (f.folder === 'people') {
+        if (f.visibility !== 'public' || f.kind !== 'profile' || f.owner !== ownerId || f.split !== split || f.path !== `${f.slug}.md` || files.get(`corpus/${split}/${f.slug}.md`) !== f.body) return `people file ${f.path} does not match its corpus page or the public profile shape`;
+        continue;
+      }
       if (!f.path.startsWith(`members/${ownerId}/imports/`) || f.owner !== ownerId || f.visibility !== 'private' || f.split !== split) return `file ${f.path} is outside the owner's imports or has the wrong owner, visibility or split`;
     }
+    const pageKeys = [...files.keys()].filter((k) => k.startsWith(`corpus/${split}/people/`)).map((k) => k.slice(`corpus/${split}/`.length, -3)).sort();
+    if (JSON.stringify(pageKeys) !== JSON.stringify(world.files.filter((f) => f.folder === 'people').map((f) => f.slug).sort())) return 'world.json does not carry exactly one public file per people page';
     const card = files.get('world/owner-card.md')!;
     if (card.length >= 1200) return `owner-card.md is ${card.length} characters (limit 1,200)`;
     const nameProblems = checkNames(people.people.map((p) => p.name), []);
@@ -59,7 +65,7 @@ export function checkBank(files: Map<string, string>, split: Split, nTasks: numb
       const last = t.turns.at(-1)!;
       if (last.actor !== ownerId || last.thread !== 'new' || last.channel !== 'dm') return `${id}: the last turn is not the owner's new-thread DM`;
       const ownSlug = `imports/${id}`;
-      const expectRetire = world.files.map((f) => f.slug).filter((s, i, xs) => xs.indexOf(s) === i && s !== ownSlug).sort();
+      const expectRetire = world.files.filter((f) => f.folder !== 'people').map((f) => f.slug).filter((s, i, xs) => xs.indexOf(s) === i && s !== ownSlug).sort();
       if (JSON.stringify([...(t.world?.retire ?? [])].sort()) !== JSON.stringify(expectRetire)) return `${id}: [world] retire is not every other task's import slug`;
       if (gold.family === 'I') {
         const tf = world.files.filter((f) => f.slug === ownSlug);
