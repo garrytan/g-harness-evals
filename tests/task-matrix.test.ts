@@ -35,11 +35,13 @@ const SET_FAMILIES: Record<string, string[]> = {
 const COMPANY_V2 = existsSync(join(ROOT, 'company-v2'));
 const PERSONAL_V2 = existsSync(join(ROOT, 'personal-v2'));
 
-/** Task sets: v0.1 at the root, then every tasks/multiuser/<set>/ that holds a dev or heldout directory. */
+/** Sets graded from the memory store rather than by predicates and oracles; world/owner-identity/check.ts checks them. */
+const STORE_GRADED = ['owner-identity'];
+/** Task sets: v0.1 at the root, then every predicate-graded tasks/multiuser/<set>/ that holds a dev or heldout directory. */
 const SETS: Array<{ name: string; root: string }> = [
   { name: 'v0.1', root: ROOT },
   ...readdirSync(ROOT, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !['dev', 'heldout', '_shared'].includes(d.name) && SPLITS.some((s) => existsSync(join(ROOT, d.name, s))))
+    .filter((d) => d.isDirectory() && ![...['dev', 'heldout', '_shared'], ...STORE_GRADED].includes(d.name) && SPLITS.some((s) => existsSync(join(ROOT, d.name, s))))
     .map((d) => ({ name: d.name, root: join(ROOT, d.name) })).sort((a, b) => a.name.localeCompare(b.name)),
 ];
 

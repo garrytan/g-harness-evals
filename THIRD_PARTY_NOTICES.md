@@ -21,6 +21,7 @@
 - [Harness Leaderboard: TB2.1 answer-key fingerprints](#harness-leaderboard-tb21-answer-key-fingerprints)
 - [Credits: Terminal-Bench 2 and SWE-bench Verified](#credits-terminal-bench-2-and-swe-bench-verified)
 - [Claude Code](#claude-code)
+- [12dicts: English word list](#12dicts-english-word-list)
 
 ## OpenClaw
 
@@ -740,3 +741,11 @@ We use these benchmarks' task ids and public numbers. We don't redistribute thei
   - `docs/benchmarks/2026-11-01-opus-gstack-follow/results/gn-follow-preset-2026-11/dry-run/preset-system-prompt.txt`
   - the Claude Code spans of the ablation coder input, which `harnesses/ablation/coding/items.json` and `agreement.json` carry only as sha256 values (`scripts/ablation/settle.ts` writes the raw text only to a directory outside the repository)
 - Built harness images are never published. We publish Dockerfiles only.
+
+## 12dicts: English word list
+
+- **What:** the words of 5 to 11 letters from the 2of12 list, used only to refuse invented tokens that are real English words.
+- **Version:** 12dicts 6.0.2 (American/2of12.txt).
+- **Licence:** released to the public domain by its compiler, who asks for acknowledgment.
+- **Copyright:** none claimed; compiled by Alan Beale.
+- **Paths that carry it:** `world/owner-identity/english-words.txt`.
