@@ -84,7 +84,7 @@ for (const harness of Object.keys(ADAPTERS) as Array<keyof typeof ADAPTERS>) {
 }
 
 test('the runner hands the card only to the adapters that read it', () => {
-  expect([...OWNER_CARD_HARNESSES].sort()).toEqual(Object.keys(ADAPTERS).sort());
+  expect([...OWNER_CARD_HARNESSES].map(String).sort()).toEqual(Object.keys(ADAPTERS).sort());
 });
 
 function prereg(cell: Partial<Cell>, runId: string): string {

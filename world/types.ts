@@ -138,4 +138,7 @@ export interface World {
   files: WorldFile[];
   calendar: CalendarEvent[];
   mail: Mail[];
+  /** owner-identity (GST-3217): the bot is this member's personal agent and reads every file the member can read. Absent, the bot
+   *  reads files under the ordinary rules. */
+  bot_reads_files_of?: string;
 }

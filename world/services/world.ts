@@ -83,6 +83,8 @@ export class WorldService {
   readonly bot: Member | null;
   readonly teams: World['teams'];
   readonly accounts: World['accounts'];
+  /** owner-identity: the member whose files the bot reads as its personal agent (World.bot_reads_files_of), or null. */
+  readonly botReadsFilesOf: Member | null;
   private fenced = false;
   private readonly retired: Set<string>;
   private readonly expired: ExpiredWindow[] = [];
@@ -125,6 +127,12 @@ export class WorldService {
       };
       this.members.push(this.bot);
       for (const c of this.channels) if (c.kind !== 'dm') c.members.push(this.bot.id);
+    }
+    this.botReadsFilesOf = null;
+    if (w.bot_reads_files_of !== undefined) {
+      const principal = this.members.find((m) => m.id === w.bot_reads_files_of && m !== this.bot);
+      if (!principal) throw new WorldError('bad_request', `bot_reads_files_of names ${w.bot_reads_files_of}, no member of this split`);
+      this.botReadsFilesOf = principal;
     }
     this.retired = new Set(opts.retire ?? []);
     if (this.retired.size) {
@@ -204,6 +212,7 @@ export class WorldService {
   }
 
   canReadFile(actor: Member, file: WorldFile): boolean {
+    if (this.botReadsFilesOf && this.bot && actor.id === this.bot.id) return this.canReadFile(this.botReadsFilesOf, file);
     if (file.owner === actor.id) return true;
     if (file.visibility === 'private') return false;
     if (file.visibility === 'public') return true;
