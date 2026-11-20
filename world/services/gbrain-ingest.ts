@@ -144,7 +144,7 @@ export class GbrainIngest {
     const request_id = crypto.randomUUID();
     for (let attempt = 0; ; attempt++) {
       const id = this.nextId++;
-      const body = { jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'remember', arguments: { fact, provenance, valid_from: posted, source_id: where.source, request_id } } };
+      const body = { jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'remember', arguments: { items: [{ fact, valid_from: posted }], provenance, source_id: where.source, request_id } } };
       // The upstream exchange and the reading of gbrain's answer; the recording happens outside, so a log that cannot append is
       // the exception enqueue() records, never an upstream failure.
       const answer = await this.exchange(token, id, body);
@@ -169,12 +169,19 @@ export class GbrainIngest {
       if (!reply) return { kind: 'error', error: 'no_response' };
       if (reply.error) return { kind: 'error', error: `rpc_${reply.error.code ?? 'error'}` };
       const result = reply.result as { isError?: boolean; content?: Array<{ text?: string }> } | undefined;
-      const payload = (() => { try { return JSON.parse(result?.content?.find((c) => typeof c.text === 'string' && c.text.trim().startsWith('{'))?.text ?? 'null') as Record<string, unknown> | null; } catch { return null; } })();
+      const whole = (() => { try { return JSON.parse(result?.content?.find((c) => typeof c.text === 'string' && c.text.trim().startsWith('{'))?.text ?? 'null') as Record<string, unknown> | null; } catch { return null; } })();
+      const item = Array.isArray(whole?.items) && whole.items.length === 1 ? whole.items[0] as { id?: unknown; status?: unknown; retry_after_ms?: unknown; error?: { code?: unknown; retryable?: unknown } } : null;
+      const itemFailed = item?.status === 'failed' || item?.status === 'pending';
+      const payload: Record<string, unknown> | null = !item ? whole : {
+        id: item.id, status: item.status,
+        ...(item.status === 'failed' ? { code: item.error?.code, retryable: item.error?.retryable } : {}),
+        ...(item.status === 'pending' ? { code: 'write_pending', retryable: true, write_request: { retry_after_ms: item.retry_after_ms } } : {}),
+      };
       const code = typeof payload?.code === 'string' ? payload.code : null;
       const writeError = typeof payload?.write_error === 'string' ? payload.write_error : null;
       const retryAfter = (payload?.write_request as { retry_after_ms?: unknown } | undefined)?.retry_after_ms;
       const factId = payload && (typeof payload.id === 'string' || typeof payload.id === 'number') ? payload.id : null;
-      if (result?.isError) {
+      if (result?.isError || itemFailed) {
         const reason = writeError ?? code ?? 'tool_error';
         // gbrain stamps `retryable` on every error envelope (writer_busy, owner_unavailable, storage_error at the pin); those
         // are resent like a pending write, a refusal is final.

@@ -228,12 +228,15 @@ cross-scope attempt the brain blocked, so a scoped arm's leaks separate into pag
 Member brain, live ingestion (`services/gbrain-ingest.ts`): when the runner hands the world the member brain's
 `ingest-tokens.json` (one token per source) and the manifest's channel map, the world subscribes to its own message
 stream and writes every message posted during the trial (an actor's turn, the bot's reply, every post or DM the bot
-makes) into the sidecar as one `remember` fact with provenance (who said it, where, when on the simulation clock), into
+makes) into the sidecar as one `remember` fact with provenance (who said it, where, when on the simulation clock),
+sent as a one-item list (`{items: [{fact, valid_from}], provenance, source_id, request_id}`, which gbrain accepts from a
+starter-surface caller from 0.60.740.0 on, where a top-level `valid_from` is refused), into
 the source of its conversation (the channel map for a channel, `private-<member>` for a DM between the bot and a
 member) under that source's token, one write at a time in posting order. Each write is an event: `via` `runner`,
 `actor` null, `tool` `gbrain.ingest`, `kind` `admin`, `args` `{channel, ts, author, source}`, `outcome` `ok` or
 `error` with gbrain's code (a retryable answer, `write_error` `write_pending` or `queue_capacity` under code
-`unavailable`, is sent again twice first under the same `request_id`, as are a transport failure and a 5xx), `effect`
+`unavailable`, or an item answered `pending`, is sent again twice first under the same `request_id`, as are a transport
+failure, a 5xx and a `failed` item gbrain marks retryable), `effect`
 `{fact_id, source, latency_ms, status}` (`status` `inserted` or `duplicate`); the
 fact's time (text, provenance and gbrain's `valid_from`) is the message's posting time in the world's offset. A conversation the
 brain has no source for (a DM with a member who holds no token, a group DM, a channel outside the map) is skipped, not

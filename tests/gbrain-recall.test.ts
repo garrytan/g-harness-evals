@@ -166,12 +166,17 @@ function stubGbrain(o: { lostReplyOnce?: boolean; refuse?: string; pending?: { t
     calls.push({ name, args, token: (req.headers.get('authorization') ?? '').replace('Bearer ', '') });
     if (name === 'remember') {
       const rid = String(args.request_id);
-      if (o.refuse && String(args.fact).includes(o.refuse)) return json({ isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'invalid_params' }) }] });
+      // gbrain 0.60.740.0+: the replay sends one fact as a one-entry items list (valid_from per item is on starter) and gets
+      // the batch's one-item answer back; a harness's own remember keeps its recorded single-fact shape.
+      const batch = Array.isArray(args.items);
+      const one = batch ? (args.items as Array<Record<string, unknown>>)[0]! : args;
+      if (o.refuse && String(one.fact).includes(o.refuse)) return json({ isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'invalid_params' }) }] });
       let id = byRequest.get(rid);
-      if (id === undefined) { id = facts.length + 1; facts.push({ id, fact: String(args.fact), entity_slug: entityOf(String(args.fact)), source: String(args.source_id) }); byRequest.set(rid, id); }
+      if (id === undefined) { id = facts.length + 1; facts.push({ id, fact: String(one.fact), entity_slug: entityOf(String(one.fact)), source: String(args.source_id) }); byRequest.set(rid, id); }
       if (o.lostReplyOnce && !seen.has(rid)) { seen.add(rid); return new Response('upstream reset', { status: 503 }); }
       if (o.pending && calls.filter((c) => c.args.request_id === rid).length <= o.pending.times) return json({ isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'unavailable', write_error: 'write_pending', write_request: { request_id: rid, state: 'queued', retry_after_ms: o.pending.ms } }) }] }, o.pending.status);
-      return json({ content: [{ type: 'text', text: JSON.stringify({ id: String(id), status: 'inserted', entity_slug: facts[id - 1]!.entity_slug, request_id: rid }) }] });
+      const saved = { id: String(id), status: 'inserted', entity_slug: facts[id - 1]!.entity_slug, request_id: rid };
+      return json({ content: [{ type: 'text', text: JSON.stringify(batch ? { items: [{ index: 0, ...saved }], saved: 1, partial: false } : saved) }] });
     }
     if (o.nullResult === name) return json(null);
     if (name === 'search') {

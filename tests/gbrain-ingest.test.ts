@@ -41,7 +41,11 @@ const upstream = Bun.serve({
     if (hold) await hold;
     // A 503 is the sidecar failing the request before it took the fact (a busy PGLite); the queue resends under the same request_id.
     if (answers[0] === 'flaky') { answers.shift(); return new Response('busy', { status: 503 }); }
-    writes.push({ token, args: m.params.arguments });
+    // gbrain 0.60.740.0+ refuses a top-level valid_from from a starter caller, so the ingester sends one fact as a one-entry items
+    // list (valid_from per item is on starter) with provenance and source_id at the top; writes records it flattened.
+    const items = m.params.arguments.items as Array<Record<string, unknown>> | undefined;
+    expect(Array.isArray(items) && items.length === 1 && !('fact' in m.params.arguments) && !('valid_from' in m.params.arguments)).toBe(true);
+    writes.push({ token, args: { ...m.params.arguments, ...items![0] } });
     // gbrain: one connection writes to one source; a source_id outside the token's grant is permission_denied.
     const granted = Object.entries(TOKENS).find(([, t]) => t === token)![0];
     const text = (v: unknown) => ({ type: 'text', text: JSON.stringify(v) });
@@ -49,12 +53,13 @@ const upstream = Bun.serve({
     const rid = m.params.arguments.request_id;
     if (scripted === 'queue_capacity') reserved = String(nextId++);
     const result = refuse ? { content: [text({ error: 'recovery_required', code: 'recovery_required' })], isError: true }
-      : scripted === 'write_pending' || scripted === 'queue_capacity' ? { content: [text({ error: 'unavailable', code: 'unavailable', write_error: scripted, write_request: { request_id: rid, state: 'queued', retry_after_ms: 250 } })], isError: true }
+      : scripted === 'write_pending' ? { content: [text({ items: [{ index: 0, request_id: rid, status: 'pending', state: 'queued', retry_after_ms: 250 }], saved: 0, failed: 0, pending: 1, partial: false })] }
+      : scripted === 'queue_capacity' ? { content: [text({ error: 'unavailable', code: 'unavailable', write_error: scripted, write_request: { request_id: rid, state: 'queued', retry_after_ms: 250 } })], isError: true }
       : scripted === 'writer_busy' ? { content: [text({ error: 'writer_busy', code: 'writer_busy', retryable: true })], isError: true }
       : scripted === 'slow' ? { content: [text({ error: 'unavailable', code: 'unavailable', write_error: 'write_pending', write_request: { request_id: rid, state: 'queued', retry_after_ms: 700 } })], isError: true }
-      : scripted === 'duplicate' ? { content: [text({ id: reserved ?? String(nextId - 1), status: 'duplicate', request_id: rid, write_request: { request_id: rid, state: 'committed' } })] }
+      : scripted === 'duplicate' ? { content: [text({ items: [{ index: 0, id: reserved ?? String(nextId - 1), status: 'duplicate', request_id: rid }], saved: 1, partial: false })] }
       : m.params.arguments.source_id !== granted ? { content: [text({ error: 'permission_denied', code: 'permission_denied' })], isError: true }
-      : { content: [text({ id: String(nextId++), status: 'inserted', request_id: rid, write_request: { request_id: rid, state: 'committed' } })] };
+      : { content: [text({ items: [{ index: 0, id: String(nextId++), status: 'inserted', request_id: rid }], saved: 1, partial: false })] };
     return new Response(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: m.id, result })}\n\n`, { headers: { 'content-type': 'text/event-stream' } });
   },
 });

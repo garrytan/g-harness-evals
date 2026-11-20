@@ -1364,18 +1364,26 @@ const REMEMBER_RETRY_AFTER_CAP_MS = 10_000;
  *  first attempt, so a retry asks gbrain for the same write and cannot insert the fact twice. */
 export async function rememberFact(url: string, token: string, f: ReplayFact): Promise<{ id: string; entity: string | null } | { error: string }> {
   const attempts = REMEMBER_RETRY_WAITS_MS.length + 1;
-  const args = { ...(f.harness_remember ? f.harness_remember.args : { fact: f.fact, provenance: f.provenance, valid_from: f.valid_from, source_id: f.source }), request_id: crypto.randomUUID() };
+  const args = { ...(f.harness_remember ? f.harness_remember.args : { items: [{ fact: f.fact, valid_from: f.valid_from }], provenance: f.provenance, source_id: f.source }), request_id: crypto.randomUUID() };
   let last = '';
   for (let attempt = 1; ; attempt++) {
     const r = await mcpCall(url, token, 'remember', args);
-    const payload = (r.reply?.result ? payloadsOf(r.reply.result).find((p) => p && typeof p === 'object' && !Array.isArray(p)) : null) as { id?: unknown; status?: unknown; entity_slug?: unknown; retryable?: unknown; code?: unknown; write_error?: unknown; write_request?: { retry_after_ms?: unknown } } | null;
+    type Payload = { id?: unknown; status?: unknown; entity_slug?: unknown; retryable?: unknown; code?: unknown; write_error?: unknown; write_request?: { retry_after_ms?: unknown } };
+    const whole = (r.reply?.result ? payloadsOf(r.reply.result).find((p) => p && typeof p === 'object' && !Array.isArray(p)) : null) as (Payload & { items?: unknown }) | null;
+    const item = Array.isArray(whole?.items) && whole.items.length === 1 ? whole.items[0] as { id?: unknown; status?: unknown; entity_slug?: unknown; entity?: unknown; retry_after_ms?: unknown; error?: { code?: unknown; retryable?: unknown } } : null;
+    const itemFailed = item?.status === 'failed' || item?.status === 'pending';
+    const payload: Payload | null = !item ? whole : {
+      id: item.id, status: item.status, entity_slug: item.entity_slug ?? item.entity,
+      ...(item.status === 'failed' ? { code: item.error?.code, retryable: item.error?.retryable } : {}),
+      ...(item.status === 'pending' ? { code: 'write_pending', retryable: true, write_request: { retry_after_ms: item.retry_after_ms } } : {}),
+    };
     const refused = (why: string) => ({ error: 'remember of ingest seq ' + f.seq + ' into ' + f.source + ' was refused: ' + why });
     let retryAfter = 0;
     if (r.status === null || r.status >= 500) last = r.error ?? 'upstream_' + r.status;
     else if (r.status < 200 || r.status >= 300) return refused('upstream_' + r.status);
     else if (!r.reply) return refused('no_response');
     else if (r.reply.error) return refused('rpc_' + (r.reply.error.code ?? 'error'));
-    else if (r.reply.result?.isError) {
+    else if (r.reply.result?.isError || itemFailed) {
       last = String(payload?.write_error ?? payload?.code ?? 'tool_error');
       if (!RETRYABLE_CODES.has(last) && payload?.retryable !== true) return refused(last + ' ' + JSON.stringify(payload).slice(0, 200));
       const after = payload?.write_request?.retry_after_ms;
