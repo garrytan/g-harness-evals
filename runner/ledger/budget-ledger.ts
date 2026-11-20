@@ -1164,6 +1164,7 @@ export const CHAT_PRICE_OVERRIDES: Record<string, ChatPrice> = {
   // ("Prompts with more than 272K input tokens are priced at 2x input and cache rates and 1.5x output for the full
   // request", developers.openai.com/api/docs/models/<model>) checked 2026-10-08.
   'openai:gpt-6.1-sol': { input: 2, output: 10, cache_read: 0.1, cache_write: 2.5, long: { above_input_tokens: 272_000, input: 4, output: 15, cache_read: 0.2, cache_write: 5 } },
+  'openai:gpt-6.2-sol': { input: 2, output: 10, cache_read: 0.1, cache_write: 2.5, long: { above_input_tokens: 272_000, input: 4, output: 15, cache_read: 0.2, cache_write: 5 } },
   'openai:gpt-6-luna': { input: 0.1, output: 0.5, cache_read: 0.01, cache_write: 0.125, long: { above_input_tokens: 272_000, input: 0.2, output: 0.75, cache_read: 0.02, cache_write: 0.25 } },
   'openai:gpt-6-astra': { input: 10, output: 50, cache_read: 1, cache_write: 12.5, long: { above_input_tokens: 272_000, input: 20, output: 75, cache_read: 2, cache_write: 25 } },
   // docs.x.ai/developers/pricing (checked 2026-11-15), global endpoint: once a prompt reaches 200,000 tokens every token in

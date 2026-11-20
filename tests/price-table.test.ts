@@ -36,7 +36,7 @@ const FLOAT_NOISE_ROWS = ['anthropic:claude-sonnet-4-6', 'anthropic:claude-haiku
 const ADDED_AFTER_FIXTURE = ['openai:gpt-6-astra', 'anthropic:claude-fable-5-2', 'openrouter:deepseek/deepseek-v4.1-flash-1017',
   'google:gemini-4-carbon', 'openrouter:google/gemini-4-carbon', 'openrouter:google/gemini-4-hydrogen', 'openrouter:meta/muse-wonder',
   'openrouter:moonshotai/kimi-k3.1-pro', 'openrouter:z-ai/glm-5.3', 'xai:grok-4.7', 'openrouter:google/gemini-3-flash-preview',
-  'openrouter:google/gemini-3.1-pro-preview-customtools', 'xai:grok-4.6'];
+  'openrouter:google/gemini-3.1-pro-preview-customtools', 'xai:grok-4.6', 'openai:gpt-6.2-sol'];
 
 /** Rows a later dated table repriced on purpose, each reviewed in its own test: prices-2026-11-16 bills claude-sonnet-5-5 cache hits at
  *  0.05x input, as Anthropic's pricing page lists them (tests/price-table-2026-11-16.test.ts). Their fixture cases are skipped here. */
