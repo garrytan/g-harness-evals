@@ -31,7 +31,8 @@ permissions:
 # and Ubicloud runners do not. The exported public copy keeps ubuntu-latest, which is free for public repositories and
 # never puts a fork's pull request on paid runners. public-export runs only here, so it names the Ubicloud runner directly.
 # Artifact storage draws on the same budget and refuses uploads while it is spent, so the two artifact uploads below
-# (the tested tree and the export report) may fail without failing their job.
+# (the tested tree and the export report) may fail without failing their job; the tested tree is in the checks job's log
+# as well.
 jobs:
   checks:
     runs-on: ${{ github.repository == 'garrytan/harness-evals' && 'ubicloud-standard-4-ubuntu-2404' || 'ubuntu-latest' }}
@@ -80,6 +81,14 @@ jobs:
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bun scripts/ci-tree-json.ts --junit "$RUNNER_TEMP/junit/builders.xml" --junit "$RUNNER_TEMP/junit/main.xml" --junit "$RUNNER_TEMP/junit/serial.xml" --out "$RUNNER_TEMP/checks-tree/tree.json"
+      # The same record as one GSTACK_TREE_JSON line (the artifact name and the file in base64) in this step's own log, for
+      # a gstack that reads it from there when the run has no artifact (internal-task-a, internal-task-b): the job log is GitHub's own
+      # record of this job and attempt, like the artifact. It is its own step, after the tests and outside their process,
+      # because gstack reads the line only from the step its run profile names (tree_log_step). Keep the step's name as it
+      # is. The sleeps keep the line on its own in the log, apart from the step's header and the next step.
+      - name: Tested tree record in the log
+        if: steps.docs.outputs.docs_only != 'true'
+        run: sleep 1 && echo "GSTACK_TREE_JSON checks-tree $(base64 -w0 "$RUNNER_TEMP/checks-tree/tree.json")" && sleep 2
       - name: Upload the tested tree
         if: steps.docs.outputs.docs_only != 'true'
         continue-on-error: true
