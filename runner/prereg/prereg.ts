@@ -50,6 +50,13 @@
  * private-by-hash result class: its preregistration pins the private billing outputs and no hash, and its results
  * attestation names the unchanged preregistration and exactly those outputs.
  *
+ * Both modes also run `checkPractices` (runner/prereg/practices.ts): every experiment not on its frozen grandfather list
+ * states the eval-loop practices in its preregistration (the decision, a pilot per arm, the judge check per arm and the
+ * half-way look above $500 paid, with a declared quick look exempt), and its report carries the call it settled. The
+ * private mode also reads the run's spend-internal.md for the paid and meter spend lines; the public export drops that file.
+ * A repository with no grandfather list (the synthetic repositories the tests build) skips the practices check;
+ * tests/prereg-practices.test.ts holds this repository to its pinned list, so deleting it fails CI.
+ *
  * The CLI also runs `checkOpenings` (runner/heldout/openings.ts) over the
  * held-out openings ledgers: every registered experiment with a held-out cell has
  * exactly one ledger row, every row names such an experiment, rows follow
@@ -744,6 +751,24 @@ function publicMain(entries: ManifestEntry[], ledgerPath: string, publication?: 
   return failed;
 }
 
+async function practicesMain(entries: ManifestEntry[], spend: boolean): Promise<number> {
+  const { checkPractices, GRANDFATHERED_PATH } = await import('./practices.ts');
+  if (!existsSync(GRANDFATHERED_PATH)) {
+    console.log(`prereg-practices: skipped, this repository has no ${GRANDFATHERED_PATH}`);
+    return 0;
+  }
+  let result;
+  try {
+    result = checkPractices(entries, process.cwd(), { spend });
+  } catch (e) {
+    console.error(`prereg-practices: ${(e as Error).message}`);
+    return 1;
+  }
+  for (const p of result.problems) console.error(`prereg-practices: ${p.id}: ${p.file}: ${p.problem}`);
+  console.log(`prereg-practices: ${result.checked} new experiments checked, ${result.grandfathered} grandfathered, ${result.problems.length} problems`);
+  return result.problems.length;
+}
+
 async function privateByHashMain(entries: ManifestEntry[]): Promise<number> {
   const registered = entries.filter(e => e.result_class === 'private-by-hash').length;
   const problems = registered ? (await import('./private-by-hash.ts')).checkPrivateByHash(entries) : [];
@@ -789,12 +814,13 @@ if (import.meta.main) {
       }
     }
     const failed = publicMain(entries, flag('--ledger') ?? LEDGER_PATH, publication, attestations);
+    const practices = await practicesMain(entries, false);
     const privateByHash = await privateByHashMain(entries);
     const { checkOpenings } = await import('../heldout/openings.ts');
     const openings = checkOpenings(process.cwd());
     for (const p of openings) console.error(`heldout-openings: ${p}`);
     console.log(`heldout-openings: ${openings.length} problems`);
-    process.exit(failed === 0 && privateByHash === 0 && openings.length === 0 ? 0 : 1);
+    process.exit(failed === 0 && practices === 0 && privateByHash === 0 && openings.length === 0 ? 0 : 1);
   }
   const all = checkOrder(entries);
   const problems = all.filter(p => !p.warning);
@@ -802,10 +828,11 @@ if (import.meta.main) {
   for (const p of problems) console.error(`prereg-order: ${p.id}: ${p.file}: ${p.problem}`);
   for (const w of warnings) console.error(`prereg-order: warning: ${w.id}: ${w.file}: ${w.problem}`);
   console.log(`prereg-order: ${entries.length} experiments checked, ${problems.length} problems, ${warnings.length} warnings`);
+  const practices = await practicesMain(entries, true);
   const privateByHash = await privateByHashMain(entries);
   const { checkOpenings } = await import('../heldout/openings.ts');
   const openings = checkOpenings(process.cwd());
   for (const p of openings) console.error(`heldout-openings: ${p}`);
   console.log(`heldout-openings: ${openings.length} problems`);
-  process.exit(problems.length === 0 && privateByHash === 0 && openings.length === 0 ? 0 : 1);
+  process.exit(problems.length === 0 && practices === 0 && privateByHash === 0 && openings.length === 0 ? 0 : 1);
 }

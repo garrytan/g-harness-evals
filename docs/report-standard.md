@@ -29,8 +29,9 @@ Every report opens with takeaways, then a TL;DR block, before any other heading.
 3. **The answer in one bold line.** The question and what we found, in plain words. Say "can't tell apart" when the test found nothing; never soften a null.
 4. **The numbers, one bullet each, with ranges.** Pass rate [95% range] per cell, cost per solved task [95% range], median time per trial.
 5. **The call or verdict.** A call from the [glossary](glossary.md) for each preregistered comparison, and for a part under test one verdict word (KEEP, FIX-METHOD or CUT-CANDIDATE) with its plain meaning.
-6. **Caveats, one line each.** Incomplete cells, dev not held-out, saturation, pins, deviations. Never buried below the fold.
-7. **Status line.** Merged or draft, the results PR, whether a claim-check reader ran and on which PR, and the grader audit's result (passed, or not applicable and why).
+6. **What it settled.** One line, `- **Settled:** <the ship-or-kill call this result settled>`, or `- **Settled:** none` when it settled nothing. This is how we count what each decision costs. Required for every run not on `runner/prereg/practices-grandfathered.json`; `bun runner/prereg/prereg.ts` fails a new run's report.md without it ([methodology.md](methodology.md) item 16).
+7. **Caveats, one line each.** Incomplete cells, dev not held-out, saturation, pins, deviations. Never buried below the fold.
+8. **Status line.** Merged or draft, the results PR, whether a claim-check reader ran and on which PR, and the grader audit's result (passed, or not applicable and why).
 
 ## Words and numbers
 
@@ -38,6 +39,7 @@ Every report opens with takeaways, then a TL;DR block, before any other heading.
 - **Pass rate is the task mean** with the task-clustered bootstrap 95% range. State the denominator (tasks and tries) beside it. If a headline uses a subset of tasks, the table says so and gives the full-cell figure too.
 - **Cost is list price through our metering proxy.** Say what is in and out: excluded trials, timed-out charges, housekeeping calls, smokes, VMs.
 - **Cost stays internal unless it is the lesson.** Cost per solved task between setups belongs in the body when it is part of what we learned. Run spend (what the run cost us: paid trials, VMs, our own model use) never goes in report.md, because preregistered reports are hash-pinned and the public export can't drop a section from them. It goes in its own file beside the report, `docs/benchmarks/<run>/spend-internal.md`, outside results/ and outside the preregistration's globs; the public export leaves that path out.
+- **spend-internal.md opens with the cost of the result,** in two lines: `- **Paid spend:** $<n>` (model calls through the metering proxy, plus VMs, at list price) and `- **Meter spend:** $<n>` (our own model use on Capy's meter, subagents included). With the report's Settled line, these give the cost per decision. Required for every run not on `runner/prereg/practices-grandfathered.json`; the private repository's preregistration check fails a new run with a report.md and without them.
 - **Intervals are explained once in plain words** and named exactly (task-clustered bootstrap, Wilson, Newcombe). Name the Holm family and its size.
 - **Headroom comes with every result.** Include the Headroom section `summarize-run.ts` prints (or `bun scripts/headroom.ts --results <dir>`): how many tasks can tell the arms apart, and the per-task table. A call the analysis refused reads "can't tell: no room to improve", with its counts.
 - **Calls come from the preregistered family only.** Rows are never ranked by point estimate when their ranges overlap.
@@ -78,6 +80,7 @@ Tick each of these in the PR body. A results PR with an unticked line isn't read
 - [ ] **Grader audit passed.** `bun scripts/grader-audit.ts --run docs/benchmarks/<run> --lease-usd <cap>` wrote `grader-audit.md` and `grader-audit.json` beside the report, and `--check` passes. If it failed, every flagged trial was reread: the check or task was fixed and the run regraded, or a person recorded their own verdict in `grader-audit-overrides.jsonl`. A run the audit can't read (held-out or private tasks, no per-trial event logs) has `grader-audit.na.json` with the reason. See [grader-audit.md](grader-audit.md).
 - [ ] **Claim check.** A reviewer traced every number and takeaway to its receipt.
 - [ ] **Scoreboard and index.** The scoreboard entry and the docs/scoreboard/reports.json row are in, and `bun scripts/scoreboard/build.ts` ran.
-- [ ] **Spend kept out of report.md.** Run spend is in `spend-internal.md`.
+- [ ] **Spend kept out of report.md.** Run spend is in `spend-internal.md`, which opens with its Paid spend and Meter spend lines.
+- [ ] **Settled.** report.md names the ship-or-kill call the result settled, or "none".
 - [ ] **Raw data archived.** The run's raw trial data is packed, stripped, verified and published with `scripts/archive/raw.ts`, its entry is in docs/archive/index.json, and `bun scripts/archive/raw.ts link` wrote the "Data archive" section of the run's reproduce.md ([raw-archive.md](raw-archive.md)). CI fails a results PR without it.
 - [ ] **Next time.** report.md has its `## Next time` section with at least one item.

@@ -39,7 +39,58 @@ Terms: a **trial** is one harness attempt at one task from a frozen image; a **c
     - The check fails closed: a shallow clone, a commit the checkout doesn't hold, or a commit that is not an ancestor of HEAD stops it with a message, and it never falls back to the tip. CI checks out full history (`fetch-depth: 0`), so the commits must be on main's history: an amendment's branch merges with a merge commit.
     - A preregistration with no `run_commit` is still checked against the checkout's files, as before. `runner/prereg/run-commit.ts` holds the check.
 
+16. **Every new preregistration states the eval-loop practices.** The org's eval-loop practices page asks four things of every plan, and `bun runner/prereg/prereg.ts` (CI's prereg job, in both repositories) fails a newly registered experiment whose preregistration is missing one. It reads these headings and fields as text (`runner/prereg/practices.ts`):
+    - `## Eval loop` declares `- Size:` (`counted run` or `quick look`), `- Paid budget: $<n>` (model calls through the metering proxy) and `- Model judge:` (`none`, or the judge model).
+    - **The decision (R97):** `## What the result changes`, with one bullet for each way the result could come out, at least two.
+    - **A pilot per arm (R111):** `## Pilot`, with a table of `Arm`, `Arm budget` and `Pilot cap`. Each cap is above $0 and at most a tenth of its arm's budget, and the arm budgets add up to no more than the paid budget. Fields say how the pilot shows, on each arm's own outputs, `- Part under test ran:`, `- Tasks can be supplied:` and, with a model judge, `- Judge passes R78:`.
+    - **The judge check, read per arm (R78):** with a model judge, `## Judge check`, with a table of `Arm`, `Labelled outputs` and `Kappa bar`: a row for every pilot arm, at least 40 labelled outputs in all, and a bar of at least 0.6.
+    - **One look at half the units (R113):** above $500 paid, `## Interim look`, with `- Look at: <n> of <N> units` (n is half of N) and `- Stop bounds:`.
+    - **A quick look (R112) is exempt.** It declares `- Size: quick look`, at most $100 paid, and its three-line plan as `- Question:`, `- Decision:` and `- Stop rule:` in `## Eval loop`. It publishes no number.
+    - A field reads `- Name: value` or `- **Name:** value`. An empty value or a leftover placeholder such as `<n>` counts as missing. A shard's JSON preregistration is covered by the Markdown preregistration registered from the same folder.
+    - **Results:** once a new run's `report.md` exists it carries `- **Settled:**` (the ship-or-kill call the result settled, or `none`), and in the private repository its `spend-internal.md` carries `- **Paid spend:** $<n>` and `- **Meter spend:** $<n>` (Capy's meter for our own model use). See [report-standard.md](report-standard.md).
+    - **Frozen runs are exempt by a grandfather list, not a date.** The 131 experiments registered when the check landed (2026-11-19) are listed in `runner/prereg/practices-grandfathered.json`, and the check pins that file's sha256, so the list can't grow. Their preregistrations, reports and run folders are never reread. A new Markdown preregistration in an old run's folder is checked, but that folder's report is not.
+
+    Copy this into a new preregistration and replace every `<...>`:
+
+    ```markdown
+    ## Eval loop
+
+    - Size: counted run
+    - Paid budget: $<n>
+    - Model judge: <none, or the judge model>
+
+    ## What the result changes
+
+    - **<one way the result could come out>:** <what we do differently>.
+    - **<another way>:** <what we do differently>.
+
+    ## Pilot
+
+    | Arm | Arm budget | Pilot cap |
+    |---|---:|---:|
+    | <arm> | $<n> | $<at most a tenth of it> |
+
+    - **Part under test ran:** <what in each arm's pilot outputs shows it>
+    - **Judge passes R78:** <how the judge check runs on each arm's pilot outputs; drop this line with no model judge>
+    - **Tasks can be supplied:** <what shows the tasks build and start at the planned rate>
+
+    ## Judge check
+
+    | Arm | Labelled outputs | Kappa bar |
+    |---|---:|---:|
+    | <arm> | <n> | 0.6 |
+
+    ## Interim look
+
+    - Look at: <n> of <N> units
+    - Stop bounds: <the bounds that stop the run at the look>
+    ```
+
 ## Changelog
+
+### 2026-11-19: Item 16 added: new preregistrations state the eval-loop practices
+
+The org's eval-loop audit of its last 30 evals found that nearly a quarter of the spend settled nothing, and the largest single loss was a judge that failed its check after the whole grid had run. Item 16 makes CI refuse a new plan that leaves out the decision, the pilot per arm, the judge check per arm or the half-way look above $500, keeps a declared quick look exempt, and asks each new run's results for the call it settled and, privately, what it cost. Runs registered before it are exempt by a frozen grandfather list.
 
 ### 2026-11-15: Item 15 added: pinned files are checked at the run commit (internal-task)
 

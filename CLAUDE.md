@@ -22,7 +22,7 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 - `docs/benchmarks/`: preregistrations, runbooks and reports, one folder per counted run; `preregistrations.json` and `preregistrations.d/` register experiments for the order check.
 - `findings/`: one file per public claim, each tied to receipts at a pinned commit; `findings/README.md` is the index.
 - `runner/stats/`: the statistics kit (vendored from gbrain-evals, MIT).
-- `runner/prereg/`: the preregistration-order checker.
+- `runner/prereg/`: the preregistration checker: order, pins at the run commit, and the eval-loop practices every new plan states (docs/methodology.md item 16).
 - `tests/`: `bun test tests/`.
 - `private/`: private-only material the public copy leaves out: the program spend computation (`spend/budget-ledger.ts`, which renders `docs/budget-ledger.md`; its tests run with `bun test private/spend/`, which CI runs only where the folder exists) and the private outputs of private-by-hash runs (`docs/private-by-hash.md`).
 - `scripts/`: the report, audit and check tooling (run summaries and comparisons, link, receipt and publish checks), the shard runner (`run-shard.sh`, `ubicloud/`), the scoreboard generator (`scoreboard/build.ts`, which writes `docs/scoreboard.md`, and the README's ranking tables between `<!-- ranking:... -->` markers, from `docs/scoreboard/entries/`, and `docs/reports-index.md` from `docs/scoreboard/reports.json`) and the sealed held-out tools (`seal-heldout.ts`, `sealed/`).

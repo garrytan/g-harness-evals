@@ -14,6 +14,7 @@
 - **Median time per trial:** <cell>: <s> s; ... (<trials one at a time or concurrent>)
 - **Calls:** <pair>: <can't tell apart | behind | ahead> (Holm family of <k>). MDD <a> to <b> points.
 - **Verdict:** <KEEP | FIX-METHOD | CUT-CANDIDATE>: <plain meaning, and the named fix for FIX-METHOD>.
+- **Settled:** <the ship-or-kill call this result settled, or none>
 - **Caveats:** <one line each: dev or held-out, incomplete cells, saturation, pins, deviations>
 - **Status:** <merged | draft>, results PR <#n>, claim check <reader and PR | none on record>, grader audit <passed, k of n sampled failures flagged ([grader-audit.md](../../grader-audit.md)) | not applicable: reason>. Words: [glossary](../../glossary.md).
 
@@ -39,6 +40,9 @@
 
 ## Deviations
 
-<!-- No run spend in this file: it goes in spend-internal.md beside it, which the public export leaves out. Cost in the body only where it is the lesson. -->
+<!-- No run spend in this file: it goes in spend-internal.md beside it, which the public export leaves out. Cost in the body only where it is the lesson. spend-internal.md opens with two lines:
+- **Paid spend:** $<model calls through the metering proxy, plus VMs, at list price>
+- **Meter spend:** $<our own model use on Capy's meter, subagents included>
+-->
 
 ## Disclosures
