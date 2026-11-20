@@ -1,0 +1,19 @@
+diff --git a/src/cachetools/_cached.py b/src/cachetools/_cached.py
+index 4b8e2bb2d17647bcfa1e702ba99ce98630ac108b..a23ccdf832ad3efedecee98082a7ed4edc945c9a 100644
+--- a/src/cachetools/_cached.py
++++ b/src/cachetools/_cached.py
+@@ -35,10 +35,13 @@ class _WrapperBase:
+         self.cache_lock = lock
+         self.cache_condition = cond
+ 
+-    # descriptor and pickle support as for functools.lru_cache (C version)
++    # descriptor, copy and pickle support as for functools.lru_cache (C version)
+     def __get__(self, obj, objtype=None):
+         return self if obj is None else types.MethodType(self, obj)
+ 
++    def __copy__(self):
++        return self
++
+     def __reduce__(self):
+         return self.__qualname__
+ 

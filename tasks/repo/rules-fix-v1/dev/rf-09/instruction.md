@@ -1,0 +1,22 @@
+# Certain characters in inline code incorrectly parsed (e.g., `&`)
+
+MWE:
+
+```python
+import mistune
+from mistune.core import BlockState
+markdown = mistune.create_markdown(renderer="ast")
+
+md = r"`&<>`"
+tokens = markdown(md)
+
+print(tokens)
+```
+
+Output:
+
+```python
+[{'type': 'paragraph', 'children': [{'type': 'codespan', 'raw': '&amp;&lt;&gt;'}]}]
+```
+
+Fix this issue in /work/repo.

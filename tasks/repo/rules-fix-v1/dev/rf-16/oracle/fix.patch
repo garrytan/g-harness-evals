@@ -1,0 +1,17 @@
+diff --git a/more_itertools/more.py b/more_itertools/more.py
+index 2229563304deae3fbb26044e4c6a7beffba38cb4..eec094fbe0bb663ac26675ce6f3c0b66bac577f3 100755
+--- a/more_itertools/more.py
++++ b/more_itertools/more.py
+@@ -4414,9 +4414,11 @@ def value_chain(*args):
+             yield value
+             continue
+         try:
+-            yield from value
++            it = iter(value)
+         except TypeError:
+             yield value
++        else:
++            yield from it
+ 
+ 
+ def product_index(element, *iterables, repeat=1):

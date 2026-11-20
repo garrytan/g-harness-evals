@@ -1,0 +1,13 @@
+diff --git a/tabulate/__init__.py b/tabulate/__init__.py
+index f5453a6aace6c5b07669258d362a8ec55a3029d6..b7510b2236fe1c610ced46e5de5633e66a9cc7e8 100644
+--- a/tabulate/__init__.py
++++ b/tabulate/__init__.py
+@@ -2183,6 +2183,8 @@ def tabulate(
+     list_of_lists, separating_lines = _remove_separating_lines(list_of_lists)
+ 
+     if maxcolwidths is not None:
++        if type(maxcolwidths) is tuple:  # Check if tuple, convert to list if so
++            maxcolwidths = list(maxcolwidths)
+         if len(list_of_lists):
+             num_cols = len(list_of_lists[0])
+         else:

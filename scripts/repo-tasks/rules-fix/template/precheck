@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+# The task's precheck: byte-compiles the package folder, then collects (does not run) the repository's tests. Appends one
+# line to /work/.he/precheck.jsonl with the time, the exit status and a hash of the repository's files (tree_hash). It
+# writes nothing inside the repository: bytecode goes to a cache folder outside it and pytest's cache plugin is off.
+import datetime, hashlib, json, os, stat, subprocess, sys
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PACKAGE_DIR = @@PACKAGE_DIR@@
+TESTS_DIR = @@TESTS_DIR@@
+SRC_ROOT = @@SRC_ROOT@@
+LOG = '/work/.he/precheck.jsonl'
+
+
+def tree_hash():
+    # The tracked and untracked, not ignored files (git ls-files -c -o --exclude-standard) that are regular files on
+    # disk, without Python caches; sha256 over the sorted sha256sum-style lines "<hex>  <path>\n".
+    out = subprocess.run(['git', '-C', REPO, 'ls-files', '-z', '-c', '-o', '--exclude-standard'], capture_output=True).stdout
+    paths = set()
+    for raw in out.split(b'\0'):
+        if not raw:
+            continue
+        parts = raw.split(b'/')
+        if b'__pycache__' in parts or b'.pytest_cache' in parts or raw.endswith(b'.pyc'):
+            continue
+        full = os.path.join(REPO.encode(), raw)
+        try:
+            if not stat.S_ISREG(os.lstat(full).st_mode):
+                continue
+        except OSError:
+            continue
+        paths.add(raw)
+    h = hashlib.sha256()
+    for raw in sorted(paths):
+        with open(os.path.join(REPO.encode(), raw), 'rb') as fh:
+            h.update(hashlib.sha256(fh.read()).hexdigest().encode() + b'  ' + raw + b'\n')
+    return h.hexdigest()
+
+
+def detail(out):
+    lines = [l.strip() for l in out.splitlines() if l.strip() and not set(l.strip()) <= set('=-_ ')]
+    errs = [l for l in lines if l.startswith(('E ', 'ERROR', '***', 'SyntaxError', 'File '))]
+    pick = (errs or lines or ['no output'])[-1]
+    if pick.startswith('E '):
+        pick = pick[2:]
+    return pick.strip().rstrip('.')[:300]
+
+
+def main():
+    env = dict(os.environ)
+    env['PYTHONPYCACHEPREFIX'] = '/tmp/he-precheck-pycache'
+    env['PYTHONDONTWRITEBYTECODE'] = '1'
+    env.pop('PYTEST_ADDOPTS', None)
+    src = os.path.join(REPO, SRC_ROOT) if SRC_ROOT else REPO
+    env['PYTHONPATH'] = src + (os.pathsep + env['PYTHONPATH'] if env.get('PYTHONPATH') else '')
+    code, failed = 0, None
+    r = subprocess.run([sys.executable, '-m', 'compileall', '-q', PACKAGE_DIR], cwd=REPO, env=env, capture_output=True, text=True, errors='replace')
+    if r.returncode != 0:
+        code, failed = 1, ('compile', detail(r.stdout + r.stderr))
+    else:
+        r = subprocess.run([sys.executable, '-m', 'pytest', '-q', '--collect-only', '-p', 'no:cacheprovider', TESTS_DIR], cwd=REPO, env=env, capture_output=True, text=True, errors='replace')
+        if r.returncode != 0:
+            code, failed = 1, ('test collection', detail(r.stdout + r.stderr))
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
+    t = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+    with open(LOG, 'a') as fh:
+        fh.write(json.dumps({'t': t, 'exit': code, 'tree': tree_hash()}) + '\n')
+    if failed:
+        sys.stderr.write('precheck: %s failed: %s. Fix it, then run ./scripts/precheck again.\n' % failed)
+        return 1
+    print('precheck: ok')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

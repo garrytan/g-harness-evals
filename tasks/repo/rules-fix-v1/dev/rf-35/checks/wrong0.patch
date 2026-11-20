@@ -1,0 +1,13 @@
+diff --git a/src/cachetools/__init__.py b/src/cachetools/__init__.py
+index c9eecb29ee43f3d4433dc1f2db9f118ecee0df36..a500e26c2564ad1b14f34b2d359259384a491cff 100644
+--- a/src/cachetools/__init__.py
++++ b/src/cachetools/__init__.py
+@@ -359,7 +359,7 @@ class RRCache(Cache):
+         """Remove and return a random `(key, value)` pair."""
+         try:
+             key = self.__choice(self.__keys)
+-        except IndexError:
++        except (IndexError, KeyError):
+             raise KeyError("%s is empty" % type(self).__name__) from None
+         else:
+             return (key, self.pop(key))

@@ -1,0 +1,13 @@
+diff --git a/src/click/core.py b/src/click/core.py
+index 4bebb77891f3b425196f05b4c5632eb3640aaaae..1b4aee382d1f82ccf5013cf295f5efb1ddb72440 100644
+--- a/src/click/core.py
++++ b/src/click/core.py
+@@ -2682,7 +2682,7 @@ class Option(Parameter):
+ 
+     def get_error_hint(self, ctx: Context) -> str:
+         result = super().get_error_hint(ctx)
+-        if self.show_envvar:
++        if self.show_envvar and ctx.auto_envvar_prefix is None:
+             result += f" (env var: '{self.envvar}')"
+         return result
+ 

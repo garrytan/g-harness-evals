@@ -1,0 +1,35 @@
+diff --git a/src/mistune/inline_parser.py b/src/mistune/inline_parser.py
+index 21b04c157fc15e7e8ddf005bfc6cce0fdc0176c6..97423dbd6432d38d53aa5662c45911c07af0c3d9 100644
+--- a/src/mistune/inline_parser.py
++++ b/src/mistune/inline_parser.py
+@@ -19,7 +19,7 @@ from .helpers import (
+     parse_link_text,
+     unescape_char,
+ )
+-from .util import escape, escape_url, unikey
++from .util import escape_url, unikey
+ 
+ PAREN_END_RE = re.compile(r'\s*\)')
+ 
+@@ -310,7 +310,7 @@ class InlineParser(Parser[InlineState]):
+             if len(code.strip()):
+                 if code.startswith(' ') and code.endswith(' '):
+                     code = code[1:-1]
+-            state.append_token({'type': 'codespan', 'raw': escape(code)})
++            state.append_token({'type': 'codespan', 'raw': code})
+             return end_pos
+         else:
+             state.append_token({'type': 'text', 'raw': marker})
+diff --git a/src/mistune/renderers/html.py b/src/mistune/renderers/html.py
+index 0d999a71cfc30518c0bd50ef3e2a9185d9bdeb2a..a8d2c473ff75ea37c17a27e40145449dac7c64ae 100644
+--- a/src/mistune/renderers/html.py
++++ b/src/mistune/renderers/html.py
+@@ -91,7 +91,7 @@ class HTMLRenderer(BaseRenderer):
+         return s + ' />'
+ 
+     def codespan(self, text: str) -> str:
+-        return '<code>' + text + '</code>'
++        return '<code>' + escape_text(text) + '</code>'
+ 
+     def linebreak(self) -> str:
+         return '<br />\n'

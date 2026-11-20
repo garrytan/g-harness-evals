@@ -1,0 +1,13 @@
+diff --git a/src/marshmallow/validate.py b/src/marshmallow/validate.py
+index ee89f765f9037f46a2c8fd9e8721df066796f526..5d36519a66cbf958b0c357fff90e6b4e301d458e 100644
+--- a/src/marshmallow/validate.py
++++ b/src/marshmallow/validate.py
+@@ -187,7 +187,7 @@ class URL(Validator):
+         self.relative = relative
+         self.absolute = absolute
+         self.error: str = error or self.default_message
+-        self.schemes = schemes or self.default_schemes
++        self.schemes = {s.lower() for s in schemes} if schemes else self.default_schemes
+         self.require_tld = require_tld
+ 
+     def _repr_args(self) -> str:

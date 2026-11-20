@@ -1,0 +1,31 @@
+diff --git a/src/mistune/__init__.py b/src/mistune/__init__.py
+index 42b5d6f4e71bb4bb60d02429a3821c5e89e3bede..a23246ae40dd8d6a4b7b4d29ebeb6c409ab17ee8 100644
+--- a/src/mistune/__init__.py
++++ b/src/mistune/__init__.py
+@@ -22,14 +22,15 @@ RendererRef = Union[Literal["html", "ast"], BaseRenderer]
+ 
+ 
+ def create_markdown(
+-    escape: bool = True,
++    escape: Optional[bool] = None,
+     hard_wrap: bool = False,
+     renderer: Optional[RendererRef] = "html",
+     plugins: Optional[Iterable[PluginRef]] = None,
+ ) -> Markdown:
+     """Create a Markdown instance based on the given condition.
+ 
+-    :param escape: Boolean. If using html renderer, escape html.
++    :param escape: Boolean. If using html renderer, escape html. When it is
++        ``None``, the renderer keeps its own escape setting.
+     :param hard_wrap: Boolean. Break every new line into ``<br>``.
+     :param renderer: renderer instance, default is HTMLRenderer.
+     :param plugins: List of plugins.
+@@ -47,7 +48,7 @@ def create_markdown(
+         # explicit and more similar to 2.x's API
+         renderer = None
+     elif renderer == "html":
+-        renderer = HTMLRenderer(escape=escape)
++        renderer = HTMLRenderer(escape=True if escape is None else escape)
+ 
+     inline = InlineParser(hard_wrap=hard_wrap)
+     real_plugins: Optional[Iterable[Plugin]] = None

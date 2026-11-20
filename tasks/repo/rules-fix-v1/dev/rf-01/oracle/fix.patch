@@ -1,0 +1,12 @@
+diff --git a/rich/text.py b/rich/text.py
+index 7b32967f72703b9e22727f772930e914b18c37b9..69e19b64540f39a31d28eb0e1c3fcb2182c7082a 100644
+--- a/rich/text.py
++++ b/rich/text.py
+@@ -1041,6 +1041,7 @@ class Text(JupyterMixin):
+         _Span = Span
+         offset = len(self)
+         for content, style in tokens:
++            content = strip_control_codes(content)
+             append_text(content)
+             if style:
+                 append_span(_Span(offset, offset + len(content), style))

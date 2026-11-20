@@ -1,0 +1,1533 @@
+{
+ "note": "Inputs of the rules-fix-v1 build. Each task is a merged upstream bug fix with a linked issue: base is the fix commit's parent, src_files and test_files are what the fix changed, the hidden tests are the test_*.py files among test_files, expect holds the oracle's test counts, and wrong is a plausible wrong fix (exact text replacements on the fix's or the base's files, per wrong_from). fetch-sources.ts vendors the trees and issue texts and fills in stripped and the sha256 fields; build.ts reads only the vendored files.",
+ "seed": "rules-fix-v1",
+ "prefix": "rf",
+ "prune": [
+  ".github/**",
+  ".gitlab-ci.yml",
+  ".travis.yml",
+  ".pre-commit-config.yaml",
+  ".readthedocs.yaml",
+  ".readthedocs.yml",
+  ".devcontainer/**",
+  ".vscode/**",
+  "AGENTS.md",
+  "**/AGENTS.md",
+  "CLAUDE.md",
+  "**/CLAUDE.md",
+  "GEMINI.md",
+  "**/GEMINI.md",
+  ".hermes.md",
+  ".cursorrules",
+  ".cursor/**",
+  ".claude/**",
+  "docs/**",
+  "doc/**",
+  "examples/**",
+  "artwork/**",
+  "assets/**",
+  "imgs/**",
+  "benchmarks/**",
+  "benchmark/**",
+  "uv.lock",
+  "**/*.png",
+  "**/*.jpg",
+  "**/*.gif",
+  "**/*.svg",
+  "**/*.ico",
+  "**/*.pdf",
+  ".circleci/**",
+  "appveyor.yml"
+ ],
+ "repos": {
+  "sqlparse": {
+   "url": "https://github.com/andialbrecht/sqlparse",
+   "license": "BSD-3-Clause",
+   "license_file": "LICENSE",
+   "src_root": "",
+   "lock": "locks/sqlparse.lock",
+   "prune": []
+  },
+  "rich": {
+   "url": "https://github.com/Textualize/rich",
+   "license": "MIT",
+   "license_file": "LICENSE",
+   "src_root": "",
+   "lock": "locks/rich.lock",
+   "prune": [
+    ".faq/**",
+    "questions/**",
+    "tools/**"
+   ]
+  },
+  "click": {
+   "url": "https://github.com/pallets/click",
+   "license": "BSD-3-Clause",
+   "license_file": "LICENSE.txt",
+   "src_root": "src",
+   "lock": "locks/click.lock",
+   "prune": [],
+   "keep": [
+    "docs/**"
+   ]
+  },
+  "marshmallow": {
+   "url": "https://github.com/marshmallow-code/marshmallow",
+   "license": "MIT",
+   "license_file": "LICENSE",
+   "src_root": "src",
+   "lock": "locks/marshmallow.lock",
+   "prune": [
+    "performance/**"
+   ]
+  },
+  "more-itertools": {
+   "url": "https://github.com/more-itertools/more-itertools",
+   "license": "MIT",
+   "license_file": "LICENSE",
+   "src_root": "",
+   "lock": "locks/more-itertools.lock",
+   "prune": []
+  },
+  "boltons": {
+   "url": "https://github.com/mahmoud/boltons",
+   "license": "BSD-3-Clause",
+   "license_file": "LICENSE",
+   "src_root": "",
+   "lock": "locks/boltons.lock",
+   "prune": [
+    "misc/**",
+    ".omp/**"
+   ]
+  },
+  "tabulate": {
+   "url": "https://github.com/astanin/python-tabulate",
+   "license": "MIT",
+   "license_file": "LICENSE",
+   "src_root": "",
+   "lock": "locks/tabulate.lock",
+   "prune": []
+  },
+  "cachetools": {
+   "url": "https://github.com/tkem/cachetools",
+   "license": "MIT",
+   "license_file": "LICENSE",
+   "src_root": "src",
+   "lock": "locks/cachetools.lock",
+   "prune": []
+  },
+  "validators": {
+   "url": "https://github.com/python-validators/validators",
+   "license": "MIT",
+   "license_file": "LICENSE.txt",
+   "src_root": "src",
+   "lock": "locks/validators.lock",
+   "prune": [
+    "package/**"
+   ]
+  },
+  "mistune": {
+   "url": "https://github.com/lepture/mistune",
+   "license": "BSD-3-Clause",
+   "license_file": "LICENSE",
+   "src_root": "src",
+   "lock": "locks/mistune.lock",
+   "prune": []
+  },
+  "jinja": {
+   "url": "https://github.com/pallets/jinja",
+   "license": "BSD-3-Clause",
+   "license_file": "LICENSE.rst",
+   "src_root": "src",
+   "lock": "locks/jinja.lock",
+   "prune": [
+    "scripts/**"
+   ]
+  }
+ },
+ "tasks": [
+  {
+   "repo": "sqlparse",
+   "base": "df8e28495a87954a9d52de70c33ef7225c53b28f",
+   "fix": "f66d12c245412f28c58f045b646eb53c0e691b8b",
+   "issue": "https://github.com/andialbrecht/sqlparse/issues/332",
+   "package_dir": "sqlparse",
+   "tests_dir": "tests",
+   "src_files": [
+    "sqlparse/sql.py"
+   ],
+   "test_files": [
+    "tests/test_parse.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "sqlparse/sql.py",
+     "find": "                dot_idx = idx\n",
+     "replace": "                dot_idx = idx if dot_idx is None else dot_idx\n"
+    }
+   ],
+   "wrong_why": "takes the first dot instead of the last, so a.b.c still names b.",
+   "expect": {
+    "hidden_cases": 88,
+    "hidden_passed": 88,
+    "repo_tests_min": 405,
+    "repo_skips_max": 2
+   },
+   "stripped": [
+    "AGENTS.md",
+    "CLAUDE.md"
+   ],
+   "archive": "upstream/sqlparse-df8e28495a87.tar.gz",
+   "archive_sha256": "53d3dfa1c80436974f9d1f07bf5c8dced6229969b820e6d57b2008d8c28f902e",
+   "fix_archive": "upstream/sqlparse-f66d12c24541.fix.tar.gz",
+   "fix_archive_sha256": "643719d9fa3b3651337a36b66a32cb72014f305d68385907f4dca68a85dd51fb",
+   "issue_text": "issues/sqlparse-332.md",
+   "issue_text_sha256": "674b016f1434c59c44779cc8d3a2c347180098611313b252e1a28770c58df3fc"
+  },
+  {
+   "repo": "sqlparse",
+   "base": "acd8e5817b5be5f9b9a7b159c1bacc45179f4e44",
+   "fix": "5ca50a2ee9b39e9efeea33e01f132d628144fb69",
+   "issue": "https://github.com/andialbrecht/sqlparse/issues/826",
+   "package_dir": "sqlparse",
+   "tests_dir": "tests",
+   "src_files": [
+    "sqlparse/engine/statement_splitter.py"
+   ],
+   "test_files": [
+    "tests/test_split.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "sqlparse/engine/statement_splitter.py",
+     "find": "            elif (ttype not in (T.Whitespace, T.Newline, T.Comment.Single,",
+     "replace": "            elif (ttype not in (T.Whitespace, T.Comment.Single,"
+    }
+   ],
+   "wrong_why": "treats BEGIN TRANSACTION as a statement but still counts newlines before BEGIN as content.",
+   "expect": {
+    "hidden_cases": 43,
+    "hidden_passed": 43,
+    "repo_tests_min": 439,
+    "repo_skips_max": 2
+   },
+   "stripped": [
+    "AGENTS.md",
+    "CLAUDE.md"
+   ],
+   "archive": "upstream/sqlparse-acd8e5817b5b.tar.gz",
+   "archive_sha256": "31d833b2f50715554a0195123e7b0cc72bb734f9009d647e112f983f9e59448e",
+   "fix_archive": "upstream/sqlparse-5ca50a2ee9b3.fix.tar.gz",
+   "fix_archive_sha256": "c21c588ccc58200de0dc0736d9377b93824c88806abc38652a7713333829ebf3",
+   "issue_text": "issues/sqlparse-826.md",
+   "issue_text_sha256": "99a99c0ffb3c0b3c3f4f41a437cb8cc8d419769016e500ccc22f7fd1578f3759"
+  },
+  {
+   "repo": "sqlparse",
+   "base": "0c4902f3f7aafa8c2e63a375ec307c210842f543",
+   "fix": "b126ba5b2004474e9ad899456c077f976b761319",
+   "issue": "https://github.com/andialbrecht/sqlparse/issues/532",
+   "package_dir": "sqlparse",
+   "tests_dir": "tests",
+   "src_files": [
+    "sqlparse/keywords.py"
+   ],
+   "test_files": [
+    "tests/test_tokenize.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "sqlparse/keywords.py",
+     "find": "    (r'(ASC|DESC)(\\s+NULLS\\s+(FIRST|LAST))?\\b', tokens.Keyword.Order),\n",
+     "replace": ""
+    }
+   ],
+   "wrong_why": "makes NULLS FIRST/LAST an order keyword but does not join it with a preceding ASC or DESC.",
+   "expect": {
+    "hidden_cases": 61,
+    "hidden_passed": 61,
+    "repo_tests_min": 402,
+    "repo_skips_max": 2
+   },
+   "stripped": [],
+   "archive": "upstream/sqlparse-0c4902f3f7aa.tar.gz",
+   "archive_sha256": "309e2deafadc16035d9305b5ff7c6628d86ccac44c194a4db920bdb5b31eb84e",
+   "fix_archive": "upstream/sqlparse-b126ba5b2004.fix.tar.gz",
+   "fix_archive_sha256": "a63b38f9fefb6954b465e296e90a7d957bbf993cd9cbdd4f922aa3d00a7abdcd",
+   "issue_text": "issues/sqlparse-532.md",
+   "issue_text_sha256": "d460721d3e199928ac832d16eda542e740f4900afa969dcd856867707c3214c9"
+  },
+  {
+   "repo": "rich",
+   "base": "e732952eb53e62bfe936192dd84fb5c1d4d5d4ee",
+   "fix": "66074922edabeac684434b4d87ee994fb97b0627",
+   "issue": "https://github.com/Textualize/rich/issues/3517",
+   "pull_request": "https://github.com/Textualize/rich/pull/3518",
+   "package_dir": "rich",
+   "tests_dir": "tests",
+   "src_files": [
+    "rich/table.py"
+   ],
+   "test_files": [
+    "tests/test_table.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "rich/table.py",
+     "find": "column = Column(_index=index, highlight=self.highlight)",
+     "replace": "column = Column(_index=index, highlight=self.highlight and bool(self.rows))"
+    }
+   ],
+   "wrong_why": "copies the table highlight setting only once the table already has rows.",
+   "expect": {
+    "hidden_cases": 20,
+    "hidden_passed": 20,
+    "repo_tests_min": 846,
+    "repo_skips_max": 25
+   },
+   "stripped": [],
+   "archive": "upstream/rich-e732952eb53e.tar.gz",
+   "archive_sha256": "0894b123d6b2c41f3f3ebdf5a91477a882cd6fc7b9b38d858fff3ad76cd44b30",
+   "fix_archive": "upstream/rich-66074922edab.fix.tar.gz",
+   "fix_archive_sha256": "841716b5035a6ac4a84d4820d0e2591024a5c5cf4f1052f9d736b573dd826509",
+   "issue_text": "issues/rich-3517.md",
+   "issue_text_sha256": "630df0f4fabe6796ff68d0c4428e6e71c05d99bbf2da736228c637153de792a1"
+  },
+  {
+   "repo": "rich",
+   "base": "b6f2f7aa5b27f612f391cd28212aff51ad0d42d1",
+   "fix": "dc7a195acd480326c2449ec0829726ecd91e0c68",
+   "issue": "https://github.com/Textualize/rich/issues/3417",
+   "pull_request": "https://github.com/Textualize/rich/pull/3472",
+   "package_dir": "rich",
+   "tests_dir": "tests",
+   "src_files": [
+    "rich/pretty.py"
+   ],
+   "test_files": [
+    "tests/test_pretty.py"
+   ],
+   "deselect": [],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "rich/pretty.py",
+     "find": "child_node = _traverse(getattr(obj, field.name), depth=depth + 1)",
+     "replace": "child_node = _traverse(getattr(obj, field.name, None), depth=depth + 1)"
+    }
+   ],
+   "wrong_why": "reads a missing field as None instead of leaving it out, so the repr shows item=None.",
+   "expect": {
+    "hidden_cases": 52,
+    "hidden_passed": 51,
+    "repo_tests_min": 806,
+    "repo_skips_max": 23
+   },
+   "stripped": [],
+   "archive": "upstream/rich-b6f2f7aa5b27.tar.gz",
+   "archive_sha256": "02e521ec7e3f594c269b2531fbec1886dd987e8cdee80dffde3784aab37e6ef6",
+   "fix_archive": "upstream/rich-dc7a195acd48.fix.tar.gz",
+   "fix_archive_sha256": "3a091dac9582812c1bb31ee360222b2073a40ff1819444bfd7732707dbbdc44f",
+   "issue_text": "issues/rich-3417.md",
+   "issue_text_sha256": "34c5967268d4d7b0752cccd47a19cb494a2e5995e65cf7ca82c7a75112762f44"
+  },
+  {
+   "repo": "rich",
+   "base": "e2a982d5ea747f0deb7f78e8eaa5b4be7d9194cf",
+   "fix": "1b2dada1c9fa6f16ec319a8d370458c8bde203f7",
+   "issue": "https://github.com/Textualize/rich/issues/3014",
+   "pull_request": "https://github.com/Textualize/rich/pull/3471",
+   "package_dir": "rich",
+   "tests_dir": "tests",
+   "src_files": [
+    "rich/text.py"
+   ],
+   "test_files": [
+    "tests/test_text.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "rich/text.py",
+     "find": "            content = strip_control_codes(content)\n",
+     "replace": "            if not style:\n                content = strip_control_codes(content)\n"
+    }
+   ],
+   "wrong_why": "strips control codes only from tokens that have no style.",
+   "expect": {
+    "hidden_cases": 108,
+    "hidden_passed": 108,
+    "repo_tests_min": 748,
+    "repo_skips_max": 24
+   },
+   "stripped": [],
+   "archive": "upstream/rich-e2a982d5ea74.tar.gz",
+   "archive_sha256": "59e888a82c31f8072239846e2b1768d3f9b36ec44be8b3274882e91dc69ce828",
+   "fix_archive": "upstream/rich-1b2dada1c9fa.fix.tar.gz",
+   "fix_archive_sha256": "f41d0a53f6c18e9df0f466a71bc038acb9516f0ff2b58dff63e0fd25ce64c036",
+   "issue_text": "issues/rich-3014.md",
+   "issue_text_sha256": "0bb29eb9de324b6211db0bd928ea904bb3c98ea61c28b099cfc09661b40121cd"
+  },
+  {
+   "repo": "click",
+   "base": "04ef3a6f473deb2499721a8d11f92a7d2c0912f2",
+   "fix": "1458800409ed12076f18451889b0857db36aa522",
+   "issue": "https://github.com/pallets/click/issues/3298",
+   "pull_request": "https://github.com/pallets/click/pull/3299",
+   "package_dir": "src/click",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/click/core.py"
+   ],
+   "test_files": [
+    "tests/test_options.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/click/core.py",
+     "find": "elif isinstance(default_value, str) and default_value == \"\":",
+     "replace": "elif default_value is not None and default_value == \"\":"
+    }
+   ],
+   "wrong_why": "still compares the default with an empty string first, which raises for types that refuse the comparison.",
+   "expect": {
+    "hidden_cases": 552,
+    "hidden_passed": 552,
+    "repo_tests_min": 856,
+    "repo_skips_max": 22
+   },
+   "stripped": [],
+   "archive": "upstream/click-04ef3a6f473d.tar.gz",
+   "archive_sha256": "53177c63693fc6f5e89418f894205b1bd7736f509508ae6701cca3e82f8bb51f",
+   "fix_archive": "upstream/click-1458800409ed.fix.tar.gz",
+   "fix_archive_sha256": "7edd54d633ef261f3aa9cc1eeaea9b567829a5e35e8f7d311c76fbfd82f3cf24",
+   "issue_text": "issues/click-3298.md",
+   "issue_text_sha256": "85502fbe731ebf25f9a97f05199d603ace78db11ba5034f89a4df68727e88ba6"
+  },
+  {
+   "repo": "click",
+   "base": "7f7bbe4569ea68e8dabee232eade069ef3310aea",
+   "fix": "ebcd548d50662bc8fa4f8b9ec7fe13cb8310bfaa",
+   "issue": "https://github.com/pallets/click/issues/3084",
+   "pull_request": "https://github.com/pallets/click/pull/3152",
+   "package_dir": "src/click",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/click/core.py"
+   ],
+   "test_files": [
+    "tests/test_options.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/click/core.py",
+     "find": "self._flag_needs_value = flag_value is not UNSET or self.default is UNSET",
+     "replace": "self._flag_needs_value = flag_value is not UNSET and self.default is UNSET"
+    }
+   ],
+   "wrong_why": "requires both flag_value and a missing default before the value becomes optional.",
+   "expect": {
+    "hidden_cases": 537,
+    "hidden_passed": 537,
+    "repo_tests_min": 805,
+    "repo_skips_max": 22
+   },
+   "stripped": [],
+   "archive": "upstream/click-7f7bbe4569ea.tar.gz",
+   "archive_sha256": "2cea86efa620fb1710c9c8de9b3283d0d09109b2aab4f29d1aba4f66ae923943",
+   "fix_archive": "upstream/click-ebcd548d5066.fix.tar.gz",
+   "fix_archive_sha256": "9cf6b7d2089799c5ec676943173eaea3b2a17227b8cf7e070faba7b8adec88b4",
+   "issue_text": "issues/click-3084.md",
+   "issue_text_sha256": "dc510223f56eede82dc9c6e054afa752d49855c0e91b96c24b8767a90fcdfe2b"
+  },
+  {
+   "repo": "click",
+   "base": "02046e7a19480f85fff7e4577486518abe47e401",
+   "fix": "1a4d8c1bb1e8f8e214ede7223bd2c05dc2ce006a",
+   "issue": "https://github.com/pallets/click/issues/2356",
+   "pull_request": "https://github.com/pallets/click/pull/2365",
+   "package_dir": "src/click",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/click/types.py"
+   ],
+   "test_files": [
+    "tests/test_options.py"
+   ],
+   "deselect": [],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "src/click/types.py",
+     "find": "choices_str = \"|\".join(self.choices)",
+     "replace": "choices_str = \"|\".join([str(i) for i in self.choices])"
+    }
+   ],
+   "wrong_why": "turns non-string choices into strings but still lists every choice when show_choices is off.",
+   "expect": {
+    "hidden_cases": 118,
+    "hidden_passed": 118,
+    "repo_tests_min": 506,
+    "repo_skips_max": 22
+   },
+   "stripped": [],
+   "archive": "upstream/click-02046e7a1948.tar.gz",
+   "archive_sha256": "d496f2efc98d72167c5474af0c69ed844df6fbadd81e18ab671525753814d0b7",
+   "fix_archive": "upstream/click-1a4d8c1bb1e8.fix.tar.gz",
+   "fix_archive_sha256": "70dfb9e86793bb9c2f9aea12d6fc62d80bfe2f65929a808b621c2f1ff6f51548",
+   "issue_text": "issues/click-2356.md",
+   "issue_text_sha256": "5c37d06fe0b93ac6ce547c82a6682ec583edb12341fd89507a798f19440ffabc"
+  },
+  {
+   "repo": "marshmallow",
+   "base": "070dde08bad456e743a0d2e1842c142a799a9568",
+   "fix": "65374df0c31cdc45acc4435741779298201306a2",
+   "issue": "https://github.com/marshmallow-code/marshmallow/issues/2869",
+   "pull_request": "https://github.com/marshmallow-code/marshmallow/pull/2909",
+   "package_dir": "src/marshmallow",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/marshmallow/validate.py"
+   ],
+   "test_files": [
+    "tests/test_validate.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/marshmallow/validate.py",
+     "find": "zip(choices, padded_labels, strict=True)",
+     "replace": "zip(choices, labels)"
+    }
+   ],
+   "wrong_why": "drops extra labels but no longer pads missing labels with empty strings.",
+   "expect": {
+    "hidden_cases": 199,
+    "hidden_passed": 199,
+    "repo_tests_min": 938,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/marshmallow-070dde08bad4.tar.gz",
+   "archive_sha256": "3291ff2dc0148207359028bd6360f85a47967fd1e778dddf254e02b073db6c64",
+   "fix_archive": "upstream/marshmallow-65374df0c31c.fix.tar.gz",
+   "fix_archive_sha256": "14135960a70ec8150afb1e9796acae0edba22e11b2c49d3ef55f54d16e2b1ab1",
+   "issue_text": "issues/marshmallow-2869.md",
+   "issue_text_sha256": "9bd3b31236dc5e0490ba94becbcd6fdfd5caa352f5b8c241957569b8343b1cf5"
+  },
+  {
+   "repo": "marshmallow",
+   "base": "fea5428567960f15be0c9a3a4b99c0d9bb63848c",
+   "fix": "070dde08bad456e743a0d2e1842c142a799a9568",
+   "issue": "https://github.com/marshmallow-code/marshmallow/issues/2900",
+   "pull_request": "https://github.com/marshmallow-code/marshmallow/pull/2901",
+   "package_dir": "src/marshmallow",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/marshmallow/fields.py"
+   ],
+   "test_files": [
+    "tests/test_deserialization.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/marshmallow/fields.py",
+     "find": "    def _validate_missing(self, value):\n        # Omit check for value is missing_\n        # Below is just a paranoid check\n        if value is None and not self.allow_none:\n            raise self.make_error(\"null\")\n",
+     "replace": ""
+    }
+   ],
+   "wrong_why": "moves the defaults after the base constructor but keeps the base missing-value check, so required=True still fails.",
+   "expect": {
+    "hidden_cases": 381,
+    "hidden_passed": 381,
+    "repo_tests_min": 756,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/marshmallow-fea542856796.tar.gz",
+   "archive_sha256": "0736acea5b375bccb086ed34d48c81771835760fdadbb47640a327dd6cedd3a9",
+   "fix_archive": "upstream/marshmallow-070dde08bad4.fix.tar.gz",
+   "fix_archive_sha256": "5b63fc4990fa05c03709bb9873ee1e3cef69bd7df00ad96259ec407c74e73514",
+   "issue_text": "issues/marshmallow-2900.md",
+   "issue_text_sha256": "90d143a5f4b29516cb35269ac7873861fce110f7c2ec050be46e1eb7790a87d5"
+  },
+  {
+   "repo": "marshmallow",
+   "base": "880d87f6acc389aa80c223dae4013f7eed05ab13",
+   "fix": "10fe10be814a77765a76334e00bc6f69cd18409b",
+   "issue": "https://github.com/marshmallow-code/marshmallow/issues/2870",
+   "pull_request": "https://github.com/marshmallow-code/marshmallow/pull/2874",
+   "package_dir": "src/marshmallow",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/marshmallow/validate.py"
+   ],
+   "test_files": [
+    "tests/test_validate.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/marshmallow/validate.py",
+     "find": "self.schemes = {s.lower() for s in schemes} if schemes else self.default_schemes",
+     "replace": "self.schemes = set(schemes) if schemes else self.default_schemes"
+    }
+   ],
+   "wrong_why": "stores the custom schemes as a set without lowercasing them.",
+   "expect": {
+    "hidden_cases": 191,
+    "hidden_passed": 191,
+    "repo_tests_min": 928,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/marshmallow-880d87f6acc3.tar.gz",
+   "archive_sha256": "0b896d1ab8f7d0a72005e4e7a0d32d0e52451947ce34f28563d14350bd52a7bf",
+   "fix_archive": "upstream/marshmallow-10fe10be814a.fix.tar.gz",
+   "fix_archive_sha256": "0d6b53a98b73d80cfb3c4cb6ba532579e14268adbef9cb7a0b8338ddd22ff012",
+   "issue_text": "issues/marshmallow-2870.md",
+   "issue_text_sha256": "090258fc3fdbda1677421cfe3e966d4035ab437ed8e083f579ffa9cc218f5384"
+  },
+  {
+   "repo": "more-itertools",
+   "base": "790bb0bb2c03e7a07282e5f16f4b1fde35b8fcf5",
+   "fix": "1ea82a711c69f590054987b5cb194157f8ce8ac4",
+   "issue": "https://github.com/more-itertools/more-itertools/issues/1304",
+   "pull_request": "https://github.com/more-itertools/more-itertools/pull/1305",
+   "package_dir": "more_itertools",
+   "tests_dir": "tests",
+   "src_files": [
+    "more_itertools/more.py"
+   ],
+   "test_files": [
+    "tests/test_more.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "more_itertools/more.py",
+     "find": "    if n is not None and n < 0:\n        raise ValueError('n must be at least 0')\n    if n == 0:\n        return\n",
+     "replace": "    if n == 0:\n        return\n"
+    }
+   ],
+   "wrong_why": "handles n == 0 but lets a negative n through to islice.",
+   "expect": {
+    "hidden_cases": 619,
+    "hidden_passed": 619,
+    "repo_tests_min": 148,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/more-itertools-790bb0bb2c03.tar.gz",
+   "archive_sha256": "afe658ec499aecac0cb7ee7970cd4fde6922f50fc7826e7238ff64e71989afbb",
+   "fix_archive": "upstream/more-itertools-1ea82a711c69.fix.tar.gz",
+   "fix_archive_sha256": "f684ff064a474d3e655ac6f412c18177e613b8db19f398cabe20680d390a7577",
+   "issue_text": "issues/more-itertools-1304.md",
+   "issue_text_sha256": "688ae3a2fab2dbc3f043edfbd8b6be894648879542a38952ddd75d0f17fd14ae"
+  },
+  {
+   "repo": "more-itertools",
+   "base": "b2f3aff7633057d234ec9186c18a53f4df306d08",
+   "fix": "3ea9b009b19db0e01a83d51cee43e9935c0d657f",
+   "issue": "https://github.com/more-itertools/more-itertools/issues/1284",
+   "pull_request": "https://github.com/more-itertools/more-itertools/pull/1285",
+   "package_dir": "more_itertools",
+   "tests_dir": "tests",
+   "src_files": [
+    "more_itertools/more.py"
+   ],
+   "test_files": [
+    "tests/test_more.py"
+   ],
+   "deselect": [],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "more_itertools/more.py",
+     "find": "            if self._cache[value]:",
+     "replace": "            if self._cache.get(value):"
+    }
+   ],
+   "wrong_why": "stops the lookup from creating keys but never records keys whose items went straight to the caller.",
+   "expect": {
+    "hidden_cases": 613,
+    "hidden_passed": 613,
+    "repo_tests_min": 145,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/more-itertools-b2f3aff76330.tar.gz",
+   "archive_sha256": "b55f4d9d4a044f7ed32548fe440ba547be54f142592e16aa1420e8cc7ff5bd06",
+   "fix_archive": "upstream/more-itertools-3ea9b009b19d.fix.tar.gz",
+   "fix_archive_sha256": "2e6bc1e0b581033a03634bb3032dfe7a772d106eedbfe0c876b85e405b689b20",
+   "issue_text": "issues/more-itertools-1284.md",
+   "issue_text_sha256": "716a6764b9557cebf69e0ce81224cbaa37ca1f747de24843d347c38e85187c3b"
+  },
+  {
+   "repo": "more-itertools",
+   "base": "a826a4e09e3f2782822c71da6670e9275735ad3e",
+   "fix": "d92f081a089714e0aa92434c797fdd1a06da1290",
+   "issue": "https://github.com/more-itertools/more-itertools/issues/1250",
+   "pull_request": "https://github.com/more-itertools/more-itertools/pull/1251",
+   "package_dir": "more_itertools",
+   "tests_dir": "tests",
+   "src_files": [
+    "more_itertools/more.py"
+   ],
+   "test_files": [
+    "tests/test_more.py"
+   ],
+   "deselect": [],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "more_itertools/more.py",
+     "find": "            yield from value\n        except TypeError:",
+     "replace": "            yield from iter(value)\n        except TypeError:"
+    }
+   ],
+   "wrong_why": "calls iter() explicitly but still inside the try, so the TypeError is still swallowed.",
+   "expect": {
+    "hidden_cases": 597,
+    "hidden_passed": 597,
+    "repo_tests_min": 145,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/more-itertools-a826a4e09e3f.tar.gz",
+   "archive_sha256": "2ffe8c8527297f9a2810b17af6b9e7ffeb3837859584daf50e1ca81bd170bbe7",
+   "fix_archive": "upstream/more-itertools-d92f081a0897.fix.tar.gz",
+   "fix_archive_sha256": "e9b19445e287d5d144c51706f46863faedf61fd3438d6a4481103318192b46e6",
+   "issue_text": "issues/more-itertools-1250.md",
+   "issue_text_sha256": "c0262ec5dffc1ded2145cc2dc6912521f1402e7e26ec38d77155e3ed25450b61"
+  },
+  {
+   "repo": "boltons",
+   "base": "78e8638e695d78ccc2dc641ef87e38fa51185840",
+   "fix": "b5c495bec206741ec25cd82ecc869e0b59bb0d10",
+   "issue": "https://github.com/mahmoud/boltons/issues/261",
+   "pull_request": "https://github.com/mahmoud/boltons/pull/445",
+   "package_dir": "boltons",
+   "tests_dir": "tests",
+   "src_files": [
+    "boltons/funcutils.py"
+   ],
+   "test_files": [
+    "tests/test_funcutils_fb_py3.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "boltons/funcutils.py",
+     "find": "invocation_str = fb.get_invocation_str(target=wrapper)",
+     "replace": "invocation_str = fb.get_invocation_str()"
+    }
+   ],
+   "wrong_why": "adds target-aware forwarding but never passes the wrapped target to it.",
+   "expect": {
+    "hidden_cases": 19,
+    "hidden_passed": 19,
+    "repo_tests_min": 468,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/boltons-78e8638e695d.tar.gz",
+   "archive_sha256": "aae9909a939ff25a8ebef2a315514b2c5504de6af128396aaf2aa64d1314d771",
+   "fix_archive": "upstream/boltons-b5c495bec206.fix.tar.gz",
+   "fix_archive_sha256": "636e07e66aa57b00a73b402384a33c450019f3a2c19dc46fdc8e998f0628bc11",
+   "issue_text": "issues/boltons-261.md",
+   "issue_text_sha256": "fa8f960f520ac8dd008fad6c13581f5b4bfb7c3e779d94f3555eb3a4dfeb42a0"
+  },
+  {
+   "repo": "boltons",
+   "base": "475462811ea4f9dea23c8af4cc2b6ead2dc03845",
+   "fix": "0341ab3d79e6430c0e6a4149df9c92679988a534",
+   "issue": "https://github.com/mahmoud/boltons/issues/337",
+   "package_dir": "boltons",
+   "tests_dir": "tests",
+   "src_files": [
+    "boltons/dictutils.py"
+   ],
+   "test_files": [
+    "tests/test_dictutils.py"
+   ],
+   "deselect": [],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "boltons/dictutils.py",
+     "find": "            self.update(kwargs)\n\n    def _clear_ll(self):",
+     "replace": "            self.update(kwargs)\n\n    def __getstate__(self):\n        return list(self.iteritems(multi=True))\n\n    def __setstate__(self, state):\n        self.clear()\n        self.update_extend(state)\n\n    def _clear_ll(self):"
+    }
+   ],
+   "wrong_why": "adds __getstate__ and __setstate__ but not __new__, so unpickling sets items before the linked list exists.",
+   "expect": {
+    "hidden_cases": 26,
+    "hidden_passed": 26,
+    "repo_tests_min": 409,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/boltons-475462811ea4.tar.gz",
+   "archive_sha256": "8cd94d92578205a6d690935c28cfec9121be0577a20db57c114e1d3d9d178801",
+   "fix_archive": "upstream/boltons-0341ab3d79e6.fix.tar.gz",
+   "fix_archive_sha256": "656f0ff970f0efd7489ce7277d2237c32cc379874121d2354e301acc9acff81f",
+   "issue_text": "issues/boltons-337.md",
+   "issue_text_sha256": "c2d813e6b70150070b5efed9abdcf003c38d1642b62f54a0d4d102478b954fb7"
+  },
+  {
+   "repo": "tabulate",
+   "base": "46c9fe38d36e1f185271884ace2e80415389216c",
+   "fix": "e6a24aa6e00ca8ce9a1987f28c11ca08c6f19383",
+   "issue": "https://github.com/astanin/python-tabulate/issues/241",
+   "package_dir": "tabulate",
+   "tests_dir": "test",
+   "src_files": [
+    "tabulate/__init__.py"
+   ],
+   "test_files": [
+    "test/test_regression.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "tabulate/__init__.py",
+     "find": "datarow=DataRow(\"|\", \"|\", \"|\", GITHUB_ESCAPE_RULES),",
+     "replace": "datarow=DataRow(\"|\", \"|\", \"|\"),"
+    }
+   ],
+   "wrong_why": "escapes the pipe character in header rows only.",
+   "expect": {
+    "hidden_cases": 42,
+    "hidden_passed": 39,
+    "repo_tests_min": 302,
+    "repo_skips_max": 14
+   },
+   "stripped": [],
+   "archive": "upstream/tabulate-46c9fe38d36e.tar.gz",
+   "archive_sha256": "a2ba45249e9e4a075269679753cadd87d3c0e739fb211b4e6132178df09f29db",
+   "fix_archive": "upstream/tabulate-e6a24aa6e00c.fix.tar.gz",
+   "fix_archive_sha256": "0da914ce5a76beea3e6fc33ee193654106e5073f14f6de214059b77c55329e11",
+   "issue_text": "issues/tabulate-241.md",
+   "issue_text_sha256": "b25cd25cf696177ecd6c7b6e8f3fad3986dd7d840bcc101b45294d6bc00f77e9"
+  },
+  {
+   "repo": "tabulate",
+   "base": "e13a4d0dd292cade200e653eb9155a1ca0f1dbea",
+   "fix": "87a9a4e07a5efb39b81fdb6ac513b1d345bb21fb",
+   "issue": "https://github.com/astanin/python-tabulate/issues/365",
+   "package_dir": "tabulate",
+   "tests_dir": "test",
+   "src_files": [
+    "tabulate/__init__.py"
+   ],
+   "test_files": [
+    "test/test_regression.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "tabulate/__init__.py",
+     "find": "num_cols = len(list_of_lists[0]) if list_of_lists else len(headers)",
+     "replace": "num_cols = len(list_of_lists[0]) if list_of_lists else 0"
+    }
+   ],
+   "wrong_why": "treats an empty table as having no columns, so the header widths list does not match the headers.",
+   "expect": {
+    "hidden_cases": 38,
+    "hidden_passed": 36,
+    "repo_tests_min": 280,
+    "repo_skips_max": 14
+   },
+   "stripped": [],
+   "archive": "upstream/tabulate-e13a4d0dd292.tar.gz",
+   "archive_sha256": "6b5891620836587b824def5b66dd1b2425a7b2ea593621169bbbb6ddcd7847aa",
+   "fix_archive": "upstream/tabulate-87a9a4e07a5e.fix.tar.gz",
+   "fix_archive_sha256": "1906c372eb9c02df736c47c6bcc16fcdb77b90bf0947441d457b8da1ccc2eda4",
+   "issue_text": "issues/tabulate-365.md",
+   "issue_text_sha256": "4e531aa0f4cbd5171a51d4137b65c81ab6d848d4303838c054788ccd4714a983"
+  },
+  {
+   "repo": "cachetools",
+   "base": "56e0fd5c73ecc8a203618290238431b2f4e79570",
+   "fix": "163d67d7b16287fb30a2986fd35898092a4d475c",
+   "issue": "https://github.com/tkem/cachetools/issues/479",
+   "package_dir": "src/cachetools",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/cachetools/_cached.py"
+   ],
+   "test_files": [
+    "tests/test_cached.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/cachetools/_cached.py",
+     "find": "    def __deepcopy__(self, memo):\n        return self\n\n",
+     "replace": ""
+    }
+   ],
+   "wrong_why": "adds __copy__ but not __deepcopy__.",
+   "expect": {
+    "hidden_cases": 68,
+    "hidden_passed": 68,
+    "repo_tests_min": 396,
+    "repo_skips_max": 0
+   },
+   "stripped": [
+    ".github/copilot-instructions.md",
+    "AGENTS.md"
+   ],
+   "archive": "upstream/cachetools-56e0fd5c73ec.tar.gz",
+   "archive_sha256": "5f98e9d018a156d807f1f3c12275701e1a6edc50887a11e805cfd7aac2f498ed",
+   "fix_archive": "upstream/cachetools-163d67d7b162.fix.tar.gz",
+   "fix_archive_sha256": "12b27c59fb2fc849c3330f413bf8ade1f48b41fe66f4190b0c47aed05e4a6cb4",
+   "issue_text": "issues/cachetools-479.md",
+   "issue_text_sha256": "a7ad170f786bc10b12f4607b79d7cd44418b650a7c972707f3fe56c18aa92214"
+  },
+  {
+   "repo": "cachetools",
+   "base": "eadb91cc9d54a57d6738386bc5c575ff3c7d22ec",
+   "fix": "bcf9e8176ebe16da58751fce971c98ffe045ede1",
+   "issue": "https://github.com/tkem/cachetools/issues/423",
+   "package_dir": "src/cachetools",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/cachetools/__init__.py"
+   ],
+   "test_files": [
+    "tests/test_rr.py"
+   ],
+   "deselect": [],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "src/cachetools/__init__.py",
+     "find": "            key = self.__choice(self.__keys)\n        except IndexError:",
+     "replace": "            key = self.__choice(self.__keys)\n        except (IndexError, KeyError):"
+    }
+   ],
+   "wrong_why": "also catches KeyError from the choice function, but a custom choice function can raise anything.",
+   "expect": {
+    "hidden_cases": 29,
+    "hidden_passed": 29,
+    "repo_tests_min": 309,
+    "repo_skips_max": 0
+   },
+   "stripped": [
+    ".github/copilot-instructions.md"
+   ],
+   "archive": "upstream/cachetools-eadb91cc9d54.tar.gz",
+   "archive_sha256": "6f04c9b65185214be56f7486f32e3cf5b3b9f4d01c9cc89fa6c2d47aed609d8d",
+   "fix_archive": "upstream/cachetools-bcf9e8176ebe.fix.tar.gz",
+   "fix_archive_sha256": "555052a561f455a9eaeafc00d707f65661578f54804ef208d397e06d20b189aa",
+   "issue_text": "issues/cachetools-423.md",
+   "issue_text_sha256": "a993e6e318ef8f7b9c1c4f3176cd1a54d9882e7380256926d0856da80fe4bd78"
+  },
+  {
+   "repo": "cachetools",
+   "base": "8011b71949e8d8d81a71359cca9477d67a2c9c0b",
+   "fix": "57d2e4813d9801f97034559e22428bac6f7c6c9b",
+   "issue": "https://github.com/tkem/cachetools/issues/387",
+   "package_dir": "src/cachetools",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/cachetools/_cachedmethod.py"
+   ],
+   "test_files": [
+    "tests/test_cachedmethod.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/cachetools/_cachedmethod.py",
+     "find": "        if obj is None:\n",
+     "replace": "        if obj is None and self.__attrname is None:\n"
+    }
+   ],
+   "wrong_why": "skips the instance-dict rewrite for class access only when the method has no attribute name.",
+   "expect": {
+    "hidden_cases": 46,
+    "hidden_passed": 46,
+    "repo_tests_min": 233,
+    "repo_skips_max": 2
+   },
+   "stripped": [
+    ".github/copilot-instructions.md"
+   ],
+   "archive": "upstream/cachetools-8011b71949e8.tar.gz",
+   "archive_sha256": "5710d29d694305a66afc7bd1dc0558fccaa03ce57338a5b8868e9acc2a5d936e",
+   "fix_archive": "upstream/cachetools-57d2e4813d98.fix.tar.gz",
+   "fix_archive_sha256": "e577455511a3e86779bcf450ca22a9d36d377b7678dec5cf8b6d270dbcf4ef6f",
+   "issue_text": "issues/cachetools-387.md",
+   "issue_text_sha256": "c31ea100af2b76b956fef398ec63e42bbd1a9dcf725808ba26a54df1ec3da474"
+  },
+  {
+   "repo": "cachetools",
+   "base": "978d34d40cdbf3b4cbfce104f3166032cc4ea028",
+   "fix": "fcbb0de97fc09de646d2e210def765d07dee66e8",
+   "issue": "https://github.com/tkem/cachetools/issues/406",
+   "package_dir": "src/cachetools",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/cachetools/__init__.py"
+   ],
+   "test_files": [
+    "tests/test_tlru.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/cachetools/__init__.py",
+     "find": "                else:\n                    cache_delitem(self, key)\n",
+     "replace": ""
+    }
+   ],
+   "wrong_why": "drops the old expiry entry but leaves the old value in the cache.",
+   "expect": {
+    "hidden_cases": 28,
+    "hidden_passed": 28,
+    "repo_tests_min": 263,
+    "repo_skips_max": 0
+   },
+   "stripped": [
+    ".github/copilot-instructions.md"
+   ],
+   "archive": "upstream/cachetools-978d34d40cdb.tar.gz",
+   "archive_sha256": "a096348362689790debd87fe6b7a1f28e7f8f21349085242220ce60e844078de",
+   "fix_archive": "upstream/cachetools-fcbb0de97fc0.fix.tar.gz",
+   "fix_archive_sha256": "0dbb8ba327fa7c03a069cb5b5b2b97eafc4a9c012d45788faffdf557658e2ab5",
+   "issue_text": "issues/cachetools-406.md",
+   "issue_text_sha256": "44a9a9ab7eea59abf7ffae80600004852133b9c43af5b74fd6a9f808bd947cdc"
+  },
+  {
+   "repo": "validators",
+   "base": "d46cd586bdd6b9946d5d421f009794a25650f72e",
+   "fix": "bcb134204edcfdabf0de0e5fc0a5010105659c36",
+   "issue": "https://github.com/python-validators/validators/issues/373",
+   "pull_request": "https://github.com/python-validators/validators/pull/374",
+   "package_dir": "src/validators",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/validators/ip_address.py"
+   ],
+   "test_files": [
+    "tests/test_ip_address.py"
+   ],
+   "deselect": [],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "src/validators/ip_address.py",
+     "find": "    if is_private and (",
+     "replace": "    if ("
+    }
+   ],
+   "wrong_why": "checks the private ranges whatever the flag says, but still returns False for a public address when private=False.",
+   "expect": {
+    "hidden_cases": 65,
+    "hidden_passed": 65,
+    "repo_tests_min": 675,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/validators-d46cd586bdd6.tar.gz",
+   "archive_sha256": "3ac40db635575f3db8b893ad28aa489f598cd5d43c933e18ed60fee723c455d0",
+   "fix_archive": "upstream/validators-bcb134204edc.fix.tar.gz",
+   "fix_archive_sha256": "b5077b7c78398a9d93e7498ff835fbf9cec043d2a13b3ff393e36489d00c0d39",
+   "issue_text": "issues/validators-373.md",
+   "issue_text_sha256": "649cde6f74867a862d2c28008371623ba0c07d79065c8693f723dd7f42af2f95"
+  },
+  {
+   "repo": "validators",
+   "base": "ee088fa8c091ffd54c53d77b3efa16ace6b4423e",
+   "fix": "9e94feea67d2787e984a100e1fb4642f5cd18288",
+   "issue": "https://github.com/python-validators/validators/issues/288",
+   "pull_request": "https://github.com/python-validators/validators/pull/289",
+   "package_dir": "src/validators",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/validators/url.py"
+   ],
+   "test_files": [
+    "tests/test_url.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/validators/url.py",
+     "find": "fragment = fragment.lstrip(\"/\") if fragment.startswith(\"/\") else fragment",
+     "replace": "fragment = fragment.rstrip(\"/\")"
+    }
+   ],
+   "wrong_why": "strips trailing slashes from the fragment instead of leading ones.",
+   "expect": {
+    "hidden_cases": 120,
+    "hidden_passed": 120,
+    "repo_tests_min": 431,
+    "repo_skips_max": 0
+   },
+   "license_file": "LICENSE",
+   "stripped": [],
+   "archive": "upstream/validators-ee088fa8c091.tar.gz",
+   "archive_sha256": "aa27dfd4e1238651b8238401c585dc5c9644c4c7263bd96ece56ca3e6cc11021",
+   "fix_archive": "upstream/validators-9e94feea67d2.fix.tar.gz",
+   "fix_archive_sha256": "d22569440d76de239e47e569cf97cfaacc33a427bf0dc2e5973d2116e1c87e6b",
+   "issue_text": "issues/validators-288.md",
+   "issue_text_sha256": "642afd0e2e8199c8257efa747730ab2c48d7b0426eb8a0c79fb2c5cbb052edb5"
+  },
+  {
+   "repo": "mistune",
+   "base": "b5dd9949baf3729a709ef8ae591eab86e72a9e46",
+   "fix": "75cab785a339eadfa7e760ed7ab2b0a3ad98c642",
+   "issue": "https://github.com/lepture/mistune/issues/420",
+   "pull_request": "https://github.com/lepture/mistune/pull/471",
+   "package_dir": "src/mistune",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/mistune/__init__.py"
+   ],
+   "test_files": [
+    "tests/test_misc.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/mistune/__init__.py",
+     "find": "    elif escape is not None and isinstance(renderer, HTMLRenderer):\n        # a renderer instance was given, honor the explicit escape flag\n        renderer._escape = escape\n",
+     "replace": ""
+    }
+   ],
+   "wrong_why": "makes escape optional but never applies it to a renderer instance that was passed in.",
+   "expect": {
+    "hidden_cases": 37,
+    "hidden_passed": 37,
+    "repo_tests_min": 1120,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/mistune-b5dd9949baf3.tar.gz",
+   "archive_sha256": "263c8ea9a28aa8352284b333ad495a9c0faa8e2dd7ecf843285ba97a43459df7",
+   "fix_archive": "upstream/mistune-75cab785a339.fix.tar.gz",
+   "fix_archive_sha256": "d5be4786ada597e813934404cbaece15abf4ccd84ff3e06bf99e00f1310daeef",
+   "issue_text": "issues/mistune-420.md",
+   "issue_text_sha256": "648180fcab46f9d3c21d70efdb014700a3b9555f723435bf2741223495f818a7"
+  },
+  {
+   "repo": "mistune",
+   "base": "4f91db8d211a01374df50dc786e8fb452fe83f4a",
+   "fix": "77f925e1de25e453a4d8c190fc8099ad1bd2386b",
+   "issue": "https://github.com/lepture/mistune/issues/372",
+   "pull_request": "https://github.com/lepture/mistune/pull/393",
+   "package_dir": "src/mistune",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/mistune/inline_parser.py",
+    "src/mistune/renderers/html.py"
+   ],
+   "test_files": [
+    "tests/test_misc.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/mistune/renderers/html.py",
+     "find": "return '<code>' + escape_text(text) + '</code>'",
+     "replace": "return '<code>' + text + '</code>'"
+    }
+   ],
+   "wrong_why": "stops escaping inline code in the parser but does not escape it in the HTML renderer.",
+   "expect": {
+    "hidden_cases": 13,
+    "hidden_passed": 13,
+    "repo_tests_min": 929,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/mistune-4f91db8d211a.tar.gz",
+   "archive_sha256": "a42dafe33bc86e9922913137a6cfcec9c280d246eaecaee040566b3438c81c38",
+   "fix_archive": "upstream/mistune-77f925e1de25.fix.tar.gz",
+   "fix_archive_sha256": "30fd4d370862b6be54adf0bc8a3dcda65cd29adfc1103ab8d636d04fe55f4223",
+   "issue_text": "issues/mistune-372.md",
+   "issue_text_sha256": "6594c373d3f850ecbf2988524d4ff536d9152b12e927283ca6782d196a7b1371"
+  },
+  {
+   "repo": "tabulate",
+   "base": "3a8c941663990aa689a27864333c5b6f85ca1827",
+   "fix": "f99343a616885852264806920f61b2bfbddad7fc",
+   "issue": "https://github.com/astanin/python-tabulate/issues/214",
+   "package_dir": "tabulate",
+   "tests_dir": "test",
+   "src_files": [
+    "tabulate/__init__.py"
+   ],
+   "test_files": [
+    "test/test_regression.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "tabulate/__init__.py",
+     "find": "if type(maxcolwidths) is tuple:",
+     "replace": "if type(maxcolwidths) is tuple and len(maxcolwidths) == 1:"
+    }
+   ],
+   "wrong_why": "converts a tuple only when it has a single width.",
+   "expect": {
+    "hidden_cases": 37,
+    "hidden_passed": 34,
+    "repo_tests_min": 267,
+    "repo_skips_max": 14
+   },
+   "stripped": [],
+   "archive": "upstream/tabulate-3a8c94166399.tar.gz",
+   "archive_sha256": "e3f45e875ce1663ef7ac877255c080a6b31c0ab7c6492463a83de30aa44513af",
+   "fix_archive": "upstream/tabulate-f99343a61688.fix.tar.gz",
+   "fix_archive_sha256": "72329152b0b31a9fd36a784fe9fd1efbc0fd9fd445aa9e021d52c80d35f1e777",
+   "issue_text": "issues/tabulate-214.md",
+   "issue_text_sha256": "7e37c9f60ef8a95d49737b8584af03323013548d62120989b7d874f35ac8b093"
+  },
+  {
+   "repo": "tabulate",
+   "base": "8946da0533108ffdd0e38025caf8485f5d332bdd",
+   "fix": "12a805bfa89552acec46d984c6c0cc540e68bfff",
+   "issue": "https://github.com/astanin/python-tabulate/issues/318",
+   "package_dir": "tabulate",
+   "tests_dir": "test",
+   "src_files": [
+    "tabulate/__init__.py"
+   ],
+   "test_files": [
+    "test/test_output.py"
+   ],
+   "deselect": [],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "tabulate/__init__.py",
+     "find": "    elif valtype is int:\n        return format(val, intfmt)",
+     "replace": "    elif valtype is int:\n        if isinstance(val, str):\n            intfmt = \"\"\n        return format(val, intfmt)"
+    }
+   ],
+   "wrong_why": "skips the format for integer strings, so plain ones work but colored ones are left unformatted.",
+   "expect": {
+    "hidden_cases": 185,
+    "hidden_passed": 180,
+    "repo_tests_min": 110,
+    "repo_skips_max": 12
+   },
+   "stripped": [],
+   "archive": "upstream/tabulate-8946da053310.tar.gz",
+   "archive_sha256": "f2bfa28781f30d146d2acdddb1d540dcab7327ef0f82f8266e2e5012c63faad4",
+   "fix_archive": "upstream/tabulate-12a805bfa895.fix.tar.gz",
+   "fix_archive_sha256": "386927918676d27ad60de3e2eaf9477039da8ad3118d1a7555941db47af7b1e2",
+   "issue_text": "issues/tabulate-318.md",
+   "issue_text_sha256": "d2f96d52b6810d08427e3e8481044684ca1a3cea87d1f3fec366743b63c6928e"
+  },
+  {
+   "repo": "sqlparse",
+   "base": "149bebf06c788e93a9b0dbee0e5abbc8e347b8e6",
+   "fix": "e92a032c81d51a6645b4f8c32470481894818ba0",
+   "issue": "https://github.com/andialbrecht/sqlparse/issues/812",
+   "package_dir": "sqlparse",
+   "tests_dir": "tests",
+   "src_files": [
+    "sqlparse/keywords.py"
+   ],
+   "test_files": [
+    "tests/test_split.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "sqlparse/keywords.py",
+     "find": "(r'IF\\s+(NOT\\s+)?EXISTS\\b', tokens.Keyword),",
+     "replace": "(r'IF\\s+NOT\\s+EXISTS\\b', tokens.Keyword),"
+    }
+   ],
+   "wrong_why": "recognises IF NOT EXISTS as one keyword but not IF EXISTS.",
+   "expect": {
+    "hidden_cases": 39,
+    "hidden_passed": 39,
+    "repo_tests_min": 439,
+    "repo_skips_max": 2
+   },
+   "stripped": [
+    "AGENTS.md",
+    "CLAUDE.md"
+   ],
+   "archive": "upstream/sqlparse-149bebf06c78.tar.gz",
+   "archive_sha256": "ac57932cebcb53eb5d4c837cdde3fefafd1b30fecb4d269b955a1bd7b02b1863",
+   "fix_archive": "upstream/sqlparse-e92a032c81d5.fix.tar.gz",
+   "fix_archive_sha256": "ed428df5ae9797a956fe64d50fd9b6e84e97dc8ff43f96b807e12f2ecc7a0666",
+   "issue_text": "issues/sqlparse-812.md",
+   "issue_text_sha256": "2ac1ab0fc1a337e716c9697d6f11207a9ac406e2a9d0ee92ccaa1a5e765ac2ee"
+  },
+  {
+   "repo": "click",
+   "base": "c88f333de440c5066ff563f784a6561f4713cf78",
+   "fix": "0be2bd385064053bb75f92db317de128db729d52",
+   "issue": "https://github.com/pallets/click/issues/2971",
+   "pull_request": "https://github.com/pallets/click/pull/2972",
+   "package_dir": "src/click",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/click/core.py"
+   ],
+   "test_files": [
+    "tests/test_options.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/click/core.py",
+     "find": "if self.show_envvar and self.envvar is not None:",
+     "replace": "if self.show_envvar and ctx.auto_envvar_prefix is None:"
+    }
+   ],
+   "wrong_why": "hides the hint only when an auto env var prefix is set, not when the option has no env var.",
+   "expect": {
+    "hidden_cases": 300,
+    "hidden_passed": 300,
+    "repo_tests_min": 619,
+    "repo_skips_max": 22
+   },
+   "stripped": [],
+   "archive": "upstream/click-c88f333de440.tar.gz",
+   "archive_sha256": "bcad4d23fb8b29dbf0f6d5e26d714be80f3b866275fd9e9a1f3487b271011019",
+   "fix_archive": "upstream/click-0be2bd385064.fix.tar.gz",
+   "fix_archive_sha256": "ef1b3bc612db64ce532be7dac757c00315a904f07433ae3c598bf0f8d3572f37",
+   "issue_text": "issues/click-2971.md",
+   "issue_text_sha256": "b355e437700ff3b10278f1c6d89d3c758d7820002949b960cfddec99c9d8eaac"
+  },
+  {
+   "repo": "marshmallow",
+   "base": "78a94ea0e7ee9f35f8322318064232fe6147f190",
+   "fix": "39e7c833e9c8711a49d6d710f7e3ee5cf2effbbe",
+   "issue": "https://github.com/marshmallow-code/marshmallow/issues/2891",
+   "pull_request": "https://github.com/marshmallow-code/marshmallow/pull/2892",
+   "package_dir": "src/marshmallow",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/marshmallow/validate.py"
+   ],
+   "test_files": [
+    "tests/test_validate.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "src/marshmallow/validate.py",
+     "find": "matched = regex.search(\"file://localhost/\" + value[8:])",
+     "replace": "matched = regex.search(value.replace(\"file:///\", \"file://localhost/\", 1))"
+    }
+   ],
+   "wrong_why": "matches the scheme case-insensitively but still only rewrites a lowercase file:/// prefix.",
+   "expect": {
+    "hidden_cases": 199,
+    "hidden_passed": 199,
+    "repo_tests_min": 932,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/marshmallow-78a94ea0e7ee.tar.gz",
+   "archive_sha256": "6d4e6efc4012c3604e86ffdd341cf5b4d82454e22290d1195a1924b3aa6f24e5",
+   "fix_archive": "upstream/marshmallow-39e7c833e9c8.fix.tar.gz",
+   "fix_archive_sha256": "49ac18953632b1a0b86d3ebc2b3f89f88a872439d71acf78956bbf827adb2bd8",
+   "issue_text": "issues/marshmallow-2891.md",
+   "issue_text_sha256": "27d7f71d2b6f56f8cdf4fd7bcd2500b65fa9c00d6c162cd06ea5fbc9a9c69a6f"
+  },
+  {
+   "repo": "more-itertools",
+   "base": "9ed3dbb0ae527230cd156d91d0af305478558fba",
+   "fix": "4ebeea3e569388911a0bec740092f3cf996d79f3",
+   "issue": "https://github.com/more-itertools/more-itertools/issues/1277",
+   "pull_request": "https://github.com/more-itertools/more-itertools/pull/1278",
+   "package_dir": "more_itertools",
+   "tests_dir": "tests",
+   "src_files": [
+    "more_itertools/more.py"
+   ],
+   "test_files": [
+    "tests/test_more.py"
+   ],
+   "deselect": [],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "more_itertools/more.py",
+     "find": "            iterables.append(iterator)",
+     "replace": "            iterables.append(iter(obj))"
+    }
+   ],
+   "wrong_why": "gets an iterator to test for scalars but then calls iter() on the object again.",
+   "expect": {
+    "hidden_cases": 605,
+    "hidden_passed": 605,
+    "repo_tests_min": 145,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/more-itertools-9ed3dbb0ae52.tar.gz",
+   "archive_sha256": "2f42967c673e590498ffd70eceb5fef8785deb6263a20077f61b71b3ca511377",
+   "fix_archive": "upstream/more-itertools-4ebeea3e5693.fix.tar.gz",
+   "fix_archive_sha256": "fd4a956ba242e46024ab734e2816fc2bb8928af26ec3e379999acee9253f976b",
+   "issue_text": "issues/more-itertools-1277.md",
+   "issue_text_sha256": "11160f4b3aae11c949485156392d8e64ac2151c597e4931f21f8511fdbbc4f6b"
+  },
+  {
+   "repo": "jinja",
+   "base": "09907ef37891be76ab0a1a3dc1a3f7df667db959",
+   "fix": "d5b8f668f392710f80c3c62ad8b70ea7a8bbd44b",
+   "issue": "https://github.com/pallets/jinja/issues/1612",
+   "pull_request": "https://github.com/pallets/jinja/pull/1613",
+   "package_dir": "src/jinja2",
+   "tests_dir": "tests",
+   "src_files": [
+    "src/jinja2/async_utils.py"
+   ],
+   "test_files": [
+    "tests/test_pickle.py"
+   ],
+   "deselect": [
+    "tests/test_loader.py::TestFileSystemLoader::test_caches_template_based_on_mtime"
+   ],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "src/jinja2/async_utils.py",
+     "find": "        @wraps(normal_func)\n        def wrapper",
+     "replace": "        @wraps(async_func)\n        def wrapper"
+    }
+   ],
+   "wrong_why": "copies every attribute from the async function, so the wrapper no longer points back at the sync filter.",
+   "expect": {
+    "hidden_cases": 1,
+    "hidden_passed": 1,
+    "repo_tests_min": 831,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/jinja-09907ef37891.tar.gz",
+   "archive_sha256": "31f308c53bc4c86394837c51618f6fc31fe9e56aa010ce8f1db3ebea1baa8295",
+   "fix_archive": "upstream/jinja-d5b8f668f392.fix.tar.gz",
+   "fix_archive_sha256": "fed889be0fc7291e6d0a8796c50654c1059ed9341da376b8366d8e03dabb859a",
+   "issue_text": "issues/jinja-1612.md",
+   "issue_text_sha256": "fba89c807e21d041dbef714fab53c1cb93d93d3c76f4a02f48d20a30f132dcb0"
+  },
+  {
+   "repo": "boltons",
+   "base": "270e974975984f662f998c8f6eb0ebebd964de82",
+   "fix": "395f690f4a24331c4554e2169ac18a15955a4eab",
+   "issue": "https://github.com/mahmoud/boltons/issues/158",
+   "pull_request": "https://github.com/mahmoud/boltons/pull/298",
+   "package_dir": "boltons",
+   "tests_dir": "tests",
+   "src_files": [
+    "boltons/urlutils.py"
+   ],
+   "test_files": [
+    "tests/test_urlutils.py"
+   ],
+   "deselect": [
+    "tests/test_dictutils.py::test_frozendict_api"
+   ],
+   "wrong_from": "base",
+   "wrong": [
+    {
+     "file": "boltons/urlutils.py",
+     "find": "new_path_parts = self.path_parts[:-1] + dest.path_parts",
+     "replace": "new_path_parts = self.path_parts[:-1] + list(dest.path_parts)"
+    }
+   ],
+   "wrong_why": "converts only the destination parts to a list, so a tuple of base parts plus a list still fails.",
+   "expect": {
+    "hidden_cases": 124,
+    "hidden_passed": 124,
+    "repo_tests_min": 395,
+    "repo_skips_max": 0
+   },
+   "stripped": [],
+   "archive": "upstream/boltons-270e97497598.tar.gz",
+   "archive_sha256": "1cdcbdffb53c0076e85df47fd1f21947beed1910b009eb584f344e663fb54eae",
+   "fix_archive": "upstream/boltons-395f690f4a24.fix.tar.gz",
+   "fix_archive_sha256": "e9702e440661e84e259f5a17a595a70e816064fb1c92058f6955fb98d12763fe",
+   "issue_text": "issues/boltons-158.md",
+   "issue_text_sha256": "0e61a271aa6c89a5f1e9119b2f39a09070653fd3c992b44d499045d2f1e04001"
+  },
+  {
+   "repo": "rich",
+   "base": "12eeb42c96a7a953865b19da204dea6fe658713b",
+   "fix": "abd5a2afc41ff1196fe4d901b8784bb08acf3140",
+   "issue": "https://github.com/Textualize/rich/issues/3881",
+   "pull_request": "https://github.com/Textualize/rich/pull/3882",
+   "package_dir": "rich",
+   "tests_dir": "tests",
+   "src_files": [
+    "rich/prompt.py"
+   ],
+   "test_files": [
+    "tests/test_prompt.py"
+   ],
+   "deselect": [
+    "test_markdown.py::test_inline_code",
+    "test_syntax.py::test_blank_lines",
+    "test_syntax.py::test_python_render_simple_indent_guides"
+   ],
+   "wrong_from": "fix",
+   "wrong": [
+    {
+     "file": "rich/prompt.py",
+     "find": "self.console.print(error, markup=True)",
+     "replace": "self.console.print(error, markup=None)"
+    }
+   ],
+   "wrong_why": "passes markup=None, which still falls back to the console setting.",
+   "expect": {
+    "hidden_cases": 8,
+    "hidden_passed": 8,
+    "repo_tests_min": 946,
+    "repo_skips_max": 25
+   },
+   "stripped": [],
+   "archive": "upstream/rich-12eeb42c96a7.tar.gz",
+   "archive_sha256": "3e546e4df3970b3abf05bb77a59cbae9bdbf3a4a4cc72406ff16cd943b0629c9",
+   "fix_archive": "upstream/rich-abd5a2afc41f.fix.tar.gz",
+   "fix_archive_sha256": "a14400dfc732d477764b1d9156ca9f89129523dc0e1550ce35a2728c28982734",
+   "issue_text": "issues/rich-3881.md",
+   "issue_text_sha256": "f619978bce4c687d5bb66f1633485611ff159835292eacc13e1345f3fed888a9"
+  }
+ ]
+}

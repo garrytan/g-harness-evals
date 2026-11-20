@@ -21,6 +21,7 @@
 - [Harness Leaderboard: TB2.1 answer-key fingerprints](#harness-leaderboard-tb21-answer-key-fingerprints)
 - [Credits: Terminal-Bench 2 and SWE-bench Verified](#credits-terminal-bench-2-and-swe-bench-verified)
 - [Claude Code](#claude-code)
+- [Rules-fix tasks: eleven Python libraries](#rules-fix-tasks-eleven-python-libraries)
 - [MCP servers in the tools-at-scale catalog](#mcp-servers-in-the-tools-at-scale-catalog)
 
 ## OpenClaw
@@ -741,6 +742,14 @@ We use these benchmarks' task ids and public numbers. We don't redistribute thei
   - `docs/benchmarks/2026-11-01-opus-gstack-follow/results/gn-follow-preset-2026-11/dry-run/preset-system-prompt.txt`
   - the Claude Code spans of the ablation coder input, which `harnesses/ablation/coding/items.json` and `agreement.json` carry only as sha256 values (`scripts/ablation/settle.ts` writes the raw text only to a directory outside the repository)
 - Built harness images are never published. We publish Dockerfiles only.
+
+## Rules-fix tasks: eleven Python libraries
+
+- **What:** the 36 bug-fix repository tasks of the rules-at-scale eval copy the working trees, issue text and fixes of eleven permissively licensed Python libraries: boltons, cachetools, click, jinja, marshmallow, mistune, more-itertools, rich, sqlparse, tabulate and validators.
+- **Versions:** each task's `task.toml` names its upstream repository and base commit under `[source]`; the full list with licences is in [tasks/repo/rules-fix-v1/README.md](tasks/repo/rules-fix-v1/README.md).
+- **Licences:** MIT or BSD-3-Clause, per library.
+- **Paths that carry their text:** `tasks/repo/rules-fix-v1/` (inside each task's `environment/work.tar` and `verifier/tests.tar`, and in its verifier and oracle files) and `scripts/repo-tasks/rules-fix/upstream/` and `scripts/repo-tasks/rules-fix/issues/` (issue text with usernames removed and source links kept).
+- **Licence texts:** one per library in [tasks/repo/rules-fix-v1/LICENSES/](tasks/repo/rules-fix-v1/LICENSES/). Each `work.tar` also keeps the project's own LICENSE.
 
 ## MCP servers in the tools-at-scale catalog
 

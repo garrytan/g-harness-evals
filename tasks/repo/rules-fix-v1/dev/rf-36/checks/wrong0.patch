@@ -1,0 +1,32 @@
+diff --git a/src/marshmallow/validate.py b/src/marshmallow/validate.py
+index ca5511491aab2d5b9238b5438ccb55936d5e6b68..90efa32268aa8987442e5a5f30756a0f7d07e18c 100644
+--- a/src/marshmallow/validate.py
++++ b/src/marshmallow/validate.py
+@@ -5,7 +5,6 @@ from __future__ import annotations
+ import re
+ import typing
+ from abc import ABC, abstractmethod
+-from itertools import zip_longest
+ from operator import attrgetter
+ 
+ from marshmallow.exceptions import ValidationError
+@@ -626,9 +625,17 @@ class OneOf(Validator):
+             of an attribute of the choice objects. Defaults to `str()`.
+         """
+         valuegetter = valuegetter if callable(valuegetter) else attrgetter(valuegetter)
+-        pairs = zip_longest(self.choices, self.labels, fillvalue="")
++        choices = tuple(self.choices)
++        labels = tuple(self.labels)
++        # Pad labels with empty strings if fewer than choices, truncate if more
++        padded_labels = labels[: len(choices)] + ("",) * max(
++            0, len(choices) - len(labels)
++        )
+ 
+-        return ((valuegetter(choice), label) for choice, label in pairs)
++        return (
++            (valuegetter(choice), label)
++            for choice, label in zip(choices, labels)
++        )
+ 
+ 
+ class ContainsOnly(OneOf):

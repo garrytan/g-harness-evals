@@ -1,0 +1,12 @@
+diff --git a/src/validators/url.py b/src/validators/url.py
+index 4ecb58269822e5bdeaf5102cdb9edbdb3a618366..98c31b535c4bc8d90e85c5bf34f98c53e306b8c9 100644
+--- a/src/validators/url.py
++++ b/src/validators/url.py
+@@ -116,6 +116,7 @@ def _validate_optionals(path: str, query: str, fragment: str):
+     if query:
+         optional_segments &= bool(_query_regex().match(query))
+     if fragment:
++        fragment = fragment.rstrip("/")
+         optional_segments &= all(char_to_avoid not in fragment for char_to_avoid in ("/", "?"))
+     return optional_segments
+ 

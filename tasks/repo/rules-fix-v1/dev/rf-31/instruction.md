@@ -1,0 +1,16 @@
+# [BUG] PromptBase.on_validate_error should explicitly enable markup
+
+- [x] I've checked [docs](https://rich.readthedocs.io/en/latest/introduction.html) and [closed issues](https://github.com/Textualize/rich/issues?q=is%3Aissue+is%3Aclosed) for possible solutions.
+- [x] I can't find my issue in the [FAQ](https://github.com/Textualize/rich/blob/master/FAQ.md).
+
+**Describe the bug**
+
+I create a console with `Console(markup=False)` and then pass it to `Confirm.ask(..., console=console)`.  If the user doesn't pick a valid choice, they get an error that says `[prompt.invalid]Please enter Y or N`.
+
+I think `PromptBase.on_validate_error()` should explicitly pass `markup=true` to `self.console.print(error)`.
+
+**Platform**
+
+Every platform, it's a logic bug.  (I'm on Ubuntu 25.10 with gnome-terminal, which doesn't matter.)
+
+Fix this issue in /work/repo.
