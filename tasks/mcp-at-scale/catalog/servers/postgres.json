@@ -1,0 +1,53 @@
+{
+  "server": "postgres",
+  "source": {
+    "repo": "modelcontextprotocol/servers-archived",
+    "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+    "path": "src/postgres",
+    "spdx": "MIT",
+    "licence_file": "LICENSE",
+    "notice_file": null,
+    "capture_method": "runtime"
+  },
+  "job": "PostgreSQL read-only queries",
+  "capture": {
+    "base_image": "node@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee",
+    "install": "npm ci\nfor w in gitlab slack postgres redis google-maps everart aws-kb-retrieval-server gdrive; do npm run build -w src/$w; done",
+    "run": [
+      "node",
+      "dist/index.js",
+      "postgresql://db.example.com/app"
+    ],
+    "placeholder_env": [],
+    "network_while_running": "none",
+    "protocol_version_requested": "2025-06-18"
+  },
+  "initialize": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "resources": {},
+      "tools": {}
+    },
+    "serverInfo": {
+      "name": "example-servers/postgres",
+      "version": "0.1.0"
+    },
+    "instructions": null
+  },
+  "tools": [
+    {
+      "name": "query",
+      "description": "Run a read-only SQL query",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {}
+    }
+  ],
+  "excluded_tools": []
+}

@@ -1,0 +1,344 @@
+{
+ "about": "Search-effort parser fixtures: real Harbor transcripts of the keyless scripted search model (scripts/mcp-at-scale/search-script.ts) on the synthetic catalog at rung 150, cut to the agent turns and their tool calls. listing-map.ts run --search, 2026-11-19.",
+ "target": {
+  "server": "ash-tracker",
+  "tool": "create_issue"
+ },
+ "cases": [
+  {
+   "variant": "claude-code",
+   "version": "2.1.312",
+   "source": "trajectory",
+   "transcript": {
+    "agent": {
+     "name": "claude-code",
+     "version": "2.1.312"
+    },
+    "steps": [
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "ToolSearch",
+        "arguments": {
+         "query": "+ash-tracker create issue",
+         "max_results": 5
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "mcp__ash-tracker__create_issue",
+        "arguments": {
+         "workspace": "acme",
+         "title": "Login button broken"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [],
+      "message": "Done: the scripted search model called the tool and is stopping here."
+     }
+    ]
+   },
+   "right_tool": true
+  },
+  {
+   "variant": "claude-code-no-tool-search",
+   "version": "2.1.312",
+   "source": "trajectory",
+   "transcript": {
+    "agent": {
+     "name": "claude-code",
+     "version": "2.1.312"
+    },
+    "steps": [
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "mcp__ash-tracker__create_issue",
+        "arguments": {
+         "workspace": "acme",
+         "title": "Login button broken"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [],
+      "message": "Done: the scripted search model called the tool and is stopping here."
+     }
+    ]
+   },
+   "right_tool": true
+  },
+  {
+   "variant": "codex",
+   "version": "0.165.0",
+   "source": "trajectory",
+   "transcript": {
+    "agent": {
+     "name": "codex",
+     "version": "0.165.0"
+    },
+    "steps": [
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "exec",
+        "arguments": {
+         "input": "const hits = ALL_TOOLS.filter((t) => t.name.includes(\"create_issue\")).map((t) => t.name);\ntext(JSON.stringify(hits));\n"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "exec",
+        "arguments": {
+         "input": "const r = await tools.mcp__ash_tracker__create_issue({\"workspace\":\"acme\",\"title\":\"Login button broken\"});\ntext(JSON.stringify(r));\n"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [],
+      "message": "Done: the scripted search model called the tool and is stopping here."
+     }
+    ]
+   },
+   "right_tool": true
+  },
+  {
+   "variant": "codex",
+   "version": "0.170.0",
+   "source": "trajectory",
+   "transcript": {
+    "agent": {
+     "name": "codex",
+     "version": "0.170.0"
+    },
+    "steps": [
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "exec",
+        "arguments": {
+         "input": "const hits = ALL_TOOLS.filter((t) => t.name.includes(\"create_issue\")).map((t) => t.name);\ntext(JSON.stringify(hits));\n"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "exec",
+        "arguments": {
+         "input": "const r = await tools.mcp__ash_tracker__create_issue({\"workspace\":\"acme\",\"title\":\"Login button broken\"});\ntext(JSON.stringify(r));\n"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [],
+      "message": "Done: the scripted search model called the tool and is stopping here."
+     }
+    ]
+   },
+   "right_tool": true
+  },
+  {
+   "variant": "hermes",
+   "version": "v2026.9.24",
+   "source": "trajectory",
+   "transcript": {
+    "agent": {
+     "name": "hermes",
+     "version": "v2026.9.24"
+    },
+    "steps": [
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "tool_search",
+        "arguments": {
+         "queries": [
+          "ash tracker create issue"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "tool_call",
+        "arguments": {
+         "calls": [
+          {
+           "name": "mcp__ash_tracker__create_issue",
+           "arguments": {
+            "workspace": "acme",
+            "title": "Login button broken"
+           }
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [],
+      "message": "Done: the scripted search model called the tool and is stopping here."
+     }
+    ]
+   },
+   "right_tool": true
+  },
+  {
+   "variant": "pi-codemode",
+   "version": "1.5.0",
+   "source": "trajectory",
+   "transcript": {
+    "agent": {
+     "name": "pi",
+     "version": "1.5.0"
+    },
+    "steps": [
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "codemode",
+        "arguments": {
+         "code": "const hits = await searchTools(\"ash tracker create issue\");\ntext(JSON.stringify(hits.map((h) => h.name)));"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "codemode",
+        "arguments": {
+         "code": "const r = await tools.mcp__ash_tracker__create_issue({\"workspace\":\"acme\",\"title\":\"Login button broken\"});\ntext(typeof r === \"string\" ? r : JSON.stringify(r));"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [],
+      "message": "Done: the scripted search model called the tool and is stopping here."
+     }
+    ]
+   },
+   "right_tool": true
+  },
+  {
+   "variant": "pi-deferred",
+   "version": "1.5.0",
+   "source": "trajectory",
+   "transcript": {
+    "agent": {
+     "name": "pi",
+     "version": "1.5.0"
+    },
+    "steps": [
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "tool_search",
+        "arguments": {
+         "query": "ash tracker create issue"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "mcp__ash_tracker__create_issue",
+        "arguments": {
+         "workspace": "acme",
+         "title": "Login button broken"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [],
+      "message": "Done: the scripted search model called the tool and is stopping here."
+     }
+    ]
+   },
+   "right_tool": true
+  },
+  {
+   "variant": "pi-direct",
+   "version": "1.5.0",
+   "source": "trajectory",
+   "transcript": {
+    "agent": {
+     "name": "pi",
+     "version": "1.5.0"
+    },
+    "steps": [
+     {
+      "source": "agent",
+      "tool_calls": [
+       {
+        "function_name": "mcp__ash_tracker__create_issue",
+        "arguments": {
+         "workspace": "acme",
+         "title": "Login button broken"
+        }
+       }
+      ]
+     },
+     {
+      "source": "agent",
+      "tool_calls": [],
+      "message": "Done: the scripted search model called the tool and is stopping here."
+     }
+    ]
+   },
+   "right_tool": true
+  },
+  {
+   "variant": "openclaw",
+   "version": "2026.10.6",
+   "source": "openclaw-session",
+   "transcript": "{\"type\": \"message\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"toolCall\", \"name\": \"tool_search\", \"arguments\": {\"queries\": [{\"query\": \"ash tracker create issue\"}]}}]}}\n{\"type\": \"message\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"toolCall\", \"name\": \"tool_call\", \"arguments\": {\"id\": \"mcp:ash-tracker:ash-tracker__create_issue\", \"args\": {\"workspace\": \"acme\", \"title\": \"Login button broken\"}}}]}}\n{\"type\": \"message\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Done: the scripted search model called the tool and is stopping here.\"}]}}\n",
+   "right_tool": true
+  },
+  {
+   "variant": "openclaw",
+   "version": "2026.11.5",
+   "source": "openclaw-session",
+   "transcript": "{\"type\": \"message\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"toolCall\", \"name\": \"tool_search\", \"arguments\": {\"queries\": [{\"query\": \"ash tracker create issue\"}]}}]}}\n{\"type\": \"message\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"toolCall\", \"name\": \"dispatch_action\", \"arguments\": {\"id\": \"mcp:ash-tracker:ash-tracker__create_issue\", \"args\": {\"workspace\": \"acme\", \"title\": \"Login button broken\"}}}]}}\n{\"type\": \"message\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Done: the scripted search model called the tool and is stopping here.\"}]}}\n",
+   "right_tool": true
+  }
+ ]
+}

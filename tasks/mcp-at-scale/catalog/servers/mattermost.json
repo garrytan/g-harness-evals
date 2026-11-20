@@ -1,0 +1,1790 @@
+{
+  "server": "mattermost",
+  "source": {
+    "repo": "cloud-ru-tech/mcp-server-mattermost",
+    "commit": "8976ae4a77180bdeffdc3ffe20362bd253dc7cf8",
+    "path": "",
+    "spdx": "MIT",
+    "licence_file": "LICENSE",
+    "notice_file": null,
+    "capture_method": "runtime"
+  },
+  "job": "team chat: Mattermost channels and posts",
+  "capture": {
+    "base_image": "ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58",
+    "install": "export UV_PYTHON_DOWNLOADS=never UV_LINK_MODE=copy UV_PYTHON=python3.12\nuv sync --frozen --no-dev",
+    "run": [
+      ".venv/bin/mcp-server-mattermost"
+    ],
+    "placeholder_env": [
+      "MATTERMOST_URL",
+      "MATTERMOST_TOKEN"
+    ],
+    "network_while_running": "none",
+    "protocol_version_requested": "2025-06-18"
+  },
+  "initialize": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {
+      "logging": {},
+      "prompts": {
+        "listChanged": true
+      },
+      "resources": {
+        "subscribe": false,
+        "listChanged": true
+      },
+      "tools": {
+        "listChanged": true
+      }
+    },
+    "serverInfo": {
+      "name": "Mattermost",
+      "version": "4.1.5"
+    },
+    "instructions": "MCP server for Mattermost team collaboration platform"
+  },
+  "tools": [
+    {
+      "name": "create_bookmark",
+      "description": "Create a channel bookmark.\n\nCreates a link bookmark (URL) or file bookmark (attached file).\nFor link type, link_url is required.\nFor file type, file_id is required (from upload_file).\n\nNote: Requires Entry, Professional, Enterprise, or Enterprise Advanced edition\n(not available in Team Edition). Minimum version: v10.1.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "Bookmark display name",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "bookmark_type": {
+            "description": "Bookmark type: 'link' or 'file'",
+            "enum": [
+              "link",
+              "file"
+            ],
+            "type": "string"
+          },
+          "link_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "URL (required for link type)"
+          },
+          "file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "File ID (required for file type)"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Emoji icon"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Preview image URL"
+          }
+        },
+        "required": [
+          "channel_id",
+          "display_name",
+          "bookmark_type"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "delete_bookmark",
+      "description": "Delete a channel bookmark.\n\nArchives the bookmark (soft delete via delete_at timestamp).\nThe bookmark will no longer appear in the channel.\n\nNote: Requires Entry, Professional, Enterprise, or Enterprise Advanced edition\n(not available in Team Edition). Minimum version: v10.1.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "bookmark_id": {
+            "description": "26-character bookmark identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "bookmark_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {}
+    },
+    {
+      "name": "list_bookmarks",
+      "description": "List all bookmarks in a channel.\n\nReturns bookmarks in sort order.\nUse to see saved links and files pinned to a channel.\nFor searching messages, use search_messages instead.\n\nNote: Requires Entry, Professional, Enterprise, or Enterprise Advanced edition\n(not available in Team Edition). Minimum version: v10.1.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "bookmarks_since": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Timestamp to filter bookmarks updated since"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update_bookmark",
+      "description": "Update a channel bookmark.\n\nPartially updates bookmark properties.\nOnly provided fields are updated; others remain unchanged.\n\nNote: Requires Entry, Professional, Enterprise, or Enterprise Advanced edition\n(not available in Team Edition). Minimum version: v10.1.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "bookmark_id": {
+            "description": "26-character bookmark identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New display name"
+          },
+          "link_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New URL"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New preview image URL"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New emoji icon"
+          }
+        },
+        "required": [
+          "channel_id",
+          "bookmark_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "update_bookmark_sort_order",
+      "description": "Reorder a channel bookmark.\n\nMoves the bookmark to the specified position.\nOther bookmarks are automatically adjusted.\nReturns all affected bookmarks with updated positions.\n\nNote: Requires Entry, Professional, Enterprise, or Enterprise Advanced edition\n(not available in Team Edition). Minimum version: v10.1.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "bookmark_id": {
+            "description": "26-character bookmark identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "new_sort_order": {
+            "description": "New position in bookmark list",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel_id",
+          "bookmark_id",
+          "new_sort_order"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "add_user_to_channel",
+      "description": "Add a user to a channel.\n\nRequires permission to manage channel members.\nAdding a user who is already in the channel has no additional effect.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "26-character user identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "user_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "create_channel",
+      "description": "Create a new channel in a team.\n\nCreates either a public (O) or private (P) channel.\nThe authenticated user becomes the channel admin.\nEach call creates a new channel; use get_channel_by_name to check if it exists.",
+      "inputSchema": {
+        "properties": {
+          "team_id": {
+            "description": "26-character team identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "name": {
+            "description": "Channel name (lowercase, no spaces)",
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^[a-z0-9][a-z0-9_-]*$",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "Human-readable channel name",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "channel_type": {
+            "default": "O",
+            "description": "Channel type: O=public, P=private, D=direct message, G=group message",
+            "enum": [
+              "O",
+              "P",
+              "D",
+              "G"
+            ],
+            "type": "string"
+          },
+          "purpose": {
+            "default": "",
+            "description": "Channel purpose",
+            "maxLength": 250,
+            "type": "string"
+          },
+          "header": {
+            "default": "",
+            "description": "Channel header",
+            "maxLength": 1024,
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id",
+          "name",
+          "display_name"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "create_direct_channel",
+      "description": "Create a direct message channel between two users.\n\nReturns an existing DM channel if one already exists between the users.\nUse this to get a channel ID for sending private messages.\nThen use post_message with the returned channel_id to send messages.",
+      "inputSchema": {
+        "properties": {
+          "user_id_1": {
+            "description": "26-character user identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "user_id_2": {
+            "description": "26-character user identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id_1",
+          "user_id_2"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_channel",
+      "description": "Get detailed information about a specific channel.\n\nReturns channel metadata including name, purpose, header, and member count.\nUse when you have the channel ID.\nFor lookup by channel name, use get_channel_by_name instead.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_channel_by_name",
+      "description": "Get a channel by its name within a team.\n\nReturns channel metadata including name, purpose, header, and member count.\nUse when you know the channel name but not the ID.\nFor lookup by ID, use get_channel instead.",
+      "inputSchema": {
+        "properties": {
+          "team_id": {
+            "description": "26-character team identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "channel_name": {
+            "description": "Channel name (lowercase, no spaces)",
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^[a-z0-9][a-z0-9_-]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id",
+          "channel_name"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_channel_members",
+      "description": "Get members of a channel.\n\nReturns list of users who are members of the channel.\nUse to see who can receive messages in a channel.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "page": {
+            "default": 0,
+            "description": "Page number (0-indexed)",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "per_page": {
+            "default": 60,
+            "description": "Results per page",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "join_channel",
+      "description": "Join a public channel.\n\nAdds the authenticated user to the channel.\nCannot be used to join private channels.\nJoining a channel you're already in has no additional effect.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "leave_channel",
+      "description": "Leave a channel.\n\nRemoves the authenticated user from the channel.\nCannot leave Town Square or other default channels.\nCan rejoin public channels later with join_channel.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "list_my_channels",
+      "description": "List channels you are a member of in a team.\n\nReturns your channels with unread counters and the read marker for the authenticated\nuser. Two counter pairs are provided:\n\n- ``unread_msg_count`` / ``mention_count`` count thread replies too (the channel\n  badge with Collapsed Reply Threads off — the team default).\n- ``unread_msg_count_root`` / ``mention_count_root`` count only root posts (the\n  badge with Collapsed Reply Threads on).\n\n``last_viewed_at`` is the user's read marker for the channel. Pass it as\n``get_channel_messages(channel_id, since=last_viewed_at)`` for incremental sync, or\nuse ``get_channel_messages(channel_id, unread_only=True)`` for the unread window\n(preferred — deterministic and edit-noise-free).\n\nChannels without a membership record report 0 for all counters and ``last_viewed_at``.\n\nUse channel_types to narrow results: [\"O\", \"P\"] for workspace channels without DMs,\nor [\"D\"] for direct messages only.\nUse only_unread=True to get only channels with unread messages.\nFor discovering public channels you haven't joined yet, use list_public_channels.",
+      "inputSchema": {
+        "properties": {
+          "team_id": {
+            "description": "26-character team identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "channel_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "O",
+                    "P",
+                    "D",
+                    "G"
+                  ],
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Channel types to include: O=public, P=private, D=direct message, G=group message. Omit to return all types."
+          },
+          "only_unread": {
+            "default": false,
+            "description": "Return only channels with unread messages",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "team_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list_public_channels",
+      "description": "List public channels available in a team.\n\nReturns all public channels for discovery, including ones you haven't joined.\nResults are paginated. Use page/per_page to retrieve all channels.\nUseful for finding channels to join.\nFor channels you are already a member of (including private), use list_my_channels.",
+      "inputSchema": {
+        "properties": {
+          "team_id": {
+            "description": "26-character team identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "page": {
+            "default": 0,
+            "description": "Page number (0-indexed)",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "per_page": {
+            "default": 60,
+            "description": "Results per page",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "team_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "mark_channel_viewed",
+      "description": "Mark a channel as read for the authenticated user.\n\nClears unread counters and advances ``last_viewed_at``. Use when the user\nasks to clear unreads, when a bot has processed\n``get_channel_messages(unread_only=True)`` and needs to advance read state\nfor the next poll, or as a one-shot bootstrap on a channel with\n``last_viewed_at == 0`` so ``unread_only`` queries return posts.\n\nDo NOT call on accounts shared with humans — it clears their UI badge.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "download_file",
+      "description": "Download a file attachment and save it to a local directory.\n\nCounterpart of upload_file: fetches the content of a file by its ID\n(from a post's file_ids or get_file_info) and writes it to disk.\nReturns the local path so the file can be read or processed further.\nUse on_conflict=\"rename\" to save all same-named attachments without replacing any.\nAlways use the returned path; parallel calls may assign numbers in any order.\nEach repeated call in rename mode saves another copy. overwrite=True cannot\nbe combined with on_conflict=\"error\" or \"rename\".\nFiles larger than 100 MB are refused.",
+      "inputSchema": {
+        "properties": {
+          "file_id": {
+            "description": "26-character file identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "destination_dir": {
+            "description": "Local directory to save the file into (created if missing); a leading '~' is expanded",
+            "type": "string"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Override the saved file name"
+          },
+          "overwrite": {
+            "default": false,
+            "description": "Replace an existing file with the same name",
+            "type": "boolean"
+          },
+          "on_conflict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "error",
+                  "rename",
+                  "overwrite"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Name conflict policy; null uses overwrite. rename keeps all files with numbered names"
+          }
+        },
+        "required": [
+          "file_id",
+          "destination_dir"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {}
+    },
+    {
+      "name": "get_file_info",
+      "description": "Get metadata about an uploaded file.\n\nReturns file name, size, type, and upload information.\nUse to check file details before downloading or sharing.",
+      "inputSchema": {
+        "properties": {
+          "file_id": {
+            "description": "26-character file identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_file_link",
+      "description": "Get a public link to download a file.\n\nLink can be shared with users who don't have Mattermost access.\nLink may expire based on server settings.",
+      "inputSchema": {
+        "properties": {
+          "file_id": {
+            "description": "26-character file identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "upload_file",
+      "description": "Upload a file to a channel.\n\nThe file will be attached to messages in the specified channel.\nReturns file ID that can be used when posting messages with file_ids parameter.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Local path to the file to upload; a leading '~' is expanded",
+            "type": "string"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Override filename"
+          }
+        },
+        "required": [
+          "channel_id",
+          "file_path"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "delete_message",
+      "description": "Delete a message permanently.\n\nCan only delete your own messages (unless admin).\nDeleted messages cannot be recovered.\nAll reactions and thread context will be lost.",
+      "inputSchema": {
+        "properties": {
+          "post_id": {
+            "description": "26-character post/message identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {}
+    },
+    {
+      "name": "get_channel_messages",
+      "description": "Get messages from a channel — recent history, the user's unread window, or posts changed since a watermark.\n\nThree mutually-exclusive modes. Pick by user intent:\n\n- \"Show last N\" / \"what's in this channel\" → default (page, per_page).\n  Reverse-chronological. ``truncated=True`` ⇒ more posts exist; paginate.\n\n- \"What did I miss\" → ``unread_only=True``. The user's unread window\n  anchored at ``last_viewed_at``, with ``limit_before`` context posts.\n  Quirk: on a never-viewed channel (``last_viewed_at == 0``) ``order``\n  is empty even when ``unread_msg_count > 0`` — call\n  ``mark_channel_viewed`` once to bootstrap.\n\n- \"Sync everything since <ms>\" → ``since=<unix_ms>``. Posts with\n  ``update_at > since``, including edits of older posts and tombstones\n  (``delete_at != 0``, empty ``message``). Server caps at 1000; on\n  ``truncated=True`` step the watermark forward in smaller windows.\n\nReturns ``{order, posts, truncated}``. ``posts`` may contain more entries\nthan ``order`` (root posts pulled in by thread replies). System posts\n(``type`` starts with ``\"system_\"``) appear in ``unread_only``/``since``\nresponses but are NOT counted in ``unread_msg_count``.\n\nFor keyword search use ``search_messages``; for full threads use ``get_thread``.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "unread_only": {
+            "default": false,
+            "description": "Return only the user's unread window via /posts/unread",
+            "type": "boolean"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "minimum": 1000000000000,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Unix timestamp in milliseconds (>= 10^12, i.e. >= 2001-01-01); return posts modified after this time. Mutually exclusive with unread_only and pagination. Use ChannelWithUnreads.last_viewed_at from list_my_channels."
+          },
+          "page": {
+            "default": 0,
+            "description": "Page number (0-indexed)",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "per_page": {
+            "default": 60,
+            "description": "Results per page",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "limit_before": {
+            "default": 0,
+            "description": "In unread_only mode: read context posts before the first unread (max 200)",
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "limit_after": {
+            "default": 60,
+            "description": "In unread_only mode: unread posts to return (1-200)",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "collapsed_threads": {
+            "default": false,
+            "description": "Set True only if the user has CRT (Collapsed Reply Threads) enabled. Team default is CRT off — leave False unless you know otherwise. Requires unread_only=True or since=<ms>; the default /posts endpoint rejects CRT-aware queries.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "post_message",
+      "description": "Post a message to a Mattermost channel.\n\nSend text messages with Markdown support.\nUse root_id to reply in a thread.\nUse file_ids to attach uploaded files.\nUse attachments for rich formatted content.\nTo read all messages in a thread, use get_thread.\n\nAttachment examples:\n- Status alert: {\"color\": \"danger\", \"title\": \"Build Failed\", \"text\": \"Tests failed on main\"}\n- Success notification: {\"color\": \"good\", \"title\": \"Deployed\", \"text\": \"v1.2.3 is live\"}\n- With fields: {\"title\": \"Ticket\", \"fields\": [{\"title\": \"Status\", \"value\": \"Open\", \"short\": true}]}",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "26-character channel identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "message": {
+            "description": "Message content (supports Markdown)",
+            "maxLength": 16383,
+            "minLength": 1,
+            "type": "string"
+          },
+          "root_id": {
+            "anyOf": [
+              {
+                "description": "26-character post/message identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Root post ID for threading"
+          },
+          "file_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "description": "26-character file identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "File IDs to attach (from upload_file)"
+          },
+          "attachments": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": false,
+                  "description": "Rich message attachment for formatted content.\n\nAttachments add structured content to messages with colors, fields,\nauthor info, and images. Based on Slack attachment format.\n\nAll fields are optional. Use color for visual emphasis,\nfields for structured data, and author_* for attribution.",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Attachment ID (auto-generated)"
+                    },
+                    "fallback": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Plain-text summary for notifications"
+                    },
+                    "color": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Left border color: 'good', 'warning', 'danger', or #RRGGBB hex"
+                    },
+                    "pretext": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Text above attachment"
+                    },
+                    "text": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Main content (supports Markdown)"
+                    },
+                    "author_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Author display name"
+                    },
+                    "author_link": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Author profile URL (requires author_name)"
+                    },
+                    "author_icon": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Author avatar URL"
+                    },
+                    "title": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Attachment title"
+                    },
+                    "title_link": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Title hyperlink URL (requires title)"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "additionalProperties": false,
+                            "description": "Field within attachment for table display.\n\nFields are displayed as key-value pairs within the attachment.\nUse short=True to display fields side-by-side.",
+                            "properties": {
+                              "title": {
+                                "description": "Field label/header",
+                                "type": "string"
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  }
+                                ],
+                                "description": "Field content (string or number)"
+                              },
+                              "short": {
+                                "default": false,
+                                "description": "Display inline with other short fields",
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "title",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Structured data fields"
+                    },
+                    "image_url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Main image URL"
+                    },
+                    "thumb_url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Thumbnail image URL (75x75)"
+                    },
+                    "footer": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Footer text (max 300 chars)"
+                    },
+                    "footer_icon": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Footer icon URL"
+                    },
+                    "ts": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Unix timestamp for footer"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Rich message attachments with colors, fields, images"
+          }
+        },
+        "required": [
+          "channel_id",
+          "message"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "search_messages",
+      "description": "Search for messages matching specific criteria across channels.\n\nSearches message content within a team.\nFor simply reading recent channel messages, use get_channel_messages instead.\n\nSearch syntax examples:\n- Simple text: \"deployment error\"\n- From user: \"from:username bug\"\n- In channel: \"in:channel-name release\"\n- Date range: \"after:2024-01-01 before:2024-02-01\"\n- Combined: \"from:alice in:dev-ops deployment failed\"",
+      "inputSchema": {
+        "properties": {
+          "team_id": {
+            "description": "26-character team identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "terms": {
+            "description": "Search terms (Mattermost syntax)",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "is_or_search": {
+            "default": false,
+            "description": "Use OR instead of AND for multiple terms",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "team_id",
+          "terms"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update_message",
+      "description": "Edit an existing message.\n\nCan only edit your own messages (unless admin).\nThe message will show as edited.\nOriginal content is replaced; edit history is not preserved.\n\nAttachment examples:\n- Status alert: {\"color\": \"danger\", \"title\": \"Build Failed\", \"text\": \"Tests failed on main\"}\n- With fields: {\"title\": \"Ticket\", \"fields\": [{\"title\": \"Status\", \"value\": \"Open\", \"short\": true}]}",
+      "inputSchema": {
+        "properties": {
+          "post_id": {
+            "description": "26-character post/message identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "message": {
+            "description": "New message content",
+            "maxLength": 16383,
+            "minLength": 1,
+            "type": "string"
+          },
+          "attachments": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": false,
+                  "description": "Rich message attachment for formatted content.\n\nAttachments add structured content to messages with colors, fields,\nauthor info, and images. Based on Slack attachment format.\n\nAll fields are optional. Use color for visual emphasis,\nfields for structured data, and author_* for attribution.",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Attachment ID (auto-generated)"
+                    },
+                    "fallback": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Plain-text summary for notifications"
+                    },
+                    "color": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Left border color: 'good', 'warning', 'danger', or #RRGGBB hex"
+                    },
+                    "pretext": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Text above attachment"
+                    },
+                    "text": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Main content (supports Markdown)"
+                    },
+                    "author_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Author display name"
+                    },
+                    "author_link": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Author profile URL (requires author_name)"
+                    },
+                    "author_icon": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Author avatar URL"
+                    },
+                    "title": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Attachment title"
+                    },
+                    "title_link": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Title hyperlink URL (requires title)"
+                    },
+                    "fields": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "additionalProperties": false,
+                            "description": "Field within attachment for table display.\n\nFields are displayed as key-value pairs within the attachment.\nUse short=True to display fields side-by-side.",
+                            "properties": {
+                              "title": {
+                                "description": "Field label/header",
+                                "type": "string"
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  }
+                                ],
+                                "description": "Field content (string or number)"
+                              },
+                              "short": {
+                                "default": false,
+                                "description": "Display inline with other short fields",
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "title",
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Structured data fields"
+                    },
+                    "image_url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Main image URL"
+                    },
+                    "thumb_url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Thumbnail image URL (75x75)"
+                    },
+                    "footer": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Footer text (max 300 chars)"
+                    },
+                    "footer_icon": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Footer icon URL"
+                    },
+                    "ts": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Unix timestamp for footer"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Rich message attachments with colors, fields, images"
+          }
+        },
+        "required": [
+          "post_id",
+          "message"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "add_reaction",
+      "description": "Add an emoji reaction to a message.\n\nAdds a reaction from the authenticated user.\nCommon emojis: thumbsup, thumbsdown, smile, heart, eyes.\nAdding the same reaction twice has no additional effect.",
+      "inputSchema": {
+        "properties": {
+          "post_id": {
+            "description": "26-character post/message identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "emoji_name": {
+            "description": "Emoji name without colons (e.g., 'thumbsup', 'smile')",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_+-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_id",
+          "emoji_name"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_reactions",
+      "description": "Get all reactions on a message.\n\nReturns list of reactions with emoji names and user IDs.\nUse to see who reacted to a message and with what emoji.",
+      "inputSchema": {
+        "properties": {
+          "post_id": {
+            "description": "26-character post/message identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_thread",
+      "description": "Get all messages in a thread.\n\nReturns the root post and all replies in chronological order.\nUse to read full conversation context before replying.",
+      "inputSchema": {
+        "properties": {
+          "post_id": {
+            "description": "26-character post/message identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "pin_message",
+      "description": "Pin a message in a channel.\n\nPinned messages appear in the channel's pinned posts section.\nPinning an already pinned message has no additional effect.",
+      "inputSchema": {
+        "properties": {
+          "post_id": {
+            "description": "26-character post/message identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "remove_reaction",
+      "description": "Remove your emoji reaction from a message.\n\nRemoves a reaction previously added by the authenticated user.\nRemoving a non-existent reaction has no effect.",
+      "inputSchema": {
+        "properties": {
+          "post_id": {
+            "description": "26-character post/message identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "emoji_name": {
+            "description": "Emoji name without colons (e.g., 'thumbsup', 'smile')",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_+-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_id",
+          "emoji_name"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "unpin_message",
+      "description": "Unpin a message from a channel.\n\nRemoves the message from the channel's pinned posts.\nUnpinning a non-pinned message has no effect.",
+      "inputSchema": {
+        "properties": {
+          "post_id": {
+            "description": "26-character post/message identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_team",
+      "description": "Get team details by ID.\n\nReturns team name, description, and settings.\nUse when you have the team ID and need detailed information.",
+      "inputSchema": {
+        "properties": {
+          "team_id": {
+            "description": "26-character team identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_team_members",
+      "description": "Get members of a team.\n\nReturns list of users who belong to the team.\nUse to discover users before sending direct messages or mentions.",
+      "inputSchema": {
+        "properties": {
+          "team_id": {
+            "description": "26-character team identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          },
+          "page": {
+            "default": 0,
+            "description": "Page number (0-indexed)",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "per_page": {
+            "default": 60,
+            "description": "Results per page",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "team_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list_teams",
+      "description": "List teams the current user belongs to.\n\nReturns team name, description, and settings.\nUse this to discover available teams before listing channels.",
+      "inputSchema": {
+        "properties": {},
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_me",
+      "description": "Get the current authenticated user's profile.\n\nReturns user information including username, email, and status.\nUse to get your own user ID for operations like create_direct_channel.",
+      "inputSchema": {
+        "properties": {},
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_user",
+      "description": "Get a user's profile by their ID.\n\nReturns user information including username, email, and status.\nUse when you have the user ID.\nFor lookup by @username, use get_user_by_username instead.",
+      "inputSchema": {
+        "properties": {
+          "user_id": {
+            "description": "26-character user identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_user_by_username",
+      "description": "Get a user's profile by their username.\n\nReturns user information including username, email, and status.\nUse when you know the @username but not the user ID.\nFor lookup by ID, use get_user instead.",
+      "inputSchema": {
+        "properties": {
+          "username": {
+            "description": "Mattermost username",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._-]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_user_status",
+      "description": "Get a user's online/offline status.\n\nReturns: online, away, dnd (do not disturb), or offline.\nUse to check if a user is available before sending a message.",
+      "inputSchema": {
+        "properties": {
+          "user_id": {
+            "description": "26-character user identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search_users",
+      "description": "Search for users by name or username.\n\nSearches across username, first name, last name, and nickname.\nUse to find users when you don't know their exact username or ID.",
+      "inputSchema": {
+        "properties": {
+          "term": {
+            "description": "Search term",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "description": "26-character team identifier (e.g., 'o5w8h47pdfbzjc4d8w7dhnhren')",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Limit search to a specific team"
+          }
+        },
+        "required": [
+          "term"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "excluded_tools": []
+}

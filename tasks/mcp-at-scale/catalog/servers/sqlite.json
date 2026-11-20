@@ -1,0 +1,143 @@
+{
+  "server": "sqlite",
+  "source": {
+    "repo": "modelcontextprotocol/servers-archived",
+    "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+    "path": "src/sqlite",
+    "spdx": "MIT",
+    "licence_file": "LICENSE",
+    "notice_file": null,
+    "capture_method": "runtime"
+  },
+  "job": "SQLite queries and business notes",
+  "capture": {
+    "base_image": "ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58",
+    "install": "export UV_PYTHON_DOWNLOADS=never UV_LINK_MODE=copy UV_PYTHON=python3.12\nuv sync --frozen --no-dev",
+    "run": [
+      ".venv/bin/mcp-server-sqlite",
+      "--db-path",
+      "/tmp/catalog.db"
+    ],
+    "placeholder_env": [],
+    "network_while_running": "none",
+    "protocol_version_requested": "2025-06-18"
+  },
+  "initialize": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "experimental": {},
+      "prompts": {
+        "listChanged": false
+      },
+      "resources": {
+        "subscribe": false,
+        "listChanged": false
+      },
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "serverInfo": {
+      "name": "sqlite",
+      "version": "0.1.0"
+    },
+    "instructions": null
+  },
+  "tools": [
+    {
+      "name": "read_query",
+      "description": "Execute a SELECT query on the SQLite database",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "SELECT SQL query to execute"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {}
+    },
+    {
+      "name": "write_query",
+      "description": "Execute an INSERT, UPDATE, or DELETE query on the SQLite database",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "SQL query to execute"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {}
+    },
+    {
+      "name": "create_table",
+      "description": "Create a new table in the SQLite database",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "CREATE TABLE SQL statement"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {}
+    },
+    {
+      "name": "list_tables",
+      "description": "List all tables in the SQLite database",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {}
+    },
+    {
+      "name": "describe_table",
+      "description": "Get the schema information for a specific table",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "table_name": {
+            "type": "string",
+            "description": "Name of the table to describe"
+          }
+        },
+        "required": [
+          "table_name"
+        ]
+      },
+      "annotations": {}
+    },
+    {
+      "name": "append_insight",
+      "description": "Add a business insight to the memo",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "insight": {
+            "type": "string",
+            "description": "Business insight discovered from data analysis"
+          }
+        },
+        "required": [
+          "insight"
+        ]
+      },
+      "annotations": {}
+    }
+  ],
+  "excluded_tools": []
+}

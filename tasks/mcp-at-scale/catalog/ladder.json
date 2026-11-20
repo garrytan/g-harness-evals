@@ -1,0 +1,1823 @@
+{
+  "seed": 20261121,
+  "seed_search": "seeds are tried upward from 20261119; the first one whose every rung lands within 5 tools of its target adds at least one near-twin and one unrelated server, and whose top rung holds a near-twin of every core server that has one, is used (2 rejected)",
+  "tolerance": 5,
+  "naming_rule": "each server is named after its upstream package or folder with the mcp and server words dropped (github-mcp-server is github, mcp-grafana is grafana, cloudwatch-mcp-server is cloudwatch); the one clash, two Slack servers, keeps slack for korotovsky/slack-mcp-server and names the archived reference server, which runs on a bot token, slack-bot",
+  "prefix_rule": "a harness sees each tool as <server>__<tool> (Claude Code adds mcp__ in front); names are unique per rung under that rule",
+  "rung_rule": "core first; then distractor servers are taken whole in distractor_order, and a server is added to a rung when it keeps the rung at or under target + 5; a server that would overshoot waits for the next rung; a rung closes once it reaches target - 5",
+  "order_rule": "twins and unrelated servers are each shuffled with mulberry32(seed), then interleaved so both kinds are spread evenly through the order",
+  "servers_alphabetical": [
+    {
+      "position": 1,
+      "server": "amazon-sns-sqs",
+      "tools": 43
+    },
+    {
+      "position": 2,
+      "server": "atlassian",
+      "tools": 96
+    },
+    {
+      "position": 3,
+      "server": "aws-kb-retrieval",
+      "tools": 1
+    },
+    {
+      "position": 4,
+      "server": "aws-pricing",
+      "tools": 9
+    },
+    {
+      "position": 5,
+      "server": "cloudtrail",
+      "tools": 5
+    },
+    {
+      "position": 6,
+      "server": "cloudwatch",
+      "tools": 19
+    },
+    {
+      "position": 7,
+      "server": "dynamodb",
+      "tools": 8
+    },
+    {
+      "position": 8,
+      "server": "everart",
+      "tools": 1
+    },
+    {
+      "position": 9,
+      "server": "github",
+      "tools": 46
+    },
+    {
+      "position": 10,
+      "server": "gitlab",
+      "tools": 9
+    },
+    {
+      "position": 11,
+      "server": "google-maps",
+      "tools": 7
+    },
+    {
+      "position": 12,
+      "server": "grafana",
+      "tools": 80
+    },
+    {
+      "position": 13,
+      "server": "heroku",
+      "tools": 33
+    },
+    {
+      "position": 14,
+      "server": "iam",
+      "tools": 29
+    },
+    {
+      "position": 15,
+      "server": "kubernetes",
+      "tools": 21
+    },
+    {
+      "position": 16,
+      "server": "linear",
+      "tools": 5
+    },
+    {
+      "position": 17,
+      "server": "mattermost",
+      "tools": 39
+    },
+    {
+      "position": 18,
+      "server": "memory",
+      "tools": 9
+    },
+    {
+      "position": 19,
+      "server": "mongodb",
+      "tools": 27
+    },
+    {
+      "position": 20,
+      "server": "notion",
+      "tools": 24
+    },
+    {
+      "position": 21,
+      "server": "playwright",
+      "tools": 25
+    },
+    {
+      "position": 22,
+      "server": "postgres",
+      "tools": 1
+    },
+    {
+      "position": 23,
+      "server": "s3-tables",
+      "tools": 16
+    },
+    {
+      "position": 24,
+      "server": "sentry",
+      "tools": 1
+    },
+    {
+      "position": 25,
+      "server": "slack",
+      "tools": 22
+    },
+    {
+      "position": 26,
+      "server": "slack-bot",
+      "tools": 8
+    },
+    {
+      "position": 27,
+      "server": "sqlite",
+      "tools": 6
+    },
+    {
+      "position": 28,
+      "server": "teams",
+      "tools": 31
+    },
+    {
+      "position": 29,
+      "server": "terraform",
+      "tools": 10
+    },
+    {
+      "position": 30,
+      "server": "time",
+      "tools": 3
+    }
+  ],
+  "core": [
+    {
+      "server": "atlassian",
+      "position": 2,
+      "job": "wiki pages (Confluence)",
+      "switch": "ENABLED_TOOLS=confluence_search,confluence_get_page,confluence_get_page_children,confluence_create_page,confluence_update_page",
+      "filter_verified_by_capture": true,
+      "tools": [
+        "confluence_search",
+        "confluence_get_page",
+        "confluence_get_page_children",
+        "confluence_create_page",
+        "confluence_update_page"
+      ]
+    },
+    {
+      "server": "github",
+      "position": 9,
+      "job": "code hosting: issues, pull requests, commits",
+      "switch": "--tools list_issues,issue_write,create_pull_request,merge_pull_request,list_commits",
+      "filter_verified_by_capture": true,
+      "tools": [
+        "list_issues",
+        "issue_write",
+        "create_pull_request",
+        "merge_pull_request",
+        "list_commits"
+      ]
+    },
+    {
+      "server": "grafana",
+      "position": 12,
+      "job": "incident management",
+      "switch": "--enabled-tools=incident",
+      "filter_verified_by_capture": true,
+      "tools": [
+        "add_activity_to_incident",
+        "create_incident",
+        "get_incident",
+        "list_incident_custom_fields",
+        "list_incidents",
+        "update_incident"
+      ]
+    },
+    {
+      "server": "mongodb",
+      "position": 19,
+      "job": "document database queries and writes",
+      "switch": "MDB_MCP_DISABLED_TOOLS set to every other tool name (22 names, listed in servers/mongodb.json core_filter)",
+      "filter_verified_by_capture": true,
+      "tools": [
+        "aggregate",
+        "find",
+        "insert-many",
+        "list-collections",
+        "update-many"
+      ]
+    },
+    {
+      "server": "slack",
+      "position": 25,
+      "job": "team chat",
+      "switch": "SLACK_MCP_ENABLED_TOOLS=channels_list,conversations_history,conversations_add_message,conversations_search_messages",
+      "filter_verified_by_capture": true,
+      "tools": [
+        "channels_list",
+        "conversations_history",
+        "conversations_add_message",
+        "conversations_search_messages"
+      ]
+    },
+    {
+      "server": "terraform",
+      "position": 29,
+      "job": "infrastructure registry lookups",
+      "switch": "--tools=search_provider_docs,get_provider_details,search_modules,get_module_details,search_policies",
+      "filter_verified_by_capture": true,
+      "tools": [
+        "search_provider_docs",
+        "get_provider_details",
+        "search_modules",
+        "get_module_details",
+        "search_policies"
+      ]
+    }
+  ],
+  "distractor_order": [
+    {
+      "server": "postgres",
+      "kind": "twin",
+      "twin_of": "mongodb",
+      "tools": 1
+    },
+    {
+      "server": "amazon-sns-sqs",
+      "kind": "unrelated",
+      "tools": 43
+    },
+    {
+      "server": "google-maps",
+      "kind": "unrelated",
+      "tools": 7
+    },
+    {
+      "server": "cloudwatch",
+      "kind": "twin",
+      "twin_of": "grafana",
+      "tools": 19
+    },
+    {
+      "server": "iam",
+      "kind": "unrelated",
+      "tools": 29
+    },
+    {
+      "server": "gitlab",
+      "kind": "twin",
+      "twin_of": "github",
+      "tools": 9
+    },
+    {
+      "server": "kubernetes",
+      "kind": "unrelated",
+      "tools": 21
+    },
+    {
+      "server": "notion",
+      "kind": "twin",
+      "twin_of": "atlassian",
+      "tools": 24
+    },
+    {
+      "server": "aws-kb-retrieval",
+      "kind": "unrelated",
+      "tools": 1
+    },
+    {
+      "server": "sqlite",
+      "kind": "twin",
+      "twin_of": "mongodb",
+      "tools": 6
+    },
+    {
+      "server": "cloudtrail",
+      "kind": "unrelated",
+      "tools": 5
+    },
+    {
+      "server": "dynamodb",
+      "kind": "twin",
+      "twin_of": "mongodb",
+      "tools": 8
+    },
+    {
+      "server": "time",
+      "kind": "unrelated",
+      "tools": 3
+    },
+    {
+      "server": "memory",
+      "kind": "unrelated",
+      "tools": 9
+    },
+    {
+      "server": "slack-bot",
+      "kind": "twin",
+      "twin_of": "slack",
+      "tools": 8
+    },
+    {
+      "server": "s3-tables",
+      "kind": "unrelated",
+      "tools": 16
+    },
+    {
+      "server": "teams",
+      "kind": "twin",
+      "twin_of": "slack",
+      "tools": 31
+    },
+    {
+      "server": "heroku",
+      "kind": "unrelated",
+      "tools": 33
+    },
+    {
+      "server": "mattermost",
+      "kind": "twin",
+      "twin_of": "slack",
+      "tools": 39
+    },
+    {
+      "server": "playwright",
+      "kind": "unrelated",
+      "tools": 25
+    },
+    {
+      "server": "linear",
+      "kind": "twin",
+      "twin_of": "github",
+      "tools": 5
+    },
+    {
+      "server": "aws-pricing",
+      "kind": "unrelated",
+      "tools": 9
+    },
+    {
+      "server": "sentry",
+      "kind": "twin",
+      "twin_of": "grafana",
+      "tools": 1
+    },
+    {
+      "server": "everart",
+      "kind": "unrelated",
+      "tools": 1
+    }
+  ],
+  "rungs": [
+    {
+      "target": 30,
+      "size": 30,
+      "servers_count": 6,
+      "added": [
+        "atlassian",
+        "github",
+        "grafana",
+        "mongodb",
+        "slack",
+        "terraform"
+      ],
+      "servers": [
+        {
+          "server": "atlassian",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "github",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "grafana",
+          "role": "core",
+          "tools": 6
+        },
+        {
+          "server": "mongodb",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "slack",
+          "role": "core",
+          "tools": 4
+        },
+        {
+          "server": "terraform",
+          "role": "core",
+          "tools": 5
+        }
+      ],
+      "longest_name_with_claude_prefix": 44,
+      "names_over_64_with_claude_prefix": [],
+      "bare_name_collisions": [],
+      "tool_names": [
+        "atlassian__confluence_search",
+        "atlassian__confluence_get_page",
+        "atlassian__confluence_get_page_children",
+        "atlassian__confluence_create_page",
+        "atlassian__confluence_update_page",
+        "github__list_issues",
+        "github__issue_write",
+        "github__create_pull_request",
+        "github__merge_pull_request",
+        "github__list_commits",
+        "grafana__add_activity_to_incident",
+        "grafana__create_incident",
+        "grafana__get_incident",
+        "grafana__list_incident_custom_fields",
+        "grafana__list_incidents",
+        "grafana__update_incident",
+        "mongodb__aggregate",
+        "mongodb__find",
+        "mongodb__insert-many",
+        "mongodb__list-collections",
+        "mongodb__update-many",
+        "slack__channels_list",
+        "slack__conversations_history",
+        "slack__conversations_add_message",
+        "slack__conversations_search_messages",
+        "terraform__search_provider_docs",
+        "terraform__get_provider_details",
+        "terraform__search_modules",
+        "terraform__get_module_details",
+        "terraform__search_policies"
+      ]
+    },
+    {
+      "target": 75,
+      "size": 74,
+      "servers_count": 8,
+      "added": [
+        "postgres",
+        "amazon-sns-sqs"
+      ],
+      "servers": [
+        {
+          "server": "atlassian",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "github",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "grafana",
+          "role": "core",
+          "tools": 6
+        },
+        {
+          "server": "mongodb",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "slack",
+          "role": "core",
+          "tools": 4
+        },
+        {
+          "server": "terraform",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "postgres",
+          "role": "twin",
+          "twin_of": "mongodb",
+          "tools": 1
+        },
+        {
+          "server": "amazon-sns-sqs",
+          "role": "unrelated",
+          "tools": 43
+        }
+      ],
+      "longest_name_with_claude_prefix": 59,
+      "names_over_64_with_claude_prefix": [],
+      "bare_name_collisions": [],
+      "tool_names": [
+        "atlassian__confluence_search",
+        "atlassian__confluence_get_page",
+        "atlassian__confluence_get_page_children",
+        "atlassian__confluence_create_page",
+        "atlassian__confluence_update_page",
+        "github__list_issues",
+        "github__issue_write",
+        "github__create_pull_request",
+        "github__merge_pull_request",
+        "github__list_commits",
+        "grafana__add_activity_to_incident",
+        "grafana__create_incident",
+        "grafana__get_incident",
+        "grafana__list_incident_custom_fields",
+        "grafana__list_incidents",
+        "grafana__update_incident",
+        "mongodb__aggregate",
+        "mongodb__find",
+        "mongodb__insert-many",
+        "mongodb__list-collections",
+        "mongodb__update-many",
+        "slack__channels_list",
+        "slack__conversations_history",
+        "slack__conversations_add_message",
+        "slack__conversations_search_messages",
+        "terraform__search_provider_docs",
+        "terraform__get_provider_details",
+        "terraform__search_modules",
+        "terraform__get_module_details",
+        "terraform__search_policies",
+        "postgres__query",
+        "amazon-sns-sqs__add_sns_permission",
+        "amazon-sns-sqs__check_if_phone_number_is_opted_out",
+        "amazon-sns-sqs__confirm_subscription",
+        "amazon-sns-sqs__get_data_protection_policy",
+        "amazon-sns-sqs__get_endpoint_attributes",
+        "amazon-sns-sqs__get_platform_application_attributes",
+        "amazon-sns-sqs__get_subscription_attributes",
+        "amazon-sns-sqs__get_topic_attributes",
+        "amazon-sns-sqs__list_endpoints_by_platform_application",
+        "amazon-sns-sqs__list_origination_numbers",
+        "amazon-sns-sqs__list_phone_numbers_opted_out",
+        "amazon-sns-sqs__list_platform_applications",
+        "amazon-sns-sqs__list_subscriptions",
+        "amazon-sns-sqs__list_subscriptions_by_topic",
+        "amazon-sns-sqs__list_tags_for_resource",
+        "amazon-sns-sqs__list_topics",
+        "amazon-sns-sqs__opt_in_phone_number",
+        "amazon-sns-sqs__publish",
+        "amazon-sns-sqs__publish_batch",
+        "amazon-sns-sqs__put_data_protection_policy",
+        "amazon-sns-sqs__set_subscription_attributes",
+        "amazon-sns-sqs__set_topic_attributes",
+        "amazon-sns-sqs__subscribe",
+        "amazon-sns-sqs__unsubscribe",
+        "amazon-sns-sqs__add_sqs_permission",
+        "amazon-sns-sqs__cancel_message_move_task",
+        "amazon-sns-sqs__change_message_visibility",
+        "amazon-sns-sqs__change_message_visibility_batch",
+        "amazon-sns-sqs__delete_message",
+        "amazon-sns-sqs__delete_message_batch",
+        "amazon-sns-sqs__get_queue_attributes",
+        "amazon-sns-sqs__get_queue_url",
+        "amazon-sns-sqs__list_dead_letter_source_queues",
+        "amazon-sns-sqs__list_message_move_tasks",
+        "amazon-sns-sqs__list_queue_tags",
+        "amazon-sns-sqs__list_queues",
+        "amazon-sns-sqs__purge_queue",
+        "amazon-sns-sqs__receive_message",
+        "amazon-sns-sqs__remove_sqs_permission",
+        "amazon-sns-sqs__send_message",
+        "amazon-sns-sqs__send_message_batch",
+        "amazon-sns-sqs__set_queue_attributes",
+        "amazon-sns-sqs__start_message_move_task"
+      ]
+    },
+    {
+      "target": 150,
+      "size": 145,
+      "servers_count": 14,
+      "added": [
+        "google-maps",
+        "cloudwatch",
+        "iam",
+        "gitlab",
+        "aws-kb-retrieval",
+        "sqlite"
+      ],
+      "servers": [
+        {
+          "server": "atlassian",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "github",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "grafana",
+          "role": "core",
+          "tools": 6
+        },
+        {
+          "server": "mongodb",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "slack",
+          "role": "core",
+          "tools": 4
+        },
+        {
+          "server": "terraform",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "postgres",
+          "role": "twin",
+          "twin_of": "mongodb",
+          "tools": 1
+        },
+        {
+          "server": "amazon-sns-sqs",
+          "role": "unrelated",
+          "tools": 43
+        },
+        {
+          "server": "google-maps",
+          "role": "unrelated",
+          "tools": 7
+        },
+        {
+          "server": "cloudwatch",
+          "role": "twin",
+          "twin_of": "grafana",
+          "tools": 19
+        },
+        {
+          "server": "iam",
+          "role": "unrelated",
+          "tools": 29
+        },
+        {
+          "server": "gitlab",
+          "role": "twin",
+          "twin_of": "github",
+          "tools": 9
+        },
+        {
+          "server": "aws-kb-retrieval",
+          "role": "unrelated",
+          "tools": 1
+        },
+        {
+          "server": "sqlite",
+          "role": "twin",
+          "twin_of": "mongodb",
+          "tools": 6
+        }
+      ],
+      "longest_name_with_claude_prefix": 59,
+      "names_over_64_with_claude_prefix": [],
+      "bare_name_collisions": [],
+      "tool_names": [
+        "atlassian__confluence_search",
+        "atlassian__confluence_get_page",
+        "atlassian__confluence_get_page_children",
+        "atlassian__confluence_create_page",
+        "atlassian__confluence_update_page",
+        "github__list_issues",
+        "github__issue_write",
+        "github__create_pull_request",
+        "github__merge_pull_request",
+        "github__list_commits",
+        "grafana__add_activity_to_incident",
+        "grafana__create_incident",
+        "grafana__get_incident",
+        "grafana__list_incident_custom_fields",
+        "grafana__list_incidents",
+        "grafana__update_incident",
+        "mongodb__aggregate",
+        "mongodb__find",
+        "mongodb__insert-many",
+        "mongodb__list-collections",
+        "mongodb__update-many",
+        "slack__channels_list",
+        "slack__conversations_history",
+        "slack__conversations_add_message",
+        "slack__conversations_search_messages",
+        "terraform__search_provider_docs",
+        "terraform__get_provider_details",
+        "terraform__search_modules",
+        "terraform__get_module_details",
+        "terraform__search_policies",
+        "postgres__query",
+        "amazon-sns-sqs__add_sns_permission",
+        "amazon-sns-sqs__check_if_phone_number_is_opted_out",
+        "amazon-sns-sqs__confirm_subscription",
+        "amazon-sns-sqs__get_data_protection_policy",
+        "amazon-sns-sqs__get_endpoint_attributes",
+        "amazon-sns-sqs__get_platform_application_attributes",
+        "amazon-sns-sqs__get_subscription_attributes",
+        "amazon-sns-sqs__get_topic_attributes",
+        "amazon-sns-sqs__list_endpoints_by_platform_application",
+        "amazon-sns-sqs__list_origination_numbers",
+        "amazon-sns-sqs__list_phone_numbers_opted_out",
+        "amazon-sns-sqs__list_platform_applications",
+        "amazon-sns-sqs__list_subscriptions",
+        "amazon-sns-sqs__list_subscriptions_by_topic",
+        "amazon-sns-sqs__list_tags_for_resource",
+        "amazon-sns-sqs__list_topics",
+        "amazon-sns-sqs__opt_in_phone_number",
+        "amazon-sns-sqs__publish",
+        "amazon-sns-sqs__publish_batch",
+        "amazon-sns-sqs__put_data_protection_policy",
+        "amazon-sns-sqs__set_subscription_attributes",
+        "amazon-sns-sqs__set_topic_attributes",
+        "amazon-sns-sqs__subscribe",
+        "amazon-sns-sqs__unsubscribe",
+        "amazon-sns-sqs__add_sqs_permission",
+        "amazon-sns-sqs__cancel_message_move_task",
+        "amazon-sns-sqs__change_message_visibility",
+        "amazon-sns-sqs__change_message_visibility_batch",
+        "amazon-sns-sqs__delete_message",
+        "amazon-sns-sqs__delete_message_batch",
+        "amazon-sns-sqs__get_queue_attributes",
+        "amazon-sns-sqs__get_queue_url",
+        "amazon-sns-sqs__list_dead_letter_source_queues",
+        "amazon-sns-sqs__list_message_move_tasks",
+        "amazon-sns-sqs__list_queue_tags",
+        "amazon-sns-sqs__list_queues",
+        "amazon-sns-sqs__purge_queue",
+        "amazon-sns-sqs__receive_message",
+        "amazon-sns-sqs__remove_sqs_permission",
+        "amazon-sns-sqs__send_message",
+        "amazon-sns-sqs__send_message_batch",
+        "amazon-sns-sqs__set_queue_attributes",
+        "amazon-sns-sqs__start_message_move_task",
+        "google-maps__maps_geocode",
+        "google-maps__maps_reverse_geocode",
+        "google-maps__maps_search_places",
+        "google-maps__maps_place_details",
+        "google-maps__maps_distance_matrix",
+        "google-maps__maps_elevation",
+        "google-maps__maps_directions",
+        "cloudwatch__describe_log_groups",
+        "cloudwatch__analyze_log_group",
+        "cloudwatch__execute_log_insights_query",
+        "cloudwatch__get_logs_insight_query_results",
+        "cloudwatch__cancel_logs_insight_query",
+        "cloudwatch__execute_cwl_insights_batch",
+        "cloudwatch__recommend_indexes_loggroup",
+        "cloudwatch__recommend_indexes_account",
+        "cloudwatch__get_metric_data",
+        "cloudwatch__get_metric_metadata",
+        "cloudwatch__analyze_metric",
+        "cloudwatch__get_recommended_metric_alarms",
+        "cloudwatch__execute_promql_query",
+        "cloudwatch__execute_promql_range_query",
+        "cloudwatch__get_promql_label_values",
+        "cloudwatch__get_promql_series",
+        "cloudwatch__get_promql_labels",
+        "cloudwatch__get_active_alarms",
+        "cloudwatch__get_alarm_history",
+        "iam__list_users",
+        "iam__get_user",
+        "iam__create_user",
+        "iam__delete_user",
+        "iam__list_roles",
+        "iam__create_role",
+        "iam__list_policies",
+        "iam__get_managed_policy_document",
+        "iam__attach_user_policy",
+        "iam__detach_user_policy",
+        "iam__create_access_key",
+        "iam__delete_access_key",
+        "iam__simulate_principal_policy",
+        "iam__list_groups",
+        "iam__get_group",
+        "iam__create_group",
+        "iam__delete_group",
+        "iam__add_user_to_group",
+        "iam__remove_user_from_group",
+        "iam__attach_group_policy",
+        "iam__detach_group_policy",
+        "iam__put_user_policy",
+        "iam__get_user_policy",
+        "iam__delete_user_policy",
+        "iam__put_role_policy",
+        "iam__get_role_policy",
+        "iam__delete_role_policy",
+        "iam__list_user_policies",
+        "iam__list_role_policies",
+        "gitlab__create_or_update_file",
+        "gitlab__search_repositories",
+        "gitlab__create_repository",
+        "gitlab__get_file_contents",
+        "gitlab__push_files",
+        "gitlab__create_issue",
+        "gitlab__create_merge_request",
+        "gitlab__fork_repository",
+        "gitlab__create_branch",
+        "aws-kb-retrieval__retrieve_from_aws_kb",
+        "sqlite__read_query",
+        "sqlite__write_query",
+        "sqlite__create_table",
+        "sqlite__list_tables",
+        "sqlite__describe_table",
+        "sqlite__append_insight"
+      ]
+    },
+    {
+      "target": 300,
+      "size": 303,
+      "servers_count": 24,
+      "added": [
+        "kubernetes",
+        "notion",
+        "cloudtrail",
+        "dynamodb",
+        "time",
+        "memory",
+        "slack-bot",
+        "s3-tables",
+        "teams",
+        "heroku"
+      ],
+      "servers": [
+        {
+          "server": "atlassian",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "github",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "grafana",
+          "role": "core",
+          "tools": 6
+        },
+        {
+          "server": "mongodb",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "slack",
+          "role": "core",
+          "tools": 4
+        },
+        {
+          "server": "terraform",
+          "role": "core",
+          "tools": 5
+        },
+        {
+          "server": "postgres",
+          "role": "twin",
+          "twin_of": "mongodb",
+          "tools": 1
+        },
+        {
+          "server": "amazon-sns-sqs",
+          "role": "unrelated",
+          "tools": 43
+        },
+        {
+          "server": "google-maps",
+          "role": "unrelated",
+          "tools": 7
+        },
+        {
+          "server": "cloudwatch",
+          "role": "twin",
+          "twin_of": "grafana",
+          "tools": 19
+        },
+        {
+          "server": "iam",
+          "role": "unrelated",
+          "tools": 29
+        },
+        {
+          "server": "gitlab",
+          "role": "twin",
+          "twin_of": "github",
+          "tools": 9
+        },
+        {
+          "server": "aws-kb-retrieval",
+          "role": "unrelated",
+          "tools": 1
+        },
+        {
+          "server": "sqlite",
+          "role": "twin",
+          "twin_of": "mongodb",
+          "tools": 6
+        },
+        {
+          "server": "kubernetes",
+          "role": "unrelated",
+          "tools": 21
+        },
+        {
+          "server": "notion",
+          "role": "twin",
+          "twin_of": "atlassian",
+          "tools": 24
+        },
+        {
+          "server": "cloudtrail",
+          "role": "unrelated",
+          "tools": 5
+        },
+        {
+          "server": "dynamodb",
+          "role": "twin",
+          "twin_of": "mongodb",
+          "tools": 8
+        },
+        {
+          "server": "time",
+          "role": "unrelated",
+          "tools": 3
+        },
+        {
+          "server": "memory",
+          "role": "unrelated",
+          "tools": 9
+        },
+        {
+          "server": "slack-bot",
+          "role": "twin",
+          "twin_of": "slack",
+          "tools": 8
+        },
+        {
+          "server": "s3-tables",
+          "role": "unrelated",
+          "tools": 16
+        },
+        {
+          "server": "teams",
+          "role": "twin",
+          "twin_of": "slack",
+          "tools": 31
+        },
+        {
+          "server": "heroku",
+          "role": "unrelated",
+          "tools": 33
+        }
+      ],
+      "longest_name_with_claude_prefix": 59,
+      "names_over_64_with_claude_prefix": [],
+      "bare_name_collisions": [
+        {
+          "tool": "get_user",
+          "servers": [
+            "iam",
+            "teams"
+          ]
+        },
+        {
+          "tool": "create_table",
+          "servers": [
+            "sqlite",
+            "s3-tables"
+          ]
+        },
+        {
+          "tool": "list_tables",
+          "servers": [
+            "sqlite",
+            "s3-tables"
+          ]
+        },
+        {
+          "tool": "list_teams",
+          "servers": [
+            "teams",
+            "heroku"
+          ]
+        }
+      ],
+      "tool_names": [
+        "atlassian__confluence_search",
+        "atlassian__confluence_get_page",
+        "atlassian__confluence_get_page_children",
+        "atlassian__confluence_create_page",
+        "atlassian__confluence_update_page",
+        "github__list_issues",
+        "github__issue_write",
+        "github__create_pull_request",
+        "github__merge_pull_request",
+        "github__list_commits",
+        "grafana__add_activity_to_incident",
+        "grafana__create_incident",
+        "grafana__get_incident",
+        "grafana__list_incident_custom_fields",
+        "grafana__list_incidents",
+        "grafana__update_incident",
+        "mongodb__aggregate",
+        "mongodb__find",
+        "mongodb__insert-many",
+        "mongodb__list-collections",
+        "mongodb__update-many",
+        "slack__channels_list",
+        "slack__conversations_history",
+        "slack__conversations_add_message",
+        "slack__conversations_search_messages",
+        "terraform__search_provider_docs",
+        "terraform__get_provider_details",
+        "terraform__search_modules",
+        "terraform__get_module_details",
+        "terraform__search_policies",
+        "postgres__query",
+        "amazon-sns-sqs__add_sns_permission",
+        "amazon-sns-sqs__check_if_phone_number_is_opted_out",
+        "amazon-sns-sqs__confirm_subscription",
+        "amazon-sns-sqs__get_data_protection_policy",
+        "amazon-sns-sqs__get_endpoint_attributes",
+        "amazon-sns-sqs__get_platform_application_attributes",
+        "amazon-sns-sqs__get_subscription_attributes",
+        "amazon-sns-sqs__get_topic_attributes",
+        "amazon-sns-sqs__list_endpoints_by_platform_application",
+        "amazon-sns-sqs__list_origination_numbers",
+        "amazon-sns-sqs__list_phone_numbers_opted_out",
+        "amazon-sns-sqs__list_platform_applications",
+        "amazon-sns-sqs__list_subscriptions",
+        "amazon-sns-sqs__list_subscriptions_by_topic",
+        "amazon-sns-sqs__list_tags_for_resource",
+        "amazon-sns-sqs__list_topics",
+        "amazon-sns-sqs__opt_in_phone_number",
+        "amazon-sns-sqs__publish",
+        "amazon-sns-sqs__publish_batch",
+        "amazon-sns-sqs__put_data_protection_policy",
+        "amazon-sns-sqs__set_subscription_attributes",
+        "amazon-sns-sqs__set_topic_attributes",
+        "amazon-sns-sqs__subscribe",
+        "amazon-sns-sqs__unsubscribe",
+        "amazon-sns-sqs__add_sqs_permission",
+        "amazon-sns-sqs__cancel_message_move_task",
+        "amazon-sns-sqs__change_message_visibility",
+        "amazon-sns-sqs__change_message_visibility_batch",
+        "amazon-sns-sqs__delete_message",
+        "amazon-sns-sqs__delete_message_batch",
+        "amazon-sns-sqs__get_queue_attributes",
+        "amazon-sns-sqs__get_queue_url",
+        "amazon-sns-sqs__list_dead_letter_source_queues",
+        "amazon-sns-sqs__list_message_move_tasks",
+        "amazon-sns-sqs__list_queue_tags",
+        "amazon-sns-sqs__list_queues",
+        "amazon-sns-sqs__purge_queue",
+        "amazon-sns-sqs__receive_message",
+        "amazon-sns-sqs__remove_sqs_permission",
+        "amazon-sns-sqs__send_message",
+        "amazon-sns-sqs__send_message_batch",
+        "amazon-sns-sqs__set_queue_attributes",
+        "amazon-sns-sqs__start_message_move_task",
+        "google-maps__maps_geocode",
+        "google-maps__maps_reverse_geocode",
+        "google-maps__maps_search_places",
+        "google-maps__maps_place_details",
+        "google-maps__maps_distance_matrix",
+        "google-maps__maps_elevation",
+        "google-maps__maps_directions",
+        "cloudwatch__describe_log_groups",
+        "cloudwatch__analyze_log_group",
+        "cloudwatch__execute_log_insights_query",
+        "cloudwatch__get_logs_insight_query_results",
+        "cloudwatch__cancel_logs_insight_query",
+        "cloudwatch__execute_cwl_insights_batch",
+        "cloudwatch__recommend_indexes_loggroup",
+        "cloudwatch__recommend_indexes_account",
+        "cloudwatch__get_metric_data",
+        "cloudwatch__get_metric_metadata",
+        "cloudwatch__analyze_metric",
+        "cloudwatch__get_recommended_metric_alarms",
+        "cloudwatch__execute_promql_query",
+        "cloudwatch__execute_promql_range_query",
+        "cloudwatch__get_promql_label_values",
+        "cloudwatch__get_promql_series",
+        "cloudwatch__get_promql_labels",
+        "cloudwatch__get_active_alarms",
+        "cloudwatch__get_alarm_history",
+        "iam__list_users",
+        "iam__get_user",
+        "iam__create_user",
+        "iam__delete_user",
+        "iam__list_roles",
+        "iam__create_role",
+        "iam__list_policies",
+        "iam__get_managed_policy_document",
+        "iam__attach_user_policy",
+        "iam__detach_user_policy",
+        "iam__create_access_key",
+        "iam__delete_access_key",
+        "iam__simulate_principal_policy",
+        "iam__list_groups",
+        "iam__get_group",
+        "iam__create_group",
+        "iam__delete_group",
+        "iam__add_user_to_group",
+        "iam__remove_user_from_group",
+        "iam__attach_group_policy",
+        "iam__detach_group_policy",
+        "iam__put_user_policy",
+        "iam__get_user_policy",
+        "iam__delete_user_policy",
+        "iam__put_role_policy",
+        "iam__get_role_policy",
+        "iam__delete_role_policy",
+        "iam__list_user_policies",
+        "iam__list_role_policies",
+        "gitlab__create_or_update_file",
+        "gitlab__search_repositories",
+        "gitlab__create_repository",
+        "gitlab__get_file_contents",
+        "gitlab__push_files",
+        "gitlab__create_issue",
+        "gitlab__create_merge_request",
+        "gitlab__fork_repository",
+        "gitlab__create_branch",
+        "aws-kb-retrieval__retrieve_from_aws_kb",
+        "sqlite__read_query",
+        "sqlite__write_query",
+        "sqlite__create_table",
+        "sqlite__list_tables",
+        "sqlite__describe_table",
+        "sqlite__append_insight",
+        "kubernetes__api_resources_list",
+        "kubernetes__configuration_view",
+        "kubernetes__events_list",
+        "kubernetes__namespaces_list",
+        "kubernetes__nodes_log",
+        "kubernetes__nodes_stats_summary",
+        "kubernetes__nodes_top",
+        "kubernetes__pods_delete",
+        "kubernetes__pods_exec",
+        "kubernetes__pods_get",
+        "kubernetes__pods_list",
+        "kubernetes__pods_list_in_namespace",
+        "kubernetes__pods_log",
+        "kubernetes__pods_run",
+        "kubernetes__pods_top",
+        "kubernetes__projects_list",
+        "kubernetes__resources_create_or_update",
+        "kubernetes__resources_delete",
+        "kubernetes__resources_get",
+        "kubernetes__resources_list",
+        "kubernetes__resources_scale",
+        "notion__API-get-user",
+        "notion__API-get-users",
+        "notion__API-get-self",
+        "notion__API-post-search",
+        "notion__API-get-block-children",
+        "notion__API-patch-block-children",
+        "notion__API-retrieve-a-block",
+        "notion__API-update-a-block",
+        "notion__API-delete-a-block",
+        "notion__API-retrieve-a-page",
+        "notion__API-patch-page",
+        "notion__API-post-page",
+        "notion__API-retrieve-a-page-property",
+        "notion__API-retrieve-a-comment",
+        "notion__API-create-a-comment",
+        "notion__API-query-data-source",
+        "notion__API-retrieve-a-data-source",
+        "notion__API-update-a-data-source",
+        "notion__API-create-a-data-source",
+        "notion__API-list-data-source-templates",
+        "notion__API-retrieve-a-database",
+        "notion__API-move-page",
+        "notion__API-retrieve-page-markdown",
+        "notion__API-update-page-markdown",
+        "cloudtrail__lookup_events",
+        "cloudtrail__lake_query",
+        "cloudtrail__get_query_status",
+        "cloudtrail__get_query_results",
+        "cloudtrail__list_event_data_stores",
+        "dynamodb__dynamodb_data_modeling",
+        "dynamodb__dynamodb_data_model_schema_converter",
+        "dynamodb__dynamodb_data_model_schema_validator",
+        "dynamodb__source_db_analyzer",
+        "dynamodb__dynamodb_data_model_validation",
+        "dynamodb__compute_performances_and_costs",
+        "dynamodb__generate_resources",
+        "dynamodb__generate_data_access_layer",
+        "time__get_current_time",
+        "time__convert_time",
+        "time__get_time_ago",
+        "memory__create_entities",
+        "memory__create_relations",
+        "memory__add_observations",
+        "memory__delete_entities",
+        "memory__delete_observations",
+        "memory__delete_relations",
+        "memory__read_graph",
+        "memory__search_nodes",
+        "memory__open_nodes",
+        "slack-bot__slack_list_channels",
+        "slack-bot__slack_post_message",
+        "slack-bot__slack_reply_to_thread",
+        "slack-bot__slack_add_reaction",
+        "slack-bot__slack_get_channel_history",
+        "slack-bot__slack_get_thread_replies",
+        "slack-bot__slack_get_users",
+        "slack-bot__slack_get_user_profile",
+        "s3-tables__list_table_buckets",
+        "s3-tables__list_namespaces",
+        "s3-tables__list_tables",
+        "s3-tables__create_table_bucket",
+        "s3-tables__create_namespace",
+        "s3-tables__create_table",
+        "s3-tables__get_table_maintenance_config",
+        "s3-tables__get_maintenance_job_status",
+        "s3-tables__get_table_metadata_location",
+        "s3-tables__rename_table",
+        "s3-tables__update_table_metadata_location",
+        "s3-tables__query_database",
+        "s3-tables__import_csv_to_table",
+        "s3-tables__import_parquet_to_table",
+        "s3-tables__get_bucket_metadata_config",
+        "s3-tables__append_rows_to_table",
+        "teams__auth_status",
+        "teams__get_current_user",
+        "teams__search_users",
+        "teams__get_user",
+        "teams__list_teams",
+        "teams__list_channels",
+        "teams__get_channel_messages",
+        "teams__send_channel_message",
+        "teams__get_channel_message_replies",
+        "teams__reply_to_channel_message",
+        "teams__list_team_members",
+        "teams__search_users_for_mentions",
+        "teams__download_message_hosted_content",
+        "teams__delete_channel_message",
+        "teams__update_channel_message",
+        "teams__set_channel_message_reaction",
+        "teams__unset_channel_message_reaction",
+        "teams__send_file_to_channel",
+        "teams__list_chats",
+        "teams__get_chat_messages",
+        "teams__download_chat_hosted_content",
+        "teams__send_chat_message",
+        "teams__create_chat",
+        "teams__add_chat_member",
+        "teams__update_chat_message",
+        "teams__delete_chat_message",
+        "teams__set_chat_message_reaction",
+        "teams__unset_chat_message_reaction",
+        "teams__send_file_to_chat",
+        "teams__search_messages",
+        "teams__get_my_mentions",
+        "heroku__list_apps",
+        "heroku__get_app_info",
+        "heroku__create_app",
+        "heroku__rename_app",
+        "heroku__maintenance_on",
+        "heroku__maintenance_off",
+        "heroku__get_app_logs",
+        "heroku__list_private_spaces",
+        "heroku__list_teams",
+        "heroku__list_addons",
+        "heroku__get_addon_info",
+        "heroku__create_addon",
+        "heroku__list_addon_services",
+        "heroku__list_addon_plans",
+        "heroku__pg_psql",
+        "heroku__pg_info",
+        "heroku__pg_ps",
+        "heroku__pg_locks",
+        "heroku__pg_outliers",
+        "heroku__pg_credentials",
+        "heroku__pg_kill",
+        "heroku__pg_maintenance",
+        "heroku__pg_backups",
+        "heroku__pg_upgrade",
+        "heroku__ps_list",
+        "heroku__ps_scale",
+        "heroku__ps_restart",
+        "heroku__pipelines_create",
+        "heroku__pipelines_promote",
+        "heroku__pipelines_list",
+        "heroku__pipelines_info",
+        "heroku__deploy_to_heroku",
+        "heroku__deploy_one_off_dyno"
+      ]
+    }
+  ],
+  "survey": {
+    "kept": [
+      {
+        "server": "atlassian",
+        "repo": "sooperset/mcp-atlassian",
+        "commit": "a423ea579955bd4e00bf97ef64effea21f6ad1a3",
+        "path": "",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "Jira issues and Confluence pages",
+        "tools": 96,
+        "tools_excluded": 0
+      },
+      {
+        "server": "cloudwatch",
+        "repo": "awslabs/mcp",
+        "commit": "07dd13a50f191297b4ad875e016de20d2266d521",
+        "path": "src/cloudwatch-mcp-server",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": "NOTICE",
+        "capture_method": "runtime",
+        "job": "AWS CloudWatch metrics, logs and alarms",
+        "tools": 19,
+        "tools_excluded": 0
+      },
+      {
+        "server": "cloudtrail",
+        "repo": "awslabs/mcp",
+        "commit": "07dd13a50f191297b4ad875e016de20d2266d521",
+        "path": "src/cloudtrail-mcp-server",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": "NOTICE",
+        "capture_method": "runtime",
+        "job": "AWS CloudTrail event lookup",
+        "tools": 5,
+        "tools_excluded": 0
+      },
+      {
+        "server": "aws-pricing",
+        "repo": "awslabs/mcp",
+        "commit": "07dd13a50f191297b4ad875e016de20d2266d521",
+        "path": "src/aws-pricing-mcp-server",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": "NOTICE",
+        "capture_method": "runtime",
+        "job": "AWS price lists and cost estimates",
+        "tools": 9,
+        "tools_excluded": 0
+      },
+      {
+        "server": "s3-tables",
+        "repo": "awslabs/mcp",
+        "commit": "07dd13a50f191297b4ad875e016de20d2266d521",
+        "path": "src/s3-tables-mcp-server",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": "NOTICE",
+        "capture_method": "runtime",
+        "job": "Amazon S3 Tables buckets, namespaces and tables",
+        "tools": 16,
+        "tools_excluded": 0
+      },
+      {
+        "server": "dynamodb",
+        "repo": "awslabs/mcp",
+        "commit": "07dd13a50f191297b4ad875e016de20d2266d521",
+        "path": "src/dynamodb-mcp-server",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": "NOTICE",
+        "capture_method": "runtime",
+        "job": "AWS DynamoDB tables and data modelling",
+        "tools": 8,
+        "tools_excluded": 0
+      },
+      {
+        "server": "iam",
+        "repo": "awslabs/mcp",
+        "commit": "07dd13a50f191297b4ad875e016de20d2266d521",
+        "path": "src/iam-mcp-server",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": "NOTICE",
+        "capture_method": "runtime",
+        "job": "AWS IAM users, roles and policies",
+        "tools": 29,
+        "tools_excluded": 0
+      },
+      {
+        "server": "amazon-sns-sqs",
+        "repo": "awslabs/mcp",
+        "commit": "07dd13a50f191297b4ad875e016de20d2266d521",
+        "path": "src/amazon-sns-sqs-mcp-server",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": "NOTICE",
+        "capture_method": "runtime",
+        "job": "AWS SNS topics and SQS queues",
+        "tools": 43,
+        "tools_excluded": 0
+      },
+      {
+        "server": "aws-kb-retrieval",
+        "repo": "modelcontextprotocol/servers-archived",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "path": "src/aws-kb-retrieval-server",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "Amazon Bedrock knowledge base retrieval",
+        "tools": 1,
+        "tools_excluded": 0
+      },
+      {
+        "server": "everart",
+        "repo": "modelcontextprotocol/servers-archived",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "path": "src/everart",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "image generation",
+        "tools": 1,
+        "tools_excluded": 0
+      },
+      {
+        "server": "github",
+        "repo": "github/github-mcp-server",
+        "commit": "df32d7ec5786e0e71932767fce9982409cbaec40",
+        "path": "",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "code hosting: repositories, issues, pull requests",
+        "tools": 46,
+        "tools_excluded": 0
+      },
+      {
+        "server": "gitlab",
+        "repo": "modelcontextprotocol/servers-archived",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "path": "src/gitlab",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "code hosting: GitLab projects, issues, merge requests",
+        "tools": 9,
+        "tools_excluded": 0
+      },
+      {
+        "server": "google-maps",
+        "repo": "modelcontextprotocol/servers-archived",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "path": "src/google-maps",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "maps: geocoding, places, directions",
+        "tools": 7,
+        "tools_excluded": 0
+      },
+      {
+        "server": "grafana",
+        "repo": "grafana/mcp-grafana",
+        "commit": "70b04944ed598cfa811d168d7b96a797fd3ee291",
+        "path": "",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "observability: dashboards, Prometheus, Loki, alerting, incidents",
+        "tools": 80,
+        "tools_excluded": 0
+      },
+      {
+        "server": "heroku",
+        "repo": "heroku/heroku-mcp-server",
+        "commit": "57c094c2a2e1b7b01f9ae8998bea3edc9fc214da",
+        "path": "",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE.txt",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "Heroku apps, dynos, add-ons and Postgres",
+        "tools": 33,
+        "tools_excluded": 0
+      },
+      {
+        "server": "kubernetes",
+        "repo": "containers/kubernetes-mcp-server",
+        "commit": "6e0b675bedb4c75e562ab100e408527c1bb10e0c",
+        "path": "",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "Kubernetes pods, resources and Helm",
+        "tools": 21,
+        "tools_excluded": 0
+      },
+      {
+        "server": "linear",
+        "repo": "jerhadf/linear-mcp-server",
+        "commit": "5e2cb621c52762618eb015b4a8d6bf884021b29e",
+        "path": "",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "Linear issues",
+        "tools": 5,
+        "tools_excluded": 0
+      },
+      {
+        "server": "mattermost",
+        "repo": "cloud-ru-tech/mcp-server-mattermost",
+        "commit": "8976ae4a77180bdeffdc3ffe20362bd253dc7cf8",
+        "path": "",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "team chat: Mattermost channels and posts",
+        "tools": 39,
+        "tools_excluded": 0
+      },
+      {
+        "server": "memory",
+        "repo": "modelcontextprotocol/servers",
+        "commit": "c799c8552b0f27b7a33a7b9233773da144dddcf5",
+        "path": "src/memory",
+        "spdx": "Apache-2.0 AND MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "knowledge graph memory",
+        "tools": 9,
+        "tools_excluded": 0
+      },
+      {
+        "server": "mongodb",
+        "repo": "mongodb-js/mongodb-mcp-server",
+        "commit": "2727403a2776d3dfc7f7d82866624633f5a4e1b4",
+        "path": "packages/mongodb-mcp-server",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "MongoDB databases, collections and queries",
+        "tools": 27,
+        "tools_excluded": 0
+      },
+      {
+        "server": "notion",
+        "repo": "makenotion/notion-mcp-server",
+        "commit": "cf16e5c20bfbfb98ecec1227f210ef0ae3abebe5",
+        "path": "",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "Notion pages, databases and comments",
+        "tools": 24,
+        "tools_excluded": 0
+      },
+      {
+        "server": "playwright",
+        "repo": "microsoft/playwright-mcp",
+        "commit": "2337aff0213d28db41d3e3daf48cee19b3d0bd82",
+        "path": "",
+        "spdx": "Apache-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "browser automation",
+        "tools": 25,
+        "tools_excluded": 0
+      },
+      {
+        "server": "postgres",
+        "repo": "modelcontextprotocol/servers-archived",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "path": "src/postgres",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "PostgreSQL read-only queries",
+        "tools": 1,
+        "tools_excluded": 0
+      },
+      {
+        "server": "sentry",
+        "repo": "modelcontextprotocol/servers-archived",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "path": "src/sentry",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "Sentry error issues",
+        "tools": 1,
+        "tools_excluded": 0
+      },
+      {
+        "server": "slack-bot",
+        "repo": "modelcontextprotocol/servers-archived",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "path": "src/slack",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "team chat: Slack channels and messages (reference server)",
+        "tools": 8,
+        "tools_excluded": 0
+      },
+      {
+        "server": "slack",
+        "repo": "korotovsky/slack-mcp-server",
+        "commit": "b88c0de3f706f4f07337c9eda7133c736d1c9524",
+        "path": "",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "static",
+        "job": "team chat: Slack channels, threads and search",
+        "tools": 22,
+        "tools_excluded": 0
+      },
+      {
+        "server": "sqlite",
+        "repo": "modelcontextprotocol/servers-archived",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "path": "src/sqlite",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "SQLite queries and business notes",
+        "tools": 6,
+        "tools_excluded": 0
+      },
+      {
+        "server": "teams",
+        "repo": "floriscornel/teams-mcp",
+        "commit": "b01182db9e450a2e3079bfa9a56d3e7f4e029693",
+        "path": "",
+        "spdx": "MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "team chat: Microsoft Teams chats and channels",
+        "tools": 31,
+        "tools_excluded": 0
+      },
+      {
+        "server": "terraform",
+        "repo": "hashicorp/terraform-mcp-server",
+        "commit": "ffe13b794213caef56407b7f16809003882cccce",
+        "path": "",
+        "spdx": "MPL-2.0",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "Terraform registry and HCP Terraform workspaces",
+        "tools": 10,
+        "tools_excluded": 0
+      },
+      {
+        "server": "time",
+        "repo": "modelcontextprotocol/servers",
+        "commit": "c799c8552b0f27b7a33a7b9233773da144dddcf5",
+        "path": "src/time",
+        "spdx": "Apache-2.0 AND MIT",
+        "licence_file": "LICENSE",
+        "notice_file": null,
+        "capture_method": "runtime",
+        "job": "time zone lookup and conversion",
+        "tools": 3,
+        "tools_excluded": 0
+      }
+    ],
+    "not_captured": [],
+    "excluded": [
+      {
+        "repo": "getsentry/sentry-mcp",
+        "commit": "e701040b064dda0824f23af129a832c9e8354ec1",
+        "licence": "FSL-1.1-Apache-2.0",
+        "reason": "Functional Source License, not OSI-approved; the MIT reference Sentry server from modelcontextprotocol/servers-archived is used instead"
+      },
+      {
+        "repo": "stripe/agent-toolkit (now stripe/ai)",
+        "commit": "801ec2174acd581f71f99cf8df5383063824a1bc",
+        "licence": "MIT",
+        "reason": "no tool definitions in source: tools live on the hosted server at mcp.stripe.com, and the final local proxy (tag ai-packages-final, a3196df9) only forwards tools/list to it, which needs a Stripe key"
+      },
+      {
+        "repo": "cloudflare/mcp-server-cloudflare",
+        "commit": "a21972e219289337731a066befb5c66886b9ce7b",
+        "licence": "Apache-2.0",
+        "reason": "every app is a hosted Cloudflare Worker that lists tools only after OAuth; a static reader for its zod tool definitions was not built because the catalog reached 300 tools without it"
+      },
+      {
+        "repo": "neondatabase/mcp-server-neon",
+        "commit": "fffa2cf8ce08ff28d1962261f136cb6884362696",
+        "licence": "MIT",
+        "reason": "now a hosted Next.js app behind OAuth with no local stdio server; not captured for the same reason as Cloudflare"
+      },
+      {
+        "repo": "v-3/discordmcp",
+        "commit": "39622af0333bcd324e811a2390146927517fb03d",
+        "reason": "no licence file"
+      },
+      {
+        "repo": "SaseQ/discord-mcp",
+        "commit": "e134c03714cfadf786b686e3045b92537042a240",
+        "licence": "MIT",
+        "reason": "logs in to Discord before it serves tools/list (needs a bot token and the network), and its tools are Java annotations with no static reader; Mattermost and Teams stand in as second chat apps"
+      },
+      {
+        "repo": "modelcontextprotocol/servers src/filesystem",
+        "licence": "Apache-2.0 AND MIT",
+        "reason": "duplicates the harness built-in file tools"
+      },
+      {
+        "repo": "modelcontextprotocol/servers src/fetch",
+        "licence": "Apache-2.0 AND MIT",
+        "reason": "duplicates the harness built-in web fetch"
+      },
+      {
+        "repo": "modelcontextprotocol/servers src/git",
+        "licence": "Apache-2.0 AND MIT",
+        "reason": "duplicates git on the local disk through the harness shell"
+      },
+      {
+        "repo": "modelcontextprotocol/servers src/everything",
+        "licence": "Apache-2.0 AND MIT",
+        "reason": "a protocol test server, not a service anyone connects for work"
+      },
+      {
+        "repo": "modelcontextprotocol/servers src/sequentialthinking",
+        "licence": "Apache-2.0 AND MIT",
+        "reason": "a reasoning aid rather than a service; a model may call it on any request, which would muddy the tool-when-none-needed outcome"
+      },
+      {
+        "repo": "modelcontextprotocol/servers-archived src/brave-search",
+        "licence": "MIT",
+        "reason": "duplicates the harness built-in web search"
+      },
+      {
+        "repo": "modelcontextprotocol/servers-archived src/puppeteer",
+        "licence": "MIT",
+        "reason": "archived browser server superseded by microsoft/playwright-mcp, which is in the catalog"
+      },
+      {
+        "repo": "modelcontextprotocol/servers-archived src/github",
+        "licence": "MIT",
+        "reason": "archived and superseded by github/github-mcp-server, which is in the catalog"
+      },
+      {
+        "repo": "modelcontextprotocol/servers-archived src/git",
+        "licence": "MIT",
+        "reason": "duplicates git on the local disk through the harness shell"
+      },
+      {
+        "repo": "elastic/mcp-server-elasticsearch",
+        "commit": "9e64b842f22269eb214793e1a4885128dc4a8fd8",
+        "licence": "Apache-2.0",
+        "reason": "its build fetches a git dependency (elastic/elasticsearch-rs at a pinned revision) from github.com, outside the registry-only egress the capture allows"
+      },
+      {
+        "repo": "modelcontextprotocol/servers-archived src/gdrive",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "licence": "MIT",
+        "reason": "refuses to start without a Google OAuth credentials file; one tool, so no static reader was built"
+      },
+      {
+        "repo": "modelcontextprotocol/servers-archived src/redis",
+        "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+        "licence": "MIT",
+        "reason": "connects to a Redis server before it serves tools/list and exits when it cannot"
+      },
+      {
+        "repo": "supabase-community/supabase-mcp",
+        "commit": "133b9f15e119135d3c2b362706d9ce3ef2014e99",
+        "licence": "Apache-2.0",
+        "reason": "answers tools/list only after a call to the Supabase management API with a real access token (fetch failed with the network off); its tool definitions are spread over feature modules with no static reader built"
+      },
+      {
+        "repo": "awslabs/mcp (56 other servers)",
+        "commit": "07dd13a50f191297b4ad875e016de20d2266d521",
+        "licence": "Apache-2.0",
+        "reason": "seven servers for distinct AWS services were enough; aws-api-mcp-server in particular runs AWS CLI commands, close to a shell"
+      }
+    ]
+  }
+}

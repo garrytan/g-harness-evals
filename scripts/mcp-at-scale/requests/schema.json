@@ -1,0 +1,323 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "$id": "https://github.com/garrytan/harness-evals/scripts/mcp-at-scale/requests/schema.json",
+ "title": "MCP-at-scale request set item (sets R, T and G)",
+ "description": "One line of a set file. Counts and strata are checked by sets.ts against the ladder's core tools; this schema checks the shape. acceptable and fixtures use the shapes materialize.ts and catalog-host.ts already read.",
+ "definitions": {
+  "tool": {
+   "type": "object",
+   "required": [
+    "server",
+    "tool"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "server": {
+     "type": "string",
+     "minLength": 1
+    },
+    "tool": {
+     "type": "string",
+     "minLength": 1
+    }
+   }
+  },
+  "acceptable": {
+   "type": "object",
+   "required": [
+    "server",
+    "tool"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "server": {
+     "type": "string",
+     "minLength": 1
+    },
+    "tool": {
+     "type": "string",
+     "minLength": 1
+    },
+    "required": {
+     "type": "object"
+    }
+   }
+  },
+  "result": {
+   "oneOf": [
+    {
+     "type": "object",
+     "required": [
+      "json"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "json": {}
+     }
+    },
+    {
+     "type": "object",
+     "required": [
+      "text"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "text": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "required": [
+      "error"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "error": {
+       "type": "string"
+      }
+     }
+    }
+   ]
+  },
+  "fixture": {
+   "type": "object",
+   "required": [
+    "id",
+    "tool",
+    "result"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string",
+     "minLength": 1
+    },
+    "server": {
+     "type": "string"
+    },
+    "tool": {
+     "type": "string",
+     "minLength": 1
+    },
+    "match": {
+     "type": "object"
+    },
+    "after": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "result": {
+     "$ref": "#/definitions/result"
+    }
+   }
+  },
+  "id": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+  },
+  "half": {
+   "enum": [
+    "public",
+    "sealed"
+   ]
+  }
+ },
+ "oneOf": [
+  {
+   "type": "object",
+   "title": "set R",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "set",
+    "kind",
+    "text",
+    "stratum",
+    "target",
+    "bait",
+    "acceptable"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "#/definitions/id"
+    },
+    "set": {
+     "const": "R"
+    },
+    "kind": {
+     "enum": [
+      "tool",
+      "none"
+     ]
+    },
+    "text": {
+     "type": "string",
+     "minLength": 8
+    },
+    "stratum": {
+     "enum": [
+      "capability_only",
+      "names_service",
+      "no_tool"
+     ]
+    },
+    "target": {
+     "oneOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/definitions/tool"
+      }
+     ]
+    },
+    "bait": {
+     "type": "boolean"
+    },
+    "bait_twin": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "acceptable": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/acceptable"
+     }
+    },
+    "fixtures": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/fixture"
+     }
+    },
+    "half": {
+     "$ref": "#/definitions/half"
+    }
+   }
+  },
+  {
+   "type": "object",
+   "title": "set T",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "set",
+    "kind",
+    "text",
+    "fixtures",
+    "end_state",
+    "acceptable"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "#/definitions/id"
+    },
+    "set": {
+     "const": "T"
+    },
+    "kind": {
+     "const": "tool"
+    },
+    "text": {
+     "type": "string",
+     "minLength": 8
+    },
+    "fixtures": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 4,
+     "items": {
+      "$ref": "#/definitions/fixture"
+     }
+    },
+    "end_state": {
+     "type": "object",
+     "required": [
+      "fired"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "fired": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "acceptable": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 1,
+     "items": {
+      "$ref": "#/definitions/acceptable"
+     }
+    },
+    "half": {
+     "$ref": "#/definitions/half"
+    }
+   }
+  },
+  {
+   "type": "object",
+   "title": "set G",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "set",
+    "kind",
+    "text",
+    "half_kind",
+    "target",
+    "acceptable"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "#/definitions/id"
+    },
+    "set": {
+     "const": "G"
+    },
+    "kind": {
+     "const": "tool"
+    },
+    "text": {
+     "type": "string",
+     "minLength": 8
+    },
+    "half_kind": {
+     "enum": [
+      "starter",
+      "full_only"
+     ]
+    },
+    "target": {
+     "$ref": "#/definitions/tool"
+    },
+    "acceptable": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "$ref": "#/definitions/acceptable"
+     }
+    },
+    "fixtures": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/fixture"
+     }
+    },
+    "half": {
+     "$ref": "#/definitions/half"
+    }
+   }
+  }
+ ]
+}

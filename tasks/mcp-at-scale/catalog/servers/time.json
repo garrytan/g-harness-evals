@@ -1,0 +1,156 @@
+{
+  "server": "time",
+  "source": {
+    "repo": "modelcontextprotocol/servers",
+    "commit": "c799c8552b0f27b7a33a7b9233773da144dddcf5",
+    "path": "src/time",
+    "spdx": "Apache-2.0 AND MIT",
+    "licence_file": "LICENSE",
+    "notice_file": null,
+    "capture_method": "runtime"
+  },
+  "job": "time zone lookup and conversion",
+  "capture": {
+    "base_image": "ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58",
+    "install": "export UV_PYTHON_DOWNLOADS=never UV_LINK_MODE=copy UV_PYTHON=python3.12\nuv sync --frozen --no-dev",
+    "run": [
+      ".venv/bin/mcp-server-time",
+      "--local-timezone",
+      "UTC"
+    ],
+    "placeholder_env": [],
+    "network_while_running": "none",
+    "protocol_version_requested": "2025-06-18"
+  },
+  "initialize": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {
+      "prompts": {
+        "listChanged": false
+      },
+      "resources": {
+        "listChanged": false,
+        "subscribe": false
+      },
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "serverInfo": {
+      "name": "mcp-time",
+      "version": "2026.11.18"
+    },
+    "instructions": null
+  },
+  "tools": [
+    {
+      "name": "get_current_time",
+      "description": "Get current time in a specific timezone",
+      "inputSchema": {
+        "properties": {
+          "timezone": {
+            "default": "UTC",
+            "description": "IANA timezone name (e.g., 'America/New_York', 'Europe/London'). Optional: defaults to the server's local timezone, 'UTC', when omitted.",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "title": "get_current_timeArguments"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "convert_time",
+      "description": "Convert time between timezones",
+      "inputSchema": {
+        "properties": {
+          "source_timezone": {
+            "default": "UTC",
+            "description": "Source IANA timezone name (e.g., 'America/New_York', 'Europe/London'). Optional: defaults to the server's local timezone, 'UTC', when omitted.",
+            "title": "Source Timezone",
+            "type": "string"
+          },
+          "time": {
+            "description": "Time to convert in 24-hour format (HH:MM)",
+            "title": "Time",
+            "type": "string"
+          },
+          "target_timezone": {
+            "default": "UTC",
+            "description": "Target IANA timezone name (e.g., 'Asia/Tokyo', 'America/San_Francisco'). Optional: defaults to the server's local timezone, 'UTC', when omitted.",
+            "title": "Target Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time"
+        ],
+        "type": "object",
+        "title": "convert_timeArguments"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_time_ago",
+      "description": "Get the time a given number of days, hours, minutes and seconds ago in a specific timezone",
+      "inputSchema": {
+        "properties": {
+          "timezone": {
+            "default": "UTC",
+            "description": "IANA timezone name (e.g., 'America/New_York', 'Europe/London'). Optional: defaults to the server's local timezone, 'UTC', when omitted.",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "days_ago": {
+            "default": 0,
+            "description": "Whole days before now",
+            "minimum": 0,
+            "title": "Days Ago",
+            "type": "integer"
+          },
+          "hours_ago": {
+            "default": 0,
+            "description": "Whole hours before now",
+            "minimum": 0,
+            "title": "Hours Ago",
+            "type": "integer"
+          },
+          "minutes_ago": {
+            "default": 0,
+            "description": "Whole minutes before now",
+            "minimum": 0,
+            "title": "Minutes Ago",
+            "type": "integer"
+          },
+          "seconds_ago": {
+            "default": 0,
+            "description": "Whole seconds before now",
+            "minimum": 0,
+            "title": "Seconds Ago",
+            "type": "integer"
+          }
+        },
+        "type": "object",
+        "title": "get_time_agoArguments"
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "excluded_tools": []
+}

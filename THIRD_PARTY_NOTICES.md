@@ -21,6 +21,7 @@
 - [Harness Leaderboard: TB2.1 answer-key fingerprints](#harness-leaderboard-tb21-answer-key-fingerprints)
 - [Credits: Terminal-Bench 2 and SWE-bench Verified](#credits-terminal-bench-2-and-swe-bench-verified)
 - [Claude Code](#claude-code)
+- [MCP servers in the tools-at-scale catalog](#mcp-servers-in-the-tools-at-scale-catalog)
 
 ## OpenClaw
 
@@ -740,3 +741,10 @@ We use these benchmarks' task ids and public numbers. We don't redistribute thei
   - `docs/benchmarks/2026-11-01-opus-gstack-follow/results/gn-follow-preset-2026-11/dry-run/preset-system-prompt.txt`
   - the Claude Code spans of the ablation coder input, which `harnesses/ablation/coding/items.json` and `agreement.json` carry only as sha256 values (`scripts/ablation/settle.ts` writes the raw text only to a directory outside the repository)
 - Built harness images are never published. We publish Dockerfiles only.
+
+## MCP servers in the tools-at-scale catalog
+
+- **What:** the tool lists (names, descriptions, input schemas) and initialize results of 30 public, open-source MCP servers, captured once at pinned commits. Our fake MCP servers replay them so harnesses see real tool definitions. No server code is included.
+- **Versions and upstreams:** one row per server, with its repository, commit and SPDX id, in [tasks/mcp-at-scale/catalog/README.md](tasks/mcp-at-scale/catalog/README.md).
+- **Licences:** MIT, Apache-2.0, MPL-2.0, or Apache-2.0 AND MIT, per server. Each server's licence text, any Apache-2.0 NOTICE file, and our modification notices (trimmed tool lists, renamed servers) are in `tasks/mcp-at-scale/catalog/LICENSES/`.
+- **Where its text sits here:** `tasks/mcp-at-scale/catalog/servers/*.json`.

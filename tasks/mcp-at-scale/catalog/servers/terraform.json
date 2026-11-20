@@ -1,0 +1,366 @@
+{
+  "server": "terraform",
+  "source": {
+    "repo": "hashicorp/terraform-mcp-server",
+    "commit": "ffe13b794213caef56407b7f16809003882cccce",
+    "path": "",
+    "spdx": "MPL-2.0",
+    "licence_file": "LICENSE",
+    "notice_file": null,
+    "capture_method": "runtime"
+  },
+  "job": "Terraform registry and HCP Terraform workspaces",
+  "capture": {
+    "base_image": "golang@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea",
+    "install": "go build -o /usr/local/bin/terraform-mcp-server ./cmd/terraform-mcp-server",
+    "run": [
+      "terraform-mcp-server",
+      "stdio"
+    ],
+    "placeholder_env": [],
+    "network_while_running": "none",
+    "protocol_version_requested": "2025-06-18"
+  },
+  "initialize": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {
+      "resources": {
+        "subscribe": true,
+        "listChanged": true
+      },
+      "tools": {
+        "listChanged": true
+      },
+      "elicitation": {}
+    },
+    "serverInfo": {
+      "name": "terraform-mcp-server",
+      "version": "1.4.1"
+    },
+    "instructions": "# Terraform MCP Server Tool Hints\n\nThe Terraform MCP server provides tools for generating better Terraform code through registry integration and automating workflows via HCP Terraform/Enterprise APIs.\n\n## Tool Usage Guidelines\n\n**BEFORE generating any Terraform code**: Query registries for latest provider/module versions and styling guidelines. When enterprise tools are enabled AND a Terraform token is provided, search private registries first, then fall back to public.\n\n**Provider Consistency**: All modules in a project must use compatible provider versions. Verify with get_provider_details before generating code.\n\n**Validation Flow**: Run terraform validate immediately after generation, then terraform plan only if validation passes. Use terraform fmt to format code as needed.\n\n**User Confirmation Required**: ALWAYS get explicit yes/no confirmation before: `create_run`, `apply_run`, `discard_run`, `cancel_run`.\n\n## Always Available Tools\n\n### Registry Tools (Always Available)\n\n- **Provider Discovery**: `get_latest_provider_version` (if unavailable in code) → `get_provider_capabilities` → `get_provider_details`\n  - `get_provider_capabilities` shows what types of resources, data sources, functions, and guides are available\n  \n- **Module Discovery**: `get_latest_module_version` (if unavailable in code) → `search_modules` → `get_module_details`\n\n- **Policy Discovery**: `search_policies` → `get_policy_details`\n\n- Use these to ensure generated code uses current versions and follows best practices\n\n## HCP Terraform/TFE Tools (When enterprise tools are enabled AND a Terraform token is provided)\n\n### Private Registry Tools\n- `search_private_providers` → `get_private_provider_details`\n- `search_private_modules` → `get_private_module_details`\n- Priority: Check private registries first when token present, public as fallback\n\n### Workspace Management\n- **Discovery**: `search_workspaces` (empty query returns all) → `get_workspace_details`\n- **Operations**: `create_workspace`, `update_workspace`, `delete_workspace_safely`, `force_unlock_workspace`\n- `delete_workspace_safely` only works if workspace has no managed resources\n\n### Run Execution\n- **Discovery**: `search_run` (empty query returns all) → `get_run_details` (supports json output)\n- **Operations**: `create_run` → `apply_run` OR `discard_run` OR `cancel_run`\n- **Monitoring**: `get_plan_details`/`get_plan_logs` for plans, `get_apply_details`/`get_apply_logs` for applies\n- Always check run status before attempting operations\n\n### Variable Management\n**Workspace Variables**:\n- `search_workspace_variables` (empty query returns all)\n- `create_workspace_variable`, `update_workspace_variable`, `delete_workspace_variable`\n\n**Variable Sets** (for sharing across workspaces/projects):\n- `search_variable_sets` → `get_variable_set_details`\n- `create_variable_set`, `update_variable_set`, `delete_variable_set`\n- `create_variable_in_variable_set`, `update_variable_in_variable_set`, `delete_variable_from_variable_set`\n- `attach/detach_variable_set_to_workspaces`, `attach/detach_variable_set_to_projects`\n\n## Workflow Patterns\n\n**Terraform Search (when Search tools are available)**:\n1. **Follow the Search workflow**: These steps supersede the generic Tool Usage Guidelines and Code Generation workflow for Search query configuration and import authoring.\n2. **Confirm and reuse the query source**: For a new query, complete the tool's source-scope interaction when requested. Configured `TF_CLOUD_ORGANIZATION` and `TF_MCP_QUERY_WORKSPACE` values, with `TF_WORKSPACE` as the workspace fallback, are proposed defaults—not authorization. Do not assume the agent can inspect the server environment; use the tool interaction to confirm or correct the complete organization/workspace pair, then reuse the accepted `terraform_org_name` and `workspace_name` explicitly throughout the query workflow.\n3. **Start or resume a query**: Use `get_search_list_resource_schemas` → `generate_search_query_configuration` → `execute_search_query` → `get_search_query_status` → `get_search_query_summary`. An existing authorized QueryRun ID may resume status and summary review.\n4. **Approve execution separately**: Source confirmation does not approve query execution. Immediately before `execute_search_query`, show the source and query selections, explain that execution starts a QueryRun without modifying infrastructure, and wait for approval.\n5. **Keep query versions scoped to Search**: Use the provider versions and schemas returned by the Search tools. Do not replace them with `get_latest_provider_version`; a Search catalog version is source-query evidence, not a target-version recommendation.\n6. **Stop for Search-only intent**: Report the summary and stop. Do not request an import target or local path. A selectable summary contains every result matching its presentation filters, not every cloud resource; selection is explicit and only for requested import.\n\n**Search-to-import (only when `prepare_import` and `verify_import_plan` are available and import is requested)**:\n1. **Confirm selection and target independently**: After the user selects displayed `query_result_marker` values, complete the tool's import-target interaction when requested. Configured `TF_CLOUD_ORGANIZATION` and `TF_MCP_IMPORT_WORKSPACE` values, with `TF_WORKSPACE` as the workspace fallback, are independent proposed defaults—not authorization; never use `TF_MCP_QUERY_WORKSPACE` as the import target. Query-source confirmation never confirms the import target, even when their values are equal. Use the tool interaction rather than assuming the agent can inspect the server environment, and reuse the accepted `terraform_org_name` and `workspace_name` explicitly for preparation and verification. Confirm the target workspace in the same organization and the existing user-designated local configuration directory. Markers provide continuity, not import IDs, authorization or identity proof.\n2. **Require the target lock file**: Inspect the target configuration tree and its exact locked provider releases before `prepare_import`. If `.terraform.lock.hcl` is missing or ambiguous, alert the user that exact target releases cannot be determined. Do not run `terraform init`, select versions, substitute Search catalog versions or call `prepare_import`; wait for further instructions.\n3. **Prepare with locked releases**: Pass each provider source and exact version relevant to the selected imports. Public namespace/type shorthand is accepted; custom/private sources retain their hostname. Use the target's locked releases, not Search catalog versions.\n4. **Author and validate locally**: Author and review local HCL using the target's locked releases. Use provider documentation applicable to the locked release; do not replace or upgrade it through a latest-version lookup. Format and, when appropriate, validate the authored HCL. These are diagnostics and do not authorize a Plan.\n5. **Plan and verify after approval**: Obtain separate approval for one plain HCP-connected speculative `terraform plan`. Retain its exact CLI Run URL and `run_id`, then call `verify_import_plan`. Review Plan actions and object identity independently.\n6. **Stop before apply**: End with reviewed HCL and findings. Do not continue automatically to `terraform apply`, `terraform import` or `apply_run`; any eventual apply is a separate, independently reviewed and authorized workflow.\n\n**Code Generation**:\n1. `search_modules`/`search_provider_docs` for available resources\n2. `get_latest_provider_version` if no version available in existing code\n3. `get_module_details` for module requirements\n4. Generate code with discovered constraints\n\n**Run Management**:\n1. `search_workspaces` → select target\n2. `create_run` → get_run_details to monitor\n3. `get_plan_details/logs` to review changes\n4. User confirmation → `apply_run` OR `discard_run`\n\n**Variable Configuration**:\n1. `search_workspace_variables` to check existing\n2. `create/update_workspace_variable` as needed\n3. For multi-workspace: `create_variable_set` → `attach_variable_set_to_workspaces`\n\n## Error Handling\n- Registry failures: Try private first (if token), fallback to public\n- Run failures: Check `get_run_details`, get_plan_details and logs before retry\n- Variable conflicts: `search_workspace_variables` first to avoid duplicates\n- Run stuck and holds the lock: `action_run` to cancel or discard the run → `force_unlock_workspace` to unlock the workspace\n\n## Security Notes\n- Never expose TFE_TOKEN or other sensitive values in outputs\n- Document source (public/private registry) in generated code comments"
+  },
+  "tools": [
+    {
+      "name": "generate_search_query_configuration",
+      "description": "Generates schema-backed guidance and an example configuration for one HCP\nTerraform No-Code Search query; it does not execute the query.\n\nPass list_resource_schemas and the exact provider namespace, name and version\nreturned by get_search_list_resource_schemas. Any requested resource type must be an\nexact schema key. The result describes supported scalar and nested attributes,\nrequired values, nesting/cardinality, variable syntax and generate_config_out\nso the query_configuration for execute_search_query can be constructed without\ninventing fields. Required schema attributes remain required.\n\nReview and fill the generated configuration, then call execute_search_query with the\nsame confirmed source organization/workspace. Omit source arguments to use the\nconfirmed configured query defaults, or pass explicit user corrections as\noverrides. If the requested resource has no exact\nlist-resource schema key, report that it is not searchable with this catalog\nprovider version and do not call execute_search_query. If a requested selection\ncondition is absent from an otherwise supported list-resource schema, explain\nthat it cannot be used as a query-time filter and do not invent it. Preserve\nsupported filters and set generate_config_out=true when selection depends on\nadditional result data; this requests generated HCL and provider resource\nobjects but does not guarantee capture, and get_search_query_summary exposes only its\ndeclared projections.",
+      "inputSchema": {
+        "properties": {
+          "list_resource_schemas": {
+            "description": "The list_resource_schemas JSON object for a single provider version. This is the value returned by the `get_search_list_resource_schemas` tool, or the value of the `list_resource_schemas` key in a provider schema snapshot produced by `terraform providers schema -json`. The value must be a JSON object whose keys are resource type names (e.g. \"aws_instance\") and whose values are schema blocks containing an `attributes` map and optionally a `block_types` map.",
+            "type": "string"
+          },
+          "provider_name": {
+            "description": "Short provider name used as the `provider` value in generated list blocks. Examples: \"aws\", \"azurerm\", \"google\".",
+            "type": "string"
+          },
+          "provider_namespace": {
+            "description": "Provider namespace. Examples: \"hashicorp\", \"Azure\", \"juju\".",
+            "type": "string"
+          },
+          "provider_version": {
+            "description": "Exact provider version returned by get_search_list_resource_schemas. Do not infer or substitute a version.",
+            "type": "string"
+          },
+          "resource_types": {
+            "description": "Optional comma-separated list of resource type names to include in the output. Every name must be an exact key from list_resource_schemas; do not infer names from ordinary managed resources. When omitted all resource types in the schema are described.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "list_resource_schemas",
+          "provider_name",
+          "provider_namespace",
+          "provider_version"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Generate a No-Code Query Configuration from a list_resource_schemas schema",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "get_latest_module_version",
+      "description": "Fetches the latest version of a Terraform module from the public registry",
+      "inputSchema": {
+        "properties": {
+          "module_name": {
+            "description": "The name of the module, this is usually the service or group of service the user is deploying e.g., 'security-group', 'secrets-manager' etc.",
+            "type": "string"
+          },
+          "module_provider": {
+            "description": "The name of the Terraform provider for the module, e.g., 'aws', 'google', 'azurerm' etc.",
+            "type": "string"
+          },
+          "module_publisher": {
+            "description": "The publisher of the module, e.g., 'hashicorp', 'aws-ia', 'terraform-google-modules', 'Azure' etc.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "module_publisher",
+          "module_name",
+          "module_provider"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Get Latest Module Version",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get_latest_provider_version",
+      "description": "Fetches the latest version of a Terraform provider from the public registry",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "The name of the Terraform provider, e.g., 'aws', 'azurerm', 'google', etc.",
+            "type": "string"
+          },
+          "namespace": {
+            "description": "The namespace of the Terraform provider, typically the name of the company, or their GitHub organization name that created the provider e.g., 'hashicorp'. If you are not certain of the namespace, do not guess, ask the user. Most HashiCorp-maintained providers are in the 'hashicorp' namespace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "name"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Get Latest Provider Version",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get_module_details",
+      "description": "Fetches up-to-date documentation on how to use a Terraform module. You must call 'search_modules' first to obtain the exact valid and compatible module_id required to use this tool.",
+      "inputSchema": {
+        "properties": {
+          "module_id": {
+            "description": "Exact valid and compatible module_id retrieved from search_modules (e.g., 'squareops/terraform-kubernetes-mongodb/mongodb/2.1.1', 'GoogleCloudPlatform/vertex-ai/google/0.2.0')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "module_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Retrieve documentation for a specific Terraform module",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get_policy_details",
+      "description": "Fetches up-to-date documentation for a specific policy from the Terraform registry. You must call 'search_policies' first to obtain the exact terraform_policy_id required to use this tool.",
+      "inputSchema": {
+        "properties": {
+          "terraform_policy_id": {
+            "description": "Matching terraform_policy_id retrieved from the 'search_policies' tool (e.g., 'policies/hashicorp/CIS-Policy-Set-for-AWS-Terraform/1.0.1')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "terraform_policy_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Fetch detailed Terraform policy documentation using a terraform_policy_id",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get_provider_capabilities",
+      "description": "Get the capabilities of a Terraform provider including the types of resources, data sources, functions, guides, and other features it supports.\nThis tool analyzes the provider documentation to determine what types of capabilities are available:\n- resources: Infrastructure resources that can be created/managed\n- data-sources: Read-only data sources for querying existing infrastructure  \n- functions: Provider-specific functions for data transformation\n- guides: Documentation guides and tutorials for using the provider\n- actions: Available provider actions (if any)\n- ephemeral resources: Temporary resources for credentials and tokens\n- list-resources: List resources for querying existing cloud resources (Terraform Search)\n\nReturns a summary with counts and examples for each capability type.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "The name of the Terraform provider, e.g., 'aws', 'azurerm', 'google', etc.",
+            "type": "string"
+          },
+          "namespace": {
+            "description": "The namespace of the Terraform provider, typically the name of the company, or their GitHub organization name that created the provider e.g., 'hashicorp'. If you are not certain of the namespace, do not guess, ask the user. Most HashiCorp-maintained providers are in the 'hashicorp' namespace",
+            "type": "string"
+          },
+          "version": {
+            "description": "The version of the provider to analyze (defaults to 'latest')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "name"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Get Terraform provider capabilities and supported features",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get_provider_details",
+      "description": "Fetches up-to-date documentation for a specific service from a Terraform provider. \nYou must call 'search_provider_docs' tool first to obtain the exact tfprovider-compatible provider_doc_id required to use this tool.",
+      "inputSchema": {
+        "properties": {
+          "provider_doc_id": {
+            "description": "Exact tfprovider-compatible provider_doc_id, (e.g., '8894603', '8906901') retrieved from 'search_provider_docs'",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_doc_id"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Fetch detailed Terraform provider documentation using a document ID",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "search_modules",
+      "description": "Resolves a Terraform module name to obtain a compatible module_id for the get_module_details tool and returns a list of matching Terraform modules.\nYou MUST call this function before 'get_module_details' to obtain a valid and compatible module_id.\nWhen selecting the best match, consider the following:\n\t- Name similarity to the query\n\t- Description relevance\n\t- Verification status (verified)\n\t- Download counts (popularity)\nReturn the selected module_id and explain your choice. If there are multiple good matches, mention this but proceed with the most relevant one.\nIf no modules were found, reattempt the search with a new moduleName query.",
+      "inputSchema": {
+        "properties": {
+          "current_offset": {
+            "default": 0,
+            "description": "Current offset for pagination",
+            "minimum": 0,
+            "type": "number"
+          },
+          "module_query": {
+            "description": "The query to search for Terraform modules.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "module_query"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Search and match Terraform modules based on name and relevance",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "search_policies",
+      "description": "Searches for Terraform policies based on a query string.\nThis tool returns a list of matching policies, which can be used to retrieve detailed policy information using the 'get_policy_details' tool.\nYou MUST call this function before 'get_policy_details' to obtain a valid terraform_policy_id.\nWhen selecting the best match, consider the following:\n\t- Name similarity to the query\n\t- Title relevance\n\t- Verification status (verified)\n\t- Download counts (popularity)\nReturn the selected policyID and explain your choice. If there are multiple good matches, mention this but proceed with the most relevant one.\nIf no policies were found, reattempt the search with a new policy_query.",
+      "inputSchema": {
+        "properties": {
+          "policy_query": {
+            "description": "The query to search for Terraform modules.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy_query"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Search and match Terraform policies based on name and relevance",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "search_provider_docs",
+      "description": "This tool retrieves a list of potential documents based on the 'service_slug' and 'provider_document_type' provided.\nYou MUST call this function before 'get_provider_details' to obtain a valid tfprovider-compatible 'provider_doc_id'.\nUse the most relevant single word as the search query for 'service_slug', if unsure about the 'service_slug', use the 'provider_name' for its value.\nWhen selecting the best match, consider the following:\n\t- Title similarity to the query\n\t- Category relevance\nReturn the selected 'provider_doc_id' and explain your choice.\nIf there are multiple good matches, mention this but proceed with the most relevant one.",
+      "inputSchema": {
+        "properties": {
+          "provider_document_type": {
+            "description": "The type of the document to retrieve,\nfor general overview of the provider use 'overview',\nfor guidance on upgrading a provider or custom configuration information use 'guides',\nfor deploying resources use 'resources', for reading pre-deployed resources use 'data-sources',\nfor functions use 'functions',\nfor Terraform actions use 'actions',\nfor listing resources using Terraform Search use 'list-resources'",
+            "enum": [
+              "resources",
+              "data-sources",
+              "functions",
+              "guides",
+              "overview",
+              "actions",
+              "list-resources"
+            ],
+            "type": "string"
+          },
+          "provider_name": {
+            "description": "The name of the Terraform provider to perform the read or deployment operation",
+            "type": "string"
+          },
+          "provider_namespace": {
+            "description": "The publisher of the Terraform provider, typically the name of the company, or their GitHub organization name that created the provider. If you are not certain of the namespace, do not guess, ask the user. Most HashiCorp-maintained providers are in the 'hashicorp' namespace",
+            "type": "string"
+          },
+          "provider_version": {
+            "description": "The version of the Terraform provider to retrieve in the format 'x.y.z', or 'latest' to get the latest version",
+            "type": "string"
+          },
+          "service_slug": {
+            "description": "The slug of the service you want to deploy or read using the Terraform provider, prefer using a single word, use underscores for multiple words and if unsure about the service_slug, use the provider_name for its value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_name",
+          "provider_namespace",
+          "service_slug",
+          "provider_document_type"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "title": "Identify the most relevant provider document ID for a Terraform service",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    }
+  ],
+  "excluded_tools": [],
+  "core_filter": {
+    "switch": "--tools=search_provider_docs,get_provider_details,search_modules,get_module_details,search_policies",
+    "args": [
+      "--tools=search_provider_docs,get_provider_details,search_modules,get_module_details,search_policies"
+    ],
+    "env": {},
+    "tools": [
+      "get_module_details",
+      "get_provider_details",
+      "search_modules",
+      "search_policies",
+      "search_provider_docs"
+    ]
+  }
+}

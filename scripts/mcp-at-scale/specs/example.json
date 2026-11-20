@@ -1,0 +1,59 @@
+{
+ "schema": "mcp-at-scale/1",
+ "note": "A public-safe example: two cells on three synthetic set R requests at the 30 rung, one shard. The keyless proof runs it with --fake-upstream; real request sets stay private and are named by path and sha256.",
+ "run_id": "mcp-example",
+ "sets": [
+  {
+   "name": "example-r",
+   "file": "example-r.jsonl",
+   "sha256": "a29a454a187a300e38ca6d1dfc693385c401cb7d7ce63198feedd1e16d0f0792"
+  }
+ ],
+ "cells": [
+  {
+   "id": "cc-opus-r30",
+   "variant": "claude-code",
+   "model": "anthropic/claude-opus-5-5",
+   "arm": "native",
+   "rungs": [
+    30
+   ],
+   "sets": [
+    "example-r"
+   ]
+  },
+  {
+   "id": "codex-sol-r30",
+   "variant": "codex",
+   "model": "openai/gpt-6.1-sol",
+   "arm": "native",
+   "rungs": [
+    30
+   ],
+   "sets": [
+    "example-r"
+   ]
+  }
+ ],
+ "harness_versions": {
+  "claude-code": "2.1.312",
+  "codex": "0.165.0"
+ },
+ "shards": [
+  {
+   "name": "a",
+   "cells": [
+    "cc-opus-r30",
+    "codex-sol-r30"
+   ],
+   "lease_usd": 6
+  }
+ ],
+ "cap_usd": 6,
+ "reserve_usd": 0,
+ "concurrency": 1,
+ "shared_order_seed": "mcp-at-scale-example",
+ "trial_headroom_usd": 3,
+ "agent_timeout_sec": 600,
+ "egress": true
+}

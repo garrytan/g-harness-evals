@@ -1,0 +1,53 @@
+{
+ "schema": "mcp-at-scale-versions/1",
+ "frozen": "2026-11-19",
+ "note": "The harness and gbrain releases internal-task-a's pilot and counted runs use: the newest release of each on 2026-11-19 (Hermes: its newest tag; gbrain: the newest release on main, v0.60.747.0 from 15:23Z). scripts/frontier-harbor/pin.json is internal-task-b's and stays unchanged; agents.py and run.ts read this file for any version pin.json does not pin. agents.py checks every frozen install inside the trial container (HE-MCP-050 on a mismatch).",
+ "harnesses": {
+  "claude-code": {
+   "version": "2.1.328",
+   "package": "@anthropic-ai/claude-code",
+   "source": "https://downloads.claude.ai/claude-code-releases/2.1.328/manifest.json",
+   "native_binary_sha256": "a982d38030b97e750848add2cbb2df6d9a70d5544a22ca9b216a349ba25865e8",
+   "native_binary_size": 373019152,
+   "npm_integrity": "sha512-QJTDDUhzx2Wtnoone+TULvhtxqX9KhUpgt4S96Y2eyohtZK41LWXwe7fWXcR1JnT0Ujs3AfpPTk5BZgwCyZ8pw==",
+   "linux_x64_npm_integrity": "sha512-KuzL+dBHgDCFTHJxwW+xuBJdVKfBsesGx2BBcTOG9sYDGoAD7b1hUV8rsTS4xjoJsB2SmeGraGjBiFuhrYuC9w==",
+   "install": "Harbor ClaudeCode.install (bootstrap.sh 2.1.328, the native binary); agents.py requires the installed binary's sha256 to equal native_binary_sha256 (the linux-x64 checksum in the release manifest)"
+  },
+  "codex": {
+   "version": "0.170.0",
+   "package": "@openai/codex",
+   "source": "https://registry.npmjs.org/@openai/codex/0.170.0",
+   "npm_integrity": "sha512-dwoughgqjiik++CFaNkjQ5y6pJO6LUzu5P1z8Hy4LUeJ+aIYcX/QO1P5rOQnHmBG4agOM7Y+hc4LtVo/a4GFiw==",
+   "install": "Harbor Codex.install (npm install -g @openai/codex@0.170.0); agents.py requires codex --version to say 0.170.0"
+  },
+  "hermes": {
+   "version": "v2026.9.24",
+   "same_as_pin": true,
+   "source": "https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.24",
+   "commit": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
+   "install": "pin.json's own entry (the newest tag on 2026-11-19 is the pinned one); FrontierHermes checks the commit and the anthropic SDK"
+  },
+  "openclaw": {
+   "version": "2026.11.5",
+   "package": "openclaw",
+   "source": "https://registry.npmjs.org/openclaw/2026.11.5",
+   "npm_integrity": "sha512-mqPlsGLOe8NS85BfP1vWW9YVwFXchsV75QTkEbyR4csylORxts+fmfZp9+qbD7aPbXQIctyjRk+CPL91fDvxBA==",
+   "engines_node": ">=24.16.0 <25 || >=26.1.0",
+   "install": "FrontierOpenClaw (Harbor OpenClaw.install on Node 24, npm install -g openclaw@2026.11.5); agents.py requires openclaw --version to name 2026.11.5"
+  },
+  "pi": {
+   "version": "1.5.2",
+   "package": "@earendil-works/pi-coding-agent",
+   "source": "https://registry.npmjs.org/@earendil-works/pi-coding-agent/1.5.2",
+   "npm_integrity": "sha512-mUWI04rqF1Vd/m1q+Ps1XeWsTXEVvRUnsmRa83I3Dzua0Tx5bYS93imeqtIfrXf7PkkaR6ERz+AuQhIJlom5yA==",
+   "install": "Harbor Pi.install (npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.5.2); agents.py requires pi --version to say 1.5.2"
+  }
+ },
+ "gbrain": {
+  "tag": "v0.60.747.0",
+  "commit": "7d45c5d17e05a3a21b82f3949139ed022bf63914",
+  "source": "https://github.com/garrytan/gbrain/releases/tag/v0.60.747.0",
+  "install": "gbrain.ts writeGbrainImage (bun install -g github:garrytan/gbrain#v0.60.747.0 in the gbrain task image); run.ts refuses an image whose release is not this tag and commit",
+  "note": "Moved from v0.60.745.0 on 2026-11-19 before any gbrain pilot cell started (R100: the newest release on main when the run starts; v0.60.747.0 is a pre-release). Its tool lists, schemas, instructions and setup dry-runs are identical to v0.60.745.0 on every surface."
+ }
+}

@@ -1,0 +1,62 @@
+{
+  "server": "sentry",
+  "source": {
+    "repo": "modelcontextprotocol/servers-archived",
+    "commit": "9be4674d1ddf8c469e6461a27a337eeb65f76c2e",
+    "path": "src/sentry",
+    "spdx": "MIT",
+    "licence_file": "LICENSE",
+    "notice_file": null,
+    "capture_method": "runtime"
+  },
+  "job": "Sentry error issues",
+  "capture": {
+    "base_image": "ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58",
+    "install": "export UV_PYTHON_DOWNLOADS=never UV_LINK_MODE=copy UV_PYTHON=python3.12\nuv sync --frozen --no-dev",
+    "run": [
+      ".venv/bin/mcp-server-sentry",
+      "--auth-token",
+      "placeholder-not-a-credential"
+    ],
+    "placeholder_env": [],
+    "network_while_running": "none",
+    "protocol_version_requested": "2025-06-18"
+  },
+  "initialize": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "experimental": {},
+      "prompts": {
+        "listChanged": false
+      },
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "serverInfo": {
+      "name": "sentry",
+      "version": "0.4.1"
+    },
+    "instructions": null
+  },
+  "tools": [
+    {
+      "name": "get_sentry_issue",
+      "description": "Retrieve and analyze a Sentry issue by ID or URL. Use this tool when you need to:\n                - Investigate production errors and crashes\n                - Access detailed stacktraces from Sentry\n                - Analyze error patterns and frequencies\n                - Get information about when issues first/last occurred\n                - Review error counts and status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issue_id_or_url": {
+            "type": "string",
+            "description": "Sentry issue ID or URL to analyze"
+          }
+        },
+        "required": [
+          "issue_id_or_url"
+        ]
+      },
+      "annotations": {}
+    }
+  ],
+  "excluded_tools": []
+}

@@ -1,0 +1,219 @@
+{
+  "server": "linear",
+  "source": {
+    "repo": "jerhadf/linear-mcp-server",
+    "commit": "5e2cb621c52762618eb015b4a8d6bf884021b29e",
+    "path": "",
+    "spdx": "MIT",
+    "licence_file": "LICENSE",
+    "notice_file": null,
+    "capture_method": "runtime"
+  },
+  "job": "Linear issues",
+  "capture": {
+    "base_image": "node@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee",
+    "install": "npm ci\nnpx tsc",
+    "run": [
+      "node",
+      "build/index.js"
+    ],
+    "placeholder_env": [
+      "LINEAR_API_KEY"
+    ],
+    "network_while_running": "none",
+    "protocol_version_requested": "2025-06-18"
+  },
+  "initialize": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "prompts": {
+        "default": {
+          "name": "linear-server-prompt",
+          "description": "Instructions for using the Linear MCP server effectively",
+          "instructions": "This server provides access to Linear, a project management tool. Use it to manage issues, track work, and coordinate with teams.\n\nKey capabilities:\n- Create and update issues: Create new tickets or modify existing ones with titles, descriptions, priorities, and team assignments.\n- Search functionality: Find issues across the organization using flexible search queries with team and user filters.\n- Team coordination: Access team-specific issues and manage work distribution within teams.\n- Issue tracking: Add comments and track progress through status updates and assignments.\n- Organization overview: View team structures and user assignments across the organization.\n\nTool Usage:\n- linear_create_issue:\n  - use teamId from linear-organization: resource\n  - priority levels: 1=urgent, 2=high, 3=normal, 4=low\n  - status must match exact Linear workflow state names (e.g., \"In Progress\", \"Done\")\n\n- linear_update_issue:\n  - get issue IDs from search_issues or linear-issue:/// resources\n  - only include fields you want to change\n  - status changes must use valid state IDs from the team's workflow\n\n- linear_search_issues:\n  - combine multiple filters for precise results\n  - use labels array for multiple tag filtering\n  - query searches both title and description\n  - returns max 10 results by default\n\n- linear_get_user_issues:\n  - omit userId to get authenticated user's issues\n  - useful for workload analysis and sprint planning\n  - returns most recently updated issues first\n\n- linear_add_comment:\n  - supports full markdown formatting\n  - use displayIconUrl for bot/integration avatars\n  - createAsUser for custom comment attribution\n\nBest practices:\n- When creating issues:\n  - Write clear, actionable titles that describe the task well (e.g., \"Implement user authentication for mobile app\")\n  - Include concise but appropriately detailed descriptions in markdown format with context and acceptance criteria\n  - Set appropriate priority based on the context (1=critical to 4=nice-to-have)\n  - Always specify the correct team ID (default to the user's team if possible)\n\n- When searching:\n  - Use specific, targeted queries for better results (e.g., \"auth mobile app\" rather than just \"auth\")\n  - Apply relevant filters when asked or when you can infer the appropriate filters to narrow results\n\n- When adding comments:\n  - Use markdown formatting to improve readability and structure\n  - Keep content focused on the specific issue and relevant updates\n  - Include action items or next steps when appropriate\n\n- General best practices:\n  - Fetch organization data first to get valid team IDs\n  - Use search_issues to find issues for bulk operations\n  - Include markdown formatting in descriptions and comments\n\nResource patterns:\n- linear-issue:///{issueId} - Single issue details (e.g., linear-issue:///c2b318fb-95d2-4a81-9539-f3268f34af87)\n- linear-team:///{teamId}/issues - Team's issue list (e.g., linear-team:///OPS/issues)\n- linear-user:///{userId}/assigned - User assignments (e.g., linear-user:///USER-123/assigned)\n- linear-organization: - Organization for the current user\n- linear-viewer: - Current user context\n\nThe server uses the authenticated user's permissions for all operations."
+        }
+      },
+      "resources": {
+        "templates": true,
+        "read": true
+      },
+      "tools": {}
+    },
+    "serverInfo": {
+      "name": "linear-mcp-server",
+      "version": "1.0.0"
+    },
+    "instructions": null
+  },
+  "tools": [
+    {
+      "name": "linear_create_issue",
+      "description": "Creates a new Linear issue with specified details. Use this to create tickets for tasks, bugs, or feature requests. Returns the created issue's identifier and URL. Required fields are title and teamId, with optional description, priority (0-4, where 0 is no priority and 1 is urgent), and status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Issue title"
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Team ID"
+          },
+          "description": {
+            "type": "string",
+            "description": "Issue description"
+          },
+          "priority": {
+            "type": "number",
+            "description": "Priority (0-4)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Issue status"
+          }
+        },
+        "required": [
+          "title",
+          "teamId"
+        ]
+      },
+      "annotations": {}
+    },
+    {
+      "name": "linear_update_issue",
+      "description": "Updates an existing Linear issue's properties. Use this to modify issue details like title, description, priority, or status. Requires the issue ID and accepts any combination of updatable fields. Returns the updated issue's identifier and URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Issue ID"
+          },
+          "title": {
+            "type": "string",
+            "description": "New title"
+          },
+          "description": {
+            "type": "string",
+            "description": "New description"
+          },
+          "priority": {
+            "type": "number",
+            "description": "New priority (0-4)"
+          },
+          "status": {
+            "type": "string",
+            "description": "New status"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {}
+    },
+    {
+      "name": "linear_search_issues",
+      "description": "Searches Linear issues using flexible criteria. Supports filtering by any combination of: title/description text, team, status, assignee, labels, priority (1=urgent, 2=high, 3=normal, 4=low), and estimate. Returns up to 10 issues by default (configurable via limit).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Optional text to search in title and description"
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Filter by team ID"
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by status name (e.g., 'In Progress', 'Done')"
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "Filter by assignee's user ID"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by label names"
+          },
+          "priority": {
+            "type": "number",
+            "description": "Filter by priority (1=urgent, 2=high, 3=normal, 4=low)"
+          },
+          "estimate": {
+            "type": "number",
+            "description": "Filter by estimate points"
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived issues in results (default: false)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results to return (default: 10)"
+          }
+        }
+      },
+      "annotations": {}
+    },
+    {
+      "name": "linear_get_user_issues",
+      "description": "Retrieves issues assigned to a specific user or the authenticated user if no userId is provided. Returns issues sorted by last updated, including priority, status, and other metadata. Useful for finding a user's workload or tracking assigned tasks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "Optional user ID. If not provided, returns authenticated user's issues"
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived issues in results"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of issues to return (default: 50)"
+          }
+        }
+      },
+      "annotations": {}
+    },
+    {
+      "name": "linear_add_comment",
+      "description": "Adds a comment to an existing Linear issue. Supports markdown formatting in the comment body. Can optionally specify a custom user name and avatar for the comment. Returns the created comment's details including its URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "ID of the issue to comment on"
+          },
+          "body": {
+            "type": "string",
+            "description": "Comment text in markdown format"
+          },
+          "createAsUser": {
+            "type": "string",
+            "description": "Optional custom username to show for the comment"
+          },
+          "displayIconUrl": {
+            "type": "string",
+            "description": "Optional avatar URL for the comment"
+          }
+        },
+        "required": [
+          "issueId",
+          "body"
+        ]
+      },
+      "annotations": {}
+    }
+  ],
+  "excluded_tools": []
+}
