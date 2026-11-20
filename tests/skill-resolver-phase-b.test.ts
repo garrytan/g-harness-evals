@@ -254,6 +254,25 @@ describe('got-skill.json and the scrub', () => {
     expect(readFileSync(join(dir, 'logs', 'adapter.log'), 'utf8')).toBe('started\n[line withheld by runner/trial/skill-requests.ts: request text]\ndone\n');
     expect(KEEP).toContain('logs/skill-resolver.ndjson');
   });
+
+  test('scrubTrialDir keeps a kept JSON file parsing: a value quoting the request is withheld whole', () => {
+    const dir = scratch();
+    const flags = { schema: 'he-skill-flags/1', calls: [{ id: 'c1', input: { file_path: 'skills/accelerate/SKILL.md' }, result: 'Use this when you ' + TEXT }, { id: 'c2', result: 'unrelated output' }] };
+    writeFileSync(join(dir, 'skill-flags.json'), JSON.stringify(flags, null, 1) + '\n');
+    expect(scrubTrialDir(dir, [TEXT]).redacted_lines).toBe(1);
+    const kept = JSON.parse(readFileSync(join(dir, 'skill-flags.json'), 'utf8'));
+    expect(kept.calls.map((c: { result: string }) => c.result)).toEqual(['[line withheld by runner/trial/skill-requests.ts: request text]', 'unrelated output']);
+    expect(kept.calls[0].input.file_path).toBe('skills/accelerate/SKILL.md');
+  });
+
+  test('scrubTrialDir withholds a held-out request used as a tool-input key, and the file still parses', () => {
+    const dir = scratch();
+    writeFileSync(join(dir, 'skill-flags.json'), JSON.stringify({ calls: [{ id: 'c1', input: { [TEXT]: 1, ['Use this when you ' + TEXT]: 2, path: 'x' } }] }, null, 1) + '\n');
+    expect(scrubTrialDir(dir, [TEXT]).redacted_lines).toBe(2);
+    const body = readFileSync(join(dir, 'skill-flags.json'), 'utf8');
+    expect(body).not.toContain(TEXT);
+    expect(JSON.parse(body).calls[0].input).toEqual({ '[line withheld by runner/trial/skill-requests.ts: request text]#0': 1, '[line withheld by runner/trial/skill-requests.ts: request text]#1': 2, path: 'x' });
+  });
 });
 
 describe('block delivery: a pushed block is in a captured request, a shadow block is in none', () => {
@@ -528,7 +547,8 @@ describe('the runner on a skill-requests cell (serve entry, fixture adapter, fak
     expect(record.skill_request!.request_sha256).toBe(new Bun.CryptoHasher('sha256').update(TEXT).digest('hex'));
     expect(JSON.parse(readFileSync(record.paths.got_skill!, 'utf8')).catalog_opened).toEqual(['accelerate']);
     expect(JSON.parse(readFileSync(join(record.paths.dir, 'logs', 'ready'), 'utf8'))).toEqual({ adapter: 'phase-b-fixture', skill_arm: 'native', config: 'skills-native' });
-    expect(record.skill_request!.scrubbed.kept).toEqual(['got-skill.json', 'logs/adapter.log', 'logs/ready', 'logs/skill-resolver/status.ndjson', 'reconcile.json', 'usage.json']);
+    expect(record.skill_request!.scrubbed.kept).toEqual(['got-skill.json', 'logs/adapter.log', 'logs/ready', 'logs/skill-resolver/status.ndjson', 'reconcile.json', 'skill-flags.json', 'usage.json']);
+    expect(JSON.parse(readFileSync(join(record.paths.dir, 'skill-flags.json'), 'utf8'))).toMatchObject({ schema: 'he-skill-flags/1', flags: [], calls: [] });
     const status = readFileSync(join(record.paths.dir, 'logs', 'skill-resolver', 'status.ndjson'), 'utf8').trim().split('\n');
     expect(JSON.parse(status[0]!).suggestions).toEqual(['accelerate']);
     expect(status[1]).toContain('line withheld');

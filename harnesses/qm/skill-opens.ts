@@ -67,7 +67,7 @@ const READ_ERROR = /No such file or directory|Permission denied|Is a directory/;
 const SKILL_MD = /([\w.-]+)\/SKILL\.md\b/g;
 const NOT_FOUND = /^\s*(?:\[no such (?:skill )?file|Validation failed for tool)/;
 
-function opensOf(c: RawCall): SkillOpen[] {
+function opensOf(c: RawCall, followCd?: boolean): SkillOpen[] {
   const answered = c.resultText !== null || c.found !== null;
   const ok = answered && !c.isError && c.found !== false && !NOT_FOUND.test(c.resultText ?? '');
   const open = (skill: string, via: Via, path: string | null, found: boolean): SkillOpen => ({ skill, via, source: c.source, call_id: c.id, path, found });
@@ -78,15 +78,16 @@ function opensOf(c: RawCall): SkillOpen[] {
   }
   if (c.tool === 'execute') {
     const errors = (c.resultText ?? '').split('\n').filter((l) => READ_ERROR.test(l));
-    const names = new Set(shellReadArgs(str(c.args.command)).flatMap((w) => [...w.matchAll(SKILL_MD)].map((m) => m[1]!)));
+    const names = new Set(shellReadArgs(str(c.args.command), { followCd }).flatMap((w) => [...w.matchAll(SKILL_MD)].map((m) => m[1]!)));
     return [...names].map((n) => open(n, 'execute', null, ok && c.code === 0 && !errors.some((l) => [...l.matchAll(SKILL_MD)].some((m) => m[1] === n))));
   }
   return [];
 }
 
 /** The catalog skills a trial opened. requests: the captured request bodies of the trial, in order (each later request
- *  repeats the history, so calls are kept once per call id); session: QM's stored session. Either may be omitted. */
-export function skillOpens(o: { catalog: Iterable<string>; requests?: Array<Record<string, unknown>>; session?: unknown }): SkillOpens {
+ *  repeats the history, so calls are kept once per call id); session: QM's stored session. Either may be omitted.
+ *  followCd: false reads execute commands without joining a relative path to an earlier cd (scripts/skills-at-scale/flags.ts). */
+export function skillOpens(o: { catalog: Iterable<string>; requests?: Array<Record<string, unknown>>; session?: unknown; followCd?: boolean }): SkillOpens {
   const catalog = new Set(o.catalog);
   const seen = new Map<string, RawCall>();
   for (const body of o.requests ?? []) for (const c of requestCalls(body)) {
@@ -95,7 +96,7 @@ export function skillOpens(o: { catalog: Iterable<string>; requests?: Array<Reco
     if (!prev || (prev.resultText === null && c.resultText !== null)) seen.set(key, c);
   }
   const calls = [...seen.values(), ...(o.session === undefined ? [] : traceCalls(o.session))];
-  const all = calls.flatMap(opensOf);
+  const all = calls.flatMap((c) => opensOf(c, o.followCd));
   const opens = all.filter((x) => x.found && catalog.has(x.skill));
   return {
     opened: [...new Set(opens.map((x) => x.skill))].sort(),

@@ -11,12 +11,13 @@
 // Opus pass that sees both answers and the union of their candidates and gives the final label. Set R runs with
 // --judges opus only (decision 1A: Anthropic only), with --catalog naming a catalog.jsonl of {name, description} rows (no
 // bodies, so pass 2 shows descriptions) and rows carrying text and prev_user_text, which the judge sees as context. Output: <out>/labels.jsonl and <out>/labels-summary.json (counts,
-// agreement, spend). Calls go through the metering proxy under a lease (scripts/v03/llm.ts); responses are cached.
+// agreement, spend). Calls go through the metering proxy under a lease (scripts/v03/llm.ts), or an injected transport in
+// keyless tests; responses are cached.
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createLlm, LlmError, type Llm, type ModelId } from '../v03/llm.ts';
+import { createLlm, LlmError, type Llm, type ModelId, type Transport } from '../v03/llm.ts';
 import type { Manifest } from './build-catalog.ts';
 
 type Row = { id: string; request?: string; text?: string; prev_user_text?: string | null; half?: string };
@@ -65,7 +66,7 @@ async function reconcile(llm: Llm, bodies: (n: string) => string, req: string, a
   return { no_skill_needed: r.no_skill_needed === true || !acceptable.length, acceptable: r.no_skill_needed === true ? [] : acceptable.sort(), candidates: pool, reason: String(r.reason ?? '').slice(0, 300) };
 }
 
-export async function label(o: { catalog: string; set: string; out: string; judges: string[]; half: string; leaseUsd: number; runId: string }) {
+export async function label(o: { catalog: string; set: string; out: string; judges: string[]; half: string; leaseUsd: number; runId: string; transport?: Transport }) {
   const jsonl = o.catalog.endsWith('.jsonl');
   const m = jsonl
     ? { catalog_hash: createHash('sha256').update(readFileSync(o.catalog)).digest('hex'), skills: readFileSync(o.catalog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { name: string; description: string }) }
@@ -77,7 +78,7 @@ export async function label(o: { catalog: string; set: string; out: string; judg
   const text = (r: Row) => (r.prev_user_text ? 'Previous message from the same user: ' + r.prev_user_text + '\n\nCurrent message: ' : '') + (r.request ?? r.text ?? '');
   const rows = readFileSync(o.set, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Row).filter((r) => o.half === 'all' || r.half === o.half);
   mkdirSync(o.out, { recursive: true });
-  const llm = await createLlm({ cacheDir: join(o.out, 'cache'), proxy: { dir: join(o.out, 'proxy', o.runId), leaseUsd: o.leaseUsd, runId: o.runId } });
+  const llm = await createLlm({ cacheDir: join(o.out, 'cache'), ...(o.transport ? { transport: o.transport } : { proxy: { dir: join(o.out, 'proxy', o.runId), leaseUsd: o.leaseUsd, runId: o.runId } }) });
   const out: any[] = [];
   const errors: { id: string; error: string }[] = [];
   let next = 0;
@@ -85,8 +86,7 @@ export async function label(o: { catalog: string; set: string; out: string; judg
     while (next < rows.length) {
       const r = rows[next++]!;
       try {
-        const v: Record<string, Verdict> = {};
-        for (const j of o.judges) v[j] = await judge(llm, MODELS[j]!, listing, names, bodies, text(r));
+        const v: Record<string, Verdict> = Object.fromEntries(await Promise.all(o.judges.map(async (j) => [j, await judge(llm, MODELS[j]!, listing, names, bodies, text(r))] as const)));
         let final = v[o.judges[0]!]!; let agreement = null; let reconciled = false;
         if (o.judges.length === 2) {
           const [a, b] = [v[o.judges[0]!]!, v[o.judges[1]!]!];

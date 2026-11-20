@@ -43,7 +43,7 @@ export const REQUEST_HALVES = ['dev', 'test', 'all'] as const;
 export const PHASE_B_ACTOR = 'dana-okafor';
 
 /** What stays in a Phase B trial directory: the runner's own files and the resolver's status lines (analyze.ts reads them). */
-export const KEEP = ['usage.json', 'reconcile.json', 'got-skill.json', 'result.json', 'logs/ready', 'logs/adapter.log',
+export const KEEP = ['usage.json', 'reconcile.json', 'got-skill.json', 'skill-flags.json', 'result.json', 'logs/ready', 'logs/adapter.log',
   'logs/skill-resolver/status.ndjson', 'logs/skill-resolver.ndjson', 'logs/skill-resolver.infra.json'];
 
 /** The harness's own trace got-skill.ts reads, per harness: the event log of every turn under the trial directory, written by the
@@ -154,10 +154,10 @@ const gstackFile = (t: string) => t.includes('/') && t.split('/').some((seg) => 
 const CATALOG_COPY = [/^\/opt\/skill-resolver\//, /^\/opt\/catalog-layer\/skills\//, /^\$\{?HE_SKILL_KIT_DIR\}?\//, /^\/workspace\/skills\//, /^\/(?:root\/)?workspace\/\.agent-skills\//,
   /^(?:\/harness-state|~|\$\{?(?:HE_SESSION_STATE_DIR|HOME)\}?)\/(?:claude|codex|hermes|pi)\/skills\//, /^\$\{?(?:CODEX_HOME|HERMES_HOME|CLAUDE_CONFIG_DIR|PI_CODING_AGENT_DIR)\}?\/skills\//];
 /** What a QM tool call reads as files: a files read's path, or the reader arguments of an execute command. */
-const qmReadArgs = (c: { name: string; input: unknown }): string[] => {
+export const qmReadArgs = (c: { name: string; input: unknown }, o: { followCd?: boolean } = {}): string[] => {
   const i = (c.input ?? {}) as Record<string, unknown>;
   if (c.name === 'files' && i.action === 'read' && typeof i.path === 'string') return [i.path];
-  return c.name === 'execute' && typeof i.command === 'string' ? shellReadArgs(i.command) : [];
+  return c.name === 'execute' && typeof i.command === 'string' ? shellReadArgs(i.command, o) : [];
 };
 const READ_HARNESSES = ['openclaw', 'claude-code', 'codex', 'hermes', 'pi'];
 /** A result line saying a file is missing or could not be opened (cat, the harnesses' file-read tools, Node's ENOENT and
@@ -177,12 +177,13 @@ const MISSING = /no such file|ENOENT|does not exist|file not found|permission de
  *  calls come from the request bodies the proxy held and, on Claude Code and Codex, the harness's own trace. A call counts once
  *  however many such paths it reads. A relative path is taken from /workspace, the harnesses' working directory, and a
  *  process-mode path under the trial directory as the container path it stands for (workspace/ as /workspace, state/ as
- *  /harness-state). requests includes the body the request cap refused, so a final tool call is seen on every harness. */
-export function gstackReads(harness: string, requests: unknown[], trialDir: string): { gstack_reads: number; paths: string[]; contaminated: boolean } {
+ *  /harness-state). requests includes the body the request cap refused, so a final tool call is seen on every harness.
+ *  followCd: false counts relative reads as written, without the earlier cd (scripts/skills-at-scale/flags.ts). */
+export function gstackReads(harness: string, requests: unknown[], trialDir: string, o: { followCd?: boolean } = {}): { gstack_reads: number; paths: string[]; contaminated: boolean } {
   const traces = readTraces(harness, trialDir);
   const root = resolve(trialDir) + '/';
   const inContainer = (p: string) => !p.startsWith(root) ? p : p.slice(root.length).replace(/^workspace\//, '/workspace/').replace(/^state\//, '/harness-state/');
-  const reads = (c: ToolCall) => harness === 'qm' ? qmReadArgs(c) : READ_HARNESSES.includes(harness) ? readArgs(harness as Harness, c) : [];
+  const reads = (c: ToolCall) => harness === 'qm' ? qmReadArgs(c, o) : READ_HARNESSES.includes(harness) ? readArgs(harness as Harness, c, o) : [];
   const paths = new Set<string>();
   let n = 0;
   for (const c of toolCalls(requests, traces)) {
@@ -231,6 +232,8 @@ const shingles = (s: string, k = 8) => { const w = words(s); const out = new Set
 
 /** Withholds every line of body that holds one of texts (exact or JSON-escaped, 8+ characters) or shares an 8-word shingle
  *  with one. Returns the new body and how many lines were withheld. */
+const WITHHELD = '[line withheld by runner/trial/skill-requests.ts: request text]';
+
 export function redactRequest(body: string, texts: string[]): { body: string; lines: number } {
   const needles = texts.flatMap((t) => [t, JSON.stringify(t).slice(1, -1), ...t.split('\n')]).map((s) => s.trim()).filter((s) => s.length >= 8);
   const grams = new Set(texts.flatMap((t) => [...shingles(t)]));
@@ -239,9 +242,21 @@ export function redactRequest(body: string, texts: string[]): { body: string; li
     const hit = needles.some((s) => line.includes(s)) || (grams.size > 0 && [...shingles(line)].some((g) => grams.has(g)));
     if (!hit) return line;
     n++;
-    return '[line withheld by runner/trial/skill-requests.ts: request text]';
+    return WITHHELD;
   });
   return { body: out.join('\n'), lines: n };
+}
+
+/** redactRequest for a kept .json file that still parses afterwards (skill-flags.json holds tool inputs and results): each string
+ *  value holding request text is withheld whole, and a key holding it becomes WITHHELD#<i>. A body that does not parse is redacted
+ *  line by line. */
+function redactJson(body: string, texts: string[]): { body: string; lines: number } {
+  let json: unknown;
+  try { json = JSON.parse(body); } catch { return redactRequest(body, texts); }
+  let n = 0;
+  const walk = (v: unknown): unknown => typeof v === 'string' ? (redactRequest(v, texts).lines ? (n++, WITHHELD) : v)
+    : Array.isArray(v) ? v.map(walk) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [redactRequest(k, texts).lines ? WITHHELD + '#' + n++ : k, walk(x)])) : v;
+  return { body: JSON.stringify(walk(json), null, 1) + '\n', lines: n };
 }
 
 /** Removes everything in the trial directory but KEEP and redacts what stays. */
@@ -252,7 +267,8 @@ export function scrubTrialDir(trialDir: string, texts: string[]): { kept: string
   for (const f of walk(trialDir)) {
     const rel = relative(trialDir, f).split(sep).join('/');
     if (!KEEP.includes(rel)) { try { rmSync(f, { force: true }); } catch { stuck.push(rel); } removed++; continue; }
-    const r = redactRequest(readFileSync(f, 'utf8'), texts);
+    const body = readFileSync(f, 'utf8');
+    const r = rel.endsWith('.json') ? redactJson(body, texts) : redactRequest(body, texts);
     if (r.lines) writeFileSync(f, r.body);
     redacted += r.lines;
     kept.push(rel);

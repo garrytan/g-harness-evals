@@ -41,8 +41,9 @@ const LEAD = new Set(['env', 'sudo', 'command', 'time', 'nice', 'exec']);
 
 /** The arguments a shell command reads as files: each command segment (split at ; & | newlines, $( and backticks, with a
  *  bash/sh -c wrapper and its quotes taken off) whose program is a reader gives its arguments that are not a redirect target
- *  (> or >>), and, for sed, only without -i. A relative argument after a cd in an earlier segment is joined to that folder. */
-export function shellReadArgs(command: string): string[] {
+ *  (> or >>), and, for sed, only without -i. A relative argument after a cd in an earlier segment is joined to that folder;
+ *  followCd: false leaves it as written (scripts/skills-at-scale/flags.ts compares the two). */
+export function shellReadArgs(command: string, o: { followCd?: boolean } = {}): string[] {
   const out: string[] = [];
   let cwd: string | null = null;
   const absolute = (w: string) => /^[/~$]/.test(w);
@@ -51,7 +52,7 @@ export function shellReadArgs(command: string): string[] {
     while (words.length && (LEAD.has(words[0]!) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!))) words.shift();
     while (words.length > 1 && /^(?:ba|z|da)?sh$/.test(words[0]!.split('/').pop()!) && /^-[a-z]*c[a-z]*$/.test(words[1]!)) words.splice(0, 2);
     const prog = words[0]?.split('/').pop();
-    if (prog === 'cd' && words[1]) { cwd = absolute(words[1]) || !cwd ? words[1] : posix.join(cwd, words[1]); continue; }
+    if (prog === 'cd' && words[1]) { if (o.followCd === false) continue; cwd = absolute(words[1]) || !cwd ? words[1] : posix.join(cwd, words[1]); continue; }
     if (!prog || !READERS.has(prog) || (prog === 'sed' && words.some((w) => /^-[a-zA-Z]*i/.test(w) || w.startsWith('--in-place')))) continue;
     words.slice(1).forEach((w, i, rest) => {
       if (/^\d*>>?/.test(w) || /^\d*>>?$/.test(rest[i - 1] ?? '')) return;
@@ -158,14 +159,14 @@ export function toolCalls(requests: unknown[], traces: string[][] = []): ToolCal
 
 /** What a tool call reads as files, by the read definition above: every string of the harness's file-read tool's input, and
  *  the reader arguments of its shell tool's command (Codex code mode: of each string in exec's JavaScript). [] for any other call. */
-export function readArgs(harness: Harness, c: ToolCall): string[] {
+export function readArgs(harness: Harness, c: ToolCall, o: { followCd?: boolean } = {}): string[] {
   const read = READ_TOOL[harness].includes(c.name), shell = SHELL_TOOL[harness].includes(c.name);
   if (!read && !shell) return [];
   const texts = shell && harness === 'codex' && c.name === 'exec' && typeof c.input === 'string' ? codeStrings(c.input) : strings(c.input);
-  return read ? texts : texts.flatMap(shellReadArgs);
+  return read ? texts : texts.flatMap((t) => shellReadArgs(t, o));
 }
 
-export function gotSkill(opts: { harness: Harness; catalog: string[]; requests: unknown[]; traces?: string[][] }): GotSkill {
+export function gotSkill(opts: { harness: Harness; catalog: string[]; requests: unknown[]; traces?: string[][]; followCd?: boolean }): GotSkill {
   const catalog = new Set(opts.catalog);
   const calls = toolCalls(opts.requests, opts.traces);
   const users = new Set(opts.requests.flatMap(userTexts));
@@ -179,7 +180,7 @@ export function gotSkill(opts: { harness: Harness; catalog: string[]; requests: 
       if (sel) { const skill = sel.replace(/^\//, '').split(/\s/)[0]!.split('/').pop()!; opened.push({ skill, via: c.name, ok, call_id: c.id, source: c.source, catalog: catalog.has(skill) }); }
       continue;
     }
-    for (const s of readArgs(opts.harness, c)) {
+    for (const s of readArgs(opts.harness, c, { followCd: opts.followCd })) {
       for (const m of s.matchAll(SKILL_MD)) {
         const skill = m[1]!;
         if (skill === '.system' || skill === 'skills') continue;

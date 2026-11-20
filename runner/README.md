@@ -70,6 +70,7 @@ results/<run-id>/
     turns/                   turn-NNNN.request.json and .response.json
     snapshot.json            GET /admin/snapshot after the fence
     usage.json, reconcile.json   the proxy meter for trial-token:<id> (field meter_id) and its check against the usage lines
+    got-skill.json, skill-flags.json   skill-requests cells only: the skills the model got, and the tool calls flagged for a hand read (scripts/skills-at-scale/flags.ts); kept .json files are redacted value by value, so they still parse
     grade.json               GradeResult
     workspace/, state/, logs/    the harness's mounts; logs/ready, adapter.log, docker.log or harness.std*.log
     gbrain/                  gbrain cells only: token (the sidecar's bearer token, mode 0600), sidecar.log, serve.log, docker.log; under member scope or member-sources also tokens.json, under scope sources,
@@ -159,6 +160,10 @@ A `gbrain-install` cell asks a freshly set-up harness to install gbrain, then ch
 - **Tests.** `tests/gbrain-install-runner.test.ts` runs an oracle, a nop and a harness-memory decoy through the runner with a process-mode fixture adapter.
 
 ## Changelog
+
+### 2026-11-19: skill-requests trials keep skill-flags.json
+
+The trial directory listing names `got-skill.json` and `skill-flags.json`, the two JSON files a skill-requests trial keeps through the request scrub. `skill-flags.json` holds the tool calls whose working-directory handling could be misread, so two readers can settle them by hand, and every kept `.json` file is redacted value by value, so a withheld request quote leaves it parsing. Why: the 2026-11-08 entry's list of kept files left out `skill-flags.json`, which the skills-at-scale build tools add.
 
 ### 2026-11-17: the 2026-11-17 price table (internal-task)
 

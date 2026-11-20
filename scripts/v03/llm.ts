@@ -87,26 +87,30 @@ async function startProxy(o: ProxyOptions): Promise<Proxy> {
   return { base, token, child, slot, key };
 }
 
+/** The provider request body for one completion, the cachePrefix marked cacheable. The batch lane
+ *  (scripts/skills-at-scale/batch.ts) sends the same bodies. */
+export function requestBody(req: CompleteRequest): { provider: 'openai' | 'anthropic'; path: string; body: Record<string, unknown> } {
+  const [provider, model] = req.model.split(':') as ['openai' | 'anthropic', string];
+  const prefix = req.cachePrefix && req.prompt.startsWith(req.cachePrefix) ? req.cachePrefix : '';
+  if (provider === 'openai') return { provider, path: '/v1/chat/completions', body: { model, max_completion_tokens: req.maxTokens, reasoning_effort: 'low',
+    ...(prefix ? { prompt_cache_key: createHash('sha256').update(JSON.stringify([model, req.system, prefix])).digest('hex').slice(0, 32), prompt_cache_options: { mode: 'explicit' } } : {}),
+    messages: [{ role: 'system', content: req.system }, { role: 'user', content: prefix
+      ? [{ type: 'text', text: prefix, prompt_cache_breakpoint: { mode: 'explicit' } }, { type: 'text', text: req.prompt.slice(prefix.length) }]
+      : req.prompt }] } };
+  const user = prefix
+    ? [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral' } }, { type: 'text', text: req.prompt.slice(prefix.length) }]
+    : req.prompt;
+  return { provider, path: '/v1/messages', body: { model, max_tokens: req.maxTokens, system: req.system, messages: [{ role: 'user', content: user }] } };
+}
+
 function proxyTransport(p: Proxy): Transport {
   return async (req) => {
-    const [provider, model] = req.model.split(':') as ['openai' | 'anthropic', string];
-    const prefix = req.cachePrefix && req.prompt.startsWith(req.cachePrefix) ? req.cachePrefix : '';
-    const user = prefix
-      ? [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral' } }, { type: 'text', text: req.prompt.slice(prefix.length) }]
-      : req.prompt;
-    const res = provider === 'openai'
-      ? await fetch(`${p.base}/${p.slot}/openai/v1/chat/completions`, {
-        method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer unauthenticated' },
-        body: JSON.stringify({ model, max_completion_tokens: req.maxTokens, reasoning_effort: 'low',
-          ...(prefix ? { prompt_cache_key: createHash('sha256').update(JSON.stringify([model, req.system, prefix])).digest('hex').slice(0, 32), prompt_cache_options: { mode: 'explicit' } } : {}),
-          messages: [{ role: 'system', content: req.system }, { role: 'user', content: prefix
-            ? [{ type: 'text', text: prefix, prompt_cache_breakpoint: { mode: 'explicit' } }, { type: 'text', text: req.prompt.slice(prefix.length) }]
-            : req.prompt }] }),
-      })
-      : await fetch(`${p.base}/${p.slot}/anthropic/v1/messages`, {
-        method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'unauthenticated', 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: req.maxTokens, system: req.system, messages: [{ role: 'user', content: user }] }),
-      });
+    const { provider, path, body } = requestBody(req);
+    const res = await fetch(`${p.base}/${p.slot}/${provider}${path}`, {
+      method: 'POST',
+      headers: provider === 'openai' ? { 'content-type': 'application/json', authorization: 'Bearer unauthenticated' } : { 'content-type': 'application/json', 'x-api-key': 'unauthenticated', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify(body),
+    });
     if (res.status === 402) throw new LlmError('E_BUDGET');
     if (!res.ok) throw new LlmError(`E_HTTP_${res.status}`);
     const j = await res.json() as any;

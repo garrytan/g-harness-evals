@@ -31,6 +31,7 @@ import { type CaptureConfig, captureDnsGapLine, captureLine, captureSummary } fr
 import { type GradeFn, type TrialContext, appendRecord, loadGrader, runTrial, trialTermination } from './trial.ts';
 import { writeAtomic } from './harness.ts';
 import { SET_T_SLICE, adapterWorkspaceEntries, gradeSetTWorkspace, qmSandboxImage, setTEnv, setTTaskDir, skillArmImage, writeRunTrialTask, writeServeSetTTask } from './set-t.ts';
+import { FLAG_FILE, flagTrial } from '../../scripts/skills-at-scale/flags.ts';
 import { SKILL_REQUESTS_SLICE, checkBlockDelivery, gotSkillRecord, gstackReads, insideDir, readRequestSet, redactRequest, scrubTrialDir, sha256, writeRequestTask, writeRunRequestTask } from './skill-requests.ts';
 import { readCatalogNames } from '../../scripts/skill-resolver/got-skill.ts';
 import { REQUEST_CAP, type SlotLimits } from '../proxy/metering-proxy.ts';
@@ -436,6 +437,9 @@ async function runSkillRequestTrial(ctx: TrialContext): Promise<TrialRecord> {
     const cleanArm = gstackReads(cell.harness, [...requests, ...refused], ctx.trialDir);
     const gotPath = join(ctx.trialDir, 'got-skill.json');
     writeAtomic(gotPath, JSON.stringify(got.file, null, 1) + '\n');
+    // The trials #491's cd handling could get wrong are flagged for settling by hand (scripts/skills-at-scale/flags.ts).
+    const flags = flagTrial({ harness: cell.harness, catalog, requests: [...requests, ...refused], trialDir: ctx.trialDir });
+    writeAtomic(join(ctx.trialDir, FLAG_FILE), JSON.stringify(flags, null, 1) + '\n');
     // The usage log is append-only across a resume: only this attempt's lines count, as in trialTermination.
     const lines = ctx.proxy ? ctx.proxy.usageLines(key).filter((l) => l.at === undefined || l.at >= record.started_at) : [];
     const capped = lines.some((l) => l.outcome === 'refused' && (l.reason ?? '').startsWith(REQUEST_CAP));
