@@ -312,7 +312,19 @@
     "scripts/skill-resolver/step0/qm/qm-listing.ts": [
       "tests/qm-skill-arms-docker.test.ts"
     ],
-    "scripts/skill-resolver/step0/qm/qm-parse-check.mjs": []
+    "scripts/skill-resolver/step0/qm/qm-parse-check.mjs": [],
+    "scripts/repo-tasks/rules-fix/contract_check.py": [
+      "tests/rules-fix-build.test.ts"
+    ],
+    "scripts/repo-tasks/rules-fix/sources.json": [
+      "tests/rules-fix-build.test.ts"
+    ],
+    "scripts/repo-tasks/rules-fix/locks/*.lock": [
+      "tests/rules-fix-build.test.ts"
+    ],
+    "scripts/repo-tasks/rules-fix/upstream/**": [
+      "tests/rules-fix-build.test.ts"
+    ]
   },
   "sealed": {
     "paths": [
@@ -833,6 +845,57 @@
       ],
       "pattern": "_mock_session_per_url(?=\\()",
       "reason": "fable-diagnosis oracle check: blocked_host_lines quotes a task's own test source line (session = _mock_session_per_url({...})), a Python call assigned to a variable named session, not a credential"
+    },
+    {
+      "finding": "creds.basic_auth_url",
+      "paths": [
+        "tasks/repo/rules-fix-v1/dev/*/environment/work.tar",
+        "tasks/repo/rules-fix-v1/dev/*/verifier/**"
+      ],
+      "pattern": "http:\\/\\/(?:(?:some)?user(?:id|\\.?name)?:(?:some)?p(?:a|%40)ss(?:\\.?word)?|wiki:pedia|beyonc(?:é|%C3%A9|\\\\xe9):b(?:%C3%A9|\\\\xe9)b|-\\.~_!\\S{26})@(?:(?:example|tmp|hatnote)\\.com|example|wikipedia\\.org|1(?:0\\.0\\.10\\.1|[19]2\\.168\\.10\\.10|27\\.0\\.0\\.1))(?!\\.)",
+      "reason": "URL-parser test data in the vendored MIT and BSD upstream libraries the rules-fix-v1 tasks are built from (boltons, marshmallow, validators): placeholder logins (user:pass, userid:password, username:password, wiki:pedia and similar, plus one 31-character login built from the URL character set), each listed by its exact shape, on example.com, tmp.com, hatnote.com, wikipedia.org and fixed test IPs, with no host suffix allowed; no real host or credential"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/repo/rules-fix-v1/dev/*/environment/work.tar",
+        "tasks/repo/rules-fix-v1/dev/*/verifier/**",
+        "tasks/repo/rules-fix-v1/dev/*/environment/watch.py",
+        "scripts/repo-tasks/rules-fix/template/watch.py"
+      ],
+      "pattern": "(?:\\((?:closer\\.marker|id\\(state\\.src\\)|relative|st\\.st_mtime_ns,\\ st\\.st_size\\)|unquote\\(ud\\['password'\\]\\)|weakref\\.ref\\(self\\.loader\\))|Callable\\[\\[_T\\]|Optional\\[bool\\]|TOKEN_BLOCK_(?:BEGIN|END)|\\[func_name\\]|_PARSE_TD_KW_MAP\\[unit\\])",
+      "reason": "Python source in the vendored MIT and BSD upstream libraries the rules-fix-v1 tasks are built from (boltons, cachetools, jinja, marshmallow, mistune, more-itertools, rich, sqlparse, validators): assignments to names such as key, token or password whose values are code expressions (Callable[[_T], _U], p.tokens[0], self.stream.current), exact values; and the rules-fix task edit watcher (template/watch.py and its copy in each task), which keys a file by (st.st_mtime_ns, st.st_size); not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/repo/rules-fix-v1/dev/*/environment/work.tar",
+        "tasks/repo/rules-fix-v1/dev/*/verifier/**",
+        "tasks/repo/rules-fix-v1/dev/*/environment/watch.py",
+        "scripts/repo-tasks/rules-fix/template/watch.py"
+      ],
+      "pattern": "(?:c(?:achetools\\.keys\\.typedkey|ontextvars\\.Token)|dest\\.password|field_(?:name|obj\\.(?:attribute|data_key))|groups\\[-1\\]|loaders\\.ModuleLoader\\.get_template_key|operators\\[value_str\\]|p(?:\\.tokens|rivate(?=[,) ]|$))|self\\.(?:end|prefix|stream\\.current))",
+      "reason": "Python source in the vendored MIT and BSD upstream libraries the rules-fix-v1 tasks are built from (boltons, cachetools, jinja, marshmallow, mistune, more-itertools, rich, sqlparse, validators): assignments to names such as key, token or password whose values are code expressions (Callable[[_T], _U], p.tokens[0], self.stream.current), exact values; and the rules-fix task edit watcher (template/watch.py and its copy in each task), which keys a file by (st.st_mtime_ns, st.st_size); not credentials"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "tasks/repo/rules-fix-v1/dev/*/environment/work.tar",
+        "tasks/repo/rules-fix-v1/dev/*/verifier/**",
+        "tasks/repo/rules-fix-v1/dev/*/environment/watch.py",
+        "scripts/repo-tasks/rules-fix/template/watch.py"
+      ],
+      "pattern": "(?:s(?:elf\\.(?:stream\\.expect|tokens)|ort_key|ql\\.Token|t(?:ate\\.tokens|ring\\.ascii_letters))|token(?:\\[:-1\\]|s\\.Keyword)|val(?:1&key=val2&utm_source=rtd&key=val3|ue(?:\\[0\\]|_str)))",
+      "reason": "Python source in the vendored MIT and BSD upstream libraries the rules-fix-v1 tasks are built from (boltons, cachetools, jinja, marshmallow, mistune, more-itertools, rich, sqlparse, validators): assignments to names such as key, token or password whose values are code expressions (Callable[[_T], _U], p.tokens[0], self.stream.current), exact values; and the rules-fix task edit watcher (template/watch.py and its copy in each task), which keys a file by (st.st_mtime_ns, st.st_size); not credentials"
+    },
+    {
+      "finding": "pii.email",
+      "paths": [
+        "scripts/rules-at-scale/corpus/LICENSES/*.txt",
+        "scripts/rules-at-scale/corpus/NOTICES.md"
+      ],
+      "pattern": "(?:e(?:ay@cryptsoft\\.com|ric\\.zltan@gmail\\.com)|openssl-core@openssl\\.org|t(?:jh@cryptsoft\\.com|riggerdotdev@trigger\\.dev))",
+      "reason": "author and project addresses quoted verbatim in the upstream licence texts and notices of the rules-at-scale filler corpus (OpenSSL, SSLeay and others), exact values; public licence text, not personal data we collected"
     },
     {
       "finding": "env.kv",
