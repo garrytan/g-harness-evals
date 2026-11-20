@@ -1,11 +1,11 @@
 /**
- * Replication of a past held-out run (internal-task): plan chosen cells of a registered experiment again, under a new run id,
- * without opening a held-out set.
+ * Replication of a past run (internal-task): plan chosen cells of a registered experiment again, under a new run id, without
+ * opening a held-out set.
  *
  *   bun runner/run.ts plan|dry-run --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id> [--out <dir>]
  *
- * The plan starts from the run's registered prereg.json (registeredHeldout, docs/benchmarks/preregistrations.json and
- * .d/), whose bytes must be the ones committed at HEAD. It keeps only the named cells, sets their repetitions to --reps
+ * The plan starts from the run's registered prereg.json (registeredRuns, docs/benchmarks/preregistrations.json and
+ * .d/), whose bytes must be the ones committed at HEAD. A run with only dev cells plans the same way, with no set check. It keeps only the named cells, sets their repetitions to --reps
  * and the run id to --run-id, and the manifest records replication_of. A replication is no opening: it writes no ledger
  * row and changes nothing under tasks/, so it is accepted only on a set whose content is already public. Every held-out set
  * the kept cells run must be out of sealed custody, spent or retired in its openings ledger, plaintext in the tree (its
@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto';
 import { join, relative } from 'node:path';
 import { RunnerError } from '../errors.ts';
 import { loadManifest as loadRegistry } from '../prereg/prereg.ts';
-import { cellProblem, heldoutSetsOf, registeredHeldout } from './openings.ts';
+import { cellProblem, heldoutSetsOf, registeredRuns } from './openings.ts';
 import { heldoutSet, isSealed, liveSharers, manifestProblems, openingsLedger, readManifest } from '../../scripts/seal-heldout.ts';
 
 /** A run id: lowercase letters and digits in words joined by single dashes, the shape every registered experiment id has. */
@@ -70,8 +70,8 @@ export function planReplication<P extends ReplicablePrereg>(o: { root: string; o
   if (o.runId === o.of) throw new RunnerError('HE-REPL-001', `--run-id ${o.runId} is the run it replicates; fix: give the replication a new run id`);
   if (loadRegistry(o.root).some((e) => e.id === o.runId)) throw new RunnerError('HE-REPL-001', `--run-id ${o.runId} is a registered experiment (docs/benchmarks/preregistrations.json or preregistrations.d/); fix: give the replication a run id no experiment uses`);
 
-  const reg = registeredHeldout(o.root).find((r) => r.id === o.of);
-  if (!reg) throw new RunnerError('HE-REPL-002', `run ${o.of} is not a registered experiment with held-out cells (docs/benchmarks/preregistrations.json or preregistrations.d/); fix: name the run id of a registered held-out run`);
+  const reg = registeredRuns(o.root).find((r) => r.id === o.of);
+  if (!reg) throw new RunnerError('HE-REPL-002', `run ${o.of} is not a registered experiment with a prereg.json beside its preregistration (docs/benchmarks/preregistrations.json or preregistrations.d/); fix: name the run id of a registered run`);
   let committed: string;
   try {
     committed = execFileSync('git', ['show', `HEAD:${reg.prereg_json}`], { cwd: o.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });

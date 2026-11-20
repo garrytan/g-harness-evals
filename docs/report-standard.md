@@ -14,7 +14,7 @@ Every report rests on these rules. They moved here from the README on 2026-11-08
 - **A claim check before results publish.** A reviewer traces every number and takeaway in a report to its receipt before the report merges. The [reports index](reports-index.md) shows which reports have one.
 - **A grader check before results publish.** A model from another family reads up to 10 failed trials per arm and says whether each failure is real, a grader mistake or a broken task. Too many of the last two in one arm and the results don't publish until a person has reread them ([grader-audit.md](grader-audit.md)). This applies to runs dated from November 12, 2026.
 - **A cross-family judge.** Where a run scores answers with a model, the judge comes from a different model family than the model under test, and it must agree with labelled examples before its scores count. This applies to runs preregistered from November 8, 2026.
-- **Recheckable without a key.** `bun run verify` rebuilds every published run's analysis files from the receipts in the repository and fails if any value differs; CI runs it on every pull request ([verify.md](verify.md)). Each recent report also ends with a "Reproduce and inspect" section with the commands for that run ([CONTRIBUTING.md](../CONTRIBUTING.md#re-read-a-runs-receipts)). A tool for rerunning one cell with your own key is described in [replicate.md](replicate.md), but no published result ships the trial bundle it needs yet.
+- **Recheckable without a key.** `bun run verify` rebuilds every published run's analysis files from the receipts in the repository and fails if any value differs; CI runs it on every pull request ([verify.md](verify.md)). Each recent report also ends with a "Reproduce and inspect" section with the commands for that run ([CONTRIBUTING.md](../CONTRIBUTING.md#re-read-a-runs-receipts)). A tool for rerunning one cell with your own key is described in [replicate.md](replicate.md); published trial bundles are attached to releases on the public copy.
 - Known limits and the statistics: [methods.md](methods.md#known-limits-in-full).
 
 ## The top of the report
@@ -79,4 +79,5 @@ Tick each of these in the PR body. A results PR with an unticked line isn't read
 - [ ] **Claim check.** A reviewer traced every number and takeaway to its receipt.
 - [ ] **Scoreboard and index.** The scoreboard entry and the docs/scoreboard/reports.json row are in, and `bun scripts/scoreboard/build.ts` ran.
 - [ ] **Spend kept out of report.md.** Run spend is in `spend-internal.md`.
+- [ ] **Raw data archived.** The run's raw trial data is packed, stripped, verified and published with `scripts/archive/raw.ts`, its entry is in docs/archive/index.json, and `bun scripts/archive/raw.ts link` wrote the "Data archive" section of the run's reproduce.md ([raw-archive.md](raw-archive.md)). CI fails a results PR without it.
 - [ ] **Next time.** report.md has its `## Next time` section with at least one item.

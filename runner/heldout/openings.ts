@@ -233,6 +233,11 @@ function legacyFor(runId: string, digest: string, legacy: LegacyEntry[]): Legacy
 
 /** Every registered experiment (docs/benchmarks/preregistrations.json and .d/) whose prereg.json runs a held-out cell. */
 export function registeredHeldout(root: string): RegisteredHeldout[] {
+  return registeredRuns(root).filter((r) => r.sets.length);
+}
+
+/** Every registered experiment with a prereg.json beside its preregistration; sets is empty for a run with no held-out cell. */
+export function registeredRuns(root: string): RegisteredHeldout[] {
   if (!existsSync(join(root, 'docs/benchmarks/preregistrations.json'))) return [];
   const out: RegisteredHeldout[] = [];
   for (const entry of loadRegistry(root)) {
@@ -241,7 +246,6 @@ export function registeredHeldout(root: string): RegisteredHeldout[] {
     const raw = readFileSync(join(root, preregJson), 'utf8');
     const p = JSON.parse(raw) as PreregLike;
     const sets = heldoutSetsOf(p);
-    if (!sets.length) continue;
     out.push({ id: entry.id, preregistration: entry.preregistration, prereg_json: preregJson, run_id: p.run_id, sha256: sha256(raw), sets, ...(p.heldout ? { heldout: p.heldout } : {}), cells: p.cells.map((c) => String(c.id)) });
   }
   return out;

@@ -4,7 +4,7 @@
 // exercised end to end without a container or a real key.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { build, sha256 } from '../scripts/bundle.ts';
@@ -126,14 +126,27 @@ describe('paid rerun refusals before any work', () => {
       expect(calls.filter((c) => c.startsWith('runner') || c === 'docker build')).toEqual([]);
     });
   }
-  test('a cell of a run with no held-out cells is refused before any work', async () => {
-    const dev = build({ root: ROOT, run: 'docs/benchmarks/2026-10-25-qm-probes-qp07', finding: 'qp07-test', out: join(tmp, 'qp07.bundle.tar.gz') });
+  test('a bundle whose run is not a registered experiment is refused before any work', async () => {
+    const entries = readBundleArchive(new Uint8Array(readFileSync(bundle)));
+    const man = JSON.parse(new TextDecoder().decode(entries.find((e) => e.path === 'bundle.json')!.data));
+    man.run_id = 'unregistered-2026-11';
+    const path = join(tmp, 'unregistered.tar.gz');
+    writeFileSync(path, packBundleArchive(entries.map((e) => (e.path === 'bundle.json' ? { ...e, data: new TextEncoder().encode(JSON.stringify(man, null, 2) + '\n') } : e))));
+    const out = newOut('unregistered');
+    const { d, lines, calls } = deps();
+    expect(await main(['--bundle', path, '--cell', CELL, '--max-usd', '10', '--yes', '--out', out], d)).toBe(2);
+    expect(lines.join('\n')).toMatch(/HE-REPL-011 run unregistered-2026-11 is not a registered experiment with a prereg\.json/);
+    expect(calls).toEqual([]);
+  });
+  test('a cell of a registered run with only dev cells (matrix-mu-2026-11, Opus 5.5) gets past registration to the cap check', async () => {
+    const dev = build({ root: ROOT, run: 'docs/benchmarks/2026-11-04-matrix-mu', finding: 'matrix-mu-test', out: join(tmp, 'matrix-mu.bundle.tar.gz') });
     const out = newOut('dev-only');
     const { d, lines, calls } = deps();
-    expect(await main(['--bundle', dev.path, '--sha256', dev.sha256, '--cell', 'qm-pi-haiku-qp07', '--max-usd', '10', '--yes', '--out', out], d)).toBe(2);
-    expect(lines.join('\n')).toMatch(/HE-REPL-011 run qm-probes-qp07-2026-10 has no held-out cells/);
-    expect(calls).toEqual([]);
-  }, 120_000);
+    expect(await main(['--bundle', dev.path, '--sha256', dev.sha256, '--cell', 'openclaw-opus-none-mu-v03-dev', '--max-usd', '1', '--yes', '--out', out], d)).toBe(2);
+    expect(lines.join('\n')).toMatch(/ESTIMATE: openclaw-opus-none-mu-v03-dev at 1 rep\(s\): 20 trials/);
+    expect(lines.join('\n')).toMatch(/HE-REPL-007 --max-usd \$1\.00 is under/);
+    expect(calls.filter((c) => c.startsWith('runner') || c === 'docker build')).toEqual([]);
+  }, 180_000);
   test('a fresh rerun refuses an --out that exists and is not empty', async () => {
     const out = newOut('not-empty');
     mkdirSync(join(out, 'results'), { recursive: true });
@@ -274,5 +287,8 @@ describe('paid rerun through the real metering proxy (fake upstream)', () => {
     expect(after.run!.budget_usd).toBe(10);
     expect(after.run!.committed_usd).toBeGreaterThan(charged);
     expect(existsSync(join(out, 'rerun.bundle.tar.gz'))).toBe(true);
+    expect(statSync(join(out, 'rerun.bundle.tar.gz')).isFile()).toBe(true);
+    expect(readFileSync(join(out, 'rerun.bundle.tar.gz.sha256'), 'utf8')).toBe(`${r2.rerun_bundle.sha256}  rerun.bundle.tar.gz\n`);
+    expect(r2.rerun_bundle.path).toBe(join(out, 'rerun.bundle.tar.gz'));
   }, 180_000);
 });

@@ -1,0 +1,13 @@
+# Reproduce and inspect: 2026-11-02-v04-frozen-dev
+
+The [report](PREREGISTRATION.md) stays as published; the data behind it is linked here.
+
+<!-- data-archive:start (generated from docs/archive/index.json by scripts/archive/raw.ts link) -->
+## Data archive
+
+- **Raw trial data (private):** [2026-11-02-v04-cal--harn42-r2-r4.manifest.json](https://github.com/garrytan/harness-evals/releases/download/raw-2026-11-02-v04-cal--harn42-r2-r4/2026-11-02-v04-cal--harn42-r2-r4.manifest.json), sha256 `968f1c33195086c7ae4ffbf5311920df33ef0f2151f4b26133e113ef6510ebaa`. 70,066 files, 889.4 MB compressed in 1 part, covering cal r2, r3, r4 shard folders and merged trees (rN/merged), full merged r1 and transfer trees (full/), frozen-dev shard fd-oc-live, audit9 outputs, launch records, scan scripts. Keys, tokens, sealed material and personal data were stripped before upload; the manifest lists what was removed. Private because raw transcripts carry the harness vendors' own system prompts, task text and simulated-world credentials, which are not ours to publish.
+- **Raw trial data (private):** [2026-11-02-v04-cal--harn42-r2-r4--sqlite-wal.manifest.json](https://github.com/garrytan/harness-evals/releases/download/raw-2026-11-02-v04-cal--harn42-r2-r4--sqlite-wal/2026-11-02-v04-cal--harn42-r2-r4--sqlite-wal.manifest.json), sha256 `0dd8c0ed6229f17c1ec03f8aa2e317adb45d13571fd21cf185661384576e3e88`. 564 files, 0.1 MB compressed in 1 part, covering SQLite write-ahead logs left out of 2026-11-02-v04-cal--harn42-r2-r4. Keys, tokens, sealed material and personal data were stripped before upload; the manifest lists what was removed. Private because raw transcripts carry the harness vendors' own system prompts, task text and simulated-world credentials, which are not ours to publish.
+- **Trial bundle (public):** [2026-11-02-v04-frozen-dev.bundle.tar.gz](https://github.com/garrytan/g-harness-evals/releases/download/data-2026-11-02-v04-frozen-dev/2026-11-02-v04-frozen-dev.bundle.tar.gz), sha256 `93b0301c881b1a65c927d4caa8394d7ade8015dd21156c88226a4577f3e11634`. Check it with `bun scripts/bundle.ts verify <file> --sha256 <digest>` ([trial-bundle.md](../../trial-bundle.md)).
+- Format and how to check a download: [raw-archive.md](../../raw-archive.md).
+
+<!-- data-archive:end -->

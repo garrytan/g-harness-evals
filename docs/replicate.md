@@ -10,37 +10,40 @@ A single-cell rerun checks **one cell's pass rate**. It does not recheck the fin
 
 ## Where the bundle comes from
 
-A finding's front matter names its archive: `data: <URL> sha256 <digest>` and `rerun_commit: <sha>`. With `--finding <file>` the tool downloads and checks it for you.
+**Published bundles are attached to GitHub releases on the public copy, [garrytan/g-harness-evals](https://github.com/garrytan/g-harness-evals/releases).** Each release is tagged `data-<run folder>`, points at the public commit the bundle was built from, and prints the archive's sha256 in its notes. Download the archive, check its digest, and pass `--bundle <path> --sha256 <digest>` to every command below.
 
-**Until the repository is public, there is no public URL.** Get the archive from the person who sent you the finding, check its digest against the finding, and pass `--bundle <path> --sha256 <digest>` to every command below.
+A finding's front matter can also name its archive: `data: <URL> sha256 <digest>` and `rerun_commit: <sha>`. With `--finding <file>` the tool downloads and checks it for you.
 
 ## The commands
 
+These are the exact commands of the first rerun from a published bundle (2026-11-19), from a fresh clone of the public copy. The bundle is H1's (`m3-heldout-2026-10`); swap in another release's URL, digest and cell for another run.
+
 ```sh
-git clone https://github.com/garrytan/harness-evals && cd harness-evals    # about 370 MB pack, 1.5 GB tree
-git show origin/main:findings/<id>.md > ../finding.md                       # the finding lives on main, outside the pinned tree
-git checkout <rerun_commit named in ../finding.md>
-bun install --frozen-lockfile                                               # Bun 1.4.3 (package.json packageManager)
+git clone https://github.com/garrytan/g-harness-evals && cd g-harness-evals   # about 650 MB pack, 3.5 GB tree
+git checkout f4dc3dff41f1edc39beedfbe71b50cb0245209d7                         # the bundle's rerun_commit (bundle.json)
+bun install --frozen-lockfile                                                 # Bun 1.4.3 or later (package.json packageManager)
+curl -sSLf -o ../bundle.tar.gz https://github.com/garrytan/g-harness-evals/releases/download/data-2026-10-24-m3-heldout/2026-10-24-m3-heldout.bundle.tar.gz
+D=1d39a3e5b97fcf85f6c47a1865ca0235b9dbaf1c06724f5d91c123ccf186c78b
 
 # Free: no key, no Docker, a few seconds to minutes
-bun scripts/replicate.ts --bundle <archive> --sha256 <digest> --reanalyze
-bun scripts/replicate.ts --bundle <archive> --sha256 <digest> --estimate-only
+bun scripts/replicate.ts --bundle ../bundle.tar.gz --sha256 $D --reanalyze
+bun scripts/replicate.ts --bundle ../bundle.tar.gz --sha256 $D --estimate-only
 
 # Paid: your key, kept out of shell history
 read -rs ANTHROPIC_API_KEY && export ANTHROPIC_API_KEY
-bun scripts/replicate.ts --bundle <archive> --sha256 <digest> --cell openclaw-sonnet-mu-heldout --max-usd 5
+bun scripts/replicate.ts --bundle ../bundle.tar.gz --sha256 $D --cell openclaw-sonnet-mu-heldout --max-usd 6 --yes
 ```
 
 - **No terminal (a background job, CI)?** Add `--yes`. Without it the tool refuses before doing anything. With a terminal and no `--yes`, it asks you to type the cap back.
 - **`--reps <n>`** sets repetitions per task (default 1). `--json` prints the report.
 - **`--out <dir>`** is where a paid rerun keeps its state, ledger, logs, report and rerun bundle (default `replications/<run id>/` in this checkout). Git ignores everything there but `prereg.json` and `results/`. A downloaded archive goes to `replications/.bundles/`.
-- With `--finding ../finding.md` instead of `--bundle` and `--sha256`, the tool reads both from the front matter.
+- With `--finding <file>` instead of `--bundle` and `--sha256`, the tool reads both from the front matter.
 
-## What H1's OpenClaw cell costs
+## The worked example: H1's OpenClaw cell
 
-**H1 is the tooling example only.** Its cells run Sonnet 5.5, and H1 is withdrawn from publication under R54 (frontier models only), so a rerun of it validates this tool and says nothing about a harness, gstack or gbrain. When the first frontier finding merges, the examples here move to it.
+**H1 is the tooling example only.** Its cells run Sonnet 5.5, and H1 is appendix material now that these evals test frontier models only, so a rerun of it checks this tool and says nothing new about a harness, gstack or gbrain. Frontier runs with a `prereg.json` (matrix-mu, for example) can be rerun the same way (see Limits).
 
-From `--estimate-only` on the H1 bundle (`m3-heldout-2026-10`, Sonnet 5.5), repriced at this commit:
+From `--estimate-only` on the published H1 bundle at the commit above:
 
 | Reps | Trials | Expected | High (95th pct) | Smallest `--max-usd` | Time |
 |---|---|---|---|---|---|
@@ -48,6 +51,16 @@ From `--estimate-only` on the H1 bundle (`m3-heldout-2026-10`, Sonnet 5.5), repr
 | 5 | 100 | $17.31 | $19.59 | $20.36 | about 2.5 h |
 
 The smallest cap is the high estimate plus the largest single-request reservation ($0.77). The proxy reserves before each request, so the cap must leave room for one.
+
+**What the rerun got (2026-11-19, 1 rep, cap $6):**
+
+- `--reanalyze`: `REANALYZE: MATCH`, exit 0. The checked-in analyzers printed the bundle's tables byte for byte.
+- Equivalence: task files, preamble, seed world and the OpenClaw pin unchanged since the run commit; this commit's grader regraded all 100 published trials of the cell with 0 changes.
+- **15 of 20 passed** (75.0%, 95% CI 55.0% to 90.0%). The published run passed 77 of 100 (77.0%).
+- Rerun minus published: -2.0 points, task-paired 95% interval -14.0 to +7.0.
+- Band: 12 to 17 passes of 20. Verdict **`WITHIN BAND`**, exit 0.
+- 20 of 20 trials complete, no cap stop, no error termination. Spend $3.00 of the $6 cap; about 29 minutes from equivalence check to verdict, image build included.
+- The report and a short note are in [replicate/m3-heldout-2026-10/](replicate/m3-heldout-2026-10/README.md).
 
 ## What a paid rerun does
 
@@ -107,6 +120,6 @@ H1 OpenClaw (`docs/replicate/band-coverage-m3-heldout-openclaw.json`, 4,000 roun
 
 - **gbrain cells are not rerun yet.** Their corpus, sidecar image and paid preflight probe are outside the equivalence check.
 - **QM cells are not rerun yet.** QM needs its pinned `qm-sandbox` image and its sandbox teardown, which this tool does not build or clean.
-- **Only held-out runs are rerun.** The rerun plans through `run.ts plan --replication-of`, which takes registered held-out runs only, so a dev-only run (matrix-mu, for example) gets `--reanalyze` and `--estimate-only` but no paid rerun.
+- **Only registered runs with a `prereg.json` are rerun.** The rerun plans through `run.ts plan --replication-of`, which takes any registered experiment with a `prereg.json` beside its preregistration: held-out runs on a spent, plaintext set, and dev-only runs such as matrix-mu (Opus 5.5 and GPT-6.1 Sol). A run with no `prereg.json` gets `--reanalyze` and `--estimate-only` only.
 - **Sealed sets are never rerun.** A sealed opening's bundle carries only its public export; `--replication-of` refuses any set in sealed custody.
 - **The estimate is approximate** when the run's request lines lack cache-write counts; it is then rounded up.

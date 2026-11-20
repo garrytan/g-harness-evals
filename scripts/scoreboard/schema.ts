@@ -115,6 +115,8 @@ export interface ReportRow {
   verdict_quote: string | null;
   next_time?: string;
   note?: string;
+  /** A file in the run folder with the commands to recheck the run from its published trial bundle, for a report whose bytes are pinned. */
+  reproduce?: string;
 }
 
 export function validateReports(doc: unknown, where: string): ReportRow[] {
@@ -128,6 +130,7 @@ export function validateReports(doc: unknown, where: string): ReportRow[] {
     if (r.verdict !== null && !VERDICT_WORDS.includes(r.verdict)) errors.push(`${where}: ${r.folder}: verdict must be KEEP, FIX-METHOD, CUT-CANDIDATE or null`);
     if ((r.verdict === null) !== (r.verdict_quote === null)) errors.push(`${where}: ${r.folder}: a verdict needs its verdict_quote, and a quote needs its verdict`);
     if (r.verdict_quote !== null && !r.report) errors.push(`${where}: ${r.folder}: verdict_quote needs a report`);
+    if (r.reproduce !== undefined && (typeof r.reproduce !== 'string' || !/^[a-z0-9-]+\.md$/.test(r.reproduce))) errors.push(`${where}: ${r.folder}: reproduce must be a .md file name in the run folder`);
     if (r.next_time !== undefined && (typeof r.next_time !== 'string' || !/^[\w.-]+\.md(#[\w-]+)?$/.test(r.next_time))) errors.push(`${where}: ${r.folder}: next_time must name a Markdown file in the run folder, optionally with an anchor`);
   }
   if (errors.length) throw new Error(errors.join('\n'));

@@ -440,6 +440,14 @@ describe('reports index', () => {
     for (const r of quoted) expect(readFileSync(join(root, 'docs/benchmarks', r.folder, r.report!), 'utf8')).toContain(r.verdict_quote!);
   });
 
+  test('a reproduce file is linked beside the report, and a bad or missing one is refused', () => {
+    const page = renderReportsIndex(doc.reports, benchmarkFolders(root));
+    expect(page).toContain('| [2026-10-24-m3-heldout](benchmarks/2026-10-24-m3-heldout/report.md) ([reproduce](benchmarks/2026-10-24-m3-heldout/reproduce.md)) |');
+    const m3 = doc.reports.find((r) => r.folder === '2026-10-24-m3-heldout')!;
+    expect(() => validateReports({ ...doc, reports: [{ ...m3, reproduce: '../x.md' }] }, 'fixture')).toThrow(/reproduce must be a \.md file name in the run folder/);
+    expect(existsSync(join(root, 'docs/benchmarks', m3.folder, m3.reproduce!))).toBe(true);
+  });
+
   test("every row's folder exists", () => {
     for (const r of doc.reports) expect(existsSync(join(root, 'docs/benchmarks', r.folder))).toBe(true);
   });

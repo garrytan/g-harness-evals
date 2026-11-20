@@ -83,8 +83,15 @@ describe('the repository', () => {
     expect(plan({ runId: 'gbrain-arm-2026-10' })).toThrow(/^HE-REPL-001 --run-id gbrain-arm-2026-10 is a registered experiment/);
     expect(plan({ runId: 'Bad_Id' })).toThrow(/^HE-REPL-001 --run-id must be lowercase/);
     expect(plan({ runId: undefined })).toThrow(/^HE-REPL-001 --run-id must be lowercase/);
-    expect(plan({ of: 'no-such-run-2026-10' })).toThrow(/^HE-REPL-002 run no-such-run-2026-10 is not a registered experiment with held-out cells .*fix:/);
-    expect(plan({ of: 'm2-pilot-2026-10' })).toThrow(/^HE-REPL-002 run m2-pilot-2026-10 is not a registered experiment with held-out cells/);
+    expect(plan({ of: 'no-such-run-2026-10' })).toThrow(/^HE-REPL-002 run no-such-run-2026-10 is not a registered experiment with a prereg\.json .*fix:/);
+  });
+
+  test('a registered run with only dev cells (matrix-mu-2026-11, Opus 5.5) plans one cell with no set check', () => {
+    const r = runner('dry-run', '--replication-of', 'matrix-mu-2026-11', '--cells', 'openclaw-opus-none-mu-v03-dev', '--reps', '1', '--run-id', 'replicate-test-2026-11');
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('RUN: replicate-test-2026-11 trials=20 cells=1');
+    expect(r.stdout).toMatch(/REPLICATION: run replicate-test-2026-11 replicates matrix-mu-2026-11 \(docs\/benchmarks\/2026-11-04-matrix-mu\/prereg\.json, sha256 [0-9a-f]{12}\): cells openclaw-opus-none-mu-v03-dev at 1 repetition; no held-out cell; no opening is counted and no ledger row is written/);
   });
 });
 

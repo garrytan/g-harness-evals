@@ -45,3 +45,23 @@ describe('replication band evidence', () => {
     expect(band.lo).toBeLessThan(allPass.length);
   });
 });
+
+describe('the published m3-heldout rerun', () => {
+  const dir = 'docs/replicate/m3-heldout-2026-10';
+  const report = JSON.parse(readFileSync(join(ROOT, dir, 'replicate-report.json'), 'utf8')) as {
+    rerun: { reps: number }; band: { lo: number; hi: number; of: number }; verdict: string;
+    rerun_result: { trials: number; passes: number }; published: { trials: number; passes: number };
+  };
+  const readme = readFileSync(join(ROOT, dir, 'README.md'), 'utf8');
+
+  test('docs/replicate/m3-heldout-2026-10/replicate-report.json uses the committed band, its verdict follows from it and the README quotes it', () => {
+    const row = evidence.rows.find((r) => r.reps === report.rerun.reps)!;
+    expect(report.band).toMatchObject({ lo: row.band.lo, hi: row.band.hi, of: row.band.of });
+    const k = report.rerun_result.passes;
+    expect(k >= report.band.lo && k <= report.band.hi).toBe(report.verdict === 'WITHIN BAND');
+    expect(readme).toContain(`${k} of ${report.rerun_result.trials} passed`);
+    expect(readme).toContain(`${report.published.passes} of ${report.published.trials}`);
+    expect(readme).toContain(`band of ${report.band.lo} to ${report.band.hi}`);
+    expect(readme).toContain('`' + report.verdict + '`');
+  });
+});

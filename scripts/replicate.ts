@@ -35,7 +35,7 @@ import { ledgerStatus } from '../runner/ledger/budget-ledger.ts';
 import { isCapRefusal, trialSlug } from '../runner/trial/proxy.ts';
 import type { UsageLine } from '../runner/proxy/metering-proxy.ts';
 import { defaultPreambleFor } from '../runner/trial/task.ts';
-import { registeredHeldout } from '../runner/heldout/openings.ts';
+import { registeredRuns } from '../runner/heldout/openings.ts';
 import { seededRandom } from '../runner/stats/paired.ts';
 import { EXCLUDED_TERMINATIONS, bandCoverage, cellCounts, pairedDifference, passRate, replicationBand, type TaskCount } from '../runner/replicate/band.ts';
 import { ANALYSES, PROFILE_RESULTS, TOOL_ROOT, build as buildBundle, runAnalyses, verify, type BundleManifest } from './bundle.ts';
@@ -502,8 +502,8 @@ async function rerun(a: Args, d: Deps, sig: { interrupted: boolean; child: Child
     loaded(b);
     if (typeof a.cell !== 'string') throw new RunnerError('HE-REPL-001', `a paid rerun needs --cell; the bundle's cells are ${(b.manifest.rerun?.cells ?? []).join(', ')}. Run --estimate-only to see each one's cost`);
     if (typeof a['max-usd'] !== 'string') throw new RunnerError('HE-REPL-001', `a paid rerun needs --max-usd <dollars>, the hard cap on everything this invocation spends; run --estimate-only --cell ${a.cell} for the smallest cap`);
-    const reg = registeredHeldout(TOOL_ROOT).find((r) => r.id === b.manifest.run_id);
-    if (!reg) throw new RunnerError('HE-REPL-011', `run ${b.manifest.run_id} has no held-out cells, and a rerun plans through run.ts plan --replication-of, which takes only registered held-out runs (HE-REPL-002); nothing was started. fix: --reanalyze and --estimate-only still work`);
+    const reg = registeredRuns(TOOL_ROOT).find((r) => r.id === b.manifest.run_id);
+    if (!reg) throw new RunnerError('HE-REPL-011', `run ${b.manifest.run_id} is not a registered experiment with a prereg.json in this checkout, and a rerun plans through run.ts plan --replication-of, which takes only registered runs (HE-REPL-002); nothing was started. fix: --reanalyze and --estimate-only still work`);
     if (b.preregSha256 !== reg.sha256) throw new RunnerError('HE-REPL-013', `the bundle's prereg.json (sha256 ${b.preregSha256?.slice(0, 12) ?? 'missing'}) is not the registered ${reg.prereg_json} (sha256 ${reg.sha256.slice(0, 12)}); the rerun plans from the registered one, so the bundle's harness, model and published counts do not describe it. Nothing was started. fix: use the bundle the finding names (--finding, or --sha256 from its data: line)`);
     const cell = cellOf(b, a.cell);
     const reps = Number(a.reps ?? b.manifest.rerun?.default_reps ?? 1);
@@ -645,9 +645,14 @@ function finish(out: string, report: Record<string, unknown>, exit: number, d: D
     const rel = relative(TOOL_ROOT, out);
     if (rel.startsWith('..')) throw new Error(`--out ${out} is outside the checkout`);
     const cell = String((report.rerun as { cell: string }).cell);
-    const built = buildBundle({ root: TOOL_ROOT, run: rel, finding: `replicate-${cell}`.toLowerCase(), local: true, rerunCommit: String((report.rerun as { commit: string }).commit), out: join(out, 'rerun.bundle.tar.gz') });
-    rerunBundle = { path: built.path, sha256: built.sha256 };
-    d.out(`BUNDLE: ${built.path} sha256 ${built.sha256} (share it; check it with bun scripts/bundle.ts verify)`);
+    const built = buildBundle({ root: TOOL_ROOT, run: rel, finding: `replicate-${cell}`.toLowerCase(), local: true, rerunCommit: String((report.rerun as { commit: string }).commit), out });
+    const path = join(out, 'rerun.bundle.tar.gz');
+    rmSync(path, { recursive: true, force: true });
+    renameSync(built.path, path);
+    rmSync(built.path + '.sha256', { force: true });
+    writeFileSync(path + '.sha256', `${built.sha256}  rerun.bundle.tar.gz\n`);
+    rerunBundle = { path, sha256: built.sha256 };
+    d.out(`BUNDLE: ${path} sha256 ${built.sha256} (share it; check it with bun scripts/bundle.ts verify)`);
   } catch (e) {
     rerunBundle = { error: redact((e as Error).message) };
     d.err(`BUNDLE: not built: ${redact((e as Error).message)}`);

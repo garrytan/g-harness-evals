@@ -461,7 +461,7 @@ export function renderReportsIndex(rows: ReportRow[], folders: string[]): string
   for (const [grade, title, blurb] of GRADES) {
     out.push(`## ${title}`, '', blurb, '', '| Folder | Question | Status | Claim check | Verdict | Next time | Superseded by | Note |', '|---|---|---|---|---|---|---|---|');
     for (const r of rows.filter((x) => x.grade === grade)) {
-      out.push(`| [${r.folder}](benchmarks/${r.folder}/${r.report ?? 'PREREGISTRATION.md'}) | ${cell(r.question)} | ${r.status} | ${r.claim_check ?? 'none on record'} | ${r.verdict ? `**${r.verdict}**` : 'none'} | ${r.next_time ? `[next time](benchmarks/${r.folder}/${r.next_time})` : ''} | ${r.superseded_by ? folderLink(r.superseded_by) : ''} | ${cell(r.note ?? '')} |`);
+      out.push(`| [${r.folder}](benchmarks/${r.folder}/${r.report ?? 'PREREGISTRATION.md'})${r.reproduce ? ` ([reproduce](benchmarks/${r.folder}/${r.reproduce}))` : ''} | ${cell(r.question)} | ${r.status} | ${r.claim_check ?? 'none on record'} | ${r.verdict ? `**${r.verdict}**` : 'none'} | ${r.next_time ? `[next time](benchmarks/${r.folder}/${r.next_time})` : ''} | ${r.superseded_by ? folderLink(r.superseded_by) : ''} | ${cell(r.note ?? '')} |`);
     }
     out.push('');
   }
@@ -484,6 +484,7 @@ export function loadReports(root: string, folders: string[]): ReportRow[] {
     if (!folders.includes(r.folder)) { errors.push(`reports.json: no folder docs/benchmarks/${r.folder}`); continue; }
     const target = join(root, 'docs/benchmarks', r.folder, r.report ?? 'PREREGISTRATION.md');
     if (!existsSync(target)) errors.push(`reports.json: ${relative(root, target)} is missing`);
+    if (r.reproduce && !existsSync(join(root, 'docs/benchmarks', r.folder, r.reproduce))) errors.push(`reports.json: docs/benchmarks/${r.folder}/${r.reproduce} is missing`);
     if (r.next_time && !existsSync(join(root, 'docs/benchmarks', r.folder, r.next_time.split('#')[0]!))) errors.push(`reports.json: ${r.folder}: next_time ${r.next_time} is missing`);
     if (r.superseded_by && !folders.includes(r.superseded_by)) errors.push(`reports.json: ${r.folder} is superseded by ${r.superseded_by}, which is not a folder`);
   }

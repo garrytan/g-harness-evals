@@ -28,8 +28,8 @@
  * budget (HE-HELDOUT-001 to 004, runner/heldout/openings.ts); a run's own row passes every time while it is opened or its
  * set is open, so shard planning and resume of the same run id are unchanged.
  *
- * Replication (internal-task, runner/heldout/replication.ts): --replication-of plans named cells of a registered held-out run
- * again from its registered prereg.json, under a new run id and --reps repetitions, and records replication_of in the
+ * Replication (internal-task, runner/heldout/replication.ts): --replication-of plans named cells of a registered run (held-out
+ * or dev) again from its registered prereg.json, under a new run id and --reps repetitions, and records replication_of in the
  * manifest. It is no opening and writes no ledger row, so it is accepted only when every held-out set the cells run is
  * public: out of sealed custody, spent or retired, plaintext in the tree, and sharing no digest with a live sealed set
  * (HE-REPL-001 to 003). preflight and run do not re-check held-out openings, so they take such a manifest as any other.
@@ -417,7 +417,7 @@ export interface Manifest {
   gbrain_commit?: string;
   /** The preregistration's gbrain_surface_tools, copied at plan; present only when it names them. */
   gbrain_surface_tools?: Partial<Record<'starter' | 'verbs', number>>;
-  /** internal-task: a replication of a past held-out run (runner/heldout/replication.ts), planned from its registered prereg.json. */
+  /** internal-task: a replication of a past run (runner/heldout/replication.ts), planned from its registered prereg.json. */
   replication_of?: ReplicationOf;
   /** internal-task Phase B: per skill-requests cell, the sha256 of its request set file at plan time and the set's row count. A private
    *  cell's trial records carry no per-row hash; this is the set's only fingerprint. run refuses a set that changed since plan. */
@@ -838,7 +838,7 @@ async function main(argv: string[]): Promise<number> {
     const of = flag('--replication-of');
     if (has('--replication-of')) {
       if (has('--prereg')) throw new RunnerError('HE-REPL-001', '--prereg and --replication-of were both given; a replication plans from the registered prereg.json of the run it names. fix: drop --prereg');
-      if (!of || of.startsWith('--')) throw new RunnerError('HE-REPL-001', '--replication-of needs the run id of a registered held-out run; fix: --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id>');
+      if (!of || of.startsWith('--')) throw new RunnerError('HE-REPL-001', '--replication-of needs the run id of a registered run; fix: --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id>');
     } else {
       const stray = ['--cells', '--reps', '--run-id'].filter(has);
       if (stray.length) throw new RunnerError('HE-REPL-001', `${stray.join(', ')} ${stray.length > 1 ? 'belong' : 'belongs'} to --replication-of; plan otherwise runs every cell of --prereg as preregistered. fix: add --replication-of <run id>, or drop ${stray.join(', ')}`);
