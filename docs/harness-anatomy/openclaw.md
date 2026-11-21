@@ -31,7 +31,7 @@
 ## gbrain (measured)
 
 - With gbrain registered ([plain-gbrain.json](records/openclaw-default/plain-gbrain.json)): same 14 tools, same 18,356 tokens. Apart from the container host id and the timestamp, the only change is "15 additional tools omitted" becoming "50" (gbrain's 33 tools plus the `resources_list` and `resources_read` helpers OpenClaw adds per MCP server, per its `agent-bundle-mcp-materialize` source).
-- So the first request on OpenClaw contains no gbrain name at all; the model learns of gbrain only through `tool_search` or by guessing a name. The ladder result fits: MCP registration alone, 2 gbrain uses in 99 trials ([gbrain ladder](../benchmarks/2026-10-25-gbrain-ladder/report.md)).
+- So the first request on OpenClaw contains no gbrain name at all; the model learns of gbrain only through `tool_search` or by guessing a name. The ladder result fits: MCP registration alone, 2 gbrain uses in 99 trials ([gbrain ladder](../benchmarks/2026-10-25-gbrain-ladder/report.md)). Build note (2026-11-21): the ladder was measured on gbrain 0.60.431.0 (`089bf0d8`) with Haiku 5.5 on 2026-10-24 and 2026-10-25 and is not re-measured ([why, and the newest measurement](../gbrain-older-builds.md)).
 
 ## Skills
 

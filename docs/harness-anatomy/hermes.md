@@ -31,7 +31,7 @@
 ## gbrain (measured)
 
 - With gbrain registered ([plain-gbrain.json](records/hermes-default/plain-gbrain.json)): still 24 tools. `tool_search` now says "Search 54 additional tools" and grows from 1,441 to 2,759 tokens, which is the whole +1,318. The 35 new entries are gbrain's 33 tools plus `list_resources` and `read_resource` for gbrain's MCP resources, each with a one-line description.
-- The ladder result fits: MCP registration alone, 0 gbrain uses in 100 trials ([gbrain ladder](../benchmarks/2026-10-25-gbrain-ladder/report.md)).
+- The ladder result fits: MCP registration alone, 0 gbrain uses in 100 trials ([gbrain ladder](../benchmarks/2026-10-25-gbrain-ladder/report.md)). Build note (2026-11-21): the ladder was measured on gbrain 0.60.431.0 (`089bf0d8`) with Haiku 5.5 on 2026-10-24 and 2026-10-25 and is not re-measured ([why, and the newest measurement](../gbrain-older-builds.md)).
 
 ## Skills
 

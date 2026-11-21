@@ -4,6 +4,8 @@ The gbrain arm asks one question of the multi-user slice: does each harness (Ope
 
 Status: run `gbrain-arm-2026-10` is complete and reported in [docs/benchmarks/2026-10-24-gbrain-arm/report.md](benchmarks/2026-10-24-gbrain-arm/report.md) (1,500 trials, $80.87). Left unmentioned, the harnesses almost never used the brain (a call in 2 of 600 trials, both OpenClaw) and no paired pass difference is distinguished; told to check it first, Haiku used it in most trials, took the two cross-channel retrieval tasks to 5 of 5 and lost trials to cross-scope search results, net +1 to +4 points with wide intervals. The install ladder and the company brain below are the designs for the next arms.
 
+**Build note (2026-11-21).** The gbrain arm's numbers above were measured on gbrain 0.60.413.0 (`f241216c`) on 2026-10-24 and 2026-10-25. Not re-measured: run on Haiku 5.5 and Sonnet 5.5, which are no longer models we test. It stays published, labelled with its build; the newest measurement of this question is the no-rule cells of [where to put a rule](benchmarks/2026-11-07-h10-instruction-placement/report.md) (Opus 5.5 and GPT-6.1 Sol, gbrain 0.60.547.0, 2026-11-07). The other runs this page pins that we are not re-measuring are listed with their builds in [gbrain results measured on older builds](gbrain-older-builds.md).
+
 ## Design
 
 **A sidecar per trial, a fresh brain per trial.** Each trial of a cell that carries `gbrain` gets its own gbrain container (`harness-eval/gbrain:dev`, [gbrain/](../gbrain/README.md)) started before the harness and stopped after the world is fenced. The brain is copied from a prebuilt image layer at start, so nothing a harness remembers in one trial exists in the next (methodology item 2, isolation); it takes about 5 s on an idle machine and about 10 s beside the harness container's own start.
@@ -337,6 +339,10 @@ Lessons that changed the code or the docs: a harness image built before an adapt
 - **Preamble mention.** A second arm whose preamble names gbrain search beside `search_messages` would separate "the harness did not know the rule applies" from "the harness ignored it".
 
 ## Changelog
+
+### 2026-11-21: build note under the status
+
+A dated line under the status names the gbrain build the arm's numbers come from, says they are not re-measured and why, and links the newest measurement and the list of other such results. Why: an older gbrain number stays published only labelled with its build.
 
 ### 2026-11-12: pin 64de25c0, gbrain stable
 

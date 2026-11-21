@@ -57,7 +57,7 @@ bun harnesses/harness-zero/zero.ts explain --config zero-full --diff zero-full-n
 ## Sets and the candidate hash
 
 - `HE_HARNESS_CONFIG` (a cell's `config`) picks a set. Empty means `zero-full-no-mcp-instructions`: every switch on except `mcp-instructions`.
-- **`mcp-instructions` is off by default** (2026-11-07). In Phase D (dev) it cost $0.011 more per trial [+0.002, +0.021] and its pass-rate effect was can't tell (+3.3 points [-3.3, +10.0]), though the instructions reached the model in 60 of 60 trials ([report](../../docs/benchmarks/2026-11-06-harness-zero-h2h/report.md)). Turn it on by naming a set that has it, such as `zero-full` or `zero-lean-mcp-instructions`.
+- **`mcp-instructions` is off by default** (2026-11-07). In Phase D (dev) it cost $0.011 more per trial [+0.002, +0.021] and its pass-rate effect was can't tell (+3.3 points [-3.3, +10.0]), though the instructions reached the model in 60 of 60 trials ([report](../../docs/benchmarks/2026-11-06-harness-zero-h2h/report.md)). Turn it on by naming a set that has it, such as `zero-full` or `zero-lean-mcp-instructions`. Build note (2026-11-21): that reading was measured on gbrain 0.60.547.0 (`2c469d1b`) on 2026-11-07. Not re-measured: it tests a Harness Zero setting with gbrain held fixed. It stays published, labelled with its build; the newest measurement of this question is none planned ([older gbrain results](../../docs/gbrain-older-builds.md)).
 - Valid names: `zero-min`, `zero-full`, `zero-full-minus-layers` (zero-full with the five `layer-*` switches off, the bundled-layers cell), `zero-full-no-<slug>` for each switch, and the sets in [`config/candidates.json`](config/candidates.json). One exported function, `setNames()`, lists them; the runner's plan, dry-run and preflight use it.
 - [`config/features.json`](config/features.json) is **frozen**: the slugs, `zero-min`, `zero-full`, `zero-full-minus-layers`, the knobs and the derivation rule. The Phase C loop writes only `candidates.json`. A candidate is a feature list, or `{features, knobs}` to change a knob.
 - The **candidate hash** (`candidate_sha256` in `ready` and `explain`) covers `zero.ts`, the set's features with every knob, every prompt file the set loads, `adapter.sh`, the `Dockerfile`, and `pin.json`'s base image digest and Bun version. The set's name is not part of it.
@@ -96,6 +96,10 @@ bun harnesses/harness-zero/zero.ts explain --config zero-full --diff zero-full-n
 4. Add a row to the table above and to this changelog.
 
 ## Changelog
+
+### 2026-11-21: build note on mcp-instructions
+
+The `mcp-instructions` bullet now names the gbrain build its Phase D reading was measured on and says it is not re-measured. Why: an older gbrain number stays published only labelled with its build.
 
 ### 2026-10-31: first version (internal-task)
 

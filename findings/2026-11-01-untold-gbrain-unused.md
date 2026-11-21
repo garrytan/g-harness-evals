@@ -15,6 +15,8 @@ reviewed_by: internal-task-a claim check with a GPT-6.1 Sol reviewer, 2026-11-01
 
 **Status:** dev background for the Opus 5.5 reruns in internal-task-a's v0.4 and internal-task-b's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
 
+**Build note (2026-11-21).** Measured on gbrain 0.60.413.0 (`f241216c`) and 0.60.431.0 (`089bf0d8`) on 2026-10-24 and 2026-10-25. Not re-measured: run on Haiku 5.5 and Sonnet 5.5, which are no longer models we test. It stays published, labelled with its builds; the newest measurement of this question is the no-rule cells of [where to put a rule](../docs/benchmarks/2026-11-07-h10-instruction-placement/report.md) (Opus 5.5 and GPT-6.1 Sol, gbrain 0.60.547.0, 2026-11-07). Every result we label this way is listed in [gbrain results measured on older builds](../docs/gbrain-older-builds.md).
+
 **If you install gbrain's MCP server beside a harness and don't tell the harness to use it, it was called in 4 of 799 scored trials.** Registration can still change what the model sees without a call. This is a dev result on two Claude models and one task set, and it does not show gbrain is useless: told, the same harnesses used it in 76% to 96% of trials.
 
 ## What we found
@@ -208,6 +210,7 @@ The post carries the closing Disclosures section at its end; the X hook carries 
 - 2026-11-01: marked dev background for the Opus 5.5 reruns; the verdict line replaced (Sonnet and Haiku only).
 - 2026-11-02: the title line now says the finding rests on Sonnet/Haiku only and is not frontier evidence. The front-matter disclosures line is removed, since front matter renders at the top of the page, and Disclosures drops its internal bookkeeping sentence. No number changed.
 - 2026-11-04: internal role names replaced with plain ones (the coordinating agent, the project's private drive, agent threads); no number, link or claim changed, because the public export blocks internal role names in prose.
+- 2026-11-21: a build note under the status line names the gbrain builds this finding rests on, says it is not re-measured and why, and links the newest measurement of its question. No number changed.
 
 ## Disclosures
 

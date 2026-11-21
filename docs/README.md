@@ -81,6 +81,7 @@ Everything below is the full list, including one folder per run. Codes like inte
 - [errors.md](errors.md): every error code the runner, proxy and adapters print, what it means, the fix, and where it lives.
 - [gbrain-arm.md](gbrain-arm.md): the gbrain arm: what a sidecar per trial runs, the world's `/gbrain` tap, the install ladder, how the arm is wired into the runner and adapters, the smoke evidence, and the status of each gbrain run.
 - [gbrain-evals-conventions.md](gbrain-evals-conventions.md): which conventions this repository takes from gbrain-evals as they are, which it adapts, and which it leaves out, with the reason for each.
+- [gbrain-older-builds.md](gbrain-older-builds.md): the published gbrain results we are not re-measuring, each with the gbrain build and dates it was measured on, why it is not re-run and the newest measurement of its question.
 - [glossary.md](glossary.md): plain meanings for the verdict words (KEEP, FIX-METHOD, CUT-CANDIDATE), the calls on a comparison, the metric names and the run terms, with a table mapping older reports' words to these.
 - [grader-audit.md](grader-audit.md): the step every results PR runs before it is ready: a random sample of each arm's failed trials, read by a model from another family, that fails the PR when too many failures are the grader's or the task's fault, and how to clear a false alarm.
 - [methodology.md](methodology.md): the trial contract, the normative copy of the plan's contract section: isolation, metering, grading, termination and grade as separate fields, metrics, budget, artifacts, with its amendments in the changelog.
@@ -108,6 +109,10 @@ Everything below is the full list, including one folder per run. Codes like inte
 - [verify.md](verify.md): `bun run verify`, which rebuilds every published run's analysis files from its committed receipts and fails when a published value differs: what it checks and does not check, how to read its output, the per-run recipes under `scripts/verify/runs/`, and how it keeps keys and receipts safe.
 
 ## Changelog
+
+### 2026-11-21: gbrain-older-builds.md listed
+
+The pages list gains gbrain-older-builds.md. Why: it is the one place that labels each older gbrain result with its build.
 
 ### 2026-11-19: Next time section
 

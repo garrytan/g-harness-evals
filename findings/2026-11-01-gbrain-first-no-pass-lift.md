@@ -15,6 +15,8 @@ reviewed_by: internal-task-a claim check with a GPT-6.1 Sol reviewer, 2026-11-01
 
 **Status:** dev background for the Opus 5.5 reruns in internal-task-a's v0.4 and internal-task-b's H10, not for publication on its own: it rests on Sonnet 5.5 and Haiku 5.5 only. Claim check PASS-WITH-EDITS (2026-11-01), edits applied. The edited lines were rechecked the same day, and the recheck's line edits are applied. Disclosures answered by Garry, in the closing Disclosures section at the end of the file.
 
+**Build note (2026-11-21).** Measured on gbrain 0.60.431.0 (`089bf0d8`) on 2026-10-26. Not re-measured: run on Sonnet 5.5 and Haiku 5.5, which are no longer models we test, and its hidden tasks have since been opened. It stays published, labelled with its build; the newest measurement of this question is the told cells with gbrain's open default against no brain in [the shared-bot fixes](../docs/benchmarks/2026-11-14-shared-bot-scope/report.md) (OpenClaw and Hermes Agent on Opus 5.5 and GPT-6.1 Sol, gbrain 0.60.717.0, 2026-11-14). Every result we label this way is listed in [gbrain results measured on older builds](../docs/gbrain-older-builds.md).
+
 **A brain-first instruction got the harnesses to use gbrain in almost every trial, but on these tasks it showed no pass-rate gain we could detect on Sonnet 5.5.** The intervals are wide: a gain of up to 8, 4 and 25 points is not ruled out. This is one model and one task set.
 
 ## What we found
@@ -171,6 +173,7 @@ The post carries the closing Disclosures section at its end; the X hook carries 
 - 2026-11-01: the recheck's line edits applied, and Garry's disclosure lines added in a closing Disclosures section at the end of the file, which now also holds the file's other disclosure bullets.
 - 2026-11-01: marked dev background for the Opus 5.5 reruns; the verdict line replaced (Sonnet and Haiku only).
 - 2026-11-02: the title line now says the finding rests on Sonnet/Haiku only and is not frontier evidence. The front-matter disclosures line is removed, since front matter renders at the top of the page, and Disclosures drops its internal bookkeeping sentence. "What is held out" says the spent v0.2 held-out set is published, labelled spent. No number changed.
+- 2026-11-21: a build note under the status line names the gbrain build this finding rests on, says it is not re-measured and why, and links the newest measurement of its question. No number changed.
 
 ## Appendix: Haiku 5.5, same run
 
