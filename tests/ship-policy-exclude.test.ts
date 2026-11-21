@@ -178,3 +178,12 @@ test('nested results trials and shard manifests, and the skill-resolver run\'s g
   ];
   expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
 });
+
+// Value: protects=gstack refuses a review_exclude_paths list longer than 64 patterns, and it reads the list from the base
+// branch, so one pattern too many on main stops every pull request's review; fails_when=a pattern is added past 64;
+// why_new=one merge took main to 65 patterns and no /ship could run; seam=the policy file itself; no_claim=gstack's own
+// limit, which this test copies.
+test('review_exclude_paths stays within gstack\'s 64-pattern limit', () => {
+  expect(POLICY.review_exclude_paths.length).toBeLessThanOrEqual(64);
+});
+
