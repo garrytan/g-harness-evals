@@ -85,10 +85,12 @@ jobs:
       # a gstack that reads it from there when the run has no artifact (internal-task-a, internal-task-b): the job log is GitHub's own
       # record of this job and attempt, like the artifact. It is its own step, after the tests and outside their process,
       # because gstack reads the line only from the step its run profile names (tree_log_step). Keep the step's name as it
-      # is. The sleeps keep the line on its own in the log, apart from the step's header and the next step.
+      # is. The sleeps keep the line well inside the step's own time window: gstack binds the line to the step by its log
+      # timestamp against the step's start and finish times, which GitHub reports to the second and which ran about 1.5 s
+      # behind the log's stamps on a Ubicloud runner (run 44845717681), so 1 s before and 2 s after was refused.
       - name: Tested tree record in the log
         if: steps.docs.outputs.docs_only != 'true'
-        run: sleep 1 && echo "GSTACK_TREE_JSON checks-tree $(base64 -w0 "$RUNNER_TEMP/checks-tree/tree.json")" && sleep 2
+        run: sleep 3 && echo "GSTACK_TREE_JSON checks-tree $(base64 -w0 "$RUNNER_TEMP/checks-tree/tree.json")" && sleep 5
       - name: Upload the tested tree
         if: steps.docs.outputs.docs_only != 'true'
         continue-on-error: true
@@ -227,9 +229,12 @@ jobs:
           tip=$(git -c user.name=ci -c user.email=ci@invalid commit-tree FETCH_HEAD^{tree} -p HEAD -m "export tree of $GITHUB_SHA")
           git checkout -q -B main "$tip"
           git update-ref -d refs/remotes/origin/main
+      # The export tree's tests run through its own scripts/run-tests.sh, the command the public repository's checks job
+      # runs: every file under tests/, in the same three phases (image builders, then the rest with one worker per core,
+      # then the serial files alone). One bun process over the same files took 25 minutes at the median on standard-4.
       - name: Keyless install, typecheck, links and tests on the export tree
         working-directory: ${{ runner.temp }}/public
-        run: env -i HOME="$HOME" PATH="$PATH" LANG=C.UTF-8 bash -c 'bun install --frozen-lockfile && bunx tsc --noEmit && python3 scripts/check-links.py && bun test tests/ --timeout=30000'
+        run: env -i HOME="$HOME" PATH="$PATH" LANG=C.UTF-8 bash -c 'bun install --frozen-lockfile && bunx tsc --noEmit && python3 scripts/check-links.py && bash scripts/run-tests.sh'
 
   # Which paths changed, so the docker job runs only when the sidecar image, its build, the fake harness it drives or the
   # image tests could have changed: a pull request is compared with its base, a push to main with the commit before it.

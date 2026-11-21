@@ -44,21 +44,28 @@ test('pregate CI carry keys come with a gstack floor of 1.94.4.0 or later', () =
 });
 
 // Value: protects=a run_profiles entry's tree_log_step (gstack 1.102.1.0, the CI log fallback for a missing checks-tree
-// artifact) comes with a ship-policy floor at 1.102.1.0 or later and names a step that exists once in ci.yml, so an older
-// gstack is told to upgrade instead of refusing the whole policy as an unknown key, and a renamed step does not silently
-// turn the fallback off; fails_when=tree_log_step stays in .gstack/pregate.json while min_gstack_version drops below
-// 1.102.1.0, or ci.yml no longer has exactly one step with that name; why_new=the /ship review on #518 found no guard for
-// the key that #518 adds; seam=none; no_claim=gstack's own parsing or GitHub's log format.
-test('pregate tree_log_step comes with a gstack floor of 1.102.1.0 or later and names one ci.yml step', () => {
-  const pregate = JSON.parse(readFileSync(join(ROOT, '.gstack', 'pregate.json'), 'utf8')) as { run_profiles?: Record<string, { tree_log_step?: string }> };
-  const steps = Object.values(pregate.run_profiles ?? {}).flatMap((p) => (p.tree_log_step === undefined ? [] : [p.tree_log_step]));
-  if (steps.length === 0) return;
+// artifact) comes with a ship-policy floor at 1.102.1.0 or later and names exactly one step of the profile's own jobs in
+// its workflow, and that step prints the GSTACK_TREE_JSON line for the profile's artifact, so an older gstack is told to
+// upgrade instead of refusing the whole policy as an unknown key, and a renamed or moved step does not silently turn the
+// fallback off; fails_when=tree_log_step stays in .gstack/pregate.json while min_gstack_version drops below 1.102.1.0, or
+// the profile's jobs no longer hold exactly one step with that name, or that step stops printing GSTACK_TREE_JSON
+// <artifact>; why_new=the /ship review on #518 noted the first guard counted step names across all of ci.yml, not the
+// profile's jobs; seam=none; no_claim=gstack's own parsing or GitHub's log format.
+test('pregate tree_log_step comes with a gstack floor of 1.102.1.0 or later and names one emitting step of the profile jobs', () => {
+  type Profile = { workflow: string; jobs: string[]; artifact: string; tree_log_step?: string };
+  const pregate = JSON.parse(readFileSync(join(ROOT, '.gstack', 'pregate.json'), 'utf8')) as { run_profiles?: Record<string, Profile> };
+  const profiles = Object.values(pregate.run_profiles ?? {}).filter((p) => p.tree_log_step !== undefined);
+  if (profiles.length === 0) return;
   const floor = (JSON.parse(readFileSync(join(ROOT, '.gstack', 'ship-policy.json'), 'utf8')) as { min_gstack_version: string }).min_gstack_version.split('.').map(Number);
   const release = [1, 102, 1, 0];
   const firstDiff = release.findIndex((n, i) => (floor[i] ?? 0) !== n);
   expect(firstDiff === -1 || (floor[firstDiff] ?? 0) > release[firstDiff]).toBe(true);
-  const names = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8').split('\n').map((l) => l.match(/^\s*- name: (.+?)\s*$/)?.[1]);
-  for (const step of steps) expect(names.filter((n) => n === step).length).toBe(1);
+  for (const p of profiles) {
+    const workflow = Bun.YAML.parse(readFileSync(join(ROOT, '.github', 'workflows', p.workflow), 'utf8')) as { jobs: Record<string, { steps?: { name?: string; run?: string }[] }> };
+    const hits = p.jobs.flatMap((job) => (workflow.jobs[job]?.steps ?? []).filter((s) => s.name === p.tree_log_step));
+    expect(hits.length).toBe(1);
+    expect(hits[0]?.run ?? '').toContain(`GSTACK_TREE_JSON ${p.artifact} `);
+  }
 });
 
 // Value: protects=no Markdown page but CHANGELOG.md names the current release, so a pull request renumbered after another

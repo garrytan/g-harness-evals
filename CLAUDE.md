@@ -6,9 +6,9 @@ There is no home team. OpenClaw, Hermes Agent, QM, Claude Code and Codex get the
 
 ## Read first
 
-- docs/plans/2026-10-21-harness-eval-v0/plan.md: the approved plan, decisions D1 to D10, milestones M0 to M5.
+- [docs/decisions.md](docs/decisions.md): every decision that shaped a counted run, newest first. The first plan (decisions D1 to D10, milestones M0 to M5) and its review records stay in the private repository.
 - [docs/methodology.md](docs/methodology.md): the trial contract every runner and grader implements.
-- TODOS.md: open work, generated from todos.d/, one file per item. Add or delete files in todos.d/ only and never edit TODOS.md; CI's `fold-hub-fragments.ts --check --base` lets the fold stay pending, and internal-task folds TODOS.md in its own housekeeping commits. gstack /ship's Step 14 still writes TODOS.md, so record its deferrals and completions as files in todos.d/ and leave TODOS.md as the base has it. The fold moves to gstack's land once gstack's tree receipt accepts a release_tool output.
+- Open work is tracked in the private repository, not in this copy. To report a problem or suggest work, open an issue on GitHub.
 - [compendium.md](compendium.md): what has been published before, and what to reuse.
 - [docs/gbrain-evals-conventions.md](docs/gbrain-evals-conventions.md): where our conventions come from.
 
@@ -18,7 +18,7 @@ Explain the task, the setting that changed the outcome, and the limit of the res
 
 ## Repository map
 
-- `docs/plans/`: plans and their review records, one folder per plan.
+- Plans and their review records stay in the private repository, so this copy has no plans folder.
 - `docs/benchmarks/`: preregistrations, runbooks and reports, one folder per counted run; `preregistrations.json` and `preregistrations.d/` register experiments for the order check.
 - `findings/`: one file per public claim, each tied to receipts at a pinned commit; `findings/README.md` is the index.
 - `runner/stats/`: the statistics kit (vendored from gbrain-evals, MIT).

@@ -220,7 +220,8 @@ describe('hermes chat-mode adapter', () => {
     const seen = fn('model_error_seen');
     expect(seen).toContain("sed 's|\\x1b\\[[0-9;?]*[ -/]*[@-~]||g;");
     expect(seen).toContain('cat "$HERMES_HOME"/logs/*.log 2>/dev/null; } || true )');
-    expect(seen).toContain("printf '%s\\n' \"$blob\" | grep -Eqi \"$model_error_pattern\"");
+    expect(seen).toContain('grep -Eqi "$model_error_pattern" <<<"$blob"');
+    expect(seen).not.toMatch(/\|\s*grep/);
     expect(overlay).toContain('if model_error_seen; then\n  log "model error (hermes exit $code)"; exit 3\nfi');
   });
   test('model_error_seen finds the counted pattern through prompt_toolkit escapes and in Hermes\'s own log', () => {
@@ -236,6 +237,7 @@ describe('hermes chat-mode adapter', () => {
     expect(run('\x1b[2J\x1b[H idle prompt, no error\r\n', null)).toBe('none');
     expect(run('all quiet\n', '2026-10-28 20:47:56,072 ERROR agent.conversation_loop: Non-retryable client error: Error code: 401 - {...}\n')).toBe('seen');
     expect(run('all quiet\n', 'WARNING hermes_state: state.db: linked SQLite 3.40.1\n')).toBe('none');
+    expect(run('HTTP 429: rate limited\n' + 'filler line\n'.repeat(100_000), null)).toBe('seen');
   });
   test('the chat turn runs under a pty with a private FIFO held open as fd 3 and closed in the session, no --oneshot, the approval limit recorded', () => {
     const code = overlay.split('\n').filter(l => !l.startsWith('#')).join('\n');

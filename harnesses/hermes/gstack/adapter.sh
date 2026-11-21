@@ -225,7 +225,9 @@ chat_watch() {
 model_error_seen() {
   local blob
   blob=$( { sed 's|\x1b\[[0-9;?]*[ -/]*[@-~]||g; s|\x1b\][^\x07]*\x07||g; s|\x1b[()][A-Za-z0-9]||g' "$HE_LOG_DIR/stdout.log" 2>/dev/null | tr -d '\r'; cat "$HE_LOG_DIR/stderr.log" 2>/dev/null; cat "$HERMES_HOME"/logs/*.log 2>/dev/null; } || true )
-  printf '%s\n' "$blob" | grep -Eqi "$model_error_pattern"
+  # A here-string, not a pipe: grep -q exits on its first match, the printf feeding it can then die of SIGPIPE (141),
+  # and under pipefail the check failed although the error line was there.
+  grep -Eqi "$model_error_pattern" <<<"$blob"
 }
 
 # The session's stdin is a FIFO in a private directory (mktemp -d, mode 0700)
