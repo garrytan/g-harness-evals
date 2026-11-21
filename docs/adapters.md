@@ -151,6 +151,10 @@ The metering proxy's usage line also gains two optional fields, written only on 
 - `route_copies`: copies of the rule or placebo in the forwarded request by location (`system`, `user` for the current member turn, `tool_result`, `history` for everything earlier), plus `listing`, copies of a skill description outside tool results. Counts only. `scripts/instruction-followed-h10.ts` reads discovery and load from them.
 - `housekeeping: true`: a request for a model other than the cell's own (a harness's utility model). It carries no `route_copies`, and count_tokens and refused lines carry neither field.
 
+### Timer turns
+
+No adapter runs a harness's gateway, so no harness's own cron or timer fires on the world's simulation clock; `harnesses/clock-capabilities.json` records that per harness (`native_scheduler`). In a task with `[clock] timers` (docs/tasks.md, "Timers"), the world keeps timers the agent sets with `timer_set` and the runner delivers each due timer as an ordinary `TurnRequest` with two extra fields, `kind: "timer"` and `timer` (id, due, reason, note, set_at): the actor, channel, `ts` and `thread_ts` are those of the turn that set it, so the adapter derives the same session key and answers in that session; nobody posted a message, and `prompt` carries everything. An adapter needs no change to answer one. `tests/timer-turn-adapters.test.ts` proves it per adapter through the real runner and a fake model that checks the first turn's marker is in the conversation it is sent: the fake harness always, and claude-code, codex, openclaw, hermes and harness-zero when their images are present. Those are the harnesses marked `timer_turns: certified`; the runner refuses a `[clock] timers` task on any other (HE-PREREG-009). QM is not certified: its serve entry cannot register the world MCP server at the pinned commit.
+
 ### gbrain beside world
 
 In a gbrain-arm cell the runner sets `HE_GBRAIN_MCP_URL` and `HE_GBRAIN_MCP_TOKEN`, and each adapter adds a server named `gbrain` with the same shape as `world`: OpenClaw `openclaw mcp set gbrain {url, transport: streamable-http, headers.Authorization}`; Hermes an `mcp_servers.gbrain` block appended beside `world` (tools register as `mcp__gbrain__<tool>`); QM `PUT /v1/admin/mcp-servers/gbrain` as `harness-admin`, whose `tools/list` probe before saving is the discovery proof (`qm-gbrain-register.json`); the fake harness answers `[fake:gbrain ...]` markers. Each `pin.json` records this under `gbrain_mcp`. The URL is the world's tap, so every call the harness makes to gbrain is a `via: "gbrain"` event in the trial's log (world/README.md), and the harness never holds the sidecar's own token. `tests/adapter-conformance.test.ts` proves the fake path against a fake sidecar; the live smoke of the three real harnesses is in docs/gbrain-arm.md.
@@ -248,6 +252,10 @@ The slot `t1` is bound with `$cred` first, as above.
 The same file also runs the shared `run` and `serve` assertions once per adapter that has a fixture: today `_fake` and `harness-zero`. A fixture supplies the model upstream, the workload (the prompt that makes a turn reply, pass its budget, fail at the model, fail in the harness or post through the world MCP) and the state layout the adapter keeps. The fake-only assertions above do not change. File-writing assertions stay fake-only, because Harness Zero has no file tools.
 
 ## Changelog
+
+### 2026-11-21: timer turns
+
+"Timer turns" under Serve: `TurnRequest` gains the optional `kind` and `timer` fields on a turn that delivers an agent-set timer, `harnesses/clock-capabilities.json` records each harness's native scheduler and whether it is certified for timer turns, and `tests/timer-turn-adapters.test.ts` is the conformance case. Requests of tasks without `[clock] timers` are byte-identical to before. Why: TODOS eng-r2-native-5 and eng-r2-outside-4, and the always-on agents eval.
 
 ### 2026-11-14: install mode (internal-task)
 

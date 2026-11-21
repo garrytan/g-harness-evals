@@ -21,7 +21,7 @@
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TurnWindow } from '../contracts.ts';
+import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TimerTurnWindow, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { cellModels, taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
@@ -232,7 +232,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   // An internal cell's world, sidecar and harness container use the run's internal network and its gateway.
   if (cell.network === 'internal' && (!docker || !opts.network)) throw new RunnerError('HE-NET-001', `cell ${cell.id} has network "internal" but the trial ${docker ? 'was given no internal network' : `runs in ${mode} mode`}; fix: run it through executeRun in docker mode`);
   const network = cell.network === 'internal' ? opts.network : undefined;
-  const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker, ...(task.world?.retire?.length ? { retire: task.world.retire } : {}), ...(network ? { gatewayAddress: network.gateway } : {}) });
+  const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker, ...(task.world?.retire?.length ? { retire: task.world.retire } : {}), ...(task.clock?.timers ? { timers: true } : {}), ...(network ? { gatewayAddress: network.gateway } : {}) });
   log(`world for ${trial.id} at ${world.localUrl} (harness sees ${world.harnessUrl}); ${task.turns.length} turns, budget ${task.time_budget_s} s per turn`);
   const proxy = mode === 'scripted' ? null : ctx.proxy;
 
@@ -312,6 +312,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let readyFailure: HarnessGone | null = null;
   let readyTurnHook = 'no ready file';
   let windows: TurnWindow[] = [];
+  let timerWindows: TimerTurnWindow[] = [];
   let endedEarly: string | null = null;
   const answeredHook: { turn_runs: Array<number | null>; turns: number[] } = { turn_runs: [], turns: [] };
   let error: string | undefined;
@@ -361,6 +362,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       const loop = await runTurns({ task, preamble: opts.preamble, world, harness: harness!, turnsDir: dirs.turns, trialId: trial.id, graceS: opts.turnGraceS, log,
         onAnswered: (turn, exit) => { if (readyTurnHook === 'ran') noteAnsweredTurn(answeredHook, dirs.logs, turn, exit); } });
       windows = loop.windows;
+      timerWindows = loop.timer_windows;
       endedEarly = loop.ended_early;
       if (loop.error) error = loop.error;
     }
@@ -400,7 +402,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     }
 
     if (windows.length) {
-      const evidence: TrialEvidence = { trial_id: trial.id, task_dir: task.dir, split: cell.split, world_path: world.worldPath, bot_member: world.botMember.id, snapshot, events: world.events, turns: windows };
+      const evidence: TrialEvidence = { trial_id: trial.id, task_dir: task.dir, split: cell.split, world_path: world.worldPath, bot_member: world.botMember.id, snapshot, events: world.events, turns: windows, ...(task.clock?.timers ? { timer_turns: timerWindows } : {}) };
       grade = await ctx.grade(evidence);
     }
     writeAtomic(paths.grade!, JSON.stringify(grade, null, 1) + '\n');
@@ -429,7 +431,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   if (semanticError) { error = semanticError; log(semanticError); }
 
   const exits = windows.map((w) => w.exit);
-  const decided = trialTermination({ cellModel: cell.model, fromExits: classify(exits, readyFailure, endedEarly, grade.approval_stop), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) });
+  const decided = trialTermination({ cellModel: cell.model, fromExits: classify([...exits, ...timerWindows.map((w) => w.exit)], readyFailure, endedEarly, grade.approval_stop), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) });
   if (decided.note) { log(decided.note); error = error ? `${error}; ${decided.note}` : decided.note; }
   const termination = decided.termination;
   const ended = Date.now();
@@ -438,6 +440,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     termination, grade: grade.grade, consent_violation: grade.consent_violation, approval_stop: grade.approval_stop, effects: grade.effects, predicates: grade.predicates,
     cap_stop: capStop,
     turns: { planned: task.turns.length, run: windows.length, exits },
+    ...(task.clock?.timers ? { timer_turns: { run: timerWindows.length, exits: timerWindows.map((w) => w.exit) } } : {}),
     usage, wall_ms: ended - started, started_at, ended_at: new Date(ended).toISOString(), paths,
     ...(error ? { error } : {}),
     ...(gbrainRecord ? { gbrain: gbrainRecord } : {}),

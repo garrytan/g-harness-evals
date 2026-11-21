@@ -29,6 +29,11 @@ export interface TurnRequest {
   sim_now: string;
   /** Wall-clock seconds the adapter has for this turn; the runner kills the container 60 s later. */
   time_budget_s: number;
+  /** Set only on a turn that delivers an agent-set timer (a task with [clock] timers = true): nobody posted a message; actor,
+   *  channel and thread are those of the turn in which the timer was set, so the adapter answers in that same session, and ts
+   *  is the ts of that turn's message. Adapters need not read it: the prompt carries everything. */
+  kind?: 'timer';
+  timer?: { id: string; due: string; reason: string; note: string | null; set_at: string };
 }
 
 /** The adapter's answer. exit follows docs/adapters.md: 0 completed, 2 harness error, 3 model error,
@@ -71,7 +76,7 @@ export interface TurnWindow {
   /** internal-task addition (2026-11-09): 'bot_posted' when the runner did not post reply_text because the bot had already posted
    *  in the turn's channel (any thread) during the turn window; reply_ts is then null and reply_text is kept for audit, never
    *  graded. Absent on turns.jsonl files written before it, which the grader reads as before. */
-  reply_withheld?: 'bot_posted';
+  reply_withheld?: 'bot_posted' | 'no_reply';
   /** internal-task (H10) addition: the Slack thread ts the turn was posted in, null for a top-level message. Optional until the
    *  runner writes it (H10 PR 5), so turns.jsonl files written before it still parse. */
   thread_ts?: string | null;
@@ -79,6 +84,21 @@ export interface TurnWindow {
    *  thread, the same key every adapter derives from the TurnRequest (harnesses/routes/README.md, "Sessions"). Optional until
    *  the runner writes it (H10 PR 5). */
   session_key?: string;
+  /** [clock] timers tasks only: the request number (turn-<NNNN> files) when timer turns make it differ from `turn`. */
+  delivery?: number;
+}
+
+/** [clock] timers tasks only: one timer turn, written to timer-turns.jsonl and never into turns.jsonl, so every predicate
+ *  that reads `turns` sees the scripted turns alone. `turn` is the request number; `after_turn` the scripted turn it followed
+ *  (0 before the first); actor, channel and session are those of the turn that set the timer. */
+export interface TimerTurnWindow extends Omit<TurnWindow, 'delivery'> {
+  kind: 'timer';
+  timer_id: string;
+  due: string;
+  set_in_turn: number | null;
+  after_turn: number;
+  /** 'end' for a timer fired by [clock] end_advance_s after the last scripted turn. */
+  phase?: 'end';
 }
 
 /** GET /admin/snapshot as the world returns it after the fence. Files are not in the snapshot; graders
@@ -95,6 +115,8 @@ export interface WorldSnapshot {
   mail: unknown[];
   pending_actions: unknown[];
   events: number;
+  /** Only in a world with timers on: every agent-set timer with its status (world/services/clock/timers.ts). */
+  timers?: Array<{ id: string; due: string; reason: string; note: string | null; set_by: string; set_at: string; status: 'pending' | 'fired' | 'cancelled'; fired_turn?: number; fired_at?: string }>;
 }
 
 export interface TrialEvidence {
@@ -108,6 +130,8 @@ export interface TrialEvidence {
   snapshot: WorldSnapshot;
   events: WorldEvent[];
   turns: TurnWindow[];
+  /** [clock] timers tasks only (TimerTurnWindow). */
+  timer_turns?: TimerTurnWindow[];
 }
 
 export interface PredicateResult {
@@ -559,6 +583,8 @@ export interface TrialRecord {
   predicates: PredicateResult[];
   cap_stop: boolean;
   turns: { planned: number; run: number; exits: number[] };
+  /** [clock] timers tasks only: the timer turns delivered and how each ended. */
+  timer_turns?: { run: number; exits: number[] };
   usage: TrialUsage | null;
   wall_ms: number;
   started_at: string;

@@ -183,6 +183,22 @@ consumer_turn = 3             # the ask turn that needs it
 - A problem with these fields names its position and an opaque code from `LIFECYCLE_CODES` (for example `world.retire[1]: RETIRE_SLUG_SYNTAX`) and never quotes the value, so a held-out slug or fact pattern cannot reach an error.
 - `thread = "new"` on each session's first turn gives the fact-bearing sessions and the asking session distinct adapter session keys.
 
+### Timers
+
+A task with a `[clock]` table turns on timers the agent sets for itself on the simulation clock. Without it nothing below happens and the task runs exactly as before.
+
+```toml
+[clock]
+timers = true                 # the only value defined
+end_advance_s = 7200          # optional: after the last turn, move the clock this far so timers due then fire too
+```
+
+- The world offers three more world-MCP tools: `timer_set` (`at`, an ISO instant with a `Z` or `+HH:MM` offset, or `in_minutes`; a one-line `reason`; an optional `note`), `timer_list` and `timer_cancel` (world/services/clock/timers.ts). Each is an event in the log, and the snapshot carries every timer with its status.
+- Before the runner moves the clock (`advance_clock_s`, or `end_advance_s` at the end), it delivers every timer due on the way as a **timer turn**: the clock goes to the timer's due time, nobody posts a message, and the harness gets a request with `kind = "timer"` in the session of the turn that set the timer, with the prompt in `tasks/multiuser/_shared/timer.md`. A timer is marked fired only once the adapter answers with exit 0, so a repeated tick never fires it twice; a timer whose turn failed or never answered stays pending and comes again at the next clock move. At most 20 timer turns run per clock move. A timer turn's exit counts toward the trial's termination like a scripted turn's.
+- Timer turns are written to `timer-turns.jsonl`, never `turns.jsonl`, so predicate turn numbers still count the scripted turns only. A scripted turn after a timer turn records its request number as `delivery`.
+- On any turn of such a task, a reply of exactly `NOTHING_TO_SAY` is not posted (`reply_withheld: "no_reply"`), so the agent can stay quiet. It is not `NO_REPLY`, because OpenClaw treats that word as its own silent reply and then fails the turn as empty.
+- `expire_turns` cannot be combined with `[clock]`, and only harnesses that `harnesses/clock-capabilities.json` certifies may run such a task, never in `scripted` mode (HE-PREREG-009; docs/adapters.md, "Timer turns").
+
 ## Predicate library (`runner/grade/predicates.ts`)
 
 | `kind` | Fields | Passes when |
@@ -249,6 +265,10 @@ A dev-split cell without a `tasks` list now runs these eleven tasks beside the t
 Memory probes phrase the fact as the member's own preference, identifier or project, which is what QM's extractor keeps, and their fact turn carries `wait_s = 20` so a capture quiet time of 5 s (QM probe configs, `harnesses/qm/pin.json`) has passed before the next turn. The sandbox probes ask for "your own workspace, with your shell" in the member's words, because the preamble never offers one. The sentinels are hidden facts, so the matrix test proves none occurs in the world seed.
 
 ## Changelog
+
+### 2026-11-21: timers on the simulation clock
+
+The "Timers" section: a `[clock]` table turns on world-side timers the agent sets with `timer_set`, delivered by the runner as timer turns when the clock passes them. Why: no harness's own scheduler follows the frozen simulation clock (TODOS eng-r2-native-5, eng-r2-outside-4), so scheduled work could not be tested; the always-on agents eval needs follow-ups the agent sets for itself.
 
 ### 2026-11-08: the company-v2 and personal-v2 sets; expiry off and L5 in the v0.4 generator
 

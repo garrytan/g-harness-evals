@@ -92,7 +92,11 @@ const taskSchema = z.object({
     .refine((m) => m.needed_turn !== undefined || m.needed !== undefined, 'give needed_turn (v0.3) or [[mechanism.needed]] (v0.4)').optional(),
   /** v0.4 (internal-task): seed records the trial's world hides from every read surface, by corpus slug. */
   world: z.object({ retire: z.array(z.string()) }).strict().optional(),
-}).strict();
+  /** Agent-set timers on the simulation clock (docs/tasks.md, "Timers"): the world offers timer_set, timer_list and
+   *  timer_cancel, and the runner delivers each timer as a turn when the clock passes it; end_advance_s moves the clock once
+   *  more after the last turn so timers due then fire too. Not combined with expire_turns. */
+  clock: z.object({ timers: z.literal(true), end_advance_s: z.number().int().min(0).optional() }).strict().optional(),
+}).strict().refine((t) => !t.clock || !t.turns.some((x) => x.expire_turns), 'expire_turns cannot be combined with [clock] timers');
 
 export type Task = z.infer<typeof taskSchema>;
 export type Turn = z.infer<typeof turnSchema>;

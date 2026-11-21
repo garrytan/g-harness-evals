@@ -33,6 +33,8 @@ export interface TaskSpec {
   predicate: Array<Record<string, unknown>>;
   /** v0.4 (internal-task): seed records the trial's world hides from every read surface, by corpus slug ([world] retire). */
   world?: { retire?: string[] };
+  /** Agent-set timers on the simulation clock (docs/tasks.md, "Timers"); absent, the trial runs exactly as before. */
+  clock?: { timers: true; end_advance_s?: number };
   /** The directory task.toml was read from. */
   dir: string;
 }
@@ -64,6 +66,12 @@ export function loadTask(dir: string): TaskSpec {
     if (t.thread !== undefined && t.thread !== 'new') problems.push(`turns[${i}].thread (only "new" is defined)`);
   });
   if (turns.length) problems.push(...lifecycleProblems({ turns, world: raw.world as { retire?: unknown } | undefined, mechanism: raw.mechanism as { needed?: unknown } | undefined }));
+  const clock = raw.clock as { timers?: unknown; end_advance_s?: unknown } | undefined;
+  if (clock !== undefined) {
+    if (clock.timers !== true) problems.push('clock.timers (only true is defined)');
+    if (clock.end_advance_s !== undefined && !(Number(clock.end_advance_s) >= 0)) problems.push('clock.end_advance_s');
+    if (turns.some((t) => t.expire_turns)) problems.push('expire_turns cannot be combined with [clock] timers');
+  }
   const budget = Number(raw.time_budget_s ?? 0);
   if (!(budget > 0)) problems.push('time_budget_s');
   if (problems.length) throw new RunnerError('HE-TASK-001', `${file} is missing or malformed: ${problems.join(', ')}; schema in docs/tasks.md`);
@@ -81,6 +89,7 @@ export function loadTask(dir: string): TaskSpec {
     predicates: { required: predicates.required ?? [], forbidden_effects: predicates.forbidden_effects ?? [] },
     predicate: Array.isArray(raw.predicate) ? raw.predicate as Array<Record<string, unknown>> : [],
     ...(raw.world ? { world: raw.world as { retire?: string[] } } : {}),
+    ...(clock ? { clock: { timers: true as const, ...(clock.end_advance_s !== undefined ? { end_advance_s: Number(clock.end_advance_s) } : {}) } } : {}),
     dir,
   };
 }
@@ -93,6 +102,19 @@ export function taskTurnCount(dir: string): number {
   catch { return 0; }
 }
 
+/** True when task.toml turns timers on ([clock] timers = true); false when absent or unreadable. */
+export function taskHasTimers(dir: string): boolean {
+  try { return (Bun.TOML.parse(readFileSync(join(dir, 'task.toml'), 'utf8')) as { clock?: { timers?: unknown } }).clock?.timers === true; }
+  catch { return false; }
+}
+
+/** harnesses/clock-capabilities.json: the harnesses tests/timer-turn-adapters.test.ts certifies for timer turns. */
+export const CLOCK_CAPABILITIES_PATH = join(import.meta.dir, '..', '..', 'harnesses', 'clock-capabilities.json');
+export function timerTurnsCertified(harness: string): boolean {
+  const caps = JSON.parse(readFileSync(CLOCK_CAPABILITIES_PATH, 'utf8')) as { harnesses: Record<string, { timer_turns?: string }> };
+  return caps.harnesses[harness]?.timer_turns === 'certified';
+}
+
 export function loadPreamble(path = DEFAULT_PREAMBLE_PATH): string {
   if (!existsSync(path)) throw new RunnerError('HE-TASK-002', `preamble not found at ${path}; fix: add tasks/multiuser/_shared/preamble.md (docs/tasks.md) or pass --preamble <file>`);
   const text = readFileSync(path, 'utf8');
@@ -102,6 +124,10 @@ export function loadPreamble(path = DEFAULT_PREAMBLE_PATH): string {
 }
 
 export type PreambleValues = Record<(typeof PREAMBLE_PLACEHOLDERS)[number], string>;
+
+/** The prompt of a timer turn ([clock] timers): tasks/multiuser/_shared/timer.md, filled with the timer_* values and the
+ *  originating turn's requester and conversation. */
+export const TIMER_PROMPT_PATH = join(import.meta.dir, '..', '..', 'tasks', 'multiuser', '_shared', 'timer.md');
 
 export function composePrompt(preamble: string, values: PreambleValues): string {
   return preamble.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_, name: string) => values[name as keyof PreambleValues] ?? '');

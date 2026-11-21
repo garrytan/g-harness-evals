@@ -41,6 +41,7 @@ tokens, and serves on `127.0.0.1:8790`:
 | `GET /admin/snapshot`, `GET /admin/events`, `POST /admin/fence`, `GET /admin/socket` | runner, admin token | state for graders, the in-memory event list, stop accepting writes (contract item 7), socket connection count |
 | `POST /admin/gbrain/requester` | runner, admin token | `{"member": "<id>"}` or `{"member": null}`, the member whose gbrain token the tap presents under member scope (below); logged as a `gbrain.requester` admin event |
 | `POST /admin/expire` | runner, admin token | v0.4: `{"turn": N, "windows": [{"turn": k, "from_ts": "<ts>", "to_ts": "<ts>" or null}]}`, hide every message inside each window from every read surface (below); logged as an `admin.expire` admin event |
+| `GET /admin/timers`, `POST /admin/timers/fire` | runner, admin token | only in a world with timers on (a task with `[clock] timers = true`, docs/tasks.md "Timers"), else 404: list every agent-set timer, or those due by `?due_by=<ISO instant>`; `{"id", "turn"}` marks one fired after its timer turn answered |
 | `POST /admin/gbrain/flush` | tests and tools, admin token | waits (up to the queue's 120 s deadline, which this server's idle timeout matches) until every message posted so far is written into the brain by the live ingestion (below) and answers `{ok, ingest, written, skipped, failed}`; `ingest: "off"` with nothing written when the trial has no ingestion. The runner's trial world calls the module in process instead |
 | `GET /healthz` | anyone | liveness |
 

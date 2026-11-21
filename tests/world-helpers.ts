@@ -5,8 +5,8 @@ import type { Split } from '../world/types.ts';
 
 export const world = loadWorld(join(import.meta.dir, '..', 'world', 'seed', 'world.json'));
 
-export function startWorld(trialId: string, split: Split = 'dev'): WorldServer {
-  return createWorldServer({ world, split, trialId, eventsPath: null });
+export function startWorld(trialId: string, split: Split = 'dev', extra: Partial<Parameters<typeof createWorldServer>[0]> = {}): WorldServer {
+  return createWorldServer({ world, split, trialId, eventsPath: null, ...extra });
 }
 
 export function tokenOf(ws: WorldServer, member: string): string {

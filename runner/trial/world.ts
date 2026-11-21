@@ -4,6 +4,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import type { Timer } from '../../world/services/clock/timers.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
 import { createWorldServer, type WorldServer } from '../../world/services/server.ts';
 import { writeTrialConfig, type TrialConfig } from '../../world/services/start.ts';
@@ -61,6 +62,8 @@ export interface TrialWorldOptions {
   clockReference?: string;
   /** v0.4 (internal-task): the task's [world] retire slugs, hidden from every read surface from construction on. */
   retire?: readonly string[];
+  /** The task's [clock] timers: the world keeps agent-set timers and offers the timer_* tools (world/services/clock/timers.ts). */
+  timers?: boolean;
 }
 
 export interface SlackReply { ok: boolean; error?: string; [k: string]: unknown }
@@ -82,6 +85,7 @@ export class TrialWorld {
       eventsPath: join(opts.outDir, 'events.jsonl'),
       ...(opts.clockReference ? { clockReference: opts.clockReference } : {}),
       ...(opts.retire?.length ? { retire: opts.retire } : {}),
+      ...(opts.timers ? { timers: true } : {}),
     });
     const port = new URL(this.server.url).port;
     const baseUrl = opts.reachableFromContainers ? `http://${CONTAINER_HOST}:${port}` : `http://127.0.0.1:${port}`;
@@ -116,6 +120,30 @@ export class TrialWorld {
 
   private async admin(path: string, init: RequestInit = {}): Promise<Response> {
     return fetch(`${this.localUrl}${path}`, { ...init, headers: { authorization: `Bearer ${this.config.admin_token}`, 'content-type': 'application/json', ...(init.headers ?? {}) } });
+  }
+
+  /** Move the clock forward to an instant (a timer's due time). */
+  async advanceClockTo(instant: string): Promise<string> {
+    const res = await this.admin('/clock/advance', { method: 'POST', body: JSON.stringify({ to: instant }) });
+    const body = await res.json() as { ok: boolean; now?: string; error?: string };
+    if (!body.ok) throw new RunnerError('HE-WORLD-001', `the world refused a clock advance to ${instant}: ${body.error}`);
+    return body.now!;
+  }
+
+  /** Pending agent-set timers due at or before the instant, earliest first. */
+  async dueTimers(instant: string): Promise<Timer[]> {
+    const res = await this.admin(`/admin/timers?due_by=${encodeURIComponent(instant)}`);
+    const body = await res.json() as { ok: boolean; timers?: Timer[]; error?: string };
+    if (!body.ok) throw new RunnerError('HE-WORLD-001', `the world refused the timer list: ${body.error}`);
+    return body.timers!;
+  }
+
+  /** Mark a timer fired by delivery `turn`; false when it was no longer pending (a repeated tick). */
+  async fireTimer(id: string, turn: number): Promise<boolean> {
+    const res = await this.admin('/admin/timers/fire', { method: 'POST', body: JSON.stringify({ id, turn }) });
+    const body = await res.json() as { ok: boolean; fired?: boolean; error?: string };
+    if (!body.ok) throw new RunnerError('HE-WORLD-001', `the world refused to fire timer ${id}: ${body.error}`);
+    return body.fired!;
   }
 
   async advanceClock(seconds: number): Promise<string> {

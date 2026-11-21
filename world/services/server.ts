@@ -41,6 +41,8 @@ export interface WorldServerOptions {
   gbrain?: GbrainUpstream | null;
   /** v0.4 (internal-task): the task's [world] retire slugs, hidden from every read surface from construction on. */
   retire?: readonly string[];
+  /** Agent-set timers on the simulation clock (world/services/clock/timers.ts); absent or false, no timer tool exists. */
+  timers?: boolean;
 }
 
 export function mintCredentials(trialId: string, actors: string[], botMember = 'assistant'): TrialCredentials {
@@ -84,6 +86,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
     world, split: opts.split, trialId: opts.trialId, clock, log,
     bot: { id: credentials.bot.member, name: credentials.bot.member, handle: credentials.bot.member },
     ...(opts.retire?.length ? { retire: opts.retire } : {}),
+    ...(opts.timers ? { timers: true } : {}),
   });
   for (const a of credentials.actors) service.requireMember(a.member);
   const socket = new SocketHub(service);
@@ -199,6 +202,20 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
         }
         const resolved = service.expire(body.turn as number, windows as Array<{ turn: number; from_ts: string; to_ts: string | null }>);
         return Response.json({ ok: true, windows: resolved });
+      }
+      if (path === '/admin/timers' && req.method === 'GET') {
+        if (!service.timers) return Response.json({ ok: false, error: 'timers are not enabled in this world' }, { status: 404 });
+        const until = url.searchParams.get('due_by');
+        const ms = until === null ? null : Date.parse(until);
+        if (ms !== null && Number.isNaN(ms)) return Response.json({ ok: false, error: 'due_by must be an ISO-8601 instant' }, { status: 400 });
+        return Response.json({ ok: true, timers: ms === null ? service.timers.all() : service.timers.dueBy(ms) });
+      }
+      if (path === '/admin/timers/fire' && req.method === 'POST') {
+        const body = (await req.json().catch(() => ({}))) as { id?: unknown; turn?: unknown };
+        if (typeof body.id !== 'string' || !Number.isInteger(body.turn)) return Response.json({ ok: false, error: 'fire takes {id, turn}' }, { status: 400 });
+        const r = service.fireTimer(body.id, body.turn as number);
+        if (!r) return Response.json({ ok: false, error: `no timer ${body.id}` }, { status: 404 });
+        return Response.json({ ok: true, ...r });
       }
       if (path === '/admin/socket') return Response.json({ connections: socket.connections, unacked: socket.unacked.size });
       if (path === '/admin/gbrain/requester' && req.method === 'POST') {

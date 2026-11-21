@@ -67,7 +67,7 @@ import type { GbrainCellConfig, HarnessMode } from './contracts.ts';
 import { RunnerError } from './errors.ts';
 import { canonicalLookup, priceOnDate } from './pricing/model-pricing.ts';
 import { lookupEmbeddingPrice } from './pricing/embedding-pricing.ts';
-import { taskTurnCount } from './trial/task.ts';
+import { taskHasTimers, taskTurnCount, timerTurnsCertified } from './trial/task.ts';
 import { DEFAULT_GBRAIN_IMAGE, SOURCE_PROBE_QUERIES } from './trial/gbrain.ts';
 import { CLIENT_ID_ENV, CLIENT_SECRET_ENV, MEMORY_PROVIDER_CONFIG_NAME, isQmMemoryProvider, providerConfig, memoryProviderWiring } from '../harnesses/qm/memory-provider.ts';
 import { checkPlan, type HeldoutBlock } from './heldout/openings.ts';
@@ -700,6 +700,7 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
       const dir = taskDirFor(cell, task, tasksRoot);
       const turns = taskTurnCount(dir);
       if (!turns) throw new RunnerError('HE-TASK-001', `cell ${cell.id}: ${dir}/task.toml is missing or has no turns; fix: add the task (docs/tasks.md) or drop it from the cell`);
+      if (taskHasTimers(dir) && (cell.harness_mode === 'scripted' || !timerTurnsCertified(cell.harness))) throw new RunnerError('HE-PREREG-009', `cell ${cell.id}: task ${task} has [clock] timers, and ${cell.harness_mode === 'scripted' ? 'scripted mode does not deliver timer turns yet' : `harness ${cell.harness} is not certified for timer turns (harnesses/clock-capabilities.json)`}; fix: run it on a certified harness or drop the task from the cell`);
       const scripts: Array<{ name: string; path: string } | null> = cell.script === 'oracle' ? [{ name: 'oracle', path: join(dir, 'oracle.json') }]
         : cell.script === 'mutations' ? listMutations(dir, cell.id)
         : [null];

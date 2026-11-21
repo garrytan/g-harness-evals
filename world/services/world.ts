@@ -4,7 +4,8 @@
 
 import { readFileSync } from 'node:fs';
 import type { CalendarEvent, Channel, Mail, MailParty, Member, Message, Split, World, WorldFile } from '../types.ts';
-import { SimClock } from './clock/clock.ts';
+import { SimClock, formatOffset } from './clock/clock.ts';
+import { type Timer, TimerStore } from './clock/timers.ts';
 import { EventLog } from './events.ts';
 
 export type Via = 'slack' | 'mcp';
@@ -36,7 +37,12 @@ export interface WorldOptions {
   /** v0.4 (internal-task): corpus slugs the task retires ([world] retire). Every seed record carrying one (messages, files, meetings,
    *  mail) is hidden from every read surface for the whole trial; the snapshot keeps it whole. */
   retire?: readonly string[];
+  /** Agent-set timers on the simulation clock (clock/timers.ts): the timer_* world-MCP tools exist only when this is true. */
+  timers?: boolean;
 }
+
+/** Most pending timers one member may hold at once. */
+export const MAX_PENDING_TIMERS = 50;
 
 /** v0.4 (internal-task): an expired turn's window, resolved to the ts of the first and last message inside it (both inclusive). */
 export interface ExpiredWindow {
@@ -83,6 +89,8 @@ export class WorldService {
   readonly bot: Member | null;
   readonly teams: World['teams'];
   readonly accounts: World['accounts'];
+  /** Null unless the trial turned timers on (WorldOptions.timers). */
+  readonly timers: TimerStore | null;
   private fenced = false;
   private readonly retired: Set<string>;
   private readonly expired: ExpiredWindow[] = [];
@@ -126,6 +134,7 @@ export class WorldService {
       this.members.push(this.bot);
       for (const c of this.channels) if (c.kind !== 'dm') c.members.push(this.bot.id);
     }
+    this.timers = opts.timers ? new TimerStore(opts.trialId) : null;
     this.retired = new Set(opts.retire ?? []);
     if (this.retired.size) {
       const count = (records: Array<{ slug: string | null }>) => records.filter((r) => this.isRetired(r)).length;
@@ -448,6 +457,60 @@ export class WorldService {
     return pending;
   }
 
+  // ---- timers the agent sets for itself (clock/timers.ts) ----
+
+  private timerStore(actor: Member, via: Via, tool: string, args: unknown): TimerStore {
+    if (!this.timers) this.deny(actor, via, tool, args, new WorldError('not_enabled', 'timers are not enabled in this world'));
+    return this.timers;
+  }
+
+  setTimer(actor: Member, via: Via, input: { at?: string; in_minutes?: number; reason: string; note?: string }): Timer {
+    const store = this.timerStore(actor, via, 'timer_set', input);
+    if (this.fenced) this.deny(actor, via, 'timer_set', input, new WorldError('fenced'));
+    const reason = String(input.reason ?? '').trim();
+    if (!reason || reason.length > 500) this.deny(actor, via, 'timer_set', input, new WorldError('invalid_arguments', 'reason is required, at most 500 characters'));
+    if ((input.at === undefined) === (input.in_minutes === undefined)) this.deny(actor, via, 'timer_set', input, new WorldError('invalid_arguments', 'give exactly one of at or in_minutes'));
+    const now = this.clock.nowMs();
+    const due = input.at === undefined ? now + Number(input.in_minutes) * 60_000
+      : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/i.test(String(input.at)) ? Date.parse(String(input.at)) : NaN;
+    if (!Number.isFinite(due)) this.deny(actor, via, 'timer_set', input, new WorldError('invalid_arguments', 'at must be an ISO-8601 instant with an offset'));
+    if (due <= now) this.deny(actor, via, 'timer_set', input, new WorldError('invalid_arguments', `the timer must be due after the current simulation time ${this.clock.nowIso()}`));
+    if (store.byOwner(actor.id).filter((t) => t.status === 'pending').length >= MAX_PENDING_TIMERS) this.deny(actor, via, 'timer_set', input, new WorldError('too_many_timers', `at most ${MAX_PENDING_TIMERS} pending timers`));
+    const timer = store.add({ due: formatOffset(due, this.clock.offsetMinutes), due_ms: due, reason, note: input.note?.trim() || null, set_by: actor.id, set_at: this.clock.nowIso() });
+    this.record(actor, via, 'timer_set', 'write', input, { timer: timer.id, due: timer.due });
+    return { ...timer };
+  }
+
+  listTimers(actor: Member, via: Via): Timer[] {
+    const store = this.timerStore(actor, via, 'timer_list', {});
+    const mine = store.byOwner(actor.id).filter((t) => t.status === 'pending').map((t) => ({ ...t }));
+    this.record(actor, via, 'timer_list', 'read', {}, { count: mine.length });
+    return mine;
+  }
+
+  cancelTimer(actor: Member, via: Via, input: { id: string }): Timer {
+    const store = this.timerStore(actor, via, 'timer_cancel', input);
+    if (this.fenced) this.deny(actor, via, 'timer_cancel', input, new WorldError('fenced'));
+    const timer = store.get(String(input.id ?? ''));
+    if (!timer || timer.set_by !== actor.id) this.deny(actor, via, 'timer_cancel', input, new WorldError('not_found', 'no such timer of yours'));
+    if (timer.status !== 'pending') this.deny(actor, via, 'timer_cancel', input, new WorldError('not_pending', `the timer is already ${timer.status}`));
+    timer.status = 'cancelled';
+    this.record(actor, via, 'timer_cancel', 'write', input, { timer: timer.id });
+    return { ...timer };
+  }
+
+  /** The runner fired the timer as delivery `turn`. Idempotent: a timer that is not pending is returned unchanged with fired false. */
+  fireTimer(id: string, turn: number): { timer: Timer; fired: boolean } | null {
+    const timer = this.timers?.get(id);
+    if (!timer) return null;
+    if (timer.status !== 'pending') return { timer: { ...timer }, fired: false };
+    timer.status = 'fired';
+    timer.fired_turn = turn;
+    timer.fired_at = this.clock.nowIso();
+    this.log.append({ actor: null, via: 'runner', tool: 'timer.fire', kind: 'clock', args: { id, turn }, outcome: 'ok', effect: { timer: id, due: timer.due, set_by: timer.set_by } });
+    return { timer: { ...timer }, fired: true };
+  }
+
   // ---- snapshot for graders ----
 
   snapshot(): Record<string, unknown> {
@@ -463,6 +526,7 @@ export class WorldService {
       mail: this.mail,
       pending_actions: this.pending,
       events: this.log.events.length,
+      ...(this.timers ? { timers: this.timers.all() } : {}),
     };
   }
 }

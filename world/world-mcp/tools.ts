@@ -12,6 +12,9 @@ export const WORLD_MCP_TOOLS = [
   'calendar_list', 'calendar_create', 'mail_list', 'mail_send_draft', 'request_approval', 'clock_now', 'whoami',
 ] as const;
 
+/** Added to WORLD_MCP_TOOLS only in a world started with timers on (a task with [clock] timers = true). */
+export const TIMER_TOOLS = ['timer_set', 'timer_list', 'timer_cancel'] as const;
+
 function ok(value: unknown): CallToolResult {
   const structured = Array.isArray(value) ? { items: value } : (value as Record<string, unknown>);
   return { content: [{ type: 'text', text: JSON.stringify(value, null, 1) }], structuredContent: structured };
@@ -176,6 +179,29 @@ export function buildMcpServer(service: WorldService, actor: Member): McpServer 
     const p = service.requestApproval(actor, 'mcp', args);
     return { pending_id: p.id, status: p.status, requested_at: p.requested_at };
   }));
+
+  if (!service.timers) return server;
+  const timerView = (t: { id: string; due: string; reason: string; note: string | null; status: string }) => ({ id: t.id, due: t.due, reason: t.reason, note: t.note, status: t.status });
+
+  server.registerTool('timer_set', {
+    description: 'Set a reminder for yourself on the simulation clock. When the clock reaches it you get a turn with its reason and note, in the conversation where you set it, even if nobody writes to you. Use it for follow-ups you promised or need to check later.',
+    inputSchema: {
+      at: z.string().optional().describe('When it is due: an ISO-8601 instant with offset, after clock_now. Give this or in_minutes'),
+      in_minutes: z.number().positive().optional().describe('Minutes from now on the simulation clock. Give this or at'),
+      reason: z.string().describe('One line: what to do when it fires'),
+      note: z.string().optional().describe('Anything you will need then, such as who asked and where'),
+    },
+  }, async (args) => run(() => timerView(service.setTimer(actor, 'mcp', args))));
+
+  server.registerTool('timer_list', {
+    description: 'Your pending reminders on the simulation clock.',
+    inputSchema: {},
+  }, async () => run(() => service.listTimers(actor, 'mcp').map(timerView)));
+
+  server.registerTool('timer_cancel', {
+    description: 'Cancel one of your pending reminders by id.',
+    inputSchema: { id: z.string() },
+  }, async (args) => run(() => timerView(service.cancelTimer(actor, 'mcp', args))));
 
   return server;
 }

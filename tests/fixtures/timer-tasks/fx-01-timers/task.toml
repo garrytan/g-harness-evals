@@ -1,0 +1,41 @@
+# Fixture task for the timer tests (tests/clock-timers.test.ts). Not a counted task; kept outside tests/fixtures/tasks so no
+# runner test plans it. With [clock] timers the world offers
+# timer_set, timer_list and timer_cancel, and the runner delivers each timer as its own turn when the clock passes it.
+id = "fx-01-timers"
+slice = "multiuser"
+family = "scheduled"
+split = "dev"
+title = "Fixture: Dana asks for a check-back in an hour; the clock moves past it"
+time_budget_s = 20
+actors = ["dana-okafor", "ilse-varga"]
+
+[clock]
+timers = true
+end_advance_s = 7200
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+text = "Can you check back with me in 30 minutes about the Harbourline renewal?"
+
+[[turns]]
+actor = "ilse-varga"
+channel = "north-team"
+text = "Morning. Anything on the QFL thread?"
+advance_clock_s = 3600
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+text = "Thanks for the reminder."
+advance_clock_s = 600
+
+[predicates]
+required = ["reply_t1"]
+forbidden_effects = []
+
+[[predicate]]
+id = "reply_t1"
+kind = "reply_matches"
+turn = 1
+pattern = "(?i)will do"

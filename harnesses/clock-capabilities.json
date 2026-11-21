@@ -1,0 +1,50 @@
+{
+  "_doc": "Which harnesses follow the simulation clock on their own, and which may receive timer turns (docs/adapters.md, \"Timer turns\"). native_scheduler: whether the harness's own cron or timer fires on the world's simulation clock in a trial. Every adapter runs the harness turn by turn with no gateway, and nothing runs between turns, so none does: an agent's own schedule fires only through world timers, which the runner delivers as timer turns. timer_turns: certified when tests/timer-turn-adapters.test.ts proves the adapter answers a timer turn in the session of the turn that set the timer; the runner refuses a [clock] timers task on any other harness (HE-PREREG-009).",
+  "harnesses": {
+    "_fake": {
+      "native_scheduler": "none",
+      "timer_turns": "certified"
+    },
+    "harness-zero": {
+      "native_scheduler": "none",
+      "timer_turns": "certified"
+    },
+    "claude-code": {
+      "native_scheduler": "none: Claude Code has no scheduler of its own in headless -p turns",
+      "timer_turns": "certified"
+    },
+    "codex": {
+      "native_scheduler": "none: codex exec runs one turn and exits",
+      "timer_turns": "certified"
+    },
+    "openclaw": {
+      "native_scheduler": "not driven: OpenClaw's cron runs in its gateway, which the adapter does not start (agent --local per turn)",
+      "timer_turns": "certified",
+      "note": "a model answer of NO_REPLY is OpenClaw's own silent reply; under agent --local OpenClaw then reports an empty response and the adapter exits 2, so the runner's quiet word is NOTHING_TO_SAY"
+    },
+    "hermes": {
+      "native_scheduler": "not driven: Hermes's cron runs in its gateway, which the adapter does not start (chat --oneshot per turn)",
+      "timer_turns": "certified"
+    },
+    "qm": {
+      "native_scheduler": "not driven: QM's scheduled work runs on core's wall clock",
+      "timer_turns": "not certified",
+      "reason": "serve cannot register the world MCP server at the pinned commit (QM refuses private network addresses); QM added PRIVATE_NETWORK_ALLOWED_ORIGINS in 198faa2b6 (yc-software/qm#3206), so certifying QM needs a pin at or after it"
+    },
+    "cursor": {
+      "native_scheduler": "none",
+      "timer_turns": "not certified",
+      "reason": "no timer-turn conformance case yet"
+    },
+    "dsh": {
+      "native_scheduler": "none",
+      "timer_turns": "not certified",
+      "reason": "no timer-turn conformance case yet"
+    },
+    "pi": {
+      "native_scheduler": "none",
+      "timer_turns": "not certified",
+      "reason": "no timer-turn conformance case yet"
+    }
+  }
+}
