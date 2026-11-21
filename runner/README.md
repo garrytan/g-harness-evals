@@ -125,10 +125,10 @@ What the plan still asks for on top of this (TODOS): egress enforcement and per-
 
 ## Price table
 
-Chat list prices live in one dated file, `runner/pricing/prices-2026-11-20.json` (earlier tables stay beside it, unchanged). `model-pricing.ts` reads it at import and refuses a malformed one (`parsePriceTable`, HE-PIN-004). The metering ledger prices a model from its own `CHAT_PRICE_OVERRIDES` or `HARNESS_CHAT_PRICES` row when it has one and falls back to this table, so for those models the ledger's row, not this file, is what a run was metered at.
+Chat list prices live in one dated file, `runner/pricing/prices-2026-11-21.json` (earlier tables stay beside it, unchanged). `model-pricing.ts` reads it at import and refuses a malformed one (`parsePriceTable`, HE-PIN-004). The metering ledger prices a model from its own `CHAT_PRICE_OVERRIDES` or `HARNESS_CHAT_PRICES` row when it has one and falls back to this table, so for those models the ledger's row, not this file, is what a run was metered at.
 
-- **One row per `provider:model` id.** Input, output, cache write, cache read, and a long-prompt tier where the provider bills one, all in US dollars per million tokens. GPT-6.2 Sol's cache-write price is for 30 minutes of retention. A `null` cache rate means none is modelled, so consumers charge the input rate.
-- **Long prompts.** A row's `long_prompt` lists the rate for the whole request once its prompt (input plus cache reads and writes) is over `threshold_tokens`. For GPT-6.2 Sol, that means more than 272,000 prompt tokens. The ledger uses the same threshold and rates when the proxy reserves and settles a request.
+- **One row per `provider:model` id.** Input, output, cache write, cache read, and a long-prompt tier where the provider bills one, all in US dollars per million tokens. GPT-6.2 Sol's and GPT-6.2 Astra's cache-write prices are for 30 minutes of retention. A `null` cache rate means none is modelled, so consumers charge the input rate.
+- **Long prompts.** A row's `long_prompt` lists the rate for the whole request once its prompt (input plus cache reads and writes) is over `threshold_tokens`. For GPT-6.2 Sol and GPT-6.2 Astra, that means more than 272,000 prompt tokens. The ledger uses the same threshold and rates when the proxy reserves and settles a request.
 - **Every row names its source.** `source_url` and `source_date`, with `source_basis` saying where they came from: `fetched` (the cited pricing source was checked directly), `row` (the comment the row carried in `model-pricing.ts`), `ledger` (the input and output price and its check date in `runner/ledger/budget-ledger.ts`; cache rates the ledger row adds are not copied), `file-header` (the old file header's 2026-07-26 check) or `supplied` (the code named none, so the provider's pricing page and the table date).
 - **A price change is a new file.** Add `prices-<date>.json`, point `PRICE_TABLE_FILE` at it, and change the identity test's fixture on purpose in the same reviewed change. Never edit a dated file in place.
 - **Record which table priced a run.** `priceTableIdentity()` returns the file's path and sha256. It names the list prices only: a model the ledger overrides was metered at the ledger's row, so record the ledger's commit beside it.
@@ -160,6 +160,10 @@ A `gbrain-install` cell asks a freshly set-up harness to install gbrain, then ch
 - **Tests.** `tests/gbrain-install-runner.test.ts` runs an oracle, a nop and a harness-memory decoy through the runner with a process-mode fixture adapter.
 
 ## Changelog
+
+### 2026-11-21: the 2026-11-21 price table (internal-task)
+
+"Price table" names `prices-2026-11-21.json`, which adds GPT-6.2 Astra's Standard rates. The metering proxy uses the same short- and long-prompt rates.
 
 ### 2026-11-20: the 2026-11-20 price table (internal-task)
 
