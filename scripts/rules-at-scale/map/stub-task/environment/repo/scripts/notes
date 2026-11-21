@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Stand-in for lane A's notes command (wave0-spec.md)."""
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+os.makedirs("/work/.he", exist_ok=True)
+with open("/work/.he/notes.log", "a") as f:
+    f.write(json.dumps({"t": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"), "argv": sys.argv[1:]}) + "\n")
+if len(sys.argv) == 3 and sys.argv[1] == "search":
+    print(f"No notes recorded for {sys.argv[2]}.")
+    sys.exit(0)
+print("usage: ./scripts/notes search <module>")
+sys.exit(2)

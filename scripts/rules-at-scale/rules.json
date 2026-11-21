@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "source": "The wave 0 build spec (2026-11-19). The spec quotes each rule inside a Markdown string and writes each backtick as an escaped backtick; the texts here are those strings with the escape removed. A wording change needs the eval owner to agree.",
+  "title": "# Project guidelines",
+  "rules": [
+    {
+      "id": "R1",
+      "text": "- Record every change in a new file under `changes/`, named in kebab-case after what it fixes (for example `changes/fix-date-parsing.md`), with one sentence describing the change.",
+      "sha256": "7a31d710f4025fec4933c5666054cc995cc5c98de624ce74e76d8dfb61789056",
+      "stands_for": "changes file named in kebab-case"
+    },
+    {
+      "id": "R2",
+      "text": "- After your last edit, run `./scripts/precheck` and make sure it passes before you finish.",
+      "sha256": "bd730a63551020534bbe1442403173127e2e03831be1a5e9bf5c5775a3ca665d",
+      "stands_for": "precheck after the last edit"
+    },
+    {
+      "id": "R3",
+      "text": "- Leave existing test files unchanged; put any new tests in a new file.",
+      "sha256": "d06df5b7b8f7cb80b01e7a7be541030af983e54d0cdfc7fa73bb3013ddd0a530",
+      "stands_for": "existing test files left unchanged"
+    },
+    {
+      "id": "R4",
+      "text": "- Commit your finished work to the current branch with a sign-off line (`git commit -s`).",
+      "sha256": "4bfaf6a1bdfe81e3f7df9e442609f969d6240d42476f9668132c2134a4361599",
+      "stands_for": "signed-off commit on the current branch"
+    },
+    {
+      "id": "R5",
+      "text": "- Before your first edit, look up the module you will change with `./scripts/notes search <module>`.",
+      "sha256": "b89ff81fe69c4ca43425314498baf2d0a4eef642e361c19380e95019f1813543",
+      "stands_for": "notes search before the first edit"
+    },
+    {
+      "id": "R6",
+      "text": "- Before you commit, read the whole staged diff with `git diff --staged` (no path filter) and fix anything you did not mean to change.",
+      "sha256": "22e924a735214205413dcb0703bbca06b74fe14ecd9be39c995b2a3b93d95699",
+      "stands_for": "full staged diff before committing"
+    }
+  ],
+  "pairs": [
+    [
+      "R1",
+      "R2"
+    ],
+    [
+      "R3",
+      "R4"
+    ],
+    [
+      "R5",
+      "R6"
+    ]
+  ],
+  "rotations": {
+    "0": {
+      "top": [
+        "R1",
+        "R2"
+      ],
+      "middle": [
+        "R3",
+        "R4"
+      ],
+      "end": [
+        "R5",
+        "R6"
+      ]
+    },
+    "1": {
+      "top": [
+        "R5",
+        "R6"
+      ],
+      "middle": [
+        "R1",
+        "R2"
+      ],
+      "end": [
+        "R3",
+        "R4"
+      ]
+    },
+    "2": {
+      "top": [
+        "R3",
+        "R4"
+      ],
+      "middle": [
+        "R5",
+        "R6"
+      ],
+      "end": [
+        "R1",
+        "R2"
+      ]
+    }
+  },
+  "rotation_rule": "rotation = task index (0-based) mod 3; task.toml records it",
+  "headings": {
+    "top": "## Repository conventions",
+    "middle": "## Working agreements",
+    "end": "## Project practices",
+    "split_folder": "## Folder conventions",
+    "split_import": "## Shared conventions"
+  },
+  "rules_file": {
+    "claude-code": "CLAUDE.md",
+    "codex": "AGENTS.md",
+    "pi": "AGENTS.md",
+    "openclaw": "AGENTS.md",
+    "hermes": "AGENTS.md",
+    "gemini-cli": "GEMINI.md",
+    "qm": "soul.txt"
+  },
+  "sizes": {
+    "b8k": 8192,
+    "b28k": 28672,
+    "b80k": 81920,
+    "b160k": 163840
+  },
+  "size_tolerance": 0.02,
+  "qm_top_max_chars": 98000,
+  "split_total_bytes": 163840,
+  "filler_seed": "rules-at-scale-v1"
+}

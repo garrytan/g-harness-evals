@@ -1,0 +1,6075 @@
+{
+  "schema": "rules-at-scale-delivery-map/1",
+  "materializer": "/workspace/harness-evals/scripts/rules-at-scale/materialize.ts",
+  "pin": {
+    "claude-code": {
+      "version": "2.1.328",
+      "package": "@anthropic-ai/claude-code",
+      "npm_integrity": "sha512-QJTDDUhzx2Wtnoone+TULvhtxqX9KhUpgt4S96Y2eyohtZK41LWXwe7fWXcR1JnT0Ujs3AfpPTk5BZgwCyZ8pw==",
+      "native_binary_sha256": "a982d38030b97e750848add2cbb2df6d9a70d5544a22ca9b216a349ba25865e8",
+      "native_binary_bytes": 373019152,
+      "published": "2026-11-18T23:09:39Z",
+      "source": "npm view @anthropic-ai/claude-code (dist-tag latest 2.1.328) and downloads.claude.ai/claude-code-releases/2.1.328/manifest.json platforms.linux-x64.checksum (buildDate 2026-11-18T21:56:43Z)",
+      "install": "Harbor ClaudeCode.install (bootstrap.sh 2.1.328, the native binary); FrontierClaudeCode then requires the installed binary's sha256 to equal native_binary_sha256",
+      "version_command": "claude --version",
+      "version_pattern": "^2\\.1\\.328 "
+    },
+    "codex": {
+      "version": "0.170.0",
+      "package": "@openai/codex",
+      "npm_integrity": "sha512-dwoughgqjiik++CFaNkjQ5y6pJO6LUzu5P1z8Hy4LUeJ+aIYcX/QO1P5rOQnHmBG4agOM7Y+hc4LtVo/a4GFiw==",
+      "source": "npm view @openai/codex dist-tags (latest 0.170.0; 0.171.0 and 0.172.0 exist only as alpha builds)",
+      "install": "Harbor Codex.install: npm install -g @openai/codex@0.170.0",
+      "version_command": "codex --version",
+      "version_pattern": "^codex-cli 0\\.170\\.0$",
+      "max_context_window": {
+        "value": 872000,
+        "source": "codex-rs/models-manager/models.json at rust-v0.170.0: gpt-6.1-sol context_window 500000 (272000 at 0.165.0) and max_context_window 872000 (unchanged), so the window the frontier path sets (872000) still holds"
+      }
+    },
+    "hermes": {
+      "version": "v0.23.2",
+      "commit": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "tag_object": "28f57ed8e3dba4eceb67dfd3e3abda1a7604452d",
+      "published": "2026-11-16T20:59:18Z",
+      "repo": "https://github.com/NousResearch/hermes-agent",
+      "source": "api.github.com/repos/NousResearch/hermes-agent/releases/latest (v0.23.2) and git ls-remote refs/tags/v0.23.2^{}. Hermes moved from date tags (the newest, v2026.9.24, is the frontier pin) to v0.x tags; the v0.23.2+canary.* tags are pre-releases and are not used",
+      "python": "3.14 (pyproject.toml gates every core dependency on python_version >= '3.14'; .python-version and scripts/install.sh default to 3.14)",
+      "install": "agents_rules.py RulesHermes.install: the commit's own scripts/install.sh with --skip-setup --hermes-home /tmp/hermes --branch main --commit <commit> (the installer checks that the commit is an ancestor of origin/<branch>, so a tag name is refused with 'commit ... is not on branch v0.23.2'; the tag's commit is on main, GitHub compare behind_by 0 on 2026-11-19), then the anthropic extra through Hermes's own package manager (pm.ensure_import('anthropic')); the check reads anthropic from the environment pm committed",
+      "anthropic": {
+        "version": "0.125.0",
+        "source": "uv.lock and the anthropic optional extra in pyproject.toml at the commit; installed by pm.ensure_import, which the default install does not do"
+      },
+      "integrity": "the git commit sha (a tag can move; the commit cannot); the install refuses any other HEAD",
+      "version_command": "git -C $HOME/.hermes-src rev-parse HEAD",
+      "install_branch": "main"
+    },
+    "openclaw": {
+      "version": "2026.11.5",
+      "package": "openclaw",
+      "npm_integrity": "sha512-mqPlsGLOe8NS85BfP1vWW9YVwFXchsV75QTkEbyR4csylORxts+fmfZp9+qbD7aPbXQIctyjRk+CPL91fDvxBA==",
+      "published": "2026-11-17T09:59:33Z",
+      "source": "npm view openclaw (dist-tag latest 2026.11.5; 2026.10.33, published later, is a backport on the older line)",
+      "engines": "node >=24.16.0 <25 || >=26.1.0, so the frontier path's Node 24 still fits",
+      "install": "Harbor OpenClaw.install on Node 24 (FrontierOpenClaw): npm install -g openclaw@2026.11.5",
+      "version_command": "openclaw --version",
+      "version_pattern": "2026\\.11\\.5"
+    },
+    "pi": {
+      "version": "1.5.2",
+      "package": "@earendil-works/pi-coding-agent",
+      "npm_integrity": "sha512-mUWI04rqF1Vd/m1q+Ps1XeWsTXEVvRUnsmRa83I3Dzua0Tx5bYS93imeqtIfrXf7PkkaR6ERz+AuQhIJlom5yA==",
+      "published": "2026-11-10T12:24:55Z",
+      "source": "npm view @earendil-works/pi-coding-agent (dist-tag latest 1.5.2)",
+      "install": "Harbor Pi.install: npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.5.2",
+      "version_command": "pi --version",
+      "version_pattern": "1\\.5\\.2"
+    },
+    "gemini-cli": {
+      "version": "0.69.0",
+      "package": "@google/gemini-cli",
+      "npm_integrity": "sha512-KFSvSgQH4tVOsorU4V0bnyiL5z36v07roPvrxGW7qdvRqlZ577ivLLUQhOJBzGyaNunvXEuoVBvzKcQu0pOAqQ==",
+      "published": "2026-11-19T01:51:24Z",
+      "source": "npm view @google/gemini-cli (dist-tag latest 0.69.0)",
+      "role": "descriptive row of the keyless delivery map only; no paid cell (plan decision E)",
+      "install": "Harbor GeminiCli.install: npm install -g @google/gemini-cli@0.69.0",
+      "version_command": "gemini --version",
+      "version_pattern": "^0\\.69\\.0$"
+    }
+  },
+  "rules": {
+    "R1": "- Record every change in a new file under `changes/`, named in kebab-case after what it fixes (for example `changes/fix-date-parsing.md`), with one sentence describing the change.",
+    "R2": "- After your last edit, run `./scripts/precheck` and make sure it passes before you finish.",
+    "R3": "- Leave existing test files unchanged; put any new tests in a new file.",
+    "R4": "- Commit your finished work to the current branch with a sign-off line (`git commit -s`).",
+    "R5": "- Before your first edit, look up the module you will change with `./scripts/notes search <module>`.",
+    "R6": "- Before you commit, read the whole staged diff with `git diff --staged` (no path filter) and fix anything you did not mean to change."
+  },
+  "cells": {
+    "claude-code b160k": {
+      "trial": "rs-map-stub-01__rfmWe6S",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "2.1.328 (Claude Code)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 9,
+        "path": "anthropic/v1/messages",
+        "bytes": 218854,
+        "sha256": "a2f0ae7881b863f2efcd1ac2f3adac319d9fb8f72df23c668c2dd39c5892abe3",
+        "normalized_sha256": "1b614dc33b6d21ed3e8e2eb002784a5db5e8030507394c086a07efdf17b24af6",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 10,
+        "path": "anthropic/v1/messages",
+        "bytes": 219137,
+        "sha256": "199eb2bd1471ecd66fd10edcbd83a5292cb40007df4debb1bbddbc9ff4ea655c",
+        "normalized_sha256": "2102fd9038c68dc4b48ae673d8e113fbeeb5e446a7e30995d69ffc9f562f43ef",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "CLAUDE.md",
+          "bytes": 163841,
+          "chars": 162450
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 7756"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nCLAUDE.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "claude-code b28k": {
+      "trial": "rs-map-stub-01__byWEKQe",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "2.1.328 (Claude Code)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 11,
+        "path": "anthropic/v1/messages",
+        "bytes": 79616,
+        "sha256": "078477bcf48e039867df75ffd296f98d7b2fb7f0ae1c3ab434ad987956509e07",
+        "normalized_sha256": "cd59fd298959424952728b73be65eefc584fa4806c326fb14c2271a725806c5b",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 12,
+        "path": "anthropic/v1/messages",
+        "bytes": 79899,
+        "sha256": "6341492fa591116520203a2f68bafb673a854e5ef17320dbdeba527d4cad9145",
+        "normalized_sha256": "f88c9fe070cd897136b9b81b087a95e81cbfb2542e42ceba41a0138c1a0619d1",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 13945,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 14017,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 28420,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 28521,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "CLAUDE.md",
+          "bytes": 28656,
+          "chars": 28394
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 7755"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nCLAUDE.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "claude-code b80k": {
+      "trial": "rs-map-stub-01__YRBuUAX",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "2.1.328 (Claude Code)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 7,
+        "path": "anthropic/v1/messages",
+        "bytes": 134492,
+        "sha256": "824dfa32d169c53df3ed33e4a1bb15d50689e3cdd07ac5f5008d2c2a1d7e070e",
+        "normalized_sha256": "296111a185372cc6a56cd9e5f0912624f15bc6f039b8da87335fd59dc0999a8f",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 8,
+        "path": "anthropic/v1/messages",
+        "bytes": 134775,
+        "sha256": "7ae5f50c85709e008f7ce6b8b93920f7d5bed883eeec5102c1dcaaf0ddc82571",
+        "normalized_sha256": "8ed70b815b5c52dcfb041184d3637008fbc56af28c11a806179da2f1a25efae7",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 41059,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 41131,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 81682,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 81783,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "CLAUDE.md",
+          "bytes": 81918,
+          "chars": 81020
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 7758"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nCLAUDE.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "claude-code b8k": {
+      "trial": "rs-map-stub-01__DRVhMNG",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "2.1.328 (Claude Code)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 3,
+        "path": "anthropic/v1/messages",
+        "bytes": 58612,
+        "sha256": "b19c61aae5121077458df442d47aeb8429f35294ea7f1be34ae7a1d5e504562d",
+        "normalized_sha256": "c948c83ad4f2a8f1a5a9947310f734f2ef1deee56cee69a7e45e260c6f5cb205",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 4,
+        "path": "anthropic/v1/messages",
+        "bytes": 58893,
+        "sha256": "a5b7338be129ca7f0934aaf12d7d31674dec45752d028692121c4a95f389e91f",
+        "normalized_sha256": "4dbc359acfdf023479d704bc3dcd7d8ba21da0534002bcc12b71f45da2f56e63",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 4502,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 7961,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 8062,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "CLAUDE.md",
+          "bytes": 8197,
+          "chars": 8141
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 7758"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nCLAUDE.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "claude-code hook": {
+      "trial": "rs-map-stub-01__YDuC59X",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "2.1.328 (Claude Code)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 13,
+        "path": "anthropic/v1/messages",
+        "bytes": 219576,
+        "sha256": "5afce55f6d9f36ece69624eaca5c8858c8294b8c705a5ddaf81baf7dc083355f",
+        "normalized_sha256": "e28edd2d5c775ef9ed7ac0f748f68ce3d2fab45070b01610a3fe95e41d8eab5a",
+        "markers": [],
+        "hook_copies": 1
+      },
+      "follow_up": {
+        "n": 14,
+        "path": "anthropic/v1/messages",
+        "bytes": 219859,
+        "sha256": "ca67fea5231f45567f45e436672ebcaf4eb20e763d0f8983d1ffe30066f7059d",
+        "normalized_sha256": "818d1a1734951c87d9c9f8e7a6af1861dc861da26dfc827016007820b277c55d",
+        "markers": [],
+        "hook_copies": 1
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.messages[1].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.messages[1].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.messages[1].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.messages[1].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.messages[1].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.messages[1].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "CLAUDE.md",
+          "bytes": 163841,
+          "chars": 162450
+        },
+        {
+          "path": "hooktext.md",
+          "bytes": 670,
+          "chars": 670
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 7802"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nCLAUDE.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": "settings hooks.UserPromptSubmit: a command printing hookSpecificOutput.additionalContext, which Claude Code adds after the turn's prompt",
+      "agent_log_notes": []
+    },
+    "claude-code none": {
+      "trial": "rs-map-stub-01__hMJu4Mj",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "2.1.328 (Claude Code)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 1,
+        "path": "anthropic/v1/messages",
+        "bytes": 49820,
+        "sha256": "01320cd1255994f603733e1d32c2abc2c4373b476e3410cfaff08d3aa4446754",
+        "normalized_sha256": "ecb028d633702d4a3d7b0441544a618cdeda2676b970e04974ee422c95e130ae",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 2,
+        "path": "anthropic/v1/messages",
+        "bytes": 50101,
+        "sha256": "58c17f66daa3c215926de135fe90b2edb20dd743f32b764226a903f0216062cc",
+        "normalized_sha256": "2b54ca7d6e62d830dc0ef0c20486e196524334b9df3111b6ed49b97c472d9f13",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R2": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R3": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [],
+      "checks_ok": true,
+      "watcher": [
+        "watching 7725"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "claude-code short": {
+      "trial": "rs-map-stub-01__vLwTsPU",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "2.1.328 (Claude Code)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 5,
+        "path": "anthropic/v1/messages",
+        "bytes": 50949,
+        "sha256": "33b92f7489fbb5a2cd3e6fc10d973c05e92c6ada244e5b6954faa2fc9dafa24b",
+        "normalized_sha256": "a37fae3fac67dbe344dcd0c87f0b4bfa520ed21ed7ed1d83b03d3028eace8c04",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 6,
+        "path": "anthropic/v1/messages",
+        "bytes": 51230,
+        "sha256": "f733eccef0d15fb5fd2ad5805e8a1a839cbfee6f00b2a69c0364873ef317dc1b",
+        "normalized_sha256": "e586a0f9a7794abc795048334bfd327eaef543b04310de9796a147aee5fe6f1c",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 345,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 417,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 530,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 631,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "CLAUDE.md",
+          "bytes": 766,
+          "chars": 766
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 7761"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nCLAUDE.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "claude-code split": {
+      "trial": "rs-map-stub-01__ozeb4Fy",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "2.1.328 (Claude Code)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 15,
+        "path": "anthropic/v1/messages",
+        "bytes": 58600,
+        "sha256": "43ce799fdeb606170063341087071e8c58b6c5539f5bd42406a387c604880c35",
+        "normalized_sha256": "c0e21e8dbeefa48eaa5e0dbb5721fed4bde731d4a7e54566ac873b66894a3ba3",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 16,
+        "path": "anthropic/v1/messages",
+        "bytes": 58883,
+        "sha256": "f7d5b748eed3bd679e3fff607be9c37dbe959b1c6640d2c215aa2868930f6dbd",
+        "normalized_sha256": "752ec82c72fa9830b542301b57aa331ea5faa987939eeb3a06a9c06707b37ffd",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "import",
+          "file": "docs/conventions.md",
+          "byte_offset": 38,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "CLAUDE.md",
+          "byte_offset": 70,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "folder",
+          "file": "tests/CLAUDE.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "CLAUDE.md",
+          "byte_offset": 4271,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "folder",
+          "file": "stubpkg/CLAUDE.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "CLAUDE.md",
+          "byte_offset": 7730,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "CLAUDE.md",
+          "bytes": 7865,
+          "chars": 7809
+        },
+        {
+          "path": "docs/conventions.md",
+          "bytes": 218,
+          "chars": 218
+        },
+        {
+          "path": "tests/CLAUDE.md",
+          "bytes": 51921,
+          "chars": 51151
+        },
+        {
+          "path": "stubpkg/CLAUDE.md",
+          "bytes": 51920,
+          "chars": 51644
+        },
+        {
+          "path": "docs/CLAUDE.md",
+          "bytes": 51915,
+          "chars": 51639
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 7837"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nCLAUDE.md\nREADME.md\ndocs\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex b160k": {
+      "trial": "rs-map-stub-01__bnx8DSW",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.170.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 25,
+        "path": "openai/v1/responses",
+        "bytes": 89094,
+        "sha256": "ab8ffc76de6c6fe52a65d6ada76ea4a3ef2be212a6704b88831587654f11364a",
+        "normalized_sha256": "6af4087c2bed247ce60a6ff4c37ed5984701fc2336b3fd314de3de664b672004",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 27,
+        "path": "openai/v1/responses",
+        "bytes": 89677,
+        "sha256": "763f9d1d90fd3f64795556f89dcbb55a45e27496495f7e62f2699ab77f036e35",
+        "normalized_sha256": "77b9fa7c60698ed03ac844f02b9d2d9bff5ee228f7c59e39784489aac1e2ca8a",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80362,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80434,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163605,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163706,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8764"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Loaded only 32768 of 163841 bytes from `/work/repo/AGENTS.md` in environment `local` under the 32768-byte project instruction budget. Trim your project instructions to fit the budget. If you need to keep them all, increase `pro"
+      ]
+    },
+    "codex b28k": {
+      "trial": "rs-map-stub-01__LxU2RL7",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.170.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 23,
+        "path": "openai/v1/responses",
+        "bytes": 84865,
+        "sha256": "f83743e10ede0e9a48828faab01f42fbf9194844b474420c1131600f071b7efc",
+        "normalized_sha256": "4f1a7466079f65e73e822bc80e661a7d577b7547cc4644227adcc8cb00a2b66e",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 24,
+        "path": "openai/v1/responses",
+        "bytes": 85450,
+        "sha256": "719ffad415bd0b3e47dbabd4e318950c7ec2032005b31648baa35043342f4eca",
+        "normalized_sha256": "75a197ac7b7c7e41244dfe518b77fbe34d9483a77ea1466f666d2c368d30ecbd",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 13945,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 14017,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28420,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28521,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 28656,
+          "chars": 28394
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8762"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex b80k": {
+      "trial": "rs-map-stub-01__zj6RJCW",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.170.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 26,
+        "path": "openai/v1/responses",
+        "bytes": 89094,
+        "sha256": "f9d77383e486d8c7472afab8f64270ef75bbe77eb3de243c3ca1e18d1458097d",
+        "normalized_sha256": "6af4087c2bed247ce60a6ff4c37ed5984701fc2336b3fd314de3de664b672004",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 28,
+        "path": "openai/v1/responses",
+        "bytes": 89679,
+        "sha256": "1a4ab3ff48f6b6a3984f07aba776fbe3e44ceeacb20be3897c1b8854c4d0d7e5",
+        "normalized_sha256": "99cd80e43ac3f373ffc45cca84db589f22595af277be13493f5419339931278b",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 41059,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 41131,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81682,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81783,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 81918,
+          "chars": 81020
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8759"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Loaded only 32768 of 81918 bytes from `/work/repo/AGENTS.md` in environment `local` under the 32768-byte project instruction budget. Trim your project instructions to fit the budget. If you need to keep them all, increase `proj"
+      ]
+    },
+    "codex b8k": {
+      "trial": "rs-map-stub-01__JBZtCqu",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.170.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 19,
+        "path": "openai/v1/responses",
+        "bytes": 63861,
+        "sha256": "fb1ea62a4a808017173d26d603aad9af6aadcf32213a5c2b98520b613784b44a",
+        "normalized_sha256": "af77fcf9694c9863b1a84e80aa68265059b07f14cc7e69dd6a2e42b4cbf31bad",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 20,
+        "path": "openai/v1/responses",
+        "bytes": 64446,
+        "sha256": "53440821d53b905ff9b2737098119f961e4661e332e8371198f12318b57ecd37",
+        "normalized_sha256": "2de060ae77cde77d6875e636c7b7feb8883a955bea441b392e9634778751e505",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4502,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7961,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 8062,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 8197,
+          "chars": 8141
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8766"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex cutlift": {
+      "trial": "rs-map-stub-01__nXCcwFk",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.170.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 31,
+        "path": "openai/v1/responses",
+        "bytes": 224103,
+        "sha256": "9565124d67efc8b490c38ea47822d049d66892792e667c12a8e754c2e1e3bc3d",
+        "normalized_sha256": "c4e4ec4007192cfe64cdcbcbb597b4d4fae085bc3a717cf02b80b452855bf11b",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 32,
+        "path": "openai/v1/responses",
+        "bytes": 224688,
+        "sha256": "18b5f4c84151b52695e277777e7a729e2186804926430a6af594820e32c594c9",
+        "normalized_sha256": "6739206319d1fdc8abded14811e2c7a4ad15ba7cc276e6d10059387d5080a209",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8759"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": {
+        "project_doc_max_bytes": 262144
+      },
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex hook": {
+      "trial": "rs-map-stub-01__Krif7gK",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.170.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 33,
+        "path": "openai/v1/responses",
+        "bytes": 89900,
+        "sha256": "1fdab50418a867b67bffa0412215401110031880bbe825b4ea9eaafc562b4851",
+        "normalized_sha256": "717b259ae6dbebbda61f42e8251e48abbe62fe76e46b13d8c535c942b113c853",
+        "markers": [],
+        "hook_copies": 1
+      },
+      "follow_up": {
+        "n": 34,
+        "path": "openai/v1/responses",
+        "bytes": 90485,
+        "sha256": "c6e2f41e6acc1786b2ef93dfd221c5b8ec61e26668c7979c05e807bf13c41420",
+        "normalized_sha256": "c59532d199719c222c2c55a25e4a60aa11df86972abe1e0212d7a117f4b4dc0c",
+        "markers": [],
+        "hook_copies": 1
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.input[5].content[0].text",
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.input[5].content[0].text",
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        },
+        {
+          "path": "hooktext.md",
+          "bytes": 670,
+          "chars": 670
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8827"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": "$CODEX_HOME/hooks.json UserPromptSubmit: additionalContext recorded as a developer message before the first sampling request; run with --dangerously-bypass-hook-trust",
+      "agent_log_notes": [
+        "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"error\",\"message\":\"Loaded only 32768 of 163841 bytes from `/work/repo/AGENTS.md` in environment `local` under the 32768-byte project instruction budget. Trim your project instructions to fit the budget. If you need to keep them all, increase `pro"
+      ]
+    },
+    "codex none": {
+      "trial": "rs-map-stub-01__nzDdt7V",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.170.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 17,
+        "path": "openai/v1/responses",
+        "bytes": 55308,
+        "sha256": "0115af6de4adaf81907daf0d219fd7d2189f116003f47f9c1d3d83c111f7425c",
+        "normalized_sha256": "9135db28a2b32db681f90e4695a686ca1ebefd8126ed5f479fc92d390d680560",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 18,
+        "path": "openai/v1/responses",
+        "bytes": 55893,
+        "sha256": "994ad7ca1c651240174c5e1bf897a48190996ca354c0e136454b7dd49eaa9775",
+        "normalized_sha256": "f42b9d5a230c312ba8785f164b0821f84eb63d5753854b1c07f754f4ca2763f1",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R2": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R3": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8729"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex short": {
+      "trial": "rs-map-stub-01__waT9RL6",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.170.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 21,
+        "path": "openai/v1/responses",
+        "bytes": 56198,
+        "sha256": "a9199aae55828664d3c94e84df023aaf31ad600411470b4617ebcfe89454f6d2",
+        "normalized_sha256": "90c5a1e5e3c314c73f5c4fa533866bda6c0eb35267459de8ba88f3bc23b0019f",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 22,
+        "path": "openai/v1/responses",
+        "bytes": 56783,
+        "sha256": "d4375ae7b350b4b7db6e2387125de2d1c4a7431880463fe4fb1ae1785ba9f8c7",
+        "normalized_sha256": "38cf0e558399a4fc60482bdf62270f39c7699506f89b10d21d2696da0a37c959",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 345,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 417,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 530,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 631,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 766,
+          "chars": 766
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8762"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex split": {
+      "trial": "rs-map-stub-01__toArfCM",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.170.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 29,
+        "path": "openai/v1/responses",
+        "bytes": 63686,
+        "sha256": "3b6b5b6f01754620fe2c1a1ea05619ed20c625c04e4e1c77f9d547a747041795",
+        "normalized_sha256": "b24836656ee7caf99ab9c2e096fea00de2f3663138eef7e7005e3ca6672e8964",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 30,
+        "path": "openai/v1/responses",
+        "bytes": 64271,
+        "sha256": "1333da8a9394ff9beec8ce198976c52d9c10971f038a1c8685b7852aba3b68a4",
+        "normalized_sha256": "415ba492606ad6516d34d4a0d9641156d25ac4f802c7a5caae2ce0cae4ceb761",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "folder",
+          "file": "tests/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "folder",
+          "file": "stubpkg/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7889,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 8024,
+          "chars": 7968
+        },
+        {
+          "path": "tests/AGENTS.md",
+          "bytes": 51937,
+          "chars": 51167
+        },
+        {
+          "path": "stubpkg/AGENTS.md",
+          "bytes": 51939,
+          "chars": 51663
+        },
+        {
+          "path": "docs/AGENTS.md",
+          "bytes": 51937,
+          "chars": 51661
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8818"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\ndocs\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "gemini-cli b160k": {
+      "trial": "rs-map-stub-01__uYWDbGE",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "0.69.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 109,
+        "path": "google/v1beta/models/gemini-4-carbon:streamGenerateContent",
+        "bytes": 218057,
+        "sha256": "486cdd6d30aa0497cc8277714d02e6ff1fc88e585e22677ec71c7aec677104f9",
+        "normalized_sha256": "ef68c1b4e82a84f960e43de202288f9660f87fe155ead3694f12a694b0486a54",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": null,
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R2": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        }
+      },
+      "files": [
+        {
+          "path": "GEMINI.md",
+          "bytes": 163841,
+          "chars": 162450
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1440"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nGEMINI.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "gemini-cli b28k": {
+      "trial": "rs-map-stub-01__7HUpGnp",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "0.69.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 105,
+        "path": "google/v1beta/models/gemini-4-carbon:streamGenerateContent",
+        "bytes": 78819,
+        "sha256": "8c0c3bcc10a892fd02241b9427def649f69272360a34dd6344ea5707afd1733b",
+        "normalized_sha256": "ab0328ae9ef83238a13fd49cb0550a08dd40913a95dabb3486c39c6be05e853c",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": null,
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R2": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 13945,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 14017,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 28420,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 28521,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        }
+      },
+      "files": [
+        {
+          "path": "GEMINI.md",
+          "bytes": 28656,
+          "chars": 28394
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1442"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nGEMINI.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "gemini-cli b80k": {
+      "trial": "rs-map-stub-01__uovoy9D",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "0.69.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 107,
+        "path": "google/v1beta/models/gemini-4-carbon:streamGenerateContent",
+        "bytes": 133695,
+        "sha256": "d48d83b2741ec7a8faf2931b02378dfc27800c56a8238a865b122ddd774339f8",
+        "normalized_sha256": "6a70eb1aa072bff7c84a9494a655741163892e83493f6d5ec14b4e72d090b926",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": null,
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R2": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 41059,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 41131,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 81682,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 81783,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        }
+      },
+      "files": [
+        {
+          "path": "GEMINI.md",
+          "bytes": 81918,
+          "chars": 81020
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1441"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nGEMINI.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "gemini-cli b8k": {
+      "trial": "rs-map-stub-01__W44h4ET",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "0.69.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 103,
+        "path": "google/v1beta/models/gemini-4-carbon:streamGenerateContent",
+        "bytes": 57815,
+        "sha256": "68b6d7c48d3b1712c7cabc95d86bc49dd2108295dbf113265b880c27796486fc",
+        "normalized_sha256": "59787db4c6e64ed9823e8fdd1d12fda5f35a32962e9b0785e765ac759df4b918",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": null,
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R2": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 4502,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 7961,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 8062,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        }
+      },
+      "files": [
+        {
+          "path": "GEMINI.md",
+          "bytes": 8197,
+          "chars": 8141
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1442"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nGEMINI.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "gemini-cli none": {
+      "trial": "rs-map-stub-01__bSLjqr8",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "0.69.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 97,
+        "path": "google/v1beta/models/gemini-4-carbon:streamGenerateContent",
+        "bytes": 49199,
+        "sha256": "3bf79142495679812766724dfacb3f1e3e60e69120c080066af86030dfd88a9a",
+        "normalized_sha256": "c09c233f47e900fe26037189b9271a8df26b68ab7c9b182d1e7e5594b95451e5",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": null,
+      "rules": {
+        "R1": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "none_sent"
+        },
+        "R2": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "none_sent"
+        },
+        "R3": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "none_sent"
+        },
+        "R4": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "none_sent"
+        },
+        "R5": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "none_sent"
+        },
+        "R6": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "none_sent"
+        }
+      },
+      "files": [],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1409"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "gemini-cli short": {
+      "trial": "rs-map-stub-01__Lst6Vft",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "0.69.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 101,
+        "path": "google/v1beta/models/gemini-4-carbon:streamGenerateContent",
+        "bytes": 50152,
+        "sha256": "31345d15e215a5930fcbcd40634d615dee54b2aa6495d79fe24fa4156372084e",
+        "normalized_sha256": "5b7109d36002590e5c47808729006637d58f46fb10eeb364f23a46999573e635",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": null,
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R2": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 345,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 417,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 530,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 631,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        }
+      },
+      "files": [
+        {
+          "path": "GEMINI.md",
+          "bytes": 766,
+          "chars": 766
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1439"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nGEMINI.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "gemini-cli split": {
+      "trial": "rs-map-stub-01__PExWnTu",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "0.69.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 111,
+        "path": "google/v1beta/models/gemini-4-carbon:streamGenerateContent",
+        "bytes": 57659,
+        "sha256": "44ba24259fd85f50e9d29a883abd50334c62b4231744c1070357007d07370e02",
+        "normalized_sha256": "407f0371f813339c7e0e6cd4288d143005c9f1cff02224116c72e53c00ffec16",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": null,
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R2": {
+          "position": "top",
+          "file": "GEMINI.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R3": {
+          "position": "folder",
+          "file": "tests/GEMINI.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "none_sent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "GEMINI.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        },
+        "R5": {
+          "position": "folder",
+          "file": "stubpkg/GEMINI.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "none_sent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "GEMINI.md",
+          "byte_offset": 7889,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.contents[0].parts[0].text"
+          ],
+          "follow_up": "none_sent"
+        }
+      },
+      "files": [
+        {
+          "path": "GEMINI.md",
+          "bytes": 8024,
+          "chars": 7968
+        },
+        {
+          "path": "tests/GEMINI.md",
+          "bytes": 51937,
+          "chars": 51167
+        },
+        {
+          "path": "stubpkg/GEMINI.md",
+          "bytes": 51939,
+          "chars": 51663
+        },
+        {
+          "path": "docs/GEMINI.md",
+          "bytes": 51937,
+          "chars": 51661
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1501"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nGEMINI.md\nREADME.md\ndocs\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "hermes b160k": {
+      "trial": "rs-map-stub-01__qyUNPwW",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "requests": 4,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 53,
+        "path": "anthropic/v1/messages",
+        "bytes": 203858,
+        "sha256": "f47d5fe6cd76337d65bea722e9ef145ca226a88ec158c60e0d06694ec696d571",
+        "normalized_sha256": "43a66be6cf688785a777233e92269435007254953f53d03e24793f81e23629ba",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 55,
+        "path": "anthropic/v1/messages",
+        "bytes": 204183,
+        "sha256": "3a33d4ca1e52239027aeb6803708233954d9b8ac441e920e0245a1c829d39169",
+        "normalized_sha256": "2215f4cf7519b96273619e4001ea0d150e94eb1904bb9108747411e3f39cab65",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1335"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": {
+        "model.context_length": 1000000,
+        "default_context_file_cap_chars": 240000
+      },
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "hermes_cut": []
+    },
+    "hermes b28k": {
+      "trial": "rs-map-stub-01__RSFDZxN",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "requests": 4,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 49,
+        "path": "anthropic/v1/messages",
+        "bytes": 64620,
+        "sha256": "24f05e7dde6e21418d9c7c194ce2a20570bad215d3d63c454f9a7c3625c7b90c",
+        "normalized_sha256": "b993ea0739c5cbc15d2115803ee260928e041221d11e9ba9ad23a0bffca91a4e",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 50,
+        "path": "anthropic/v1/messages",
+        "bytes": 64945,
+        "sha256": "95216ca37ba0cb8539f06f20ed3c6e81c330c0ec2a45c2684a2fa6fc140ef0d9",
+        "normalized_sha256": "aa207f8963c7da32a033bb85f1187a06440501f21b3f7d38423d404d7ff14975",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 13945,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 14017,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28420,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28521,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 28656,
+          "chars": 28394
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1350"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": {
+        "model.context_length": 1000000,
+        "default_context_file_cap_chars": 240000
+      },
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "hermes_cut": []
+    },
+    "hermes b80k": {
+      "trial": "rs-map-stub-01__h5WY2mW",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "requests": 4,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 57,
+        "path": "anthropic/v1/messages",
+        "bytes": 119496,
+        "sha256": "5e99474960c1428dcd3038208cd39eb2435ed042232cb83c42ef6795cd97bc5c",
+        "normalized_sha256": "ed177343ac9282a67e46fb973563c83e48bd3e0907606765fd409ff7312fe172",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 58,
+        "path": "anthropic/v1/messages",
+        "bytes": 119823,
+        "sha256": "264681386c86e7a5d929ec504672efbc99c25628d5643ba0cf9369a04e1a18d3",
+        "normalized_sha256": "03915a7b42413c8decb5cfccd106f39a56161b4a89fa531e0c007192332b630c",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 41059,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 41131,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81682,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81783,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 81918,
+          "chars": 81020
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1351"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": {
+        "model.context_length": 1000000,
+        "default_context_file_cap_chars": 240000
+      },
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "hermes_cut": []
+    },
+    "hermes b8k": {
+      "trial": "rs-map-stub-01__TcCACFF",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "requests": 4,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 44,
+        "path": "anthropic/v1/messages",
+        "bytes": 43616,
+        "sha256": "c9e2d43eeb61ee07f79e11bdabb0ebc75c92ed30b0de384bbdcd55b09e0a8288",
+        "normalized_sha256": "090ec257851d71a0e59304476ee36e2ed7c60a617b5a7c66a6a974ea944fbf7a",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 46,
+        "path": "anthropic/v1/messages",
+        "bytes": 43941,
+        "sha256": "b93ec90b0b067a60ea9fe6ee88a94e543dae03786a2b4007c9de2e9dd6335315",
+        "normalized_sha256": "4167dd69acdc9847fcc2fc173820db474a1997a0a45f7f9bd72a8f1f78cc0fda",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4502,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7961,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 8062,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 8197,
+          "chars": 8141
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1379"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": {
+        "model.context_length": 1000000,
+        "default_context_file_cap_chars": 240000
+      },
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "hermes_cut": []
+    },
+    "hermes hook": {
+      "trial": "rs-map-stub-01__wBbxGeM",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "requests": 4,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 67,
+        "path": "anthropic/v1/messages",
+        "bytes": 204538,
+        "sha256": "a23c248c151256bd7392f236fcbb712edf7c541270f01d907922db9d179001e4",
+        "normalized_sha256": "7c712d71510b09a8bf3da1b763a75b846950d414b364df648e7abd21251fb91f",
+        "markers": [],
+        "hook_copies": 1
+      },
+      "follow_up": {
+        "n": 68,
+        "path": "anthropic/v1/messages",
+        "bytes": 204865,
+        "sha256": "417fdc002b4c0ac741660ea82d0884d982481a041c5e842cdf0b98b9fbf0eda9",
+        "normalized_sha256": "14212d507ce7251010aec4c0ed9b6be815951c0b30cea0a06e946f5669356d94",
+        "markers": [],
+        "hook_copies": 1
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        },
+        {
+          "path": "hooktext.md",
+          "bytes": 670,
+          "chars": 670
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1386"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": {
+        "model.context_length": 1000000,
+        "default_context_file_cap_chars": 240000
+      },
+      "cutlift": false,
+      "hook": "config.yaml hooks.pre_llm_call shell hook (hooks_auto_accept true): its {\"context\": ...} is added to the turn's user message, once per turn",
+      "agent_log_notes": [],
+      "hermes_cut": []
+    },
+    "hermes none": {
+      "trial": "rs-map-stub-01__JzFBEke",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "requests": 4,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 37,
+        "path": "anthropic/v1/messages",
+        "bytes": 35024,
+        "sha256": "e5c8ae085ba77f235aea55a2cfa9af827c7e8efd584eac17712852efcb021ff3",
+        "normalized_sha256": "2d736da7545913bbc9c358b545b0b7d79565db80c480fffd491199a47865e8c1",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 38,
+        "path": "anthropic/v1/messages",
+        "bytes": 35349,
+        "sha256": "3a73a3d7689f0da5296c7c4547061771470e977d01267b4aa3f8357aee65fe9f",
+        "normalized_sha256": "7a47cccc14ad037f44fa24123b08921496fa18a2dd4c194d200492b9af4a44f3",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R2": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R3": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1291"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": {
+        "model.context_length": 1000000,
+        "default_context_file_cap_chars": 240000
+      },
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "hermes_cut": []
+    },
+    "hermes short": {
+      "trial": "rs-map-stub-01__DCkhhNt",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "requests": 4,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 43,
+        "path": "anthropic/v1/messages",
+        "bytes": 35953,
+        "sha256": "3bc14416a13911a06b22eb798f37e27d6a1dc3dd47ec6df2092a910d1a302b4e",
+        "normalized_sha256": "fe19ec0c989f3d54ed3ccc41863da7ab604a831a158682724f0a6b2291d37035",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 45,
+        "path": "anthropic/v1/messages",
+        "bytes": 36278,
+        "sha256": "40d7589d4b0901d873313920c4c9569dcd24bc83f5fa175a1856a31791998bc7",
+        "normalized_sha256": "25b4a9ab660437d2a7db7574ebf3a436ab6e93f64c7e46bfbbb32e99ebbd2c03",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 345,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 417,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 530,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 631,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 766,
+          "chars": 766
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1343"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": {
+        "model.context_length": 1000000,
+        "default_context_file_cap_chars": 240000
+      },
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "hermes_cut": []
+    },
+    "hermes split": {
+      "trial": "rs-map-stub-01__qeBigE4",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "requests": 4,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 61,
+        "path": "anthropic/v1/messages",
+        "bytes": 43441,
+        "sha256": "041490df93a94296679d06d281d6850cd14dddfd9f093f6b5a695acb8652080e",
+        "normalized_sha256": "eeeb7a57ef73b871d64041c48e5cb4f2a50dfc3b19e4772aaec68505d90c83b5",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 62,
+        "path": "anthropic/v1/messages",
+        "bytes": 43768,
+        "sha256": "9f2a2a77d9c0b3b23db4aa6840d98eccc5875459052a937d4ebbf5c044859e03",
+        "normalized_sha256": "5079d32af297186a9884b670ce9b1a048839bf00c35451e4aeb2775fb646a9a7",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "folder",
+          "file": "tests/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "folder",
+          "file": "stubpkg/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7889,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[1].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 8024,
+          "chars": 7968
+        },
+        {
+          "path": "tests/AGENTS.md",
+          "bytes": 51937,
+          "chars": 51167
+        },
+        {
+          "path": "stubpkg/AGENTS.md",
+          "bytes": 51939,
+          "chars": 51663
+        },
+        {
+          "path": "docs/AGENTS.md",
+          "bytes": 51937,
+          "chars": 51661
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1394"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\ndocs\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": {
+        "model.context_length": 1000000,
+        "default_context_file_cap_chars": 240000
+      },
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "hermes_cut": []
+    },
+    "openclaw b160k": {
+      "trial": "rs-map-stub-01__BWK9p8e",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 77,
+        "path": "anthropic/v1/messages",
+        "bytes": 73836,
+        "sha256": "e87258a5ef5e5ef1a93e698dcdecf5479ea0b041c63433f0fc8dfa03137486cf",
+        "normalized_sha256": "6706b55c7796c7d37faacce751eb8c20bd948fac9bd818ab6eb885b2e2fe2ee3",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 78,
+        "path": "anthropic/v1/messages",
+        "bytes": 74086,
+        "sha256": "f0c65a51bdd0e1639b46f1ebbdc036701df935ca4b90467faaf9e61fd6ddf83a",
+        "normalized_sha256": "959c320171c8d632bf25c86432e0c497c20d35ea2d6f13ad683b806b7c6e2b1b",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80362,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80434,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3211"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "[agent/embedded] workspace bootstrap file AGENTS.md is 162467 chars (limit 20000); truncating in injected context (sessionKey=agent:main:main)"
+      ],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw b28k": {
+      "trial": "rs-map-stub-01__izG7o5t",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 73,
+        "path": "anthropic/v1/messages",
+        "bytes": 73823,
+        "sha256": "5155e2d473eda32a0e2bd7b11f8341ab729e3529647fbae2598d9b3c015ef778",
+        "normalized_sha256": "ff8fee3fd35cb251d7eff89a997b4432a091e0f58338c2fe554d79a40ddfc439",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 74,
+        "path": "anthropic/v1/messages",
+        "bytes": 74073,
+        "sha256": "645dd4ab0805aa1652b305a225c51cc4b4826160d18c0700ddf06e1529acc9dc",
+        "normalized_sha256": "9f5422d05873e519a51d2ef97f63b53eb57526abbe22c0d7307c0d87cd0cb3da",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 13945,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 14017,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28420,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28521,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 28656,
+          "chars": 28394
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3210"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "[agent/embedded] workspace bootstrap file AGENTS.md is 28394 chars (limit 20000); truncating in injected context (sessionKey=agent:main:main)"
+      ],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw b80k": {
+      "trial": "rs-map-stub-01__P6mk6we",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 75,
+        "path": "anthropic/v1/messages",
+        "bytes": 73809,
+        "sha256": "f1aa855e5031c4a7687afbb20328d2d8251743ab4bf48479688dbffc92dadcee",
+        "normalized_sha256": "0ac25e26672d07e4a6b0f9b58d59af810a31f5090caa14903436e1204f92cc13",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 76,
+        "path": "anthropic/v1/messages",
+        "bytes": 74059,
+        "sha256": "b42a754c8a2d004c70f5b1b9b3c7e66d982ea11ac5582761db1312774205ac72",
+        "normalized_sha256": "2a1cbd33f4c3aa3b6101ed0a039cb696c5491ba421f5ccf098b083617a976d52",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 41059,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 41131,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81682,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81783,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 81918,
+          "chars": 81020
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3207"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "[agent/embedded] workspace bootstrap file AGENTS.md is 81030 chars (limit 20000); truncating in injected context (sessionKey=agent:main:main)"
+      ],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw b8k": {
+      "trial": "rs-map-stub-01__4DRDnxb",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 71,
+        "path": "anthropic/v1/messages",
+        "bytes": 62260,
+        "sha256": "6e7fce5aa5f4d823ec3b6412100ceed3f03ad78e3d439a89be7a7b704c669bb3",
+        "normalized_sha256": "f6f81b8ac49a5e3e63a692ebe2f11d57ee2332be1af5f11b2a0ffeeb1309267e",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 72,
+        "path": "anthropic/v1/messages",
+        "bytes": 62510,
+        "sha256": "8f94b777cd53344739d6f4d39c7be1e42c3fe5642ee7696a5b05cbf585c085d7",
+        "normalized_sha256": "6f79a582f113d491684ba8cdee27ad5950c70391ef3b473a4c3fd5f882fc8776",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4502,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7961,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 8062,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 8197,
+          "chars": 8141
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3211"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw cutlift": {
+      "trial": "rs-map-stub-01__CFfGXiS",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 83,
+        "path": "anthropic/v1/messages",
+        "bytes": 222502,
+        "sha256": "02220d4f87be981f55c5902b8984a854eff317b8fdc794e2609ff2d84a9797fc",
+        "normalized_sha256": "677af8298e015865196e8c797ddec49f281942dee96f5478b167acd404b6d835",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 84,
+        "path": "anthropic/v1/messages",
+        "bytes": 222752,
+        "sha256": "c6a4b5df334710faaebb408be74bba13cc54ea3fc30f92fbc773666604531ebd",
+        "normalized_sha256": "3d0994bada09ee362bcfb79bc0b483819c3b4aafb5561fec22155a250a16edb1",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3209"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": {
+        "agents": {
+          "defaults": {
+            "bootstrapMaxChars": 200000,
+            "bootstrapTotalMaxChars": 300000
+          }
+        }
+      },
+      "hook": null,
+      "agent_log_notes": [],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw hook": {
+      "trial": "rs-map-stub-01__T3DGsSq",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 80,
+        "path": "anthropic/v1/messages",
+        "bytes": 74516,
+        "sha256": "a00b025c29949418af799a3e321b3eec2aecc36166c6bd16080d3fc800bd257d",
+        "normalized_sha256": "da898caf2392af4e6a08290a0fe84d17a0ef1220a1a9816559e464da7d4165c0",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": 1
+      },
+      "follow_up": {
+        "n": 82,
+        "path": "anthropic/v1/messages",
+        "bytes": 74766,
+        "sha256": "c2c59a3a686d06fb020e59cafd71cc33255bf7497ccf7a90bff749df3faf6663",
+        "normalized_sha256": "62c3ddbb84cc9539c23e28cc5a052fa39ed4054db7dba246e4b0ac309047882a",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": 1
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.messages[0].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.messages[0].content[0].text",
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        },
+        {
+          "path": "hooktext.md",
+          "bytes": 670,
+          "chars": 670
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3281"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": "a plugin from plugins.load.paths returning appendContext from before_prompt_build, which adds the text after the turn's prompt",
+      "agent_log_notes": [
+        "[agent/embedded] workspace bootstrap file AGENTS.md is 162467 chars (limit 20000); truncating in injected context (sessionKey=agent:main:main)"
+      ],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw none": {
+      "trial": "rs-map-stub-01__e9D4XTW",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 63,
+        "path": "anthropic/v1/messages",
+        "bytes": 53860,
+        "sha256": "0fb6d0eeb27a2cac56589cedecf8abf9a2ea2e4773c2c3d63eeb7da860e7614c",
+        "normalized_sha256": "7c5287702d3cad48b041dfb75804ec0795d6c3272d95dbe15d66dc8777d83161",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 64,
+        "path": "anthropic/v1/messages",
+        "bytes": 54110,
+        "sha256": "8516ebc89c0acddbe827ff9175d20cfbd74c2935b4d9c9bddfc69d486e89e762",
+        "normalized_sha256": "24ef7fab5e9c687c09f50cc3316b801b16ccf1c3e5d7cabe939d38400d336171",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R2": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R3": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3179"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw short": {
+      "trial": "rs-map-stub-01__yoeFhcL",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 69,
+        "path": "anthropic/v1/messages",
+        "bytes": 54597,
+        "sha256": "a51c0825e6d91830ae7d37ddd82eadd09c624188c3a5a28d86ec32c81eb488ab",
+        "normalized_sha256": "d3238413de1b65dfca7f59b28bd5e9b0d4d68e1f4cedf6e5f7201a5561cfc6d7",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 70,
+        "path": "anthropic/v1/messages",
+        "bytes": 54847,
+        "sha256": "83177e73add4e4d1afe4f54da194e006bcd7df82d758ae1ed59a19b53b202e4e",
+        "normalized_sha256": "3ecaf5ecfca352fa9e6bdd801326d12b48aaf85e96c9e6e22c744511accbd63e",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 345,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 417,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 530,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 631,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 766,
+          "chars": 766
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3218"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw split": {
+      "trial": "rs-map-stub-01__jsmNdNP",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 79,
+        "path": "anthropic/v1/messages",
+        "bytes": 62085,
+        "sha256": "175b7e05d114f86f1da44e4d627a5a7e7e60bd2ade0d9578bb3d99c55fc9cf7b",
+        "normalized_sha256": "5adedf27b7d720cc673fca51b714745b978112354b39cba9cc6dca879de0fbf8",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 81,
+        "path": "anthropic/v1/messages",
+        "bytes": 62335,
+        "sha256": "431fb8894cfcdc007183b4a46e7ac27bbdd1fd18dc9fc8b2d79b07f16574ea04",
+        "normalized_sha256": "42b9920f904615d9c0fc5d064f12674a361ea63b8cb55d7397f1d46b0fe6d6eb",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "folder",
+          "file": "tests/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "folder",
+          "file": "stubpkg/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7889,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 8024,
+          "chars": 7968
+        },
+        {
+          "path": "tests/AGENTS.md",
+          "bytes": 51937,
+          "chars": 51167
+        },
+        {
+          "path": "stubpkg/AGENTS.md",
+          "bytes": 51939,
+          "chars": 51663
+        },
+        {
+          "path": "docs/AGENTS.md",
+          "bytes": 51937,
+          "chars": 51661
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3268"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\ndocs\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "pi b160k": {
+      "trial": "rs-map-stub-01__fcvkM8T",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "1.5.2",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 95,
+        "path": "anthropic/v1/messages",
+        "bytes": 174554,
+        "sha256": "87e6cfd90ef2d0974fedf879b950c5fb4f594ed5a9cdfe7ab1dc5667fa13591d",
+        "normalized_sha256": "0e10db71df2c5f8635b6ed7ec4ed6688ce3632ee735fd2d981873473d91ad648",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 96,
+        "path": "anthropic/v1/messages",
+        "bytes": 174831,
+        "sha256": "22cc933b57b7a58378bc38f6e4e09b516c3d968fe2196a7649fb8b1fd34cb772",
+        "normalized_sha256": "9f51be3a548659dcda50e4f0bd619974c1d26cf7c3e18b00399a8eb092d57052",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80362,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80434,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163605,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163706,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1166"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "pi b28k": {
+      "trial": "rs-map-stub-01__QM47GpQ",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "1.5.2",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 93,
+        "path": "anthropic/v1/messages",
+        "bytes": 35316,
+        "sha256": "68a339f70e67caf86b17513425f5e02b90249c61753a0a3fc973b3dfb6be2394",
+        "normalized_sha256": "9af31d627165b508dba417d93e545812545bc437ea413624ca892fbf3b30f103",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 94,
+        "path": "anthropic/v1/messages",
+        "bytes": 35593,
+        "sha256": "db9e0ba687cf851c41909347574c8af668491abfff872bdb1c13645585554dfc",
+        "normalized_sha256": "f9a43c9c5960b4afcc5d971a6216c3707ffe0774a92a8e5f69e82c27bb2f5667",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 13945,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 14017,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28420,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28521,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 28656,
+          "chars": 28394
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1162"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "pi b80k": {
+      "trial": "rs-map-stub-01__KGHHwmH",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "1.5.2",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 91,
+        "path": "anthropic/v1/messages",
+        "bytes": 90192,
+        "sha256": "7c346792cabdf83790b3e79656a85acd94ecdc75603ea65e46b6fa3d77b76dd2",
+        "normalized_sha256": "0f94193c784d0cc3887b3a1b930c6e26bf4ca6e10cbbf9eacd6ba43632381228",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 92,
+        "path": "anthropic/v1/messages",
+        "bytes": 90469,
+        "sha256": "b8955a6b446f73332b98f0103f56de958edddf45397d937f2274d36b3674992f",
+        "normalized_sha256": "422a4ac2b9b29c7e9ae0e80f9b5511ac0e565fe520e8e176f5a26d2cf6df6c9b",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 41059,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 41131,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81682,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81783,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 81918,
+          "chars": 81020
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1164"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "pi b8k": {
+      "trial": "rs-map-stub-01__dLYF9yE",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "1.5.2",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 89,
+        "path": "anthropic/v1/messages",
+        "bytes": 14312,
+        "sha256": "559f12d928ff7be735e3f1486d219dbcbe21a7f5d47da5196e36d7f27e5e7743",
+        "normalized_sha256": "44b5845122a1e46a8b7bacd18042daf39e735f75ecb15d281a6182364accfece",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 90,
+        "path": "anthropic/v1/messages",
+        "bytes": 14589,
+        "sha256": "7026288d09f680934af8adf9afe8182ef81654fb2e538e6ed1f1d80dd03dc7b4",
+        "normalized_sha256": "60b79fdb1687ad3e0bd3c3dbb071bf562efbb7133d4361d006d55086814d68fc",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4502,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7961,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 8062,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 8197,
+          "chars": 8141
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1165"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "pi none": {
+      "trial": "rs-map-stub-01__mUocRxh",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "1.5.2",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 85,
+        "path": "anthropic/v1/messages",
+        "bytes": 5696,
+        "sha256": "af5f4096b8140df34cc617cc53ad75b76fd14a38d4dfa750c57be107dc2bb443",
+        "normalized_sha256": "429a8852d96ec468db02d9c4c0882a8939a7908c58d154a9a37b641313d687f3",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 86,
+        "path": "anthropic/v1/messages",
+        "bytes": 5973,
+        "sha256": "57573c72997eeb24ca4e6ddd06d934a5c66d611d26e9a8b3afc9dd5d6191ffd6",
+        "normalized_sha256": "06925bb5914457e84ce46892411f515e27dc1c15dd8a89fe713020c26fe05e53",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R2": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R3": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1137"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "pi short": {
+      "trial": "rs-map-stub-01__Ha7spDU",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "1.5.2",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 87,
+        "path": "anthropic/v1/messages",
+        "bytes": 6649,
+        "sha256": "7ae44c108dfa9153bc06c628f5f1750465c7358cc48b2f80be71d3e927c6010b",
+        "normalized_sha256": "346467d9f0f3a3d3e128d5b6247e2bcba8287baca81e8b3c73b0c517a38ffb99",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 88,
+        "path": "anthropic/v1/messages",
+        "bytes": 6926,
+        "sha256": "5a97f291666ad4bf23c1c49686dcaee6ec424eb2c14a9c80b6c46cc8c9b7ae59",
+        "normalized_sha256": "683acd3ac48fb7c3c51cd5821ac0a467878408dd07a03a6f34a78195072855b2",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 345,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 417,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 530,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 631,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 766,
+          "chars": 766
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1165"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "pi split": {
+      "trial": "rs-map-stub-01__2UHMGBi",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "1.5.2",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 99,
+        "path": "anthropic/v1/messages",
+        "bytes": 14137,
+        "sha256": "d5ac2afaf2f70b72f29150dca24d1fb00643336744fab1a8aeeedecf45fd046b",
+        "normalized_sha256": "1ea56a61d6c7aa3a989840599bdaf60a480d895d83c8a65ad8dc381947c6e0c8",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 100,
+        "path": "anthropic/v1/messages",
+        "bytes": 14414,
+        "sha256": "5c93c556b5ce92f8965537689d99e9124e5abb1d005faf67f24a954a7fc5ce99",
+        "normalized_sha256": "9197a6978ffb8681ad239a27573b4a82182769e9250f262a0035a93eec8814b0",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "folder",
+          "file": "tests/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4430,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "folder",
+          "file": "stubpkg/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7889,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 8024,
+          "chars": 7968
+        },
+        {
+          "path": "tests/AGENTS.md",
+          "bytes": 51937,
+          "chars": 51167
+        },
+        {
+          "path": "stubpkg/AGENTS.md",
+          "bytes": 51939,
+          "chars": 51663
+        },
+        {
+          "path": "docs/AGENTS.md",
+          "bytes": 51937,
+          "chars": 51661
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 1223"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\ndocs\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    }
+  },
+  "byte_identical_first_requests": {
+    "claude-code": [
+      [
+        "b160k"
+      ],
+      [
+        "b28k"
+      ],
+      [
+        "b80k"
+      ],
+      [
+        "b8k"
+      ],
+      [
+        "hook"
+      ],
+      [
+        "none"
+      ],
+      [
+        "short"
+      ],
+      [
+        "split"
+      ]
+    ],
+    "codex": [
+      [
+        "b160k",
+        "b80k"
+      ],
+      [
+        "b28k"
+      ],
+      [
+        "b8k"
+      ],
+      [
+        "cutlift"
+      ],
+      [
+        "hook"
+      ],
+      [
+        "none"
+      ],
+      [
+        "short"
+      ],
+      [
+        "split"
+      ]
+    ],
+    "gemini-cli": [
+      [
+        "b160k"
+      ],
+      [
+        "b28k"
+      ],
+      [
+        "b80k"
+      ],
+      [
+        "b8k"
+      ],
+      [
+        "none"
+      ],
+      [
+        "short"
+      ],
+      [
+        "split"
+      ]
+    ],
+    "hermes": [
+      [
+        "b160k"
+      ],
+      [
+        "b28k"
+      ],
+      [
+        "b80k"
+      ],
+      [
+        "b8k"
+      ],
+      [
+        "hook"
+      ],
+      [
+        "none"
+      ],
+      [
+        "short"
+      ],
+      [
+        "split"
+      ]
+    ],
+    "openclaw": [
+      [
+        "b160k"
+      ],
+      [
+        "b28k"
+      ],
+      [
+        "b80k"
+      ],
+      [
+        "b8k"
+      ],
+      [
+        "cutlift"
+      ],
+      [
+        "hook"
+      ],
+      [
+        "none"
+      ],
+      [
+        "short"
+      ],
+      [
+        "split"
+      ]
+    ],
+    "pi": [
+      [
+        "b160k"
+      ],
+      [
+        "b28k"
+      ],
+      [
+        "b80k"
+      ],
+      [
+        "b8k"
+      ],
+      [
+        "none"
+      ],
+      [
+        "short"
+      ],
+      [
+        "split"
+      ]
+    ]
+  },
+  "qm_predicted": {
+    "status": "predicted from a source read of yc-software/qm 90e4ced7, not captured: QM is a stub in this lane",
+    "where": "the SOUL, set by PUT /v1/admin/scopes/org:harness-eval/soul before the turn and shown in the system prompt under \"## Organization instructions\"",
+    "workspace_rules_file": "none read: QM loads no AGENTS.md or CLAUDE.md from the workspace, so the qm-repo arm's AGENTS.md reaches the model only if it opens the file itself",
+    "cells": {
+      "none": "QM's default SOUL; no rules",
+      "qm-repo": "b8k AGENTS.md in the repository, empty SOUL: predicted absent from the first request",
+      "short": "all 6 rules whole under the heading",
+      "b8k": "all 6 rules whole under the heading",
+      "b28k": "all 6 rules whole under the heading",
+      "b80k": "all 6 rules whole under the heading (about 80,000 characters, under the cap)",
+      "qm-top": "all 6 rules whole under the heading, at the top of the SOUL"
+    },
+    "cap": "100000 characters (MAX_SOUL_CHARS); a longer text fails the trial with HE-RULES-011 and is never cut, so b160k is not offered",
+    "not_offered": [
+      "b160k",
+      "split",
+      "hook",
+      "cutlift"
+    ],
+    "proof": "the captured first agent-loop request shows the text under the heading; the admin reply is not proof",
+    "carbon": "Carbon runs on QM only through OpenRouter; no Carbon cell is in QM's arms"
+  },
+  "cant_run": {
+    "claude-code cutlift": {
+      "code": "HE-RULES-003",
+      "why": "claude-code sends a 160 KB rules file whole at its default, so there is no cut to lift"
+    },
+    "pi hook": {
+      "code": "HE-RULES-003",
+      "why": "pi has no hook route here (plan, changes accepted at the gate: Pi drops out of the hook arm; Gemini CLI is a descriptive row)"
+    },
+    "pi cutlift": {
+      "code": "HE-RULES-003",
+      "why": "pi sends a 160 KB rules file whole at its default, so there is no cut to lift"
+    },
+    "gemini-cli hook": {
+      "code": "HE-RULES-003",
+      "why": "gemini-cli has no hook route here (plan, changes accepted at the gate: Pi drops out of the hook arm; Gemini CLI is a descriptive row)"
+    },
+    "gemini-cli cutlift": {
+      "code": "HE-RULES-003",
+      "why": "gemini-cli sends a 160 KB rules file whole at its default, so there is no cut to lift"
+    }
+  },
+  "all_ran": true
+}

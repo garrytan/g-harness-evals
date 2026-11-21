@@ -1,0 +1,92 @@
+{
+  "schema": "rules-at-scale-pin/1",
+  "what": "The harness releases the rules-at-scale eval runs (plan decision H: the newest release of each harness), read 2026-11-19 UTC from each package registry and release page named per entry. agents_rules.py installs these versions through the frontier Harbor classes and refuses a container whose installed version or binary differs (pin-check.ts). scripts/frontier-harbor/pin.json, pinned by another preregistration, is not changed: agents_rules.py reads its model limits and adds these versions beside its own entries in memory at run time.",
+  "read_at": "2026-11-19T07:00:00Z",
+  "harnesses": {
+    "claude-code": {
+      "version": "2.1.328",
+      "package": "@anthropic-ai/claude-code",
+      "npm_integrity": "sha512-QJTDDUhzx2Wtnoone+TULvhtxqX9KhUpgt4S96Y2eyohtZK41LWXwe7fWXcR1JnT0Ujs3AfpPTk5BZgwCyZ8pw==",
+      "native_binary_sha256": "a982d38030b97e750848add2cbb2df6d9a70d5544a22ca9b216a349ba25865e8",
+      "native_binary_bytes": 373019152,
+      "published": "2026-11-18T23:09:39Z",
+      "source": "npm view @anthropic-ai/claude-code (dist-tag latest 2.1.328) and downloads.claude.ai/claude-code-releases/2.1.328/manifest.json platforms.linux-x64.checksum (buildDate 2026-11-18T21:56:43Z)",
+      "install": "Harbor ClaudeCode.install (bootstrap.sh 2.1.328, the native binary); FrontierClaudeCode then requires the installed binary's sha256 to equal native_binary_sha256",
+      "version_command": "claude --version",
+      "version_pattern": "^2\\.1\\.328 "
+    },
+    "codex": {
+      "version": "0.170.0",
+      "package": "@openai/codex",
+      "npm_integrity": "sha512-dwoughgqjiik++CFaNkjQ5y6pJO6LUzu5P1z8Hy4LUeJ+aIYcX/QO1P5rOQnHmBG4agOM7Y+hc4LtVo/a4GFiw==",
+      "source": "npm view @openai/codex dist-tags (latest 0.170.0; 0.171.0 and 0.172.0 exist only as alpha builds)",
+      "install": "Harbor Codex.install: npm install -g @openai/codex@0.170.0",
+      "version_command": "codex --version",
+      "version_pattern": "^codex-cli 0\\.170\\.0$",
+      "max_context_window": {
+        "value": 872000,
+        "source": "codex-rs/models-manager/models.json at rust-v0.170.0: gpt-6.1-sol context_window 500000 (272000 at 0.165.0) and max_context_window 872000 (unchanged), so the window the frontier path sets (872000) still holds"
+      }
+    },
+    "hermes": {
+      "version": "v0.23.2",
+      "commit": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "tag_object": "28f57ed8e3dba4eceb67dfd3e3abda1a7604452d",
+      "published": "2026-11-16T20:59:18Z",
+      "repo": "https://github.com/NousResearch/hermes-agent",
+      "source": "api.github.com/repos/NousResearch/hermes-agent/releases/latest (v0.23.2) and git ls-remote refs/tags/v0.23.2^{}. Hermes moved from date tags (the newest, v2026.9.24, is the frontier pin) to v0.x tags; the v0.23.2+canary.* tags are pre-releases and are not used",
+      "python": "3.14 (pyproject.toml gates every core dependency on python_version >= '3.14'; .python-version and scripts/install.sh default to 3.14)",
+      "install": "agents_rules.py RulesHermes.install: the commit's own scripts/install.sh with --skip-setup --hermes-home /tmp/hermes --branch main --commit <commit> (the installer checks that the commit is an ancestor of origin/<branch>, so a tag name is refused with 'commit ... is not on branch v0.23.2'; the tag's commit is on main, GitHub compare behind_by 0 on 2026-11-19), then the anthropic extra through Hermes's own package manager (pm.ensure_import('anthropic')); the check reads anthropic from the environment pm committed",
+      "anthropic": {
+        "version": "0.125.0",
+        "source": "uv.lock and the anthropic optional extra in pyproject.toml at the commit; installed by pm.ensure_import, which the default install does not do"
+      },
+      "integrity": "the git commit sha (a tag can move; the commit cannot); the install refuses any other HEAD",
+      "version_command": "git -C $HOME/.hermes-src rev-parse HEAD",
+      "install_branch": "main"
+    },
+    "openclaw": {
+      "version": "2026.11.5",
+      "package": "openclaw",
+      "npm_integrity": "sha512-mqPlsGLOe8NS85BfP1vWW9YVwFXchsV75QTkEbyR4csylORxts+fmfZp9+qbD7aPbXQIctyjRk+CPL91fDvxBA==",
+      "published": "2026-11-17T09:59:33Z",
+      "source": "npm view openclaw (dist-tag latest 2026.11.5; 2026.10.33, published later, is a backport on the older line)",
+      "engines": "node >=24.16.0 <25 || >=26.1.0, so the frontier path's Node 24 still fits",
+      "install": "Harbor OpenClaw.install on Node 24 (FrontierOpenClaw): npm install -g openclaw@2026.11.5",
+      "version_command": "openclaw --version",
+      "version_pattern": "2026\\.11\\.5"
+    },
+    "pi": {
+      "version": "1.5.2",
+      "package": "@earendil-works/pi-coding-agent",
+      "npm_integrity": "sha512-mUWI04rqF1Vd/m1q+Ps1XeWsTXEVvRUnsmRa83I3Dzua0Tx5bYS93imeqtIfrXf7PkkaR6ERz+AuQhIJlom5yA==",
+      "published": "2026-11-10T12:24:55Z",
+      "source": "npm view @earendil-works/pi-coding-agent (dist-tag latest 1.5.2)",
+      "install": "Harbor Pi.install: npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.5.2",
+      "version_command": "pi --version",
+      "version_pattern": "1\\.5\\.2"
+    },
+    "gemini-cli": {
+      "version": "0.69.0",
+      "package": "@google/gemini-cli",
+      "npm_integrity": "sha512-KFSvSgQH4tVOsorU4V0bnyiL5z36v07roPvrxGW7qdvRqlZ577ivLLUQhOJBzGyaNunvXEuoVBvzKcQu0pOAqQ==",
+      "published": "2026-11-19T01:51:24Z",
+      "source": "npm view @google/gemini-cli (dist-tag latest 0.69.0)",
+      "role": "descriptive row of the keyless delivery map only; no paid cell (plan decision E)",
+      "install": "Harbor GeminiCli.install: npm install -g @google/gemini-cli@0.69.0",
+      "version_command": "gemini --version",
+      "version_pattern": "^0\\.69\\.0$"
+    }
+  },
+  "changed_from_frontier_pin": [
+    "Claude Code 2.1.312 to 2.1.328: a new native binary sha256. Nothing our wiring reads changed; the startup CLAUDE.md still loads whole (delivery map).",
+    "Codex 0.165.0 to 0.170.0: on a cut AGENTS.md, 0.170.0 prints 'warning: Loaded only 32768 of N bytes ... increase project_doc_max_bytes' on stderr (0.165.0 printed nothing). The model still gets no marker. gpt-6.1-sol's catalog context_window rose to 500000 while max_context_window stays 872000, so the window we set is unchanged.",
+    "Hermes v2026.9.24 (f97608f) to v0.23.2 (ae2a81c): a new tag scheme, Python 3.14 required, anthropic SDK 0.87.0 to 0.125.0, and config-file shell hooks (hooks.pre_llm_call with hooks_auto_accept) that add context to the turn's user message, which the hook arm uses. The context-file cap is still max(20000, min(context_length x 4 x 0.06, 500000)) characters unless context_file_max_chars is set (agent/prompt_builder.py:1044-1061 at the commit).",
+    "OpenClaw 2026.10.6 to 2026.11.5: engines now node >=24.16.0 <25 || >=26.1.0 (was >=24.22.1 <25); Node 24 still fits.",
+    "Pi 1.5.0 to 1.5.2.",
+    "Gemini CLI 0.68.0 to 0.69.0.",
+    "Hermes's installer no longer takes a tag as --branch: it requires the commit on origin/<branch>, so the frontier path's --branch <tag> fails at v0.23.2 and RulesHermes passes --branch main with the tag's commit.",
+    "OpenClaw (seen at 2026.11.5 through Harbor 0.24.0's class): openclaw setup --baseline --workspace . runs in /work/repo before Harbor copies the config that sets skipBootstrap, and writes OpenClaw's AGENTS.md, IDENTITY.md, SOUL.md and USER.md templates into the repository. RulesOpenClaw points that setup at a scratch workspace on rules jobs.",
+    "Hermes v0.23.x installs its dependencies into an environment its own package manager keeps under HERMES_HOME, not into <checkout>/venv: the frontier path's uv sync into <checkout>/venv and its HERMES_HOME=/tmp/hermes then leave hermes refusing to start ('no dependency environment is committed for this install'). RulesHermes installs with --hermes-home /tmp/hermes and adds the anthropic extra through pm."
+  ]
+}

@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Stand-in for lane A's precheck (wave0-spec.md): compileall, then pytest --collect-only; one JSON line per run."""
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+ROOT = "/work/repo"
+
+
+def tree():
+    rows = []
+    for d, dirs, files in os.walk(ROOT):
+        dirs[:] = [x for x in dirs if not (d == ROOT and x == ".git")]
+        for f in files:
+            p = os.path.join(d, f)
+            rows.append((os.path.relpath(p, ROOT), hashlib.sha256(open(p, "rb").read()).hexdigest()))
+    return hashlib.sha256("".join(f"{p}\0{h}\n" for p, h in sorted(rows)).encode()).hexdigest()
+
+
+code, detail, check = 0, "", ""
+for check, cmd in (("compile", [sys.executable, "-m", "compileall", "-q", "stubpkg"]), ("collect", [sys.executable, "-m", "pytest", "-q", "--collect-only"])):
+    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        code, detail = 1, ((r.stdout + r.stderr).strip().splitlines() or [""])[-1]
+        break
+os.makedirs("/work/.he", exist_ok=True)
+with open("/work/.he/precheck.jsonl", "a") as f:
+    f.write(json.dumps({"t": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"), "exit": code, "tree": tree()}) + "\n")
+if code:
+    print(f"precheck: {check} failed: {detail}. Fix it, then run ./scripts/precheck again.", file=sys.stderr)
+    sys.exit(1)
+print("precheck: ok")

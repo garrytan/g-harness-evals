@@ -1,0 +1,16 @@
+# Rules at scale: build files
+
+**Does each coding agent still follow its rules file (CLAUDE.md, AGENTS.md) as the file grows?** These files build the eval's rules files and grade its trials. The plan and its preregistration live under docs/benchmarks/ once they are written.
+
+- `rules.json`: the six planted rules, word for word, the three rotations that put each rule at the top, middle and end of the file equally often, the neutral section headings, the file name each harness reads and the size ladder.
+- `corpus/`: the filler. Real rules files from public, permissively licensed repositories (`files/`, pinned by commit in `sources.json`, licences in `LICENSES/`, summary in `NOTICES.md`), filtered so no line touches a planted rule's topic (`DROPS.md`, `drop-list.json`) and drawn in one seeded order (`filler.json`). `crawl.ts` collects candidates from GitHub code search; `build-corpus.ts` selects and rebuilds.
+- `sizes/SIZES.md`: how big public AGENTS.md and CLAUDE.md files are, and how many sit past each harness's cut.
+- `materialize.ts`: writes one arm's rules files for one task and harness, plus `manifest.json` with every rule's byte offset.
+- `grade.ts`: grades one trial: each rule met, not met, not applicable or unscorable, and for each captured request whether each rule's text reached the model whole, in part, only through a later file read, or not at all. It reads the agent's repository through a fresh git directory that holds only the repository's data and none of its git settings, hooks or attributes, so nothing in that repository can run a program on the grading machine. A repository it can't read that way grades every rule unscorable with its own code: `REPO_NOT_GIT` (no .git), `REPO_LINKED_WORKTREE` (.git is a file), `REPO_REFTABLE` or `REPO_SHA256`.
+- `collect.ts`: turns Harbor trial directories into the rows `analyze.ts` reads. A trial that stopped on an infrastructure error scores no rule. An agent timeout keeps its grades, but a rule whose trigger never fired before the timeout counts as not applicable. Every scored row, timeouts included, must show captured requests naming only the cell's model, or the run stops.
+- `analyze.ts` and `sequential.ts`: the analysis of the collected rows and the planned sequence of looks.
+- `probe/`: a keyless tool anyone can run to see what their own agent sends from their own rules file.
+- `plan.ts`: splits a run into shards, one setup each, with every arm on the design's task order. Filters cover the pilot (`--pilot`), a task subset, a list of arms and the two halves of the interim look. It also writes one Harbor job per trial on the shard's machine.
+- `run-shard.sh`: runs one shard. It stamps the task files, checks the tasks (`task-preflight.ts`), copies them into Harbor tasks (`harbor-tasks.ts`), starts the metering proxy, runs the trials and turns them into rows with `collect.ts`. On Ubicloud it runs under [`ubicloud/fanout.sh`](ubicloud/README.md), which adds this workload to the shared lane without editing it.
+
+Rebuild and check: `bun scripts/rules-at-scale/corpus/build-corpus.ts build --check`, then `bun test tests/rules-at-scale-*.test.ts`.

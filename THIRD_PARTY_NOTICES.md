@@ -22,6 +22,7 @@
 - [Credits: Terminal-Bench 2 and SWE-bench Verified](#credits-terminal-bench-2-and-swe-bench-verified)
 - [Claude Code](#claude-code)
 - [Rules-fix tasks: eleven Python libraries](#rules-fix-tasks-eleven-python-libraries)
+- [Rules-at-scale: public rules files used as filler](#rules-at-scale-public-rules-files-used-as-filler)
 - [MCP servers in the tools-at-scale catalog](#mcp-servers-in-the-tools-at-scale-catalog)
 
 ## OpenClaw
@@ -750,6 +751,14 @@ We use these benchmarks' task ids and public numbers. We don't redistribute thei
 - **Licences:** MIT or BSD-3-Clause, per library.
 - **Paths that carry their text:** `tasks/repo/rules-fix-v1/` (inside each task's `environment/work.tar` and `verifier/tests.tar`, and in its verifier and oracle files) and `scripts/repo-tasks/rules-fix/upstream/` and `scripts/repo-tasks/rules-fix/issues/` (issue text with usernames removed and source links kept).
 - **Licence texts:** one per library in [tasks/repo/rules-fix-v1/LICENSES/](tasks/repo/rules-fix-v1/LICENSES/). Each `work.tar` also keeps the project's own LICENSE.
+
+## Rules-at-scale: public rules files used as filler
+
+- **What:** the rules-at-scale eval pads its rules files with sections of real AGENTS.md, CLAUDE.md and GEMINI.md files from public repositories, filtered so they never contradict the six planted rules.
+- **Versions:** each source is pinned by commit in [scripts/rules-at-scale/corpus/NOTICES.md](scripts/rules-at-scale/corpus/NOTICES.md), one row per file with its repository, licence and copyright line.
+- **Licences:** MIT, Apache-2.0 or BSD-3-Clause, per file.
+- **Paths that carry their text:** `scripts/rules-at-scale/corpus/files/` (each source unchanged) and `scripts/rules-at-scale/corpus/filler.json` (the filtered sections).
+- **Licence texts:** one per repository, with any Apache NOTICE file, in [scripts/rules-at-scale/corpus/LICENSES/](scripts/rules-at-scale/corpus/LICENSES/).
 
 ## MCP servers in the tools-at-scale catalog
 

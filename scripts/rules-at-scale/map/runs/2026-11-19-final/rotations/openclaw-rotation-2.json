@@ -1,0 +1,551 @@
+{
+  "schema": "rules-at-scale-delivery-map/1",
+  "materializer": "/workspace/harness-evals/scripts/rules-at-scale/materialize.ts",
+  "pin": {
+    "claude-code": {
+      "version": "2.1.328",
+      "package": "@anthropic-ai/claude-code",
+      "npm_integrity": "sha512-QJTDDUhzx2Wtnoone+TULvhtxqX9KhUpgt4S96Y2eyohtZK41LWXwe7fWXcR1JnT0Ujs3AfpPTk5BZgwCyZ8pw==",
+      "native_binary_sha256": "a982d38030b97e750848add2cbb2df6d9a70d5544a22ca9b216a349ba25865e8",
+      "native_binary_bytes": 373019152,
+      "published": "2026-11-18T23:09:39Z",
+      "source": "npm view @anthropic-ai/claude-code (dist-tag latest 2.1.328) and downloads.claude.ai/claude-code-releases/2.1.328/manifest.json platforms.linux-x64.checksum (buildDate 2026-11-18T21:56:43Z)",
+      "install": "Harbor ClaudeCode.install (bootstrap.sh 2.1.328, the native binary); FrontierClaudeCode then requires the installed binary's sha256 to equal native_binary_sha256",
+      "version_command": "claude --version",
+      "version_pattern": "^2\\.1\\.328 "
+    },
+    "codex": {
+      "version": "0.170.0",
+      "package": "@openai/codex",
+      "npm_integrity": "sha512-dwoughgqjiik++CFaNkjQ5y6pJO6LUzu5P1z8Hy4LUeJ+aIYcX/QO1P5rOQnHmBG4agOM7Y+hc4LtVo/a4GFiw==",
+      "source": "npm view @openai/codex dist-tags (latest 0.170.0; 0.171.0 and 0.172.0 exist only as alpha builds)",
+      "install": "Harbor Codex.install: npm install -g @openai/codex@0.170.0",
+      "version_command": "codex --version",
+      "version_pattern": "^codex-cli 0\\.170\\.0$",
+      "max_context_window": {
+        "value": 872000,
+        "source": "codex-rs/models-manager/models.json at rust-v0.170.0: gpt-6.1-sol context_window 500000 (272000 at 0.165.0) and max_context_window 872000 (unchanged), so the window the frontier path sets (872000) still holds"
+      }
+    },
+    "hermes": {
+      "version": "v0.23.2",
+      "commit": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "tag_object": "28f57ed8e3dba4eceb67dfd3e3abda1a7604452d",
+      "published": "2026-11-16T20:59:18Z",
+      "repo": "https://github.com/NousResearch/hermes-agent",
+      "source": "api.github.com/repos/NousResearch/hermes-agent/releases/latest (v0.23.2) and git ls-remote refs/tags/v0.23.2^{}. Hermes moved from date tags (the newest, v2026.9.24, is the frontier pin) to v0.x tags; the v0.23.2+canary.* tags are pre-releases and are not used",
+      "python": "3.14 (pyproject.toml gates every core dependency on python_version >= '3.14'; .python-version and scripts/install.sh default to 3.14)",
+      "install": "agents_rules.py RulesHermes.install: the commit's own scripts/install.sh with --skip-setup --hermes-home /tmp/hermes --branch main --commit <commit> (the installer checks that the commit is an ancestor of origin/<branch>, so a tag name is refused with 'commit ... is not on branch v0.23.2'; the tag's commit is on main, GitHub compare behind_by 0 on 2026-11-19), then the anthropic extra through Hermes's own package manager (pm.ensure_import('anthropic')); the check reads anthropic from the environment pm committed",
+      "anthropic": {
+        "version": "0.125.0",
+        "source": "uv.lock and the anthropic optional extra in pyproject.toml at the commit; installed by pm.ensure_import, which the default install does not do"
+      },
+      "integrity": "the git commit sha (a tag can move; the commit cannot); the install refuses any other HEAD",
+      "version_command": "git -C $HOME/.hermes-src rev-parse HEAD",
+      "install_branch": "main"
+    },
+    "openclaw": {
+      "version": "2026.11.5",
+      "package": "openclaw",
+      "npm_integrity": "sha512-mqPlsGLOe8NS85BfP1vWW9YVwFXchsV75QTkEbyR4csylORxts+fmfZp9+qbD7aPbXQIctyjRk+CPL91fDvxBA==",
+      "published": "2026-11-17T09:59:33Z",
+      "source": "npm view openclaw (dist-tag latest 2026.11.5; 2026.10.33, published later, is a backport on the older line)",
+      "engines": "node >=24.16.0 <25 || >=26.1.0, so the frontier path's Node 24 still fits",
+      "install": "Harbor OpenClaw.install on Node 24 (FrontierOpenClaw): npm install -g openclaw@2026.11.5",
+      "version_command": "openclaw --version",
+      "version_pattern": "2026\\.11\\.5"
+    },
+    "pi": {
+      "version": "1.5.2",
+      "package": "@earendil-works/pi-coding-agent",
+      "npm_integrity": "sha512-mUWI04rqF1Vd/m1q+Ps1XeWsTXEVvRUnsmRa83I3Dzua0Tx5bYS93imeqtIfrXf7PkkaR6ERz+AuQhIJlom5yA==",
+      "published": "2026-11-10T12:24:55Z",
+      "source": "npm view @earendil-works/pi-coding-agent (dist-tag latest 1.5.2)",
+      "install": "Harbor Pi.install: npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.5.2",
+      "version_command": "pi --version",
+      "version_pattern": "1\\.5\\.2"
+    },
+    "gemini-cli": {
+      "version": "0.69.0",
+      "package": "@google/gemini-cli",
+      "npm_integrity": "sha512-KFSvSgQH4tVOsorU4V0bnyiL5z36v07roPvrxGW7qdvRqlZ577ivLLUQhOJBzGyaNunvXEuoVBvzKcQu0pOAqQ==",
+      "published": "2026-11-19T01:51:24Z",
+      "source": "npm view @google/gemini-cli (dist-tag latest 0.69.0)",
+      "role": "descriptive row of the keyless delivery map only; no paid cell (plan decision E)",
+      "install": "Harbor GeminiCli.install: npm install -g @google/gemini-cli@0.69.0",
+      "version_command": "gemini --version",
+      "version_pattern": "^0\\.69\\.0$"
+    }
+  },
+  "rules": {
+    "R1": "- Record every change in a new file under `changes/`, named in kebab-case after what it fixes (for example `changes/fix-date-parsing.md`), with one sentence describing the change.",
+    "R2": "- After your last edit, run `./scripts/precheck` and make sure it passes before you finish.",
+    "R3": "- Leave existing test files unchanged; put any new tests in a new file.",
+    "R4": "- Commit your finished work to the current branch with a sign-off line (`git commit -s`).",
+    "R5": "- Before your first edit, look up the module you will change with `./scripts/notes search <module>`.",
+    "R6": "- Before you commit, read the whole staged diff with `git diff --staged` (no path filter) and fix anything you did not mean to change."
+  },
+  "cells": {
+    "openclaw b160k": {
+      "trial": "rs-map-stub-01__uoVy2Vt",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 2,
+        "path": "anthropic/v1/messages",
+        "bytes": 73836,
+        "sha256": "951a22ed269b0b5251c861ea5da5b9bebb04fa93b8ebe9632e83b92cda17dd9a",
+        "normalized_sha256": "82d01cb4ea966b8d4c6ddc4074db9d7b40c10423ce72bc9902f51fa7c0571685",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 5,
+        "path": "anthropic/v1/messages",
+        "bytes": 74082,
+        "sha256": "146f3541f6bd25e34b7556065af2af70720eb94bc8646c7335b14d9f4b98020c",
+        "normalized_sha256": "4f5de045c0e40879e1601fb84d13b9e604f3c8616ac803fd6cb47b2dd55c2372",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163569,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163749,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 121,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80252,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 80353,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163841,
+          "chars": 162450
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3206"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "[agent/embedded] workspace bootstrap file AGENTS.md is 162467 chars (limit 20000); truncating in injected context (sessionKey=agent:main:main)"
+      ],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw b28k": {
+      "trial": "rs-map-stub-01__wJVDpY8",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 1,
+        "path": "anthropic/v1/messages",
+        "bytes": 73825,
+        "sha256": "54231d27d5204cca924f170bb7fdc404367fa132892acf11b54b141d058768a0",
+        "normalized_sha256": "6054fdf92917f0617a6d6292a37f6ec4122767735428da1481a6ab221b4ed35e",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 3,
+        "path": "anthropic/v1/messages",
+        "bytes": 74071,
+        "sha256": "7f5794eb2de9bdc2ac44f107ae487bd3e70818694dd721cd17a711282274108a",
+        "normalized_sha256": "6b7c14008c786aaf8dfa2c5f54a21ef067bc35c3577cc68e81e5b725f7fb854f",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28384,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28564,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 121,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 13835,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 13936,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 28656,
+          "chars": 28394
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3207"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "[agent/embedded] workspace bootstrap file AGENTS.md is 28394 chars (limit 20000); truncating in injected context (sessionKey=agent:main:main)"
+      ],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    },
+    "openclaw b80k": {
+      "trial": "rs-map-stub-01__GNgazpF",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "OpenClaw 2026.11.5 (e13cf15)",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 4,
+        "path": "anthropic/v1/messages",
+        "bytes": 73815,
+        "sha256": "914806d48db15214fa8725911edb141e1ad438d85016b8e0463484e9d1dc9455",
+        "normalized_sha256": "c46b27358a958ea368b5d9f2094c13c75d93fb8e4a700f138f633840bf355b35",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 6,
+        "path": "anthropic/v1/messages",
+        "bytes": 74061,
+        "sha256": "a9d5292d22d1aa4d1c39a419ec453c69b3a672949cd164cab87760c6274b4299",
+        "normalized_sha256": "fd82f1ed41a689c67a589ecb9fd6ce3013d8859317fd99a71462170ef83b5c3c",
+        "markers": [
+          "(truncated ",
+          "Bootstrap truncation warning",
+          "Policy digest",
+          "[...truncated",
+          "more policy lines omitted"
+        ],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81646,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81826,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 121,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.system[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 40949,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 41050,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 81918,
+          "chars": 81020
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 3211"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "[agent/embedded] workspace bootstrap file AGENTS.md is 81030 chars (limit 20000); truncating in injected context (sessionKey=agent:main:main)"
+      ],
+      "openclaw_reads": [
+        "/work/repo/AGENTS.md"
+      ]
+    }
+  },
+  "byte_identical_first_requests": {
+    "openclaw": [
+      [
+        "b160k"
+      ],
+      [
+        "b28k"
+      ],
+      [
+        "b80k"
+      ]
+    ]
+  },
+  "qm_predicted": {
+    "status": "predicted from a source read of yc-software/qm 90e4ced7, not captured: QM is a stub in this lane",
+    "where": "the SOUL, set by PUT /v1/admin/scopes/org:harness-eval/soul before the turn and shown in the system prompt under \"## Organization instructions\"",
+    "workspace_rules_file": "none read: QM loads no AGENTS.md or CLAUDE.md from the workspace, so the qm-repo arm's AGENTS.md reaches the model only if it opens the file itself",
+    "cells": {
+      "none": "QM's default SOUL; no rules",
+      "qm-repo": "b8k AGENTS.md in the repository, empty SOUL: predicted absent from the first request",
+      "short": "all 6 rules whole under the heading",
+      "b8k": "all 6 rules whole under the heading",
+      "b28k": "all 6 rules whole under the heading",
+      "b80k": "all 6 rules whole under the heading (about 80,000 characters, under the cap)",
+      "qm-top": "all 6 rules whole under the heading, at the top of the SOUL"
+    },
+    "cap": "100000 characters (MAX_SOUL_CHARS); a longer text fails the trial with HE-RULES-011 and is never cut, so b160k is not offered",
+    "not_offered": [
+      "b160k",
+      "split",
+      "hook",
+      "cutlift"
+    ],
+    "proof": "the captured first agent-loop request shows the text under the heading; the admin reply is not proof",
+    "carbon": "Carbon runs on QM only through OpenRouter; no Carbon cell is in QM's arms"
+  },
+  "cant_run": {
+    "claude-code cutlift": {
+      "code": "HE-RULES-003",
+      "why": "claude-code sends a 160 KB rules file whole at its default, so there is no cut to lift"
+    },
+    "pi hook": {
+      "code": "HE-RULES-003",
+      "why": "pi has no hook route here (plan, changes accepted at the gate: Pi drops out of the hook arm; Gemini CLI is a descriptive row)"
+    },
+    "pi cutlift": {
+      "code": "HE-RULES-003",
+      "why": "pi sends a 160 KB rules file whole at its default, so there is no cut to lift"
+    },
+    "gemini-cli hook": {
+      "code": "HE-RULES-003",
+      "why": "gemini-cli has no hook route here (plan, changes accepted at the gate: Pi drops out of the hook arm; Gemini CLI is a descriptive row)"
+    },
+    "gemini-cli cutlift": {
+      "code": "HE-RULES-003",
+      "why": "gemini-cli sends a 160 KB rules file whole at its default, so there is no cut to lift"
+    }
+  },
+  "all_ran": true
+}
