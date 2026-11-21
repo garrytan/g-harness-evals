@@ -1,0 +1,86 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "GBrain memory is now part of this agent. It runs without API keys, your identity and instructions are unchanged, and a remember/recall round trip passed with real GBrain calls.\n\n## What was installed\n- **Bun 1.4.4** and **gbrain 0.60.734.0** from `github:garrytan/gbrain#v0.60.734.0`, where the guide says `#stable`. Bun's installer didn't put itself on your PATH, so I added `export PATH=\"$HOME/.bun/bin:$PATH\"` to `~/.profile`. Without it gbrain won't start in a new shell.\n- **`gbrain setup claude-code`** created a keyless local brain at `~/.gbrain/brain.pglite`. It also registered the `gbrain` MCP server for all your projects and added two hooks that load memory context (at session start and on each prompt).\n- **Your identity and settings:** there was no `CLAUDE.md` before, so setup created one. It holds only a short gbrain-managed \"check GBrain first\" block, marked off from anything else. Your existing `settings.json` entries (`apiKeyHelper`, `skipWebFetchPreflight`) are still there. Automatic conversation capture and paid providers stay off.\n\n## Round-trip check\n| Check | Result |\n|---|---|\n| Setup's own connection check | ✅ the server answered, listed its tools and served a recall |\n| `claude mcp get gbrain` | ✅ Connected |\n| `remember` an install-check marker (not a fact about you) | ✅ saved as fact #1 |\n| `recall` in a new login shell (by name and by question) | ✅ returned the marker |\n| `recall` through the MCP server Claude Code launches | ✅ returned the marker |\n| `recall` from a brand-new Claude Code session | ✅ returned the exact fact text |\n| Exact keyword `search` on a test page | ✅ found the page |\n| Cleanup | ✅ marker forgotten, test page deleted; recall and search now return nothing |\n\n`gbrain doctor --only harness_wiring` still warns `registration_unverified`. I believe this is a false alarm: the doctor looks in `~/.claude.json`, but this setup keeps its config in `/harness-state/claude`. Since Claude Code reports the server connected and a new session recalled through it, I didn't rerun setup as the doctor suggests.\n\n## Search mode: in effect now is **conservative**\nIt was picked automatically because there's no chat key and no reranker. You can change it at any time:\n\n```\nEstimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n                  ($0.10/M in)  ($2/M in)     ($4/M in)\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n\n  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.\n  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.\n  Embedding, reranking and query expansion are separate provider charges.\n```\n\n1. **conservative** (in effect): 4K-token budget, at most 10 chunks, no reranker. Best for Haiku subagents, cost-sensitive setups and high-volume loops.\n2. **balanced**: 12K budget, 25 chunks, reranked. The reranker needs a Voyage key, so while you're keyless it behaves close to conservative.\n3. **tokenmax**: no budget, 50 chunks, reranked. Widest retrieval; recommended once you add a chat key.\n\nTo switch, run `gbrain config set search.mode <mode>`. Query expansion is off by default in every mode. These are cost estimates, not prices on your Claude subscription.\n\n## Other settings in effect\n- **Automatic saving:** off, so I save only what you ask me to remember. gbrain recommends `salient` (durable facts you state, saved with where they came from): `gbrain config set memory.auto_writeback salient`.\n- **Upkeep:** on. Free maintenance runs while a session is open; nothing is deleted or charged without you. Turn off with `gbrain config set maintenance.auto false`.\n- **Conversation archive:** on. gbrain keeps one redacted page per conversation per day, and with no keys nothing leaves this machine. Turn off with `gbrain transcripts archive off`.\n- **Report back (Wakeshift):** off. Turn on with `gbrain wakeshift enable`.\n- **Brain shape:** none. `gbrain setup claude-code --shape personal` (or `company`) adds empty starter pages.\n- **Semantic search:** off. Turning it on needs a Voyage or OpenAI key and your go-ahead.\n- **Hosted option:** gbrain.io can run the brain for you so nothing has to stay online, and can import this one: https://gbrain.io/?ref=cli-setup\n\nNone of this needs an answer now. Tell me any change and I'll apply it.",
+  "exit": 0,
+  "started_at": "2026-11-17T14:54:07.258Z",
+  "ended_at": "2026-11-17T14:56:40.195Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T14:56:40.026Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 37
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Ritropaim.",
+  "reply_text": "Saved in GBrain: your sister's new cat is called **Ritropaim**. It's stored under the entity `ritropaim` with this conversation as the source.\n\nIf you tell me your sister's name, I'll link the fact to her as well.",
+  "exit": 0,
+  "started_at": "2026-11-17T14:56:40.206Z",
+  "ended_at": "2026-11-17T14:56:52.042Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T14:56:51.899Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Ritropaim**. You told me earlier today (2026-11-17), and it's saved in your notes.",
+  "exit": 0,
+  "started_at": "2026-11-17T14:56:52.044Z",
+  "ended_at": "2026-11-17T14:57:01.446Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T14:57:01.341Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

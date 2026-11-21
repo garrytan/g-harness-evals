@@ -1,0 +1,18 @@
+gbrain still isn't installed, and I'm stopping here. Hermes's security scanner blocks the install because it can't check the package in offline mode. Saying "carry on" again doesn't lift that block. Getting past it means either changing your Hermes approval setting or installing the same package some other way, and I won't do either unless you ask for it plainly. Running the command again would just get blocked again.
+
+I did check the setup steps in the docs for v0.60.734.0 (INSTALL_FOR_AGENTS.md). They say a keyword-only brain needs no API key, so everything below is free and stays on this machine.
+
+Paste this block to finish:
+
+    export PATH=$HOME/.bun/bin:$PATH
+    bun install -g github:garrytan/gbrain#v0.60.734.0
+    gbrain --version
+    gbrain init --pglite --no-embedding
+    printf 'Y\n' | hermes mcp add gbrain --env GBRAIN_HOME=$HOME --connect-timeout 60 --command $(which gbrain) --args serve --surface starter --advertise verbs
+    hermes mcp test gbrain
+
+In order, these lines install your pinned release, confirm the version, create the free local brain, connect it to Hermes, and check the connection. Run the last line even if the connect step seems fine: the docs say that step reports success even when it fails.
+
+The local brain allows only one running program to write to it at a time. If another gbrain process already has it open, the Hermes connection will fail until that process stops.
+
+If you'd rather I run it all, reply "approve installs". I'll turn on the setting that lets one-shot runs like this one install packages, run the commands above, and tell you what they return. That setting stays on for later one-shot runs until you turn it off.

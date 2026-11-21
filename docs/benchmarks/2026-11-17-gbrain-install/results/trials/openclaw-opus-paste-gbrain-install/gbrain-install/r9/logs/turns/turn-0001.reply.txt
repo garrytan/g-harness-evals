@@ -1,0 +1,52 @@
+GBrain v0.60.734.0 is installed and connected to this agent with no API keys, and remember/recall works through real GBrain calls. One check is still open: a brand-new conversation can't use GBrain until the gateway restarts (see below).
+
+**What I changed**
+- **Install:** I installed Bun 1.4.4 and then `bun install -g github:garrytan/gbrain#v0.60.734.0`, wherever the guide said `#stable`. `gbrain --version` prints `0.60.734.0`. I also added `~/.bun/bin` to `~/.profile` so new login shells can find `gbrain`.
+- **Brain:** I created it with `gbrain init --pglite --no-embedding`, so it runs locally with no keys and no paid calls. I also ran `gbrain apply-migrations`, which finished with exit code 0.
+- **Connection to OpenClaw:** I registered GBrain as a local server called `gbrain` (`gbrain serve --surface starter --advertise verbs`). `gbrain setup openclaw --workspace /workspace` then did two things:
+  - It created `/workspace/AGENTS.md` containing only GBrain's marked "check GBrain first" section. The file didn't exist before.
+  - It installed a small plugin, `gbrain-turn-rule`, that adds the same reminder to every turn.
+- **Your identity and instructions:** I didn't touch any identity or persona files and didn't run GBrain's identity setup. The only changes to `openclaw.json` are new entries: the `gbrain` server and the plugin. OpenClaw removed the comments from that file when it saved it, so I kept the original as `openclaw.json.pre-gbrain.bak`.
+
+**Round-trip test (all real GBrain calls)**
+- **Command line:** I saved a test fact ("codeword … heliotrope-42") and recalled it in a separate process. I then deleted it with `forget`, and recall no longer returns it.
+- **Through the connection OpenClaw uses:** I started the exact server command from the OpenClaw config and spoke to it directly. It showed the memory tools (remember, recall, forget and others). I saved a fact ("marker violet-kestrel-7") and recalled it from a fresh process.
+- **Exact-word search:** I saved a test note containing "zanzibarquokka", and `gbrain search` found it.
+
+**Not verified yet: a new conversation**
+- I couldn't start a new agent turn from here. The running gateway holds OpenClaw's state database, and both starting a separate agent and spawning a sub-agent were refused.
+- Your gateway needs a restart to load the new GBrain server and plugin.
+- After restarting, ask in a new chat: *"recall violet-kestrel-7 from gbrain"*. If it answers, ask it to forget that fact and the install-check marker (fact #1).
+- GBrain's own setup check also reported `turn_hook_not_loaded`. OpenClaw's own inspection shows the plugin loaded with its per-turn hook and conversation access on, so I think the check is wrong. The new-chat test will settle it.
+
+**Search mode (your choice)**
+The mode in effect is **conservative**. GBrain picked it automatically because there's no chat key and no reranker. You can change it any time.
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+1. **conservative** (in effect): tight 4K budget, at most 10 chunks, no reranker. Best for cheap models, cost-sensitive setups and high-volume loops.
+2. **balanced:** 12K budget, 25 chunks, reranked.
+3. **tokenmax:** no budget, 50 chunks, reranked. The widest retrieval; GBrain recommends it once you add a chat key.
+
+Run `gbrain config set search.mode <mode>` to switch, or tell me which one. Cost depends on the mode and on the model you run. No mode expands queries by default.
+
+**Other settings in effect**
+- **Saving facts automatically:** off, so the agent saves only what you ask it to. GBrain recommends `gbrain config set memory.auto_writeback salient`, which saves lasting facts you state, with their source.
+- **Free upkeep:** on while a GBrain session is open. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, and with no keys nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.
+- **Left off:** API keys, semantic search, scheduled jobs and extra skills.
+- **Shared-skills step:** GBrain's shared-skills migration also reported a pending host step, which I left alone since skills weren't part of this setup.
+
+There's also a hosted option at gbrain.io: one always-on brain that several apps can connect to. The local install you asked for doesn't need it.

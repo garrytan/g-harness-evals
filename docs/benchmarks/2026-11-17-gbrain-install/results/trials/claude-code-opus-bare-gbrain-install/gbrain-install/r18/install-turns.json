@@ -1,0 +1,110 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "I installed gbrain **v0.60.734.0** and it runs: `gbrain --version` prints `gbrain 0.60.734.0`.\n\n- **Bun:** gbrain needs Bun 1.4.4 or newer, and Bun wasn't installed. I installed Bun 1.4.4 to `~/.bun/bin` using the official installer.\n- **gbrain:** wherever the README says `#stable`, I ran it with your tag instead: `bun install -g github:garrytan/gbrain#v0.60.734.0`. That resolved to commit `a278ddf`, and the binary is at `/harness-state/.bun/bin/gbrain`.\n- **PATH:** add `export PATH=\"$HOME/.bun/bin:$PATH\"` to your shell profile if it isn't picked up automatically.\n\n**Not done yet:** there's no brain configured, so `gbrain doctor` reports `no_brain`. The README's next step is `gbrain setup claude-code`. I held off because it changes Claude Code's own config. A dry run shows it would:\n- create a keyless local brain at `/harness-state/.gbrain/brain.pglite` (no paid provider)\n- add a gbrain MCP server to `/harness-state/claude/.claude.json`\n- add SessionStart and UserPromptSubmit hooks to `/harness-state/claude/settings.json`\n- write a \"check the brain first\" block into a new `/harness-state/claude/CLAUDE.md`\n\nRunning `--remove` undoes it. If you'd rather not touch Claude Code at all, `gbrain init --pglite --no-embedding` just creates the brain. Want me to run setup?\n\nOne thing to know: on first run gbrain said this install follows the stable channel, which moves weekly. If you want to stay on exactly v0.60.734.0, check how upgrades are configured. The README says updates aren't installed without your approval unless automatic upgrades are on.",
+  "exit": 0,
+  "started_at": "2026-11-17T13:08:27.470Z",
+  "ended_at": "2026-11-17T13:09:08.594Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T13:09:08.435Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": false,
+   "brain_path": null,
+   "mcp": false,
+   "instructions": false,
+   "hook": false,
+   "wired": [],
+   "ok": false
+  },
+  "events": 10
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "reply",
+  "text": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+  "reply_text": "gbrain is set up with its defaults. It's free and local, with no API keys configured, and Claude Code is connected to it. Open a new Claude Code session to get the memory tools.\n\n**What setup did:**\n- Created a local brain at `/harness-state/.gbrain/brain.pglite` with no embeddings, so search is keyword-only.\n- Registered the gbrain MCP server in `/harness-state/claude/.claude.json`. `claude mcp get gbrain` shows it as `✔ Connected`.\n- Added SessionStart and UserPromptSubmit hooks to `/harness-state/claude/settings.json`.\n- Wrote a \"check the brain first\" block into a new `/harness-state/claude/CLAUDE.md`.\n\n**Checks:**\n- `gbrain doctor` scores 95/100 with one warning: Claude Code \"has no gbrain MCP registration\". The registration exists and connects; the same warning says it \"has not been verified from this process\". So I left it alone.\n- A save-and-recall test worked. I saved \"gbrain v0.60.734.0 was installed on this machine on 2026-11-17\" and read it back. It's still in the brain; tell me if you'd rather I delete it.\n\n**Settings now in effect, each changeable with one command:**\n- **Search mode:** conservative, the only mode that works without a reranker. `gbrain config set search.mode balanced` switches it.\n- **Automatic saving:** off, so agents save only what you ask them to remember. gbrain recommends `salient`, which saves durable facts you state: `gbrain config set memory.auto_writeback salient`.\n- **Upkeep:** free upkeep runs while a gbrain session is open. `gbrain config set maintenance.auto false` turns it off.\n- **Conversation archive:** on. gbrain keeps one redacted page per conversation per day from your agent sessions, and it stays on this machine. `gbrain transcripts archive off` turns it off.\n- **Starter pages:** none. `gbrain setup claude-code --shape personal` adds empty pages about you and lets you import a notes folder.\n\n**Limits of keyless mode:** without embeddings, gbrain only catches exact duplicate facts, so a reworded fact gets saved twice.\n\nThe release-channel question from before is still open: this install follows the stable channel, but upgrades aren't installed unless you turn on auto-upgrade. Running `gbrain setup claude-code --remove` undoes the setup.\n\ngbrain also mentioned its paid hosted version at gbrain.io; you don't need it.",
+  "exit": 0,
+  "started_at": "2026-11-17T13:09:08.595Z",
+  "ended_at": "2026-11-17T13:09:59.020Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T13:09:58.889Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 10
+ },
+ {
+  "turn": 3,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Rodraifin.",
+  "reply_text": "Done. I saved \"your sister has a new cat named Rodraifin\" in gbrain, filed under Rodraifin. I checked first, and there was nothing similar already saved.",
+  "exit": 0,
+  "started_at": "2026-11-17T13:09:59.022Z",
+  "ended_at": "2026-11-17T13:10:11.708Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T13:10:11.590Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 4,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Rodraifin**. You told me that earlier today, 2026-11-17, and it's saved in your notes.",
+  "exit": 0,
+  "started_at": "2026-11-17T13:10:11.710Z",
+  "ended_at": "2026-11-17T13:10:20.762Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T13:10:20.568Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

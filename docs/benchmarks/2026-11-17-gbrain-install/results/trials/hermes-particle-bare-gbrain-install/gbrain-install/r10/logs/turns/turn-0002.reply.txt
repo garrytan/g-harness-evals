@@ -1,0 +1,22 @@
+Done. gbrain is installed, initialized, and wired into Hermes — free, keyless, no accounts.
+
+Installed
+- Bun 1.4.4 at /harness-state/.bun/bin/bun (meets gbrain's floor), PATH added to /harness-state/.bashrc.
+- gbrain v0.60.734.0 pinned by tag → /harness-state/gbrain, binary /harness-state/.bun/bin/gbrain; `gbrain --version` → 0.60.734.0. Update to 0.60.737.0 is available; I left it pinned since you named that release.
+
+Brain (local, keyless, nothing leaves the box)
+- `gbrain init --pglite --no-embedding` → PGLite brain at /harness-state/.gbrain/brain.pglite, schema v318, then the 5 pending setup migrations via `apply-migrations` (exit 0).
+- Settings in effect: search mode conservative (auto-picked — no chat key, no reranker, so 4K payload budget); agents save only facts you explicitly ask to remember; free upkeep on; conversation archive on (local-only). `auto_chronicle` switched to false so no paid extraction path exists at all.
+- `gbrain doctor`: 90/100, all checks OK. Score is 100/100 on skill, ops and meta tiers; the 25/100 weighted brain score is just an empty brain (0 embeddings, 0 links, 1 page) — expected on day one.
+- I did not pre-seed any sample content beyond the install-check fact.
+
+Hermes wiring
+- MCP server registered and verified: `hermes mcp list` → gbrain ✓ enabled; `hermes mcp test gbrain` → connected in 2087ms, 8 tools (recall, remember, entity, forget, synthesize, context_pack, delta, request_tools).
+- `gbrain setup hermes` wrote the brain-first block into /harness-state/hermes/SOUL.md after your identity text, plus the per-turn `pre_llm_call` rule in config.yaml; `hermes hooks doctor` reports the hook healthy and allowlisted.
+- End-to-end proof without Hermes: a real MCP stdio session against `gbrain serve` returned the saved fact through `recall`. I also tried a `hermes -z` round-trip and it hit the 300s timeout — this CLI shell has no model credentials of its own, so that's a harness-side limitation here, not a gbrain one. The MCP layer itself is verified.
+
+Two things to know
+- Search is keyword-only by design (embeddings off = no API keys); recall is exact-phrase, so differently-worded queries can miss. Turning embeddings on later needs a key.
+- The brain-first block lands next session — this one already started, so these tools aren't in my current toolset.
+
+Files: /harness-state/gbrain (source), /harness-state/.gbrain (brain data), /workspace/install_gbrain.sh (the install script), /workspace/mcp_probe.py (the round-trip probe).

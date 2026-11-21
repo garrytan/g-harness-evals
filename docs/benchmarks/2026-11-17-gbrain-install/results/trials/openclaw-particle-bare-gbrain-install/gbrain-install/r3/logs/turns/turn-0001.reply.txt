@@ -1,0 +1,14 @@
+Installed. Here's what happened:
+
+**Source of "#stable"**: OpenClaw's own docs never mention it. The `#stable` install command comes from gbrain's docs (`README.md` / `INSTALL_FOR_AGENTS.md`): `bun install -g github:garrytan/gbrain#stable`. I substituted your pinned release for the moving tag.
+
+**Done:**
+- Installed Bun **1.4.4** (gbrain requires ≥1.4.4) to `~/.bun/bin`
+- Ran `bun install -g github:garrytan/gbrain#v0.60.734.0` → resolved to commit `a278ddf`, matching the `v0.60.734.0` tag
+- Verified: `gbrain --version` → **gbrain 0.60.734.0**, binary at `~/.bun/bin/gbrain`
+
+**Two notes:**
+1. The installer ended with a non-fatal `Bad substitution` from a shell hook after the binary was already linked; `gbrain --version` and `gbrain doctor` both run fine, so the install is complete.
+2. `gbrain doctor` reports `no_brain` — the CLI is installed but no brain exists yet. To create a local keyless brain: `gbrain init --pglite --no-embedding` (or `gbrain setup openclaw` to wire the MCP surface into this Gateway).
+
+`~/.bun/bin` isn't on the default PATH for new shells; use the absolute path or add `export PATH="$HOME/.bun/bin:$PATH"` to your shell profile if you want `gbrain` on PATH. Want me to initialize the brain and wire it into OpenClaw?

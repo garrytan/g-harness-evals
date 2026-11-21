@@ -1,0 +1,21 @@
+Done. gbrain 0.60.734.0 is installed and has a working, empty, keyless brain.
+
+Installed
+- Bun 1.4.4 at /harness-state/.bun/bin/bun, PATH exported for future shells via /harness-state/.bashrc (no rc file existed, so I created one).
+- gbrain 0.60.734.0, source kept permanently at /harness-state/gbrain (tag commit a278ddf45), linked as /harness-state/.bun/bin/gbrain. Verified: `gbrain --version` → 0.60.734.0.
+
+I moved it out of the scratch dir first: `bun link` had pointed the global bin at a path under cache/scratch, which is pruned after 24h idle — that install would have silently broken. Re-linked and re-verified after the move.
+
+Brain (defaults, zero cost)
+- PGLite engine at /harness-state/.gbrain/brain.pglite, embeddings deferred, no API keys, nothing leaves the machine.
+- Search mode conservative — auto-selected because without a chat key the reranker balanced/tokenmax need can't run.
+- memory.auto_writeback = salient (the recommended default, the one setting init leaves off).
+- Free upkeep on, conversation archive on default. Both reversible with `gbrain config set maintenance.auto false` / `gbrain transcripts archive off`.
+- Migrations applied — 313 schema migrations, all 5 pending setup migrations complete, exit 0.
+
+Verified by real use, not just doctor: imported a probe markdown file, keyword search returned it at 0.95 with the exact marker phrase, then purged the page and deleted the file. Brain is back to zero pages, doctor 100/100 all checks passed. Search is keyword-only, so it's degraded recall by design — never read a thin result as "nothing on this."
+
+Not wired into Hermes
+The brain is not connected to this agent. `gbrain init` flags that as `consent: persistent_install, actor: user`, and two concrete blockers: this sandbox's Hermes config is harness-managed with no `mcp_servers` key, and the `mcp` Python package isn't installed (pip can reach the index, but the config also disables lazy installs). If you want it wired, the registration for a non-Claude/Codex host is `<abs path to gbrain> serve --surface starter --advertise verbs` as a stdio MCP server — run `gbrain setup --help` for the exact harness line, and I can do it if you lift the config restriction.
+
+Also worth knowing: `#stable` now points at 0.60.737.0, not the 0.60.734.0 you asked for. I installed the pinned tag as requested and did not take 737. `gbrain init` printed an UPGRADE_AVAILABLE notice for it.

@@ -316,7 +316,7 @@ export function hasToken(text: string, word: string): boolean {
 }
 
 const GITHUB_RE = /\b(github\.com|githubusercontent\.com|github)\b/i;
-const LIMIT_RE = /(rate[- ]limit|\bHTTP\/[\d.]+\s+(403|429)\b|\bHTTP (error )?(403|429)\b|\b(403|429)\s*(Forbidden|Too Many Requests)\b|returned error:\s*(403|429)\b|\bstatus(?: code)?[:= ]+(403|429)\b|\s-\s(403|429)\b|\berror:?\s+(403|429)\b)/i;
+const LIMIT_RE = /(rate[- ]limit(?:ed)?\s+(?:exceeded|reached)|\brate[- ]limited\b|exceeded (?:a |the |your )?(?:secondary |API )?rate[- ]limit|\bHTTP\/[\d.]+\s+(403|429)\b|\bHTTP (error )?(403|429)\b|\b(403|429)\s*(Forbidden|Too Many Requests)\b|returned error:\s*(403|429)\b|\bstatus(?: code)?[:= ]+(403|429)\b|\s-\s(403|429)\b|\berror:?\s+(403|429)\b)/i;
 
 /** A tool output that shows GitHub answering 403 or 429 or a rate limit (the call or its output names GitHub). */
 export function githubRateLimited(events: NEvent[]): boolean {

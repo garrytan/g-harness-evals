@@ -1,0 +1,132 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "I installed gbrain v0.60.734.0. `gbrain --version` prints `gbrain 0.60.734.0` in a new login shell.\n\n- **What I ran:** the docs give `bun install -g github:garrytan/gbrain#stable` in `README.md`, `INSTALL_FOR_AGENTS.md` and `AGENTS.md`. I ran that command with your tag in place of `#stable`: `bun install -g github:garrytan/gbrain#v0.60.734.0`. It installed commit `a278ddf`. Right now the `stable` tag points to that same commit.\n- **Bun:** gbrain needs Bun 1.4.4 or newer, and this machine had none. I used the official installer, which put Bun 1.4.4 in `~/.bun/bin`.\n- **PATH:** I added `export PATH=\"$HOME/.bun/bin:$PATH\"` to `~/.profile` so `gbrain` works in new shells. That file didn't exist before, so I created it.\n\n**Self-upgrade:** when it first ran, gbrain said this install now follows the stable channel. That probably means it will update itself when `stable` moves past v0.60.734.0. I haven't confirmed that. If you need to stay on exactly this version, turn off self-upgrade in gbrain's config.\n\n**Not set up yet:** no brain exists, so `gbrain doctor` reports `no_brain`. To create a local brain without an API key, run `gbrain init --pglite --no-embedding`. If you're on Claude Code or Codex, run `gbrain setup claude-code` or `gbrain setup codex` instead. You only asked for the install, so I haven't run either.\n\nThe docs also suggest a paid hosted option at gbrain.io; you don't need it for a local install.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:22:53.999Z",
+  "ended_at": "2026-11-17T18:25:05.535Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:25:05.406Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": false,
+   "brain_path": null,
+   "mcp": false,
+   "instructions": false,
+   "hook": false,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": false
+  },
+  "events": 17
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "reply",
+  "text": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+  "reply_text": "gbrain is now set up as a free local brain and connected to me (OpenClaw). No API keys are involved, nothing is billed, and nothing leaves this machine.\n\n**What's done**\n- **The brain:** I created it with `gbrain init --pglite --no-embedding`. It's stored at `~/.gbrain/brain.pglite` and runs a local database with no server to manage.\n- **Connected to OpenClaw:** I registered gbrain in OpenClaw's config as an MCP server called `gbrain`. A test connection worked and it offers 8 tools: the 7 memory tools plus `request_tools`, which reaches the rest. The change didn't need a restart. I can't use the gbrain tools in this session; they should appear in my next session.\n- **Memory works:** saving a test fact (\"gbrain install check\") and searching for it worked from the command line.\n- **Health check:** `gbrain doctor` scores the setup 90/100. The lower \"brain score\" (25/100) is expected for a new, empty brain with search vectors turned off. Most of the missing points are for the vector search you're skipping to stay keyless, and for links between notes, which you don't have yet.\n\n**Settings in effect (the recommended defaults)**\n\n| Setting | Now | How to change it |\n|---|---|---|\n| Search mode | **conservative**: small results, at most 10 snippets | `gbrain config set search.mode balanced` or `tokenmax` |\n| Automatic saving | **off**: facts are only saved when you ask | `gbrain config set memory.auto_writeback salient` (gbrain's recommendation) |\n| Free upkeep | **on**: runs while a gbrain session is open; nothing is deleted or paid for | `gbrain config set maintenance.auto false` |\n| Conversation archive | **on**: one cleaned-up page per conversation per day, kept on this machine | `gbrain transcripts archive off` |\n\n**Search mode and cost:** gbrain picked conservative automatically because there's no chat key or reranker. This table is gbrain's own estimate of the extra model input cost from what search returns, at 10,000 searches a month. Since I'm the model reading those results, the Opus column is the closest estimate for this setup.\n\n```\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n```\n\nSearch is keyword-only because no embedding key is set. Searches still work, but saving the same fact in different words won't be caught as a duplicate.\n\n**Also:**\n- **Test fact:** the \"gbrain install check\" fact is still saved. In your next session, you can ask me to recall it to confirm the connection works for me, then ask me to forget it.\n- **Hosted option:** the docs also offer a paid hosted version at gbrain.io. You don't need it for this setup.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:25:05.538Z",
+  "ended_at": "2026-11-17T18:26:47.965Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:26:47.871Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 14
+ },
+ {
+  "turn": 3,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Raikleipel.",
+  "reply_text": "I'll remember that: your sister's new cat is called Raikleipel. I saved it in gbrain under the name \"Raikleipel,\" and it came back when I searched for it.\n\nThat also confirms gbrain's memory tools now work for me inside OpenClaw. The \"gbrain install check\" test fact from setup is still saved, so I can remove it if you'd like.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:26:47.967Z",
+  "ended_at": "2026-11-17T18:27:21.950Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:27:21.827Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 5
+ },
+ {
+  "turn": 4,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Raikleipel**. You asked me to remember it in another chat earlier today, and I saved it in gbrain there.\n\nMy regular memory search came back empty because its search index isn't working right now, so I found this by searching past chats instead.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:27:21.951Z",
+  "ended_at": "2026-11-17T18:27:53.122Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:27:53.040Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 5
+ },
+ {
+  "turn": 5,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Raikleipel**. You told me about it in an earlier chat today, and it's saved in gbrain.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:27:53.124Z",
+  "ended_at": "2026-11-17T18:28:21.421Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:28:21.319Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 5
+ }
+]

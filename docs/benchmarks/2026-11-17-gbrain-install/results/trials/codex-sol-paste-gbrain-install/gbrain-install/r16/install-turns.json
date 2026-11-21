@@ -1,0 +1,86 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "Installed **GBrain v0.60.734.0** with local, keyless memory. Your existing identity, instructions, and Codex configuration were preserved.\n\nVerified with real calls: MCP `remember` → `recall`, recall after reopening the server, exact keyword search, and `forget`. Full diagnostics passed. [Verification evidence](/harness-state/.gbrain/install-verification/README.md).\n\nSearch mode is **conservative**. Your choices are:\n\n| Mode | Retrieval budget | Maximum chunks |\n|---|---:|---:|\n| **conservative — active** | 4K tokens | 10 |\n| balanced | 12K tokens | 25 |\n| tokenmax | Uncapped | 50 |\n\nChange anytime with `gbrain config set search.mode <mode>`. Provider features remain disabled.\n\nThe requested guide’s illustrative cost matrix is:\n\n```text\nEstimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n                  ($0.10/M in)  ($2/M in)     ($4/M in)\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n\n  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.\n  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.\n  Embedding, reranking and query expansion are separate provider charges.\n```\n\nThese are API input estimates, separate from your harness subscription.\n\nAutomatic fact saving and capture hooks are **off**. Free session upkeep is **on**; disable with `gbrain config set maintenance.auto false`. Conversation archiving is **on** by default; disable with `gbrain transcripts archive off`. No services or scheduled jobs were installed. Recalled memory enters the agent’s model context.\n\nRestart Codex, then ask it to recall the installation marker **“amber meadow lantern.”** That fresh-conversation check remains; local process persistence has already passed. The agent can withdraw test fact `#1` afterward.",
+  "exit": 0,
+  "started_at": "2026-11-18T03:11:55.890Z",
+  "ended_at": "2026-11-18T03:15:28.248Z",
+  "probe": {
+   "harness": "codex",
+   "at": "2026-11-18T03:15:28.073Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "codex/config.toml",
+    "codex/AGENTS.md",
+    "codex/hooks.json"
+   ],
+   "ok": true
+  },
+  "events": 44
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Zoutarex.",
+  "reply_text": "Saved and verified in GBrain: your sister’s new cat is called **Zoutarex**.",
+  "exit": 0,
+  "started_at": "2026-11-18T03:15:28.254Z",
+  "ended_at": "2026-11-18T03:15:50.392Z",
+  "probe": {
+   "harness": "codex",
+   "at": "2026-11-18T03:15:50.276Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "codex/config.toml",
+    "codex/AGENTS.md",
+    "codex/hooks.json"
+   ],
+   "ok": true
+  },
+  "events": 6
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister’s new cat is called **Zoutarex**.",
+  "exit": 0,
+  "started_at": "2026-11-18T03:15:50.393Z",
+  "ended_at": "2026-11-18T03:16:01.871Z",
+  "probe": {
+   "harness": "codex",
+   "at": "2026-11-18T03:16:01.734Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "codex/config.toml",
+    "codex/AGENTS.md",
+    "codex/hooks.json"
+   ],
+   "ok": true
+  },
+  "events": 6
+ }
+]

@@ -1,0 +1,132 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "Installed. Here's what happened:\n\n**Source of \"#stable\"**: OpenClaw's own docs never mention it. The `#stable` install command comes from gbrain's docs (`README.md` / `INSTALL_FOR_AGENTS.md`): `bun install -g github:garrytan/gbrain#stable`. I substituted your pinned release for the moving tag.\n\n**Done:**\n- Installed Bun **1.4.4** (gbrain requires ≥1.4.4) to `~/.bun/bin`\n- Ran `bun install -g github:garrytan/gbrain#v0.60.734.0` → resolved to commit `a278ddf`, matching the `v0.60.734.0` tag\n- Verified: `gbrain --version` → **gbrain 0.60.734.0**, binary at `~/.bun/bin/gbrain`\n\n**Two notes:**\n1. The installer ended with a non-fatal `Bad substitution` from a shell hook after the binary was already linked; `gbrain --version` and `gbrain doctor` both run fine, so the install is complete.\n2. `gbrain doctor` reports `no_brain` — the CLI is installed but no brain exists yet. To create a local keyless brain: `gbrain init --pglite --no-embedding` (or `gbrain setup openclaw` to wire the MCP surface into this Gateway).\n\n`~/.bun/bin` isn't on the default PATH for new shells; use the absolute path or add `export PATH=\"$HOME/.bun/bin:$PATH\"` to your shell profile if you want `gbrain` on PATH. Want me to initialize the brain and wire it into OpenClaw?",
+  "exit": 0,
+  "started_at": "2026-11-18T02:33:25.698Z",
+  "ended_at": "2026-11-18T02:35:13.413Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-18T02:35:13.308Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": false,
+   "brain_path": null,
+   "mcp": false,
+   "instructions": false,
+   "hook": false,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": false
+  },
+  "events": 29
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "reply",
+  "text": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+  "reply_text": "Done — installed, initialized, wired, and verified end to end.\n\n**What's in place**\n- **Bun 1.4.4** (gbrain's minimum) at `~/.bun/bin`\n- **gbrain 0.60.734.0** at `/harness-state/.bun/bin/gbrain` — pinned to tag `v0.60.734.0` (commit `a278ddf`) instead of the docs' `#stable`, which is a force-moved tag; the pin matches `stable-v0.60.734.0`\n- **Brain**: keyless PGLite at `/harness-state/.gbrain/brain.pglite`, schema v318, all migrations applied\n- **OpenClaw wiring**: registered as MCP server `gbrain` in `openclaw.json` (stdio, `serve --surface starter --advertise verbs`), runtime reloaded\n- **Verification**: `gbrain doctor` → healthy, 100/100; `openclaw mcp probe` → 10 tools (`remember`, `recall`, `entity`, `synthesize`, `context_pack`, `delta`, `forget`, `request_tools`, resources); live round-trip: wrote an install note and recalled it successfully\n\n**Settings in effect (all defaults, nothing paid)**\n- Search mode: **conservative** (keyword-only — no embedding key, so no semantic search; local, free)\n- Writeback: **off** — agents only save what you ask them to remember\n- Upkeep: **on** (free tier, runs while a gbrain session is open)\n- Conversation archive: **on** — one redacted page per conversation per day, written locally by maintenance; nothing leaves the machine. Off: `gbrain transcripts archive off`\n\n**Notes**\n- gbrain is on PATH only after `export PATH=\"$HOME/.bun/bin:$PATH\"`; the MCP entry uses the absolute path, so agent calls work regardless.\n- `openclaw mcp add` rewrote `openclaw.json` and stripped its JSON5 comments (it warned first); the file parses and the server loads fine.\n- To add semantic search later: `gbrain init --force --embedding-model voyage:voyage-4 --embedding-dimensions 1024` plus a `VOYAGE_API_KEY` — that's the only step that would cost anything.\n- Every gbrain CLI command prints a benign `/usr/bin/sh: Bad substitution` after completing its JSON output (exit 2); it doesn't affect results or the MCP server.",
+  "exit": 0,
+  "started_at": "2026-11-18T02:35:13.415Z",
+  "ended_at": "2026-11-18T02:37:10.409Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-18T02:37:10.238Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 18
+ },
+ {
+  "turn": 3,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Graimigaimb.",
+  "reply_text": "Saved — fact #2 in the brain: *\"Your sister's new cat is called Graimigaimb.\"* Verified it back via recall (entity: `graimigaimb`, provenance noted as said directly in chat, today).",
+  "exit": 0,
+  "started_at": "2026-11-18T02:37:10.414Z",
+  "ended_at": "2026-11-18T02:37:43.266Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-18T02:37:43.081Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 6
+ },
+ {
+  "turn": 4,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "I don't know — I have no record of your sister's cat (or its name) in memory or past conversations. My memory index is currently empty/rebuilt, so nothing is stored there yet.\n\nIf you tell me the name, I can remember it for next time.",
+  "exit": 0,
+  "started_at": "2026-11-18T02:37:43.267Z",
+  "ended_at": "2026-11-18T02:38:13.120Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-18T02:38:12.994Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 5
+ },
+ {
+  "turn": 5,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Graimigaimb**.",
+  "exit": 0,
+  "started_at": "2026-11-18T02:38:13.122Z",
+  "ended_at": "2026-11-18T02:38:34.551Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-18T02:38:34.429Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 4
+ }
+]

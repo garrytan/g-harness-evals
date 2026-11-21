@@ -1,0 +1,33 @@
+Installed **GBrain v0.60.734.0** and connected it to Codex, preserving your identity and existing configuration.
+
+- **Keyless:** local PGLite database, keyword search, no paid providers.
+- **Verified with real MCP calls:** remember → recall, exact keyword search, recall after process restart, correction, and withdrawal. [Evidence](/harness-state/.gbrain/install-verification.json)
+- Automatic fact saving is **off**. Free session upkeep and the local conversation archive are **on**. Disable the archive with `gbrain transcripts archive off`.
+
+Search mode is **conservative**. Your choices:
+
+| Mode | Retrieval budget | Maximum chunks |
+|---|---:|---:|
+| **conservative — current** | 4K tokens | 10 |
+| balanced | 12K tokens | 25 |
+| tokenmax | Unlimited | 50 |
+
+Change it anytime with `gbrain config set search.mode <mode>`. Balanced and tokenmax use reranking when a provider is configured.
+
+The guide’s required illustrative cost matrix follows; these are API estimates, **not Codex subscription prices**:
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+**Restart Codex and open a new conversation** to finish native cross-conversation verification. A labeled test marker and instructions to recall and withdraw it are ready; that final check remains unverified.

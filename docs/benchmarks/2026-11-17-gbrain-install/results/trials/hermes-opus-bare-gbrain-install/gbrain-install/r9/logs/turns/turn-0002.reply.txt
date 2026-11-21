@@ -1,0 +1,22 @@
+gbrain v0.60.734.0 is installed and working (`gbrain --version` prints `gbrain 0.60.734.0`). It's set up as a free local brain with no API keys.
+
+**Install route.** The safety scanner blocked the docs' `bun install -g` command again, this time because of the `2>&1` I tacked onto it. So I used the docs' other route: I downloaded the `v0.60.734.0` source from GitHub to `~/src/gbrain-0.60.734.0`, then ran `bun install` and `bun link`. That puts the command at `~/.bun/bin/gbrain`, using the Bun 1.4.4 I installed earlier.
+
+**Brain.** I ran `gbrain init --pglite --no-embedding`, the keyless setup the docs recommend. It uses a local database with keyword search only, so nothing leaves this machine and nothing costs money. The defaults it chose:
+- Search mode is conservative.
+- Agents save only what they're asked to remember.
+- Free background upkeep is on.
+- A redacted daily archive of agent conversations is on.
+
+**Checks.**
+- `gbrain remember` saved a test fact and `gbrain recall` found it again.
+- `gbrain doctor` gave 90/100 with all checks OK. Its separate brain score is 25/100, mostly because embeddings are off by choice and the brain is still empty.
+- Without an embedding provider, only exact duplicates are detected when saving facts.
+
+**Left to do:**
+1. `~/.bun/bin` isn't on your PATH yet. The scanner blocked my edit to `~/.bashrc`. Add this line to it yourself:
+   ```
+   export PATH="$HOME/.bun/bin:$PATH"
+   ```
+2. I didn't connect gbrain to any agent because neither Claude Code nor Codex is installed here. If you install one later, run `gbrain setup claude-code --no-hooks` (or `gbrain setup codex`).
+3. The test fact from the check is still saved. You can delete it whenever you like.

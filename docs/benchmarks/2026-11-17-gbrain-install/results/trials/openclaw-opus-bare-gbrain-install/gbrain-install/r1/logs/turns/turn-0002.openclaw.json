@@ -1,0 +1,410 @@
+{
+  "payloads": [
+    {
+      "text": "gbrain is set up with the free defaults and no API keys. It's connected to OpenClaw, but the running Gateway still needs a restart, which I couldn't do from here.\n\n**What I did:**\n- **Brain:** created a local brain at `/harness-state/.gbrain/brain.pglite` using the docs' default (`gbrain init --pglite --no-embedding`). It uses keyword search only, so nothing is sent to any paid provider.\n- **MCP server:** registered `gbrain` in OpenClaw's config (`mcp.servers.gbrain`) with the command the docs give. OpenClaw said this applies without a restart.\n- **Brain-first rule:** `gbrain setup openclaw` wrote a marked block into `/workspace/AGENTS.md` telling the agent to check GBrain first. It also installed and enabled a small plugin, `gbrain-turn-rule`, which repeats that rule on every turn. Inspecting the plugin from the command line shows it loaded with its hook.\n- **PATH:** added `~/.bun/bin` to `~/.profile` and `~/.bashrc`.\n- **Checks:** I saved a test fact and recalled it successfully, then withdrew it. `gbrain doctor` gives an overall health score of 90/100. Its separate brain score is 25/100, which is expected for an empty brain with no embeddings.\n\n**Still to do:** restart the Gateway (send `/restart` or run `openclaw gateway restart`) so it loads the plugin, then start a new session so the new `AGENTS.md` is read. I tried restarting through OpenClaw's own tool, but it refused and asked for a new conversation. During setup, gbrain also reported the hook wasn't active in the running Gateway. That's why it needs the restart.\n\n**Settings in effect** (change any of them later with the command shown):\n- **Search mode: conservative.** gbrain picked it automatically because there's no API key. To switch, run `gbrain config set search.mode balanced` or `tokenmax`. gbrain's cost table for the text it retrieves, at 10K queries a month (Haiku / Sonnet / Opus):\n  - conservative: $4 / $80 / $160\n  - balanced: $10 / $200 / $400\n  - tokenmax: $20 / $400 / $800\n- **Auto-saving facts: off.** Agents save only what you ask them to remember. gbrain recommends `gbrain config set memory.auto_writeback salient`, which saves important facts you state.\n- **Free upkeep: on.** Turn it off with `gbrain config set maintenance.auto false`.\n- **Conversation archive: on.** gbrain keeps one redacted page per conversation per day, and with no keys nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.\n\nThe pinned-release warning from before still applies. gbrain may update itself on the stable channel and move off v0.60.734.0. gbrain also offers a hosted version at gbrain.io. I skipped it to keep everything local and free.",
+      "mediaUrl": null
+    }
+  ],
+  "meta": {
+    "durationMs": 160674,
+    "agentMeta": {
+      "sessionId": "a5af1939-cc8a-4646-919d-508afb85382e",
+      "sessionFile": "agent:main:channel:s1",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "contextTokens": 1000000,
+      "contextTokensSource": "resolved-v1",
+      "agentHarnessId": "openclaw",
+      "credentialSource": {
+        "kind": "direct",
+        "evidence": "runtime",
+        "authorization": "declared"
+      },
+      "usage": {
+        "input": 38,
+        "output": 5465,
+        "cacheRead": 750546,
+        "cacheWrite": 31809,
+        "total": 787858,
+        "cost": {
+          "total": 0.4186062
+        }
+      },
+      "lastCallUsage": {
+        "input": 2,
+        "output": 1093,
+        "cacheRead": 50268,
+        "cacheWrite": 243,
+        "cacheWrite1h": 0,
+        "cost": {
+          "total": 0.0331366
+        },
+        "contextUsage": {
+          "state": "available",
+          "promptTokens": 50513,
+          "totalTokens": 51606
+        },
+        "total": 51606
+      },
+      "promptTokens": 50513,
+      "contextBudgetStatus": {
+        "schemaVersion": 1,
+        "source": "pre-prompt-estimate",
+        "updatedAt": 1794934756692,
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "route": "fits",
+        "shouldCompact": false,
+        "estimatedPromptTokens": 36905,
+        "contextTokenBudget": 1000000,
+        "promptBudgetBeforeReserve": 980000,
+        "reserveTokens": 20000,
+        "effectiveReserveTokens": 20000,
+        "remainingPromptBudgetTokens": 943095,
+        "overflowTokens": 0,
+        "toolResultReducibleChars": 0,
+        "messageCount": 23,
+        "unwindowedMessageCount": 23,
+        "sessionId": "a5af1939-cc8a-4646-919d-508afb85382e"
+      },
+      "codeModeEngaged": false,
+      "assistantTurns": 18,
+      "bridgeCalls": {
+        "search": 0,
+        "describe": 0,
+        "call": 0
+      },
+      "costUsd": 0.4186062,
+      "terminalReceipt": {
+        "runId": "84662423-85d5-4130-bdd1-9512a8fe1892",
+        "sessionId": "a5af1939-cc8a-4646-919d-508afb85382e",
+        "turnId": "84662423-85d5-4130-bdd1-9512a8fe1892",
+        "requested": {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5"
+        },
+        "effective": {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5",
+          "responseModel": "claude-opus-5-5"
+        },
+        "successfulToolNames": [
+          "exec",
+          "openclaw"
+        ],
+        "rerouted": false,
+        "terminalDisposition": "visible"
+      }
+    },
+    "aborted": false,
+    "systemPromptReport": {
+      "source": "run",
+      "generatedAt": 1794934754590,
+      "sessionId": "a5af1939-cc8a-4646-919d-508afb85382e",
+      "sessionKey": "agent:main:channel:s1",
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "workspaceDir": "/workspace",
+      "bootstrapMaxChars": 20000,
+      "bootstrapTotalMaxChars": 60000,
+      "bootstrapTruncation": {
+        "warningMode": "always",
+        "warningShown": false,
+        "truncatedFiles": 0,
+        "nearLimitFiles": 0,
+        "totalNearLimit": false
+      },
+      "sandbox": {
+        "mode": "off",
+        "sandboxed": false
+      },
+      "systemPrompt": {
+        "chars": 28918,
+        "hash": "1b88dde7fd13c1f06945bcfa059af9f8480883c2e740e40cc9ac3691835c9aab",
+        "projectContextChars": 3961,
+        "nonProjectContextChars": 24957
+      },
+      "injectedWorkspaceFiles": [
+        {
+          "name": "AGENTS.md",
+          "path": "/workspace/AGENTS.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 43,
+          "truncated": false
+        },
+        {
+          "name": "SOUL.md",
+          "path": "/workspace/SOUL.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 41,
+          "truncated": false
+        },
+        {
+          "name": "IDENTITY.md",
+          "path": "/workspace/IDENTITY.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 45,
+          "truncated": false
+        },
+        {
+          "name": "BOOTSTRAP.md",
+          "path": "/workspace/BOOTSTRAP.md",
+          "missing": true,
+          "rawChars": 0,
+          "injectedChars": 0,
+          "truncated": false
+        }
+      ],
+      "skills": {
+        "promptChars": 5821,
+        "hash": "6282dbe6a923b622bef8b36ab0b1a6dc4c2a1ca1279ae8bbbaa354673a1d16e7",
+        "entries": [
+          {
+            "name": "add-model-provider",
+            "blockChars": 300
+          },
+          {
+            "name": "browser-automation",
+            "blockChars": 323
+          },
+          {
+            "name": "canvas",
+            "blockChars": 242
+          },
+          {
+            "name": "clawhub",
+            "blockChars": 299
+          },
+          {
+            "name": "cloud-image-bake",
+            "blockChars": 286
+          },
+          {
+            "name": "configure-channel",
+            "blockChars": 288
+          },
+          {
+            "name": "control-ui",
+            "blockChars": 339
+          },
+          {
+            "name": "diagnose-gateway",
+            "blockChars": 280
+          },
+          {
+            "name": "diagram-maker",
+            "blockChars": 265
+          },
+          {
+            "name": "healthcheck",
+            "blockChars": 277
+          },
+          {
+            "name": "meme-maker",
+            "blockChars": 250
+          },
+          {
+            "name": "node-connect",
+            "blockChars": 334
+          },
+          {
+            "name": "node-inspect-debugger",
+            "blockChars": 276
+          },
+          {
+            "name": "notion",
+            "blockChars": 271
+          },
+          {
+            "name": "python-debugpy",
+            "blockChars": 264
+          },
+          {
+            "name": "skill-creator",
+            "blockChars": 283
+          },
+          {
+            "name": "spike",
+            "blockChars": 250
+          },
+          {
+            "name": "visualize",
+            "blockChars": 281
+          },
+          {
+            "name": "weather",
+            "blockChars": 288
+          }
+        ]
+      },
+      "tools": {
+        "listChars": 0,
+        "schemaChars": 11839,
+        "entries": [
+          {
+            "name": "ls",
+            "summaryChars": 192,
+            "summaryHash": "90bdd7a772f66ad236d45f18e28ee873b8c795fe219804f2c19074a867423e20",
+            "schemaChars": 254,
+            "schemaHash": "ebe8d6a85b7011ec7e0d43a759b3b53b1ce96e682f54a64312b10e89260e9af9",
+            "propertiesCount": 3
+          },
+          {
+            "name": "read",
+            "summaryChars": 164,
+            "summaryHash": "d136f5b09e28d671addad4ca800b75b8aa6a36002bc739ead964f618d3e34829",
+            "schemaChars": 481,
+            "schemaHash": "b1b9b637dfe1dfade40f50c37cf840a298f1992b534cb9425b7470233a6b0cbb",
+            "propertiesCount": 5
+          },
+          {
+            "name": "edit",
+            "summaryChars": 130,
+            "summaryHash": "4149500b1f6501ec6450e4c048bdb6844764dd4a888a10846726cbbc7256152e",
+            "schemaChars": 501,
+            "schemaHash": "adf3140833ca927b84c66c989d6833fdcbd9de011dd2ffc59f9a2c4d3c25f127",
+            "propertiesCount": 2
+          },
+          {
+            "name": "write",
+            "summaryChars": 49,
+            "summaryHash": "f9ce3d8ac929a51498c03331b97c59bfaa2bb4d25580a5ddf0102e6a8e173aec",
+            "schemaChars": 191,
+            "schemaHash": "b61d2da23febf5fbda55e391526f36d283e9e9fb7f1a1dbadcf5c618a0632287",
+            "propertiesCount": 2
+          },
+          {
+            "name": "apply_patch",
+            "summaryChars": 71,
+            "summaryHash": "5c1173efe93d080a386a23216bc3e58db2e0033eb3ddea697eb2439938b7cae4",
+            "schemaChars": 153,
+            "schemaHash": "05521268363ff4f191472c90d69ef08a503ba9acf1d2febc50b3ee68db32ab65",
+            "propertiesCount": 1
+          },
+          {
+            "name": "exec",
+            "summaryChars": 551,
+            "summaryHash": "533178e8359a11cb3b48ce4279dfe0ac8ec4d3828fffe59f2dd6b99e35f17eea",
+            "schemaChars": 1479,
+            "schemaHash": "95a1932bc6ff4868e90bfe19a5d32ea4e31ae93c25af822eb4e08c884286c0f7",
+            "propertiesCount": 13
+          },
+          {
+            "name": "process",
+            "summaryChars": 258,
+            "summaryHash": "c9c81d9c38f731d0efcc810924c78c3161c38524baa561c6f9251638d9e164b2",
+            "schemaChars": 1164,
+            "schemaHash": "6cf3281369349e15ea532e644c8ec7f94c96fa6a4e3287272c8cfe90b0960516",
+            "propertiesCount": 12
+          },
+          {
+            "name": "computer",
+            "summaryChars": 694,
+            "summaryHash": "661715d56b741f0272478ef81dcf50f5387bf1eec5ae1a8f05766c5e70501351",
+            "schemaChars": 5047,
+            "schemaHash": "d33a80472039ae1b6f2451f15e22bf4e99371c8f423b95e761fbc30c1161c03c",
+            "propertiesCount": 54
+          },
+          {
+            "name": "openclaw",
+            "summaryChars": 456,
+            "summaryHash": "45212b5ccc76e78f8dc05e9a9d90d721c53f16f18ee08a23a5868020bbe24f6d",
+            "schemaChars": 196,
+            "schemaHash": "9956b2b6fde1ca6ca3d035b66217a09c717a6503aa4e59a2ce184dbf67849bd3",
+            "propertiesCount": 2
+          },
+          {
+            "name": "sessions_yield",
+            "summaryChars": 408,
+            "summaryHash": "470a8575514ff51a8f6eec8abb2a40c7f87f58bf706c1198728a0168c73e5e22",
+            "schemaChars": 539,
+            "schemaHash": "a5313700805e438f5ff8096b2d6074432400b6bf8ef9d1e5728a825869930de1",
+            "propertiesCount": 3
+          },
+          {
+            "name": "view_image",
+            "summaryChars": 251,
+            "summaryHash": "e2376193be463d237e7adf38be13783d31bd56422917718b2dd6f3fd6ed216f2",
+            "schemaChars": 360,
+            "schemaHash": "d8118d854eb7c2cb3e6ce3b36dc55f653a1a868c02c411f95ace140807ab81a3",
+            "propertiesCount": 5
+          },
+          {
+            "name": "tool_search",
+            "summaryChars": 502,
+            "summaryHash": "acdcab138b356606711452241e668c366bdb15428e39a28a94d7be27d7968626",
+            "schemaChars": 1139,
+            "schemaHash": "0a78304973631f66103ff3f0c767433fdc00fb89d629bd5b12d1ada29940d382",
+            "propertiesCount": 3
+          },
+          {
+            "name": "tool_describe",
+            "summaryChars": 92,
+            "summaryHash": "fc74d14dc28e4026dba1a8904339a6bef1ce8118588e0bff809c37be73ce7a02",
+            "schemaChars": 125,
+            "schemaHash": "8b60055097c87990f29b27c1f82ecea48435ffb1163c486121a2189f118aa0a4",
+            "propertiesCount": 1
+          },
+          {
+            "name": "tool_call",
+            "summaryChars": 61,
+            "summaryHash": "0dc569a573cbc94928d868c94a178930879ac898b541cd9009338699a3e7d1fd",
+            "schemaChars": 210,
+            "schemaHash": "f48bfb0705c11b32ccbdfd456b791ce458604b1f51b1e31f61bc2d7b25ae07b9",
+            "propertiesCount": 2
+          }
+        ]
+      },
+      "currentTurn": {
+        "promptChars": 114,
+        "runtimeContextChars": 52,
+        "modelOnlyPromptChars": 0
+      }
+    },
+    "finalPromptText": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+    "finalAssistantVisibleText": "gbrain is set up with the free defaults and no API keys. It's connected to OpenClaw, but the running Gateway still needs a restart, which I couldn't do from here.\n\n**What I did:**\n- **Brain:** created a local brain at `/harness-state/.gbrain/brain.pglite` using the docs' default (`gbrain init --pglite --no-embedding`). It uses keyword search only, so nothing is sent to any paid provider.\n- **MCP server:** registered `gbrain` in OpenClaw's config (`mcp.servers.gbrain`) with the command the docs give. OpenClaw said this applies without a restart.\n- **Brain-first rule:** `gbrain setup openclaw` wrote a marked block into `/workspace/AGENTS.md` telling the agent to check GBrain first. It also installed and enabled a small plugin, `gbrain-turn-rule`, which repeats that rule on every turn. Inspecting the plugin from the command line shows it loaded with its hook.\n- **PATH:** added `~/.bun/bin` to `~/.profile` and `~/.bashrc`.\n- **Checks:** I saved a test fact and recalled it successfully, then withdrew it. `gbrain doctor` gives an overall health score of 90/100. Its separate brain score is 25/100, which is expected for an empty brain with no embeddings.\n\n**Still to do:** restart the Gateway (send `/restart` or run `openclaw gateway restart`) so it loads the plugin, then start a new session so the new `AGENTS.md` is read. I tried restarting through OpenClaw's own tool, but it refused and asked for a new conversation. During setup, gbrain also reported the hook wasn't active in the running Gateway. That's why it needs the restart.\n\n**Settings in effect** (change any of them later with the command shown):\n- **Search mode: conservative.** gbrain picked it automatically because there's no API key. To switch, run `gbrain config set search.mode balanced` or `tokenmax`. gbrain's cost table for the text it retrieves, at 10K queries a month (Haiku / Sonnet / Opus):\n  - conservative: $4 / $80 / $160\n  - balanced: $10 / $200 / $400\n  - tokenmax: $20 / $400 / $800\n- **Auto-saving facts: off.** Agents save only what you ask them to remember. gbrain recommends `gbrain config set memory.auto_writeback salient`, which saves important facts you state.\n- **Free upkeep: on.** Turn it off with `gbrain config set maintenance.auto false`.\n- **Conversation archive: on.** gbrain keeps one redacted page per conversation per day, and with no keys nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.\n\nThe pinned-release warning from before still applies. gbrain may update itself on the stable channel and move off v0.60.734.0. gbrain also offers a hosted version at gbrain.io. I skipped it to keep everything local and free.",
+    "finalAssistantRawText": "gbrain is set up with the free defaults and no API keys. It's connected to OpenClaw, but the running Gateway still needs a restart, which I couldn't do from here.\n\n**What I did:**\n- **Brain:** created a local brain at `/harness-state/.gbrain/brain.pglite` using the docs' default (`gbrain init --pglite --no-embedding`). It uses keyword search only, so nothing is sent to any paid provider.\n- **MCP server:** registered `gbrain` in OpenClaw's config (`mcp.servers.gbrain`) with the command the docs give. OpenClaw said this applies without a restart.\n- **Brain-first rule:** `gbrain setup openclaw` wrote a marked block into `/workspace/AGENTS.md` telling the agent to check GBrain first. It also installed and enabled a small plugin, `gbrain-turn-rule`, which repeats that rule on every turn. Inspecting the plugin from the command line shows it loaded with its hook.\n- **PATH:** added `~/.bun/bin` to `~/.profile` and `~/.bashrc`.\n- **Checks:** I saved a test fact and recalled it successfully, then withdrew it. `gbrain doctor` gives an overall health score of 90/100. Its separate brain score is 25/100, which is expected for an empty brain with no embeddings.\n\n**Still to do:** restart the Gateway (send `/restart` or run `openclaw gateway restart`) so it loads the plugin, then start a new session so the new `AGENTS.md` is read. I tried restarting through OpenClaw's own tool, but it refused and asked for a new conversation. During setup, gbrain also reported the hook wasn't active in the running Gateway. That's why it needs the restart.\n\n**Settings in effect** (change any of them later with the command shown):\n- **Search mode: conservative.** gbrain picked it automatically because there's no API key. To switch, run `gbrain config set search.mode balanced` or `tokenmax`. gbrain's cost table for the text it retrieves, at 10K queries a month (Haiku / Sonnet / Opus):\n  - conservative: $4 / $80 / $160\n  - balanced: $10 / $200 / $400\n  - tokenmax: $20 / $400 / $800\n- **Auto-saving facts: off.** Agents save only what you ask them to remember. gbrain recommends `gbrain config set memory.auto_writeback salient`, which saves important facts you state.\n- **Free upkeep: on.** Turn it off with `gbrain config set maintenance.auto false`.\n- **Conversation archive: on.** gbrain keeps one redacted page per conversation per day, and with no keys nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.\n\nThe pinned-release warning from before still applies. gbrain may update itself on the stable channel and move off v0.60.734.0. gbrain also offers a hosted version at gbrain.io. I skipped it to keep everything local and free.",
+    "replayInvalid": true,
+    "livenessState": "working",
+    "stopReason": "stop",
+    "executionTrace": {
+      "winnerProvider": "anthropic",
+      "winnerModel": "claude-opus-5-5",
+      "attempts": [
+        {
+          "provider": "anthropic",
+          "model": "claude-opus-5-5",
+          "result": "success",
+          "stage": "assistant"
+        }
+      ],
+      "fallbackUsed": false,
+      "runner": "embedded"
+    },
+    "requestShaping": {
+      "thinking": "medium"
+    },
+    "completion": {
+      "stopReason": "stop",
+      "finishReason": "stop"
+    },
+    "toolSummary": {
+      "calls": 17,
+      "tools": [
+        "exec",
+        "openclaw"
+      ],
+      "failures": 1,
+      "unresolvedError": {
+        "toolName": "openclaw"
+      }
+    },
+    "terminalReply": {
+      "disposition": "visible",
+      "text": "gbrain is set up with the free defaults and no API keys. It's connected to OpenClaw, but the running Gateway still needs a restart, which I couldn't do from here.\n\n**What I did:**\n- **Brain:** created a local brain at `/harness-state/.gbrain/brain.pglite` using the docs' default (`gbrain init --pglite --no-embedding`). It uses keyword search only, so nothing is sent to any paid provider.\n- **MCP server:** registered `gbrain` in OpenClaw's config (`mcp.servers.gbrain`) with the command the docs give. OpenClaw said this applies without a restart.\n- **Brain-first rule:** `gbrain setup openclaw` wrote a marked block into `/workspace/AGENTS.md` telling the agent to check GBrain first. It also installed and enabled a small plugin, `gbrain-turn-rule`, which repeats that rule on every turn. Inspecting the plugin from the command line shows it loaded with its hook.\n- **PATH:** added `~/.bun/bin` to `~/.profile` and `~/.bashrc`.\n- **Checks:** I saved a test fact and recalled it successfully, then withdrew it. `gbrain doctor` gives an overall health score of 90/100. Its separate brain score is 25/100, which is expected for an empty brain with no embeddings.\n\n**Still to do:** restart the Gateway (send `/restart` or run `openclaw gateway restart`) so it loads the plugin, then start a new session so the new `AGENTS.md` is read. I tried restarting through OpenClaw's own tool, but it refused and asked for a new conversation. During setup, gbrain also reported the hook wasn't active in the running Gateway. That's why it needs the restart.\n\n**Settings in effect** (change any of them later with the command shown):\n- **Search mode: conservative.** gbrain picked it automatically because there's no API key. To switch, run `gbrain config set search.mode balanced` or `tokenmax`. gbrain's cost table for the text it retrieves, at 10K queries a month (Haiku / Sonnet / Opus):\n  - conservative: $4 / $80 / $160\n  - balanced: $10 / $200 / $400\n  - tokenmax: $20 / $400 / $800\n- **Auto-saving facts: off.** Agents save only what you ask them to remember. gbrain recommends `gbrain config set memory.auto_writeback salient`, which saves important facts you state.\n- **Free upkeep: on.** Turn it off with `gbrain config set maintenance.auto false`.\n- **Conversation archive: on.** gbrain keeps one redacted page per conversation per day, and with no keys nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.\n\nThe pinned-release warning from before still applies. gbrain may update itself on the stable channel and move off v0.60.734.0. gbrain also offers a hosted version at gbrain.io. I skipped it to keep everything local and free."
+    }
+  }
+}

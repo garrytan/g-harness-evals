@@ -1,0 +1,50 @@
+## GBrain is installed and wired into this agent — keyless
+
+**Install**
+- Bun 1.4.4 → `~/.bun/bin`, PATH added to `~/.profile`
+- `bun install -g github:garrytan/gbrain#v0.60.734.0` → `gbrain 0.60.734.0` at `/harness-state/.bun/bin/gbrain` (the pin replaces `#stable`; npm registry route avoided)
+- Engine: keyless **PGLite**, no embedding, no server — `gbrain init --pglite --no-embedding`, then `apply-migrations --yes` (5 setup migrations, exit 0)
+- Brain DB: `/harness-state/.gbrain/brain.pglite` · content root `/harness-state/.gbrain/content/8db27674…/default`
+
+**Your identity and instructions are untouched.** No SOUL/IDENTITY/USER file was rewritten; the only workspace change is a new `/workspace/AGENTS.md` containing gbrain's managed brain-first block between markers (nothing existed there before).
+
+**OpenClaw wiring**
+- MCP server registered: `mcp.servers.gbrain` → `/harness-state/.bun/bin/gbrain serve --surface starter --advertise verbs`, `GBRAIN_HOME=/harness-state`. `openclaw mcp doctor gbrain --probe` → **gbrain: ok**
+- Per-turn brain-first rule: `gbrain setup openclaw --workspace /workspace` wrote the AGENTS.md block and installed+enabled the `gbrain-turn-rule` plugin (`before_prompt_build`, `allowConversationAccess: true`, module loads and exports its hook). It activates on the next gateway start — see the one open item below.
+- Skill pack scaffolding was refused (`shared skills: pending / follow_approval_required`), and OpenClaw lists every workspace skill in every prompt, so I left skills off. The turn rule is the primary route anyway.
+
+**Round trip verified with real calls**
+- CLI: `remember … --content-origin inferred --provenance install-check` → `remembered as fact #1`; `recall` in a fresh process returned it.
+- MCP (spawned `gbrain serve` over stdio, real JSON-RPC): `initialize` → `gbrain 0.60.734.0`, `tools/list` → `remember, entity, synthesize, forget, request_tools, recall, context_pack, delta`, then `remember` (fact #2) and `recall` → **match: true**. The CLI duplicate (#1) was withdrawn; #2 stays as the round-trip marker.
+- Both recalls carry `degraded: keyword_only_embedding_disabled` — expected on a keyless brain, not an error.
+
+## Search mode in effect: `conservative`
+
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+```
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+Your choice — pick any time and I'll apply it:
+1. **conservative** (applied) — 4K budget, 10 chunks, no reranker. Reason it auto-applied: no chat key and no reranker available.
+2. **balanced** — 12K budget, 25 chunks, reranked.
+3. **tokenmax** — no budget, 50 chunks, reranked (needs a key to pay off).
+
+`gbrain query` doesn't expand in any mode unless asked (`--expand` / `--no-expand`); `search` and the memory verbs never expand. Change with `gbrain config set search.mode <mode>`.
+
+**Other first-run settings in effect:** writeback **off** (agents save only what you ask; `salient` is the recommended opt-in), free upkeep **on** (`gbrain config set maintenance.auto false` to stop), conversation archive **on** (local only, `gbrain transcripts archive off`).
+
+## Two open items
+- **Restart the gateway/harness.** The MCP server is registered and probes clean, but the tools and the per-turn rule only enter the agent's turn after a gateway start, and this host has no service manager for me to restart (tool refused: "Gateway host lifecycle is unavailable"). After restart, ask me to recall "OpenClaw install round trip" — that's the marker proving recall in a real new session, and I'll forget it right after.
+- `gbrain` flagged an optional multi-user note: this single access reads everything the brain holds, so if several people ever talk to this agent, per-person scoping (`gbrain setup openclaw --serves several --members …`) is the fix. Not needed for a one-person setup.
+
+Hosted gbrain.io exists as an always-on alternative if you'd rather not keep a local brain; nothing here depends on it.

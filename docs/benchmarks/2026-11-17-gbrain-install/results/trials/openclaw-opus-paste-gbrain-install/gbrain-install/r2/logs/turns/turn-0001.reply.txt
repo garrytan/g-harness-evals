@@ -1,0 +1,54 @@
+GBrain v0.60.734.0 is installed and connected to this agent, with no API keys. I saved facts and read them back through real gbrain calls, and that worked. This chat can't use gbrain yet: OpenClaw only loads it when a new session starts.
+
+**What changed**
+- **Install:** Bun 1.4.4 and `bun install -g github:garrytan/gbrain#v0.60.734.0` (used in place of `#stable`). `gbrain --version` prints `0.60.734.0`.
+- **Brain:** a local database at `~/.gbrain/brain.pglite`, created with no embeddings, so nothing is sent to any outside service.
+- **Connection:** `openclaw mcp add gbrain` registered the full path to `gbrain` in `openclaw.json`. That command also removed the comments from your JSON5 config. Your model and agent settings are otherwise unchanged; a copy of the original is at `/tmp/openclaw.json.bak`.
+- **Brain-first instructions:** `gbrain setup openclaw` created `/workspace/AGENTS.md`, which holds only gbrain's marked block. It also added a small plugin, `gbrain-turn-rule`, that puts the same rule next to every message.
+- **Identity:** not touched. There are no `SOUL.md` or `IDENTITY.md` files, I didn't run a bootstrap or identity setup, and nothing was scheduled.
+
+**Two install-check errors to ignore**
+- **`gbrain setup` reported `turn_hook_not_loaded`.** Its check runs `openclaw` without `OPENCLAW_CONFIG_PATH`, and your config isn't in the default place. Run with your real config, OpenClaw shows the plugin loaded with `before_prompt_build`.
+- **`gbrain doctor --only harness_wiring` found "no harness".** That is probably the same config-path cause; it does find the instruction block and plugin. I tested the connection directly instead (below).
+
+**Remember/recall test**
+- **Saving:** I started the exact `gbrain serve` command from `openclaw.json` and talked to it over MCP. It offered 8 tools, including `remember`, `recall` and `forget`. Two `remember` calls saved:
+  - fact #1, an install-check marker `OCL-7Q4`
+  - fact #2, a generic test note "probe phrase is periwinkle-anvil-42"
+
+  Neither is about you.
+- **Reading back:** a second, separate server process found both facts with `recall` by entity. A keyword `recall` for "periwinkle-anvil-42" found fact #2. The command-line `gbrain recall "OCL-7Q4"` found fact #1 too.
+
+**One step left:** restart the OpenClaw gateway or start a new session, then ask me to "recall the gbrain install-check marker". I'll find it with `tool_search` and `recall`, then `forget` fact #1.
+
+**Search mode (you can change it any time)**
+
+It is set to **`conservative`** because there's no chat or reranker key. `gbrain search modes` confirms it.
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+1. **conservative (current):** 4K-token budget, at most 10 chunks, no reranker. Best for cheap models and high volume.
+2. **balanced:** 12K budget, 25 chunks, reranked. The reranker needs a key.
+3. **tokenmax:** no budget, 50 chunks, reranked. Recommended once there's a chat key.
+
+To switch, tell me or run `gbrain config set search.mode <mode>`. No mode expands queries by default.
+
+**Other settings now in effect**
+- **Automatic saving:** off, so I only save what you ask me to. gbrain recommends `salient` (durable facts you state, saved with their source): `gbrain config set memory.auto_writeback salient`.
+- **Upkeep:** free upkeep runs while gbrain is open. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, locally. Turn it off with `gbrain transcripts archive off`.
+- **Search quality:** keyword only. Semantic search needs a Voyage or OpenAI key, costs money, and needs your OK.
+
+Nothing here needs an answer now. There's also a paid hosted version at gbrain.io if you'd rather not run it on this machine.

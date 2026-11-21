@@ -1,0 +1,20 @@
+Done — installed, initialized, wired, and verified end to end.
+
+**What's in place**
+- **Bun 1.4.4** (gbrain's minimum) at `~/.bun/bin`
+- **gbrain 0.60.734.0** at `/harness-state/.bun/bin/gbrain` — pinned to tag `v0.60.734.0` (commit `a278ddf`) instead of the docs' `#stable`, which is a force-moved tag; the pin matches `stable-v0.60.734.0`
+- **Brain**: keyless PGLite at `/harness-state/.gbrain/brain.pglite`, schema v318, all migrations applied
+- **OpenClaw wiring**: registered as MCP server `gbrain` in `openclaw.json` (stdio, `serve --surface starter --advertise verbs`), runtime reloaded
+- **Verification**: `gbrain doctor` → healthy, 100/100; `openclaw mcp probe` → 10 tools (`remember`, `recall`, `entity`, `synthesize`, `context_pack`, `delta`, `forget`, `request_tools`, resources); live round-trip: wrote an install note and recalled it successfully
+
+**Settings in effect (all defaults, nothing paid)**
+- Search mode: **conservative** (keyword-only — no embedding key, so no semantic search; local, free)
+- Writeback: **off** — agents only save what you ask them to remember
+- Upkeep: **on** (free tier, runs while a gbrain session is open)
+- Conversation archive: **on** — one redacted page per conversation per day, written locally by maintenance; nothing leaves the machine. Off: `gbrain transcripts archive off`
+
+**Notes**
+- gbrain is on PATH only after `export PATH="$HOME/.bun/bin:$PATH"`; the MCP entry uses the absolute path, so agent calls work regardless.
+- `openclaw mcp add` rewrote `openclaw.json` and stripped its JSON5 comments (it warned first); the file parses and the server loads fine.
+- To add semantic search later: `gbrain init --force --embedding-model voyage:voyage-4 --embedding-dimensions 1024` plus a `VOYAGE_API_KEY` — that's the only step that would cost anything.
+- Every gbrain CLI command prints a benign `/usr/bin/sh: Bad substitution` after completing its JSON output (exit 2); it doesn't affect results or the MCP server.

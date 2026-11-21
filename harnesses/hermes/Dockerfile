@@ -26,7 +26,7 @@ LABEL org.opencontainers.image.title="harness-eval Hermes Agent harness" \
       harness-eval.source="${HERMES_REPO}" \
       harness-eval.topology="in-container"
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl ripgrep procps \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl ripgrep procps unzip \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=uv_source /uv /uvx /usr/local/bin/
 

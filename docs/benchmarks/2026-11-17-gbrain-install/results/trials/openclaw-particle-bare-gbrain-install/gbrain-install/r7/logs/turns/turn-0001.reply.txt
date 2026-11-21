@@ -1,0 +1,16 @@
+Done. gbrain is installed at the location the docs designate for `#stable`.
+
+**What I verified first**
+- `v0.60.734.0` resolves to commit `a278ddf…`, which is exactly what the repo's `stable` tag currently points to — so pinning to that release is consistent with the documented `#stable` channel.
+- The repo docs are explicit that the correct install is a **global Bun install** (`bun install -g github:garrytan/gbrain#stable`), and warn against `npm install -g gbrain`.
+
+**What I did**
+- Bun wasn't present → installed Bun 1.4.4 (the documented prerequisite) via the official installer.
+- Ran: `bun install -g github:garrytan/gbrain#v0.60.734.0`
+  - → installed `gbrain@github:garrytan/gbrain#a278ddf`, binary `gbrain`.
+
+**Result**
+- `gbrain --version` → `gbrain 0.60.734.0` ✅
+- Binary: `/harness-state/.bun/bin/gbrain` (global Bun bin — the same place a `#stable` install lands).
+
+Note: `$HOME/.bun/bin` isn't on the default shell PATH yet; either add `export PATH="$HOME/.bun/bin:$PATH"` to your profile, or invoke it at the full path above. I only did the CLI install — I did **not** run `gbrain init`/`setup`, so no brain, identity, API keys, or MCP wiring were created. Say the word and I'll initialize a keyless local brain (`gbrain init --pglite --no-embedding`) and connect it to your harness.

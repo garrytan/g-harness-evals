@@ -15,7 +15,7 @@ Status: frozen 2026-11-17T06:14Z, before any counted trial. Run id `gbrain-insta
 
 Each line names what we do differently for each way the result can land (R97). "Arm A" is the bare arm, "arm B" the paste arm. Every line uses the finish line **as scored**.
 
-- **Which step gbrain's maintainers fix first:** the step with the most failed runs in arm A, pooled over harnesses and models. Ties go to the step with more "needed a person" events, then to the larger share of time. The failure table lists every step with counts, gbrain error codes and two example transcripts, and goes to gbrain's maintainers (internal-task) when the results merge.
+- **Which step gbrain's maintainers fix first:** the step with the most failed runs in arm A, pooled over harnesses and models. Ties go to the step with more "needed a person" events, then to the larger share of time. The failure table lists every step with counts, gbrain error codes and two example transcripts, and goes to gbrain's maintainers (GST-2714) when the results merge.
 - **Arm A much worse than arm B** (a gap larger than the detectable difference below): the problem is finding gbrain and its install path, so the first batch of fixes targets discovery (what a search, or a guess like `npm install gbrain` or `clawhub:gbrain`, lands on).
 - **Both arms low and close:** the install flow itself is the problem, and the first batch fixes the worst step.
 - **A "not supported yet" note:** when a harness reaches the finish line in under 20% of runs in both arms on two releases in a row, and its failures sit at the "harness wired" step, gbrain's maintainers add a "not supported yet, use X instead" note to that harness's install route until a working setup path for it lands.
@@ -36,7 +36,7 @@ It also stops after two reruns in a row with no gain (the upper end of the 95% i
 
 ## Approval
 
-- **Garry, 2026-11-15:** "Do it", on plan v2 of internal-task (the autoplan run `gst-2715-20261115010356`, gate_rev 1; the approved plan file has sha256 `022edb3ead2d36e1f752fa8b400db6ffba0bb45e1701404ca2f0f2841d44e6de`). The arms, design, decision lines, sample sizes, detectable differences, stop rule, cost and caps here are copied from it. Where this file differs from the plan, [Deviations](#deviations-from-the-plan) says why.
+- **Garry, 2026-11-15:** "Do it", on plan v2 of GST-2715 (the autoplan run `gst-2715-20261115010356`, gate_rev 1; the approved plan file has sha256 `022edb3ead2d36e1f752fa8b400db6ffba0bb45e1701404ca2f0f2841d44e6de`). The arms, design, decision lines, sample sizes, detectable differences, stop rule, cost and caps here are copied from it. Where this file differs from the plan, [Deviations](#deviations-from-the-plan) says why.
 - **Changed on 2026-11-16, before any counted trial, by Garry's rule that every eval of gbrain runs on its newest release (R100):** the pin is the newest release on gbrain's main branch at freeze, not the release `#stable` serves; both arms end with one identical line naming that release; how often agents install something else is counted; the `#stable` hold window is dropped. See [Release pin](#release-pin).
 - **Decided after the plan (coordinating agent, 2026-11-15 and 2026-11-16):** arm B is the README paste prompt and reads master's install doc; the named stalls; the Fable smoke; the branching install is not an arm; the two preconditions; the PATH design choice; keyword-only search; the accepted departures; the conversation-archive and head-or-tail audits; the sharding and concurrency; the spend ceilings; and the results order. Each is stated below.
 
@@ -107,7 +107,7 @@ Outcomes: `recalled` (the finish line), `harness-memory`, `not-recalled` (instal
 
 - **after both halves of gbrain's large-brain upgrade fix** (gbrain#9472 in v0.60.732.0, and gbrain#9487 with #9490 in v0.60.733.0). Both change only an upgrade from a brain made before v0.51, which a fresh install never runs;
 
-- **after the Codex bun-PATH fix** (gbrain#9421, in v0.60.725.0, internal-task). Our install-mode PATH entries (below) are then redundant for Codex, but they stay for every harness;
+- **after the Codex bun-PATH fix** (gbrain#9421, in v0.60.725.0, GST-2784). Our install-mode PATH entries (below) are then redundant for Codex, but they stay for every harness;
 - **after the conversation archive turned on by default** (v0.60.727.0). On personal brains the install prints a one-time notice, and gbrain's maintenance pass writes one redacted page per conversation per day under `conversations/` (`gbrain transcripts archive off` turns it off). The notice is not a stall unless it ends the turn on a question. Archive pages count toward the brain's page count. Recall served from an archive page is reported separately (see [Analysis](#analysis-and-exclusions-frozen));
 - **after the personal and company branching install** (gbrain#9387, v0.60.724.0). It is not an arm here. If setup asks "personal or company" and the turn ends on that question, it is a named stall like any other question.
 
@@ -286,7 +286,7 @@ From a worktree pinned at this preregistration's merge commit, with `UBI_QUOTA_V
 - `scripts/gbrain-install/real-image-check.sh` `7911a89bdb4e`
 - `scripts/gbrain-install/real-image-check.ts` `b40f20a9dbc3`
 - `scripts/gbrain-install/steps.ts` `aaf802318f00`
-- `scripts/gbrain-install/transcript.ts` `cb8f3d6e5105`
+- `scripts/gbrain-install/transcript.ts` `f8c8b1c8171e` (Amendment 2; was `cb8f3d6e5105`)
 - `scripts/gbrain-install/verdict.ts` `b092f1926bd3`
 - `tasks/gbrain-install/arms/paste-0.60.734.0.md` `1af1d5967c22`
 
@@ -296,11 +296,78 @@ Any change to a pinned file before the report is a dated amendment or a new run 
 
 Under `docs/benchmarks/2026-11-17-gbrain-install/results/`: per shard its trials, ledger, proxy usage, egress log, cold-download line, install stops and VM records; the merged trials; the verdict and failure tables; the two audits; the miss readers' notes. The real-image check's report is `preflight/real-image-check.json`. Transcripts pass the token canary scan and the public-safety scan before the results pull request.
 
-**Order.** This preregistration and the results never share a pull request. This file merges to main before the first counted trial; the results and report come in a later pull request, and the per-step failure table goes to gbrain's maintainers (internal-task) when the results merge.
+**Order.** This preregistration and the results never share a pull request. This file merges to main before the first counted trial; the results and report come in a later pull request, and the per-step failure table goes to gbrain's maintainers (GST-2714) when the results merge.
 
 ## Amendments
 
 Each amendment is a dated commit before any cell it affects: the smoke records, any new wave after the release tag moves, and each rerun's release pin. A rerun on a release that changes the install's notices, pages or recall paths states how this file's rules apply to it.
+
+### Amendment 1 (2026-11-17): unzip in the harness images, and the smoke records
+
+**The change.** The four harness images (`harnesses/claude-code`, `codex`, `openclaw` and `hermes`, each `Dockerfile`) add `unzip` to their `apt-get install` line. Nothing else changes: cells, arms, leases, caps, scoring and the 30 pinned files (the Dockerfiles are not among them) stay as frozen.
+
+**Why.** The paid smokes at the preregistration commit `6e65fbcd` (uncounted, run ids `gbrain-install-shapes-smoke-2026-11` and `gbrain-install-smoke-2026-11`) found that no harness image had `unzip`. gbrain's install doc starts with Bun's official installer, which stops with "error: unzip is required to install bun". All 12 smoke runs met it: 8 hit the error, and 4 read the installer script first and went around it. The agents then improvised, installing Bun from npm into `~/.bun-npm` or cloning gbrain with git. That drove most of the failed commands and person-needed stops, and both Hermes runs that ended before a gbrain binary existed. A developer's machine normally has `unzip` (macOS and desktop Ubuntu ship it), so without it the run would measure our image instead of gbrain's install. The finding also went to gbrain's maintainers as a fix to their install doc: name `unzip` as a prerequisite, or offer the npm route with the PATH line it needs.
+
+**The smoke records** (one run per cell shape, plus the Claude Code Fable 5.2 smoke; paid calls $12.93, VMs $0.74):
+
+| Cell | Arm | Runs | Outcome | Spend |
+|---|---|---:|---|---:|
+| Claude Code, Opus 5.5 | paste | 1 | finished in 146 s | $0.85 |
+| Codex, GPT-6.1 Sol | bare | 1 | model_error: the smoke lease refused a call (note 1) | $0.41 |
+| OpenClaw, Opus 5.5 | bare | 1 | not finished: saved the fact to harness memory | $1.02 |
+| OpenClaw, GPT-6.1 Sol | paste | 1 | model_error: the smoke lease refused a call (note 1) | $1.02 |
+| OpenClaw, particle-1 | bare | 1 | not finished | $0.31 |
+| Hermes, Opus 5.5 | paste | 1 | not finished: no gbrain binary | $0.66 |
+| Hermes, GPT-6.1 Sol | bare | 1 | not finished: no gbrain binary | $0.18 |
+| Hermes, particle-1 | paste | 1 | finished in 273 s | $0.21 |
+| Claude Code, Fable 5.2 | bare | 2 | 2 finished, median 248 s, 1 needed no person | $3.00 |
+| Claude Code, Fable 5.2 | paste | 2 | 2 finished, median 338 s, 1 needed no person | $5.27 |
+
+**The parser check.** The OpenClaw and Hermes transcript parsers read every smoke run's real transcript and produced its steps, stalls and outcome, which closes accepted departure 3 for the images as they were. The rerun below checks them again with `unzip`.
+
+**Notes from the smokes:**
+
+1. **Smoke lease.** The shapes smoke's $9 lease was smaller than what two GPT-6.1 Sol calls reserve before forwarding ($3.77 to $4.77 each), so both Sol runs ended as model_error with cap_stop. The counted Sol leases ($36) leave room for that reservation above the expected spend. The rerun uses a larger smoke lease.
+2. **`GET /v1/models` is refused, not forwarded.** "Deviations from the plan" says that with the slot's token it is forwarded free. In the smokes the proxy refused it with 403 at $0 as a route that is not allowlisted, and the same for `GET /v1/models/<model>` from Hermes and for Claude Code's `POST /v1/messages/count_tokens`. Neither stopped a run, and neither counts as a non-harness request. The results report them per harness beside the probes.
+3. **Hermes probes on every route.** Hermes sends its startup probes on the Opus 5.5 and GPT-6.1 Sol routes too, with the slot's token: refused with 403 at $0 and classed as probes. On particle-1 they carry no token and land in the verdict's non-harness column (15 per run in the smoke). The results split them out, as the count rule above says.
+4. **The transcript's version field.** The version read from the agent's own commands can pick up another tool's version: one run read Bun's `1.4.4` from a combined command. That field is descriptive. The version measures use the probe, which correctly saw no gbrain version in that run, because gbrain could not start on a fresh PATH with Bun installed under `~/.bun-npm`.
+
+**Before the canary.** The real-image check and the eight-shape smoke run again at this amendment's commit. Their records are added by Amendment 2 before the canary launches, and the counted run loads from the latest amendment's commit.
+
+### Amendment 2 (2026-11-17): the reruns at Amendment 1, and a narrower GitHub rate-limit check
+
+**The real-image check** at Amendment 1's commit `73c2e4c3` passed all 7 cases at 2026-11-17T10:36Z: the six install cases on checks a to d, and the Claude Code WebFetch case ([preflight/real-image-check-amendment-1.json](preflight/real-image-check-amendment-1.json)).
+
+**The eight-shape smoke** ran again at `73c2e4c3` (uncounted, lease $15, paid calls $7.42). No run hit Bun's unzip error. 5 of the 7 scored runs finished, against 2 of 6 before the change:
+
+| Cell | Arm | Outcome | Spend |
+|---|---|---|---:|
+| Claude Code, Opus 5.5 | paste | finished in 142 s | $0.83 |
+| Codex, GPT-6.1 Sol | bare | finished in 138 s, no person needed | $0.40 |
+| OpenClaw, Opus 5.5 | bare | not finished | $0.89 |
+| OpenClaw, GPT-6.1 Sol | paste | infra_error, a false rate-limit match (below) | $2.19 |
+| OpenClaw, particle-1 | bare | not finished: saved the fact to harness memory | $0.09 |
+| Hermes, Opus 5.5 | paste | finished in 609 s, no person needed | $1.82 |
+| Hermes, GPT-6.1 Sol | bare | finished in 343 s | $0.78 |
+| Hermes, particle-1 | paste | finished in 406 s, no person needed | $0.42 |
+
+The OpenClaw and Hermes parsers again produced steps, stalls and outcomes for every run.
+
+**The change: a narrower GitHub rate-limit check.** In both smokes the OpenClaw GPT-6.1 Sol paste run was marked `github-rate-limit`, an infrastructure failure that leaves the scored rows and is rerun. Neither run had a GitHub 403 or 429. The agent had printed gbrain's own docs, which mention "rate limits" in passing, and the output also named GitHub, so the check matched. Left alone, it would drop real runs from the counts whenever an agent reads those docs. `scripts/gbrain-install/transcript.ts` now counts only rate-limit errors ("rate limit exceeded", "rate limited", "exceeded a secondary rate limit") besides the 403 and 429 forms it already read, with two new cases in `tests/gbrain-install-scoring.test.ts`. Its pin in pins.sha256 changes to match; no other pinned file changes. Run over all 20 smoke transcripts, the new check flags none, and the old one flagged only this run. The images are unchanged from Amendment 1, so the real-image check and the smoke are not run again. The canary and the fan-out run from this amendment's commit.
+
+### Amendment 3 (2026-11-19): a post-data rescore of the counted run
+
+**This amendment was written after seeing the counted run's data.** It changes no counted record, no pinned file and no trial. It adds three scoring rules, applied by an unpinned analysis script ([results/rescore/](results/rescore/)), whose columns are published next to the pinned scorer's.
+
+**Why.** The independent miss readers read 45 of OpenClaw's 60 scored misses, and all 21 of Claude Code's scored misses, as recalls served by gbrain. A check of the transcripts confirmed three blind spots in the pinned scorer:
+
+- **Rule a, a scorer bug fix.** OpenClaw sends each MCP call through a generic `tool_call` tool whose arguments name the real tool (`{"id":"mcp:gbrain:gbrain__recall",...}`). `toolEvent` in scripts/gbrain-install/transcript.ts keeps only the outer name, so it credits no OpenClaw gbrain call. Rule a reads the inner id.
+- **Rule c, a scorer bug fix.** `outsideBrain` in runner/trial/install.ts counts rows of OpenClaw's `memory_index_chunks` table as "saved to harness memory". Every nonce hit there has `source='sessions'`, which is OpenClaw's automatic index of its own chat transcript, not a save. Rule c skips rows with that source.
+- **Rule b, a definitional change.** On Claude Code, gbrain's own SessionStart or UserPromptSubmit hook puts the saved fact into the fresh session, and the agent answers with no tool call. Rule b counts that as served by gbrain, but only when the reply holds the nonce and the hook's own name or command names gbrain, or the trial's settings file proves that every hook registered for that event is gbrain's (the strict reading). The lenient reading, which also accepts the end-of-turn probe's evidence when the archived settings file is empty, is given in a note.
+
+**Also.** A counted trial whose termination is `harness_error` or `timeout` is a miss in every published column, as "Analysis and exclusions" says. The pinned verdict scores codex-sol-bare r16 (harness_error, recalled) as a finish. The headline uses the conservative reading and names the pinned number beside it.
+
+**What changes.** The headline table shows as scored, a+c and a+b+c side by side, each with a Wilson 95% interval. "Which step gbrain's maintainers fix first" and the failure table sent to gbrain's maintainers use a+b+c. The top bare-arm step under a+c is stated beside it. The fix loop's stop rule uses the same scoring as the fix order. The pinned scorer itself is fixed in the preregistration amendment for the next wave, not here. With the three rules switched off, the script reproduces all 200 recorded outcomes.
 
 ## Outside terms
 

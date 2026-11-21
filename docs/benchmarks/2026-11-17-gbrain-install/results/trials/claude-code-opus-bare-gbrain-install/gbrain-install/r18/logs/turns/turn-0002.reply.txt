@@ -1,0 +1,24 @@
+gbrain is set up with its defaults. It's free and local, with no API keys configured, and Claude Code is connected to it. Open a new Claude Code session to get the memory tools.
+
+**What setup did:**
+- Created a local brain at `/harness-state/.gbrain/brain.pglite` with no embeddings, so search is keyword-only.
+- Registered the gbrain MCP server in `/harness-state/claude/.claude.json`. `claude mcp get gbrain` shows it as `✔ Connected`.
+- Added SessionStart and UserPromptSubmit hooks to `/harness-state/claude/settings.json`.
+- Wrote a "check the brain first" block into a new `/harness-state/claude/CLAUDE.md`.
+
+**Checks:**
+- `gbrain doctor` scores 95/100 with one warning: Claude Code "has no gbrain MCP registration". The registration exists and connects; the same warning says it "has not been verified from this process". So I left it alone.
+- A save-and-recall test worked. I saved "gbrain v0.60.734.0 was installed on this machine on 2026-11-17" and read it back. It's still in the brain; tell me if you'd rather I delete it.
+
+**Settings now in effect, each changeable with one command:**
+- **Search mode:** conservative, the only mode that works without a reranker. `gbrain config set search.mode balanced` switches it.
+- **Automatic saving:** off, so agents save only what you ask them to remember. gbrain recommends `salient`, which saves durable facts you state: `gbrain config set memory.auto_writeback salient`.
+- **Upkeep:** free upkeep runs while a gbrain session is open. `gbrain config set maintenance.auto false` turns it off.
+- **Conversation archive:** on. gbrain keeps one redacted page per conversation per day from your agent sessions, and it stays on this machine. `gbrain transcripts archive off` turns it off.
+- **Starter pages:** none. `gbrain setup claude-code --shape personal` adds empty pages about you and lets you import a notes folder.
+
+**Limits of keyless mode:** without embeddings, gbrain only catches exact duplicate facts, so a reworded fact gets saved twice.
+
+The release-channel question from before is still open: this install follows the stable channel, but upgrades aren't installed unless you turn on auto-upgrade. Running `gbrain setup claude-code --remove` undoes the setup.
+
+gbrain also mentioned its paid hosted version at gbrain.io; you don't need it.

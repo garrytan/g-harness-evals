@@ -1,0 +1,49 @@
+GBrain is installed and wired into this agent, keyless, with identity untouched. Here's the state.
+
+**Installed**
+- `gbrain 0.60.734.0` — installed where the docs say `#stable` (`~/.bun/bin`, Bun 1.4.4), pinned to the release tag you named, on the canonical Bun path (not npm).
+- Brain: keyless PGLite, no embeddings, `~/.gbrain` under `/harness-state`, 0 pages, doctor **healthy 100/100**, schema v318 at head.
+- No API keys, no daemons, no cron, no auto-capture. (Hosted GBrain at gbrain.io is the alternative if you ever want one always-on brain shared across harnesses — not needed for this local install.)
+
+**Wired to this OpenClaw agent**
+- MCP: `openclaw mcp add gbrain` → stdio `.../gbrain serve --surface starter --advertise verbs`, `GBRAIN_HOME=/harness-state`. Probe: **8 tools** + resources.
+- Brain-first rule: managed block written to `/workspace/AGENTS.md` (that file didn't exist; nothing of yours was replaced). Plus the `gbrain-turn-rule` hook plugin, installed and enabled in `openclaw.json`, so the rule rides next to each user turn rather than only in the system prompt.
+- `SOUL.md` / `IDENTITY.md` / your instructions: untouched — I skipped the optional identity step on purpose.
+- Config edit was made by the OpenClaw/GBrain CLIs; I backed up `openclaw.json` and restored its JSON5 header comments afterwards.
+
+**Round trip, real calls**
+- CLI, separate processes: `remember` → fact #1 (install marker, provenance `install-check`), fact #2 (generic test note, no facts about you) → `recall` by entity, by `--question`, by `--grep` all returned them → `forget` 2 and 3 confirmed `expired: true`.
+- Over MCP stdio (the same transport OpenClaw uses): listed `remember, entity, synthesize, forget, request_tools, recall, context_pack, delta`, then `remember` → fact #3 inserted, and `recall` returned that new fact first. That's the full over-the-wire write/read path.
+- Marker fact #1 is still in the brain so the next session can prove recall across a fresh runtime; say the word and I'll forget it.
+
+**Search mode — your choice to make (currently `conservative`)**
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+- **conservative** (in effect) — 4K budget, 10 chunks, no reranker. Chosen automatically because there's no chat key and no reranker, so `balanced` couldn't rerank.
+- **balanced** — 12K budget, 25 chunks, reranked.
+- **tokenmax** — no budget, 50 chunks, reranked; recommended once you add a chat key.
+
+Change any time: `gbrain config set search.mode balanced` (or `tokenmax`). Keyword search works in every mode; `query` doesn't expand by default.
+
+**Other first-run settings in effect**
+- Writeback: **off** — agents save only what you ask for. Opt in with `gbrain config set memory.auto_writeback salient`.
+- Upkeep: **on** (free, runs while a gbrain session is open). `gbrain config set maintenance.auto false` to stop.
+- Conversation archive: **on** — one redacted page per conversation per day, local only. `gbrain transcripts archive off` to disable.
+- Self-upgrade: `notify` (reports, installs nothing).
+
+**Two loose ends**
+- One optional host action from migration v0.53.0 (shared-skills publication). Meaningless for a single-person brain with no enrolled adapters; your grants are unchanged.
+- The MCP tools and the per-turn rule land in the runtime on the **next turn** — this turn's runtime was built before the wiring existed. Ask me "search my brain for the install marker" next message and it should resolve through `tool_search` → `tool_call`.

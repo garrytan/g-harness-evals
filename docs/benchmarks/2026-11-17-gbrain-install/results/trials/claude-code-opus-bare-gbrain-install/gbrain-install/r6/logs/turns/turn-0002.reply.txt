@@ -1,0 +1,24 @@
+gbrain is set up and connected to Claude Code. It's free and needs no API keys. I used the defaults gbrain recommends, and a save-and-recall test worked.
+
+**What I ran:**
+1. **`gbrain init --pglite --no-embedding`** created a local brain at `~/.gbrain/brain.pglite`. These defaults are now on:
+   - **Search mode:** conservative.
+   - **Saving:** agents save only what you ask them to remember.
+   - **Upkeep:** free upkeep runs while a session is open.
+   - **Conversation archive:** gbrain keeps one redacted page per conversation per day. With no key, nothing leaves this machine.
+2. **`gbrain setup claude-code --no-hooks`** was the command init suggested. It did three things:
+   - Registered the `gbrain` MCP server at user scope in `.claude.json`.
+   - Wrote the instructions that tell agents to check the brain first into a new `CLAUDE.md` in your Claude config folder.
+   - Set up no hooks and no paid providers.
+
+   gbrain's own connection test passed.
+3. **Round-trip test:** `gbrain remember "gbrain install check"` saved the fact, and `gbrain recall` found it.
+
+**Health:** `gbrain doctor` scores 85/100 with no failures. The brain score of 25/100 is expected without keys: embeddings score 0 because they're off, and links and orphans score 0 because the brain is nearly empty.
+
+Without an embedding provider, search matches keywords only. It also catches only exact duplicate facts, so the same fact saved in different words is stored twice.
+
+**What's left for you:**
+- Open a new Claude Code session, since settings are read at startup. Check that `/mcp` lists gbrain, then ask it to recall "gbrain install check".
+- The test fact is still saved. Have the agent forget it once you've checked, or leave it; it's harmless.
+- To load existing notes, run `gbrain import <dir> --no-embed`.

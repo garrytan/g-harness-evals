@@ -1,0 +1,22 @@
+gbrain still isn't installed, and I can't get past the block without you. Your message settles which options to use, but the problem is Hermes's security scanner: it stopped the gbrain package install because it couldn't check the package while offline. I just confirmed that `gbrain` isn't on PATH, and your Hermes config has no `single_query_mode` setting, so the scanner still blocks by default.
+
+I won't try to sneak past it, for example by cloning the repo or running the install a different way. I also won't change your Hermes config to turn the check off myself. Approving that is your call.
+
+To get past it, either run this yourself:
+
+    export PATH="$HOME/.bun/bin:$PATH"
+    bun add -g --backend=copyfile github:garrytan/gbrain#v0.60.734.0
+
+or add this to Hermes's config.yaml and ask me again:
+
+    approvals:
+      single_query_mode: approve
+
+After that, I'll finish without needing you. Everything stays free with no API keys:
+
+- **Local brain:** `gbrain init --pglite --no-embedding`, with keyword-only search.
+- **Stay on v0.60.734.0:** `gbrain config set self_upgrade.mode off`.
+- **Connect to Hermes:** wire it up over MCP using the gbrain guide `docs/mcp/HERMES.md`, then run `gbrain setup hermes` so Hermes checks the brain before answering.
+- **Check:** run `gbrain doctor` and tell you the result.
+
+Bun 1.4.4 is already installed at `~/.bun/bin/bun`.

@@ -1,0 +1,48 @@
+Installed **GBrain v0.60.734.0** from your exact GitHub release pin, preserving your current identity and instructions.
+
+### What’s working
+- Local, keyless PGLite memory at `/harness-state/.gbrain`
+- OpenClaw MCP registration verified; memory tools discovered
+- Memory instructions added; per-turn hook loaded
+- **Real remember/recall tests passed**, including retrieval after closing and reopening the MCP server
+- Exact keyword search, fact correction, and withdrawal verified
+
+**Still unverified:** recall from a fresh OpenClaw conversation. One clearly labeled synthetic marker remains for that check; the other test facts were withdrawn or superseded.
+
+### Search-mode choice
+**Conservative is active** and is my recommendation for this keyless setup.
+
+1. **conservative:** 4K budget, 10 chunks, no reranker.
+2. **balanced:** 12K budget, 25 chunks, reranking when configured.
+3. **tokenmax:** no retrieval-token cap, 50 chunks, reranking when configured.
+
+The guide’s required cost illustration—not your harness subscription pricing:
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+Tell me any mode name to change it. Choosing a mode does **not** authorize paid providers.
+
+### Settings in effect
+- **API keys / embeddings / paid enrichment:** not enabled
+- **Automatic fact saving and capture:** off; explicit remember requests only
+- **Conversation archive:** on by default—one redacted page per conversation/day during upkeep; say “turn off GBrain conversation archive” to disable it
+- **Free in-session upkeep:** on; no scheduled jobs or services installed
+- **Paid automatic event extraction:** explicitly off
+
+Keyword retrieval stays local; your existing agent model still receives recalled content. This is configured as single-user memory—per-person access is needed before sharing it among users.
+
+Receipt and test evidence: `/workspace/GBRAIN-INSTALL.md`.
+
+To finish the remaining native check, open a fresh conversation and say **“Finish the GBrain native verification.”** The saved instructions cover recalling the marker and cleaning it up.

@@ -1,0 +1,18 @@
+I didn't install gbrain. Hermes's security scanner blocked the install command, and since this session has no user present to approve it, the block can't be cleared here.
+
+Bun 1.4.4 is installed at ~/.bun/bin/bun, which is the version gbrain's README requires.
+
+I checked that tag v0.60.734.0 exists on github.com/garrytan/gbrain (commit a278ddf4…). I then ran the README's documented install with your tag in place of #stable:
+
+  bun install -g github:garrytan/gbrain#v0.60.734.0
+
+The scanner (Tirith) flagged it as a MEDIUM risk. Its package checks run online, but it is in offline mode, so it couldn't finish verifying the package. It says this is "incomplete verification, not evidence that the package is malicious." The README's other documented route (`git clone --branch v0.60.734.0` then `bun install && bun link`) would install the same code without that check. I didn't use it, because it would just get around the block.
+
+To finish, either:
+  1. Run it yourself:
+       export PATH=$HOME/.bun/bin:$PATH
+       bun install -g github:garrytan/gbrain#v0.60.734.0
+       gbrain --version
+  2. Set `approvals.single_query_mode: approve` in config.yaml, or run me in an interactive session where you can approve it, and I'll finish the install and check it.
+
+Don't run `npm install -g gbrain` or `bun add -g gbrain`. The README says the npm package called gbrain is unrelated to this project and can shadow the real command.

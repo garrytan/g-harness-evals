@@ -1,0 +1,17 @@
+I've set up gbrain for Claude Code as a free local brain with no API keys. Its built-in test passed, and `claude mcp get gbrain` finds the registration. It takes effect in your **next Claude Code session**, since Claude Code reads its config at startup; this session doesn't have the memory tools. In the new session, `/mcp` should list `gbrain`.
+
+**What it wrote:**
+- **The brain:** a local database at `~/.gbrain/brain.pglite`. Nothing gets sent to an outside service.
+- **Claude Code config:** the gbrain memory tools (MCP server) in `/harness-state/claude/.claude.json`, two hooks in `settings.json` (session start and prompt submit), and a new `/harness-state/claude/CLAUDE.md` that tells agents to check the brain first.
+
+**Settings now in effect (all gbrain's defaults; I changed nothing):**
+- **Search:** keyword search in the smallest-context mode ("conservative"). The cost estimates gbrain prints are for the model reading the retrieved text, not gbrain charges.
+- **Saving facts:** agents save only what you explicitly ask them to remember (`gbrain remember "..."`). gbrain recommends turning on automatic saving with `gbrain config set memory.auto_writeback salient`. I left it off because it's opt-in.
+- **Transcript capture:** off, so the end-of-session hooks aren't installed.
+- **Free upkeep:** on. It runs while a gbrain session is open and never deletes anything or makes paid calls. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on, keeping one redacted page per conversation per day. With no API key it stays on this machine. Turn it off with `gbrain transcripts archive off`.
+- **Starter pages:** none. Setup offers to add pages for a personal or company brain; add them later with `gbrain setup claude-code --shape personal`.
+
+`gbrain doctor` scores the brain 100/100 and overall health 95/100. The one warning says Claude Code's gbrain registration "has not been verified from this process." That's because this session started before setup ran, so it should go away once you start a new session.
+
+Setup also switched update checks to the stable channel, weekly tested releases. So `gbrain upgrade` will offer stable releases rather than staying on your exact `v0.60.734.0` pin.

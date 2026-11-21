@@ -1,0 +1,129 @@
+{"type": "system", "subtype": "init", "model": "claude-opus-5-5", "session_id": "20261118_041311_8654d9", "timestamp": 1794975192585}
+{"type": "tool_use", "name": "web_extract", "input": {"urls": ["https://github.com/garrytan/gbrain"], "char_limit": 30000}, "timestamp": 1794975198094}
+{"type": "tool_result", "name": "web_extract", "output": "{\n  \"results\": [\n    {\n      \"url\": \"https://github.com/garrytan/gbrain\",\n      \"title\": \"GitHub - garrytan/gbrain: Garry's Opinionated OpenClaw/Hermes Agent Brain · GitHub\",\n      \"content\": \"# garrytan/gbrain\\n- Page: GitHub repository\\n- URL: https://github.com/garrytan/gbrain\\n- Description: Garry's Opinionated OpenClaw/Hermes Agent Brain\\n- License: MIT license\\n- Default branch: master\\n- Created: 2026-04-05T14:40:56.000Z\\n- Commits: 16,048\\n\\n...\\n\\n## README.md\\n**One brain for you and your company, read by every agent you use.** Put your own notes and your company's docs in one place: a facts page, a decisions log, call transcripts. Claude Code, Codex and your other agents look there before they answer, so they stop starting from zero and work from what you and your team actually wrote down.\\nGBrain is MIT-licensed and free to self-host, and it starts with no API keys: search is by keyword until you add one. gbrain.io is optional paid hosting.\\nTip\\n**Need hosted? First time running an agent?** Try **[gbrain.io](https://gbrain.io/?ref=readme)** , hosted GBrain, for the easiest experience: one brain for you and your team, connected to ChatGPT, Claude and Cursor, with nothing to install or keep online. Stuck? Email [support@gbrain.io](mailto:support@gbrain.io) and a person will set it up with you, free.\\n\\n...\\n\\n* Every new Claude Code or Codex session looks in your brain before it answers, without being told to.\\n* Anything you ask your agent to remember is still there in the next session, in every agent connected to the brain.\\n* Your notes and your company's docs are searchable, and your agent answers questions like _\\\"what did we decide about pricing, and why?\\\"_ from them.\\n\\n...\\n\\n| How it connects | Agents |\\n| One command wires memory, hooks and instructions | [Claude Code](https://github.com/garrytan/gbrain/blob/master/docs/mcp/CLAUDE_CODE.md) ( `gbrain setup claude-code` ), [Codex](https://github.com/garrytan/gbrain/blob/master/docs/mcp/CODEX.md) ( `gbrain setup codex` ) |\\n| MCP from its guide, then `gbrain setup <name>` adds the brain-first instructions | [OpenClaw](https://github.com/garrytan/gbrain/blob/master/docs/mcp/OPENCLAW.md) , [Hermes](https://github.com/garrytan/gbrain/blob/master/docs/mcp/HERMES.md) , [opencode](https://github.com/garrytan/gbrain/blob/master/docs/mcp/OPENCODE.md) , Cursor |\\n| MCP from its guide | [ChatGPT](https://github.com/garrytan/gbrain/blob/master/docs/mcp/CHATGPT.md) , [Claude Desktop](https://github.com/garrytan/gbrain/blob/master/docs/mcp/CLAUDE_DESKTOP.md) , [Claude Cowork](https://github.com/garrytan/gbrain/blob/master/docs/mcp/CLAUDE_COWORK.md) , [Perplexity](https://github.com/garrytan/gbrain/blob/master/docs/mcp/PERPLEXITY.md) , [Grok Build](https://github.com/garrytan/gbrain/blob/master/docs/mcp/GROK.md) , [Grok Bot](https://github.com/garrytan/gbrain/blob/master/docs/guides/grok-bot.md) , [Muse](https://github.com/garrytan/gbrain/blob/master/docs/guides/muse.md) , Windsurf and other stdio clients |\\n| Any other coding agent | Paste the install prompt below |\\n\\n...\\n\\n## Install\\nTip\\n**Fastest: hosted GBrain at [gbrain.io](https://gbrain.io/cli?ref=readme) , for any harness.** One command launches a GBrain hosted on gbrain.io; Claude Code, Codex, ChatGPT, Cursor and every other AI you use connect to it, with nothing to keep online.\\n```shell\\ncurl -sSL https://gbrainio.terminalwire.sh | bash\\ngbrainio terminal connect      # in a new terminal\\ngbrainio workspace new         # pick a plan in the browser\\ncurl -fsSL https://bun.sh/install | bash   # skip if Bun 1.4.4+ is installed\\nexport PATH=\\\"$HOME/.bun/bin:$PATH\\\"\\nbun install -g github:garrytan/gbrain   # the gbrain CLI only; no local brain\\n# Claude Code (an existing gbrain entry is kept):\\n(claude mcp get gbrain >/dev/null 2>&1 || claude mcp add --transport http --scope user gbrain https://gbrain.io/mcp) && gbrain setup claude-code --instructions-only\\n# Codex (an existing gbrain entry is kept):\\n(codex mcp get gbrain >/dev/null 2>&1 || codex mcp add gbrain --url https://gbrain.io/mcp) && gbrain setup codex --instructions-only\\n```\\n`gbrain setup <harness> --instructions-only` tells the agent the brain is there; agents seldom call an MCP server nobody told them about. It writes the [brain-first block](https://github.com/garrytan/gbrain/blob/master/docs/guides/setup.md) into `~/.claude/CLAUDE.md` or Codex's `AGENTS.md` (a non-empty `AGENTS.override.md` instead when Codex has one) with a per-turn rule hook, and leaves the MCP entry alone; the same command with `--no-instructions` added takes them out.\\n\\n...\\n\\n### Here's how to self-host it\\nGBrain is MIT-licensed and free to self-host. It needs **Bun 1.4.4 or newer** ; existing worker installs read the [authorization and queue upgrade guide](https://github.com/garrytan/gbrain/blob/master/docs/guides/authorization-upgrade.md) before restarting on this version.\\n\\n...\\n\\n**GBrain is NOT distributed on npm.** The npm `gbrain` package is unr...", "duration_ms": 766, "is_error": false, "timestamp": 1794975198880}
+{"type": "tool_use", "name": "terminal", "input": {"command": "curl -fsSL https://raw.githubusercontent.com/garrytan/gbrain/master/README.md | grep -n -i 'stable' | head -20; echo ---; which bun gbrain; bun --version 2>&1; ls ~/.bun/bin 2>&1; git ls-remote https://github.com/garrytan/gbrain refs/tags/v0.60.734.0 refs/heads/stable"}, "timestamp": 1794975202514}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"27:New releases come out many times a day, but the install command below gives you the **stable channel**: a release reaches it only after the full test suite and a two-hour, 600,000-page load test pass on that exact release, and only when an important fix is waiting or stable is a week old. Updates are never installed without your say-so unless you turn on automatic upgrades. After an upgrade, gbrain shows a one-time notice listing what changed in behaviour. Stable also comes with a written promise about which commands, flags, tools, config keys and output fields stay the same, and how much warning you get before one changes. [docs/STABILITY.md](docs/STABILITY.md) explains that promise, how often stable moves, how to pin a version or go back, and what the faster alpha channel is for.\\n40:> bun install -g github:garrytan/gbrain#stable   # the gbrain CLI only; no local brain\\n60:> `bun add -g gbrain`. Install only via `bun install -g github:garrytan/gbrain#stable`\\n61:> (the soaked stable channel; `#latest-stable` is the alpha line with every release)\\n62:> or `git clone --branch stable` + `bun install && bun link`. Installed by mistake? `gbrain doctor` gives the fix.\\n67:bun install -g github:garrytan/gbrain#stable\\n112:https://raw.githubusercontent.com/garrytan/gbrain/stable/BOOTSTRAP_FOR_AGENTS.md\\n---\\n/usr/bin/bash: line 5: bun: command not found\\nls: cannot access '/harness-state/.bun/bin': No such file or directory\\na278ddf45887e10f70e91e6c78e63d6822d4e492\\trefs/tags/v0.60.734.0\", \"exit_code\": 0, \"error\": null}", "duration_ms": 1050, "is_error": false, "timestamp": 1794975203574}
+{"type": "text", "text": "\n\nDoc", "timestamp": 1794975206545}
+{"type": "text", "text": "s install", "timestamp": 1794975206546}
+{"type": "text", "text": " via", "timestamp": 1794975206546}
+{"type": "text", "text": " `bun install -g github:", "timestamp": 1794975206547}
+{"type": "text", "text": "garrytan/gbr", "timestamp": 1794975206547}
+{"type": "text", "text": "ain#stable`", "timestamp": 1794975206547}
+{"type": "text", "text": " (needs Bun ", "timestamp": 1794975206548}
+{"type": "text", "text": "≥1.4.4).", "timestamp": 1794975206548}
+{"type": "text", "text": " The tag exists;", "timestamp": 1794975206549}
+{"type": "text", "text": " Bun isn't installed", "timestamp": 1794975206549}
+{"type": "text", "text": ", so install", "timestamp": 1794975206549}
+{"type": "text", "text": "ing it first.", "timestamp": 1794975206550}
+{"type": "tool_use", "name": "terminal", "input": {"command": "curl -fsSL https://bun.sh/install | bash 2>&1 | tail -5; export PATH=\"$HOME/.bun/bin:$PATH\"; bun --version", "timeout": 300}, "timestamp": 1794975207311}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": -1, \"error\": \"BLOCKED: Command flagged as dangerous (pipe remote content to shell) but single-query mode (-q) runs without a user present to approve it. Find an alternative approach that avoids this command. To allow dangerous commands in single-query mode, set approvals.single_query_mode: approve in config.yaml.\", \"status\": \"blocked\"}", "duration_ms": 9, "is_error": true, "timestamp": 1794975207323}
+{"type": "tool_use", "name": "terminal", "input": {"command": "uname -m; which npm node unzip; cd $TMPDIR && curl -fsSL -o bun.zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip && python3 -c \"import zipfile;zipfile.ZipFile('bun.zip').extractall('.')\" && mkdir -p ~/.bun/bin && cp bun-linux-x64/bun ~/.bun/bin/ && chmod +x ~/.bun/bin/bun && ~/.bun/bin/bun --version", "timeout": 300}, "timestamp": 1794975210616}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": -1, \"error\": \"BLOCKED: Command flagged as dangerous (script execution via -e/-c flag) but single-query mode (-q) runs without a user present to approve it. Find an alternative approach that avoids this command. To allow dangerous commands in single-query mode, set approvals.single_query_mode: approve in config.yaml.\", \"status\": \"blocked\"}", "duration_ms": 33, "is_error": true, "timestamp": 1794975210653}
+{"type": "tool_use", "name": "terminal", "input": {"command": "uname -m; which npm node unzip; cd $TMPDIR && curl -fsSL -o bun.zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip && ls -la bun.zip", "timeout": 300}, "timestamp": 1794975212747}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"x86_64\\n/usr/bin/unzip\\n-rw-r--r-- 1 1000 988 51794595 Nov 18 04:13 bun.zip\", \"exit_code\": 0, \"error\": null, \"cwd\": \"/harness-state/hermes/cache/scratch\"}", "duration_ms": 1114, "is_error": false, "timestamp": 1794975213876}
+{"type": "tool_use", "name": "terminal", "input": {"command": "cd $TMPDIR && unzip -oq bun.zip && mkdir -p ~/.bun/bin && cp bun-linux-x64/bun ~/.bun/bin/ && chmod +x ~/.bun/bin/bun && ~/.bun/bin/bun --version"}, "timestamp": 1794975215872}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"1.4.4\", \"exit_code\": 0, \"error\": null}", "duration_ms": 1147, "is_error": false, "timestamp": 1794975217030}
+{"type": "tool_use", "name": "terminal", "input": {"command": "export PATH=\"$HOME/.bun/bin:$PATH\"; bun install -g github:garrytan/gbrain#v0.60.734.0 2>&1 | tail -20; which gbrain; gbrain --version", "timeout": 600}, "timestamp": 1794975219755}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": -1, \"error\": \"BLOCKED: Security scan — [MEDIUM] Package threat intelligence could not be completed: Tirith could not complete every configured runtime threat-intelligence check for package 'github:garrytan/gbrain#v0.60.734.0' (default-version resolution was skipped by offline mode; deps.dev metadata lookup was skipped by offline mode; ecosyste.ms metadata lookup was skipped by offline mode). This is incomplete verification, not evidence that the package is malicious.; [MEDIUM] Package threat intelligence could not be completed: Tirith could not complete every configured runtime threat-intelligence check for package '2>&1' (default-version resolution was skipped by offline mode; deps.dev metadata lookup was skipped by offline mode; ecosyste.ms metadata lookup was skipped by offline mode). This is incomplete verification, not evidence that the package is malicious. but single-query mode (-q) runs without a user present to approve it. Find an alternative approach that avoids this command. To allow dangerous commands in single-query mode, set approvals.single_query_mode: approve in config.yaml.\", \"status\": \"blocked\"}", "duration_ms": 165, "is_error": true, "timestamp": 1794975219929}
+{"type": "text", "text": "\n\nI didn't install g", "timestamp": 1794975229017}
+{"type": "text", "text": "brain. The security", "timestamp": 1794975229018}
+{"type": "text", "text": " scanner blocked `", "timestamp": 1794975229023}
+{"type": "text", "text": "bun install -g github:gar", "timestamp": 1794975229024}
+{"type": "text", "text": "rytan/gbrain", "timestamp": 1794975229024}
+{"type": "text", "text": "#v0.60.734.", "timestamp": 1794975229025}
+{"type": "text", "text": "0`.", "timestamp": 1794975229025}
+{"type": "text", "text": " It run", "timestamp": 1794975229026}
+{"type": "text", "text": "s thre", "timestamp": 1794975229026}
+{"type": "text", "text": "at-intel", "timestamp": 1794975229027}
+{"type": "text", "text": "ligence checks on packages,", "timestamp": 1794975229028}
+{"type": "text", "text": " and those can", "timestamp": 1794975229028}
+{"type": "text", "text": "'t fin", "timestamp": 1794975229029}
+{"type": "text", "text": "ish because they", "timestamp": 1794975229030}
+{"type": "text", "text": " need", "timestamp": 1794975229031}
+{"type": "text", "text": " l", "timestamp": 1794975229031}
+{"type": "text", "text": "ookups that this off", "timestamp": 1794975229032}
+{"type": "text", "text": "line s", "timestamp": 1794975229032}
+{"type": "text", "text": "andbox doesn't all", "timestamp": 1794975229033}
+{"type": "text", "text": "ow. The scanner said this", "timestamp": 1794975229033}
+{"type": "text", "text": " means the", "timestamp": 1794975229034}
+{"type": "text", "text": " check is", "timestamp": 1794975229034}
+{"type": "text", "text": " incomplete, not that the", "timestamp": 1794975229035}
+{"type": "text", "text": " package is malicious. This", "timestamp": 1794975229035}
+{"type": "text", "text": " is a one", "timestamp": 1794975229035}
+{"type": "text", "text": "-shot session", "timestamp": 1794975229036}
+{"type": "text", "text": " with no one", "timestamp": 1794975229036}
+{"type": "text", "text": " here", "timestamp": 1794975229036}
+{"type": "text", "text": " to approve the", "timestamp": 1794975229037}
+{"type": "text", "text": " install", "timestamp": 1794975229037}
+{"type": "text", "text": ", so it", "timestamp": 1794975229038}
+{"type": "text", "text": " ref", "timestamp": 1794975229038}
+{"type": "text", "text": "used.\n\nWhat did", "timestamp": 1794975229039}
+{"type": "text", "text": " work", "timestamp": 1794975229040}
+{"type": "text", "text": ":\n- The", "timestamp": 1794975229040}
+{"type": "text", "text": " README's", "timestamp": 1794975229040}
+{"type": "text", "text": " install", "timestamp": 1794975229041}
+{"type": "text", "text": " command", "timestamp": 1794975229041}
+{"type": "text", "text": " (the one", "timestamp": 1794975229041}
+{"type": "text", "text": " mar", "timestamp": 1794975229042}
+{"type": "text", "text": "ked #stable) is `b", "timestamp": 1794975229042}
+{"type": "text", "text": "un install -g github:garr", "timestamp": 1794975229042}
+{"type": "text", "text": "ytan/gbrain#", "timestamp": 1794975229043}
+{"type": "text", "text": "stable`, and", "timestamp": 1794975229043}
+{"type": "text", "text": " it needs Bun 1", "timestamp": 1794975229043}
+{"type": "text", "text": ".4.4 or newer", "timestamp": 1794975229044}
+{"type": "text", "text": ". I", "timestamp": 1794975229044}
+{"type": "text", "text": " sw", "timestamp": 1794975229045}
+{"type": "text", "text": "apped `#stable` for", "timestamp": 1794975229045}
+{"type": "text", "text": " your t", "timestamp": 1794975229046}
+{"type": "text", "text": "ag.\n- The tag `", "timestamp": 1794975229046}
+{"type": "text", "text": "v0.60.734.0", "timestamp": 1794975229046}
+{"type": "text", "text": "` exists on GitHub", "timestamp": 1794975229047}
+{"type": "text", "text": " (commit a278ddf", "timestamp": 1794975229047}
+{"type": "text", "text": ").\n- Bun 1", "timestamp": 1794975229048}
+{"type": "text", "text": ".4.4 is now install", "timestamp": 1794975229048}
+{"type": "text", "text": "ed at `~/.bun", "timestamp": 1794975229048}
+{"type": "text", "text": "/bin/bun`.", "timestamp": 1794975229050}
+{"type": "text", "text": " The official", "timestamp": 1794975229050}
+{"type": "text", "text": " install", "timestamp": 1794975229050}
+{"type": "text", "text": " script was blocked, so I", "timestamp": 1794975229051}
+{"type": "text", "text": " downloaded the release z", "timestamp": 1794975229051}
+{"type": "text", "text": "ip from", "timestamp": 1794975229052}
+{"type": "text", "text": " GitHub and unpac", "timestamp": 1794975229052}
+{"type": "text", "text": "ked it there", "timestamp": 1794975229052}
+{"type": "text", "text": ".", "timestamp": 1794975229052}
+{"type": "text", "text": "\n\nThe docs also offer `", "timestamp": 1794975229052}
+{"type": "text", "text": "git clone --branch stable", "timestamp": 1794975229052}
+{"type": "text", "text": "` follow", "timestamp": 1794975229053}
+{"type": "text", "text": "ed by `bun install && b", "timestamp": 1794975229053}
+{"type": "text", "text": "un link`. I didn't", "timestamp": 1794975229053}
+{"type": "text", "text": " use it", "timestamp": 1794975229053}
+{"type": "text", "text": " because it would just get around the same", "timestamp": 1794975229053}
+{"type": "text", "text": " security", "timestamp": 1794975229053}
+{"type": "text", "text": " check.\n\nTo finish, either", "timestamp": 1794975229054}
+{"type": "text", "text": ":\n1", "timestamp": 1794975229054}
+{"type": "text", "text": ". Run it", "timestamp": 1794975229054}
+{"type": "text", "text": " yourself:\n   `", "timestamp": 1794975229054}
+{"type": "text", "text": "export PATH=\"$HO", "timestamp": 1794975229054}
+{"type": "text", "text": "ME/.bun/bin", "timestamp": 1794975229054}
+{"type": "text", "text": ":$PATH\"", "timestamp": 1794975229054}
+{"type": "text", "text": "`\n   `bun install -", "timestamp": 1794975229055}
+{"type": "text", "text": "g github:garrytan/", "timestamp": 1794975229055}
+{"type": "text", "text": "gbrain#v0.", "timestamp": 1794975229055}
+{"type": "text", "text": "60.734.0`\n   ", "timestamp": 1794975229055}
+{"type": "text", "text": "`gbrain --version`", "timestamp": 1794975229055}
+{"type": "text", "text": "\n2. Or set `appro", "timestamp": 1794975229056}
+{"type": "text", "text": "vals.single_query_m", "timestamp": 1794975229056}
+{"type": "text", "text": "ode: approve` in H", "timestamp": 1794975229056}
+{"type": "text", "text": "ermes' config.yaml", "timestamp": 1794975229056}
+{"type": "text", "text": " (", "timestamp": 1794975229056}
+{"type": "text", "text": "or use", "timestamp": 1794975229057}
+{"type": "text", "text": " an interactive session where", "timestamp": 1794975229057}
+{"type": "text", "text": " you", "timestamp": 1794975229057}
+{"type": "text", "text": " can approve the install),", "timestamp": 1794975229057}
+{"type": "text", "text": " then ", "timestamp": 1794975229057}
+{"type": "text", "text": "ask me again.\n\nDon't", "timestamp": 1794975229057}
+{"type": "text", "text": " use `npm install -g g", "timestamp": 1794975229058}
+{"type": "text", "text": "brain`: that np", "timestamp": 1794975229058}
+{"type": "text", "text": "m package is unrelated to", "timestamp": 1794975229058}
+{"type": "text", "text": " this project.", "timestamp": 1794975229058}
+{"type": "result", "session_id": "20261118_041311_8654d9", "exit_code": 0, "text": "I didn't install gbrain. The security scanner blocked `bun install -g github:garrytan/gbrain#v0.60.734.0`. It runs threat-intelligence checks on packages, and those can't finish because they need lookups that this offline sandbox doesn't allow. The scanner said this means the check is incomplete, not that the package is malicious. This is a one-shot session with no one here to approve the install, so it refused.\n\nWhat did work:\n- The README's install command (the one marked #stable) is `bun install -g github:garrytan/gbrain#stable`, and it needs Bun 1.4.4 or newer. I swapped `#stable` for your tag.\n- The tag `v0.60.734.0` exists on GitHub (commit a278ddf).\n- Bun 1.4.4 is now installed at `~/.bun/bin/bun`. The official install script was blocked, so I downloaded the release zip from GitHub and unpacked it there.\n\nThe docs also offer `git clone --branch stable` followed by `bun install && bun link`. I didn't use it because it would just get around the same security check.\n\nTo finish, either:\n1. Run it yourself:\n   `export PATH=\"$HOME/.bun/bin:$PATH\"`\n   `bun install -g github:garrytan/gbrain#v0.60.734.0`\n   `gbrain --version`\n2. Or set `approvals.single_query_mode: approve` in Hermes' config.yaml (or use an interactive session where you can approve the install), then ask me again.\n\nDon't use `npm install -g gbrain`: that npm package is unrelated to this project.", "tokens": {"input": 18, "output": 2310, "total": 211928, "cache_read": 198653, "cache_write": 10947}, "duration_ms": 36521, "timestamp": 1794975229106}

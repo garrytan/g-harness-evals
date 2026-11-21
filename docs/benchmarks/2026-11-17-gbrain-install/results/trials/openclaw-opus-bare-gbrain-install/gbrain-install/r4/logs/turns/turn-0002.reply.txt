@@ -1,0 +1,17 @@
+gbrain is set up as a free local brain with no API keys. It stores everything in a database on this machine, at `/harness-state/.gbrain`, and nothing is sent anywhere else. A test memory saved and came back on recall. `gbrain doctor` gives it an overall health score of 90/100.
+
+**Settings now in effect (gbrain's defaults):**
+- **Search:** keyword search only, since there's no embedding key. Because of that, recall marks its results as partial.
+- **Saving facts:** agents save only what you explicitly ask them to remember. gbrain recommends turning on automatic saving of facts you state: `gbrain config set memory.auto_writeback salient`.
+- **Upkeep:** free maintenance runs on its own while an agent's gbrain session is open. Nothing is deleted or paid for without you.
+- **Conversation archive: on.** The maintenance pass saves one redacted page per conversation per day from your agent sessions, including OpenClaw, into the brain. This copy stays on this machine. To stop it: `gbrain transcripts archive off`.
+
+**Left as is:**
+- **Agent setup:** Claude Code and Codex aren't installed here, so I skipped the `gbrain setup <agent>` step. You can still use gbrain directly with `gbrain remember …` and `gbrain recall --query …`.
+- **Test fact:** "gbrain install check" is still in the brain. gbrain warned that deleting it would block that exact text from being saved again, and it's harmless.
+
+**PATH:** if `gbrain` isn't found in a new terminal, run `export PATH="$HOME/.bun/bin:$PATH"`.
+
+**Optional:**
+- Import an existing folder of notes: `gbrain import <dir> --no-embed`.
+- I haven't connected gbrain to OpenClaw yet. gbrain's own guide for doing that is `docs/protocol/MEMORY_VERBS_v1.md`, and I can follow it if you want.

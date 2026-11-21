@@ -1,0 +1,21 @@
+gbrain is set up with the recommended defaults and runs free, with no API keys. Saving and recalling a memory works, and Claude Code shows the gbrain server as **✔ Connected**.
+
+**What setup did**
+- **Brain:** it created a new local brain at `~/.gbrain/brain.pglite` with no embeddings and no paid providers. Search uses keywords only, so near-duplicate memories won't be caught.
+- **Claude Code:** it registered gbrain as an MCP server and added hooks that run at session start and on each prompt. It also wrote a short block to `/harness-state/claude/CLAUDE.md` telling the agent to check the brain first. It backed up the previous `settings.json`. The tools appear in **new** Claude Code sessions, not this one.
+- **Check:** I saved a test memory ("gbrain is pinned to release v0.60.734.0") and recalled it. It expires in a day.
+- **Doctor:** `gbrain doctor` scores 95/100. Its one warning says Claude Code has no gbrain registration, but `claude mcp list` shows it connected, so the warning is wrong.
+
+**Settings now in effect**
+- **Search mode:** conservative, the only option that works without keys.
+- **Automatic saving:** off. Agents save only what you ask them to remember. gbrain recommends `gbrain config set memory.auto_writeback salient` if you want it to save lasting facts you mention.
+- **Free upkeep:** on. It runs while a session is open. `gbrain config set maintenance.auto false` turns it off.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, and nothing leaves this machine. `gbrain transcripts archive off` disables it.
+- **Starter pages:** none. You can run `gbrain setup claude-code --shape personal` later.
+- **Version:** setup says the install "follows the stable channel," but automatic upgrades are off. You stay on v0.60.734.0 unless you run `gbrain upgrade`.
+
+**Still to do:** as before, `~/.bun/bin` isn't on your PATH in new shells, since there's no `.bashrc` or `.profile`. Claude Code calls gbrain by its full path, so memory works anyway. To use `gbrain` in a terminal, add `export PATH="$HOME/.bun/bin:$PATH"` to a shell startup file.
+
+Setup also mentions a paid hosted version at gbrain.io that can import this brain; you can ignore it.
+
+I saved a memory note that gbrain is pinned to v0.60.734.0 and should stay free with no API keys.

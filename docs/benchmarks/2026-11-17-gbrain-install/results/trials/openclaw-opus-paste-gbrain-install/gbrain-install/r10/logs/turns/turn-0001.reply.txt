@@ -1,0 +1,47 @@
+I've installed GBrain v0.60.734.0 and connected it to this agent. It runs keyless, and a remember/recall round trip worked through real GBrain calls. One check is still open: I haven't seen a **new OpenClaw conversation** use it, because that needs a gateway restart, which I couldn't do from this turn (details below).
+
+**What changed**
+- **GBrain:** installed the release you named (`github:garrytan/gbrain#v0.60.734.0`), not the one from npm, which is unrelated. Bun 1.4.4 was installed first.
+- **Brain:** created a keyless local brain with `gbrain init --pglite --no-embedding` and finished its setup migrations. `gbrain doctor` reports it healthy. No API keys, nothing sent to paid providers, and no background jobs or cron.
+- **OpenClaw connection:** added a `gbrain` MCP server (tool server) to `openclaw.json`. The rest of your config is unchanged when parsed, but rewriting the file removed its `//` comments. I saved the original at `/harness-state/openclaw/openclaw.json.pre-gbrain.bak`.
+- **Brain-first instructions:** `gbrain setup openclaw` created `/workspace/AGENTS.md` (there wasn't one) containing only GBrain's marked block. It also installed and enabled the `gbrain-turn-rule` plugin, which reminds the agent to check GBrain on every turn.
+- **Identity and instructions:** no SOUL, IDENTITY or other instruction files existed and none were created. Your model and agent settings are unchanged.
+
+**Verification (real GBrain calls)**
+- **Command line:** `remember` saved test fact #1 with provenance `install-check`, and `recall` returned it. A plain keyword search found it too.
+- **MCP, the way OpenClaw calls it:** I started the exact registered command (`gbrain serve --surface starter --advertise verbs`). It listed the tools `remember`, `recall`, `entity`, `forget`, and a few others. `remember` saved fact #2 under entity `projects/gbrain-install-test`. A **separate, fresh** server process then returned fact #2 with `recall`, both by question and by keyword. So memory persists between processes.
+
+**Not yet verified**
+- **New conversation:** the GBrain tools didn't appear in this session, which was already running when I added them. A fresh test session (subagent) and a gateway restart both failed with OpenClaw route/catalog errors, and I'm not allowed to restart the gateway from the shell.
+- **Turn-rule plugin:** `gbrain setup` reported it as not loaded (`turn_hook_not_loaded`). That looks like a GBrain bug: its check drops `OPENCLAW_CONFIG_PATH`, so it looks for `~/.openclaw`, which doesn't exist here. OpenClaw's own check (`openclaw plugins inspect gbrain-turn-rule --runtime`) shows it loaded with `before_prompt_build`. It still only starts working after a gateway restart.
+
+**To finish:** restart the gateway, open a new conversation and ask: *"recall 'gbrain install check'"*. It should return fact #1. Then remove the two test facts with `forget`.
+
+**Search mode (Step 3.5): `conservative` is in effect.** GBrain chose it because there's no chat key and no reranker. You can change it any time:
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+1. **conservative:** 4K token budget, at most 10 chunks, no reranker. Best for cheap models and high-volume use.
+2. **balanced:** 12K budget, 25 chunks, reranked.
+3. **tokenmax:** no budget, 50 chunks, reranked. Widest retrieval; recommended once a chat key is added.
+
+To switch, run `gbrain config set search.mode <mode>` (check with `gbrain search modes`). The reranker in balanced and tokenmax needs a provider key, so on this keyless brain they would mostly just return more text. Neither `gbrain search` nor the memory tools add extra search phrasings (expansion) in any mode.
+
+**Other settings in effect**
+- **Automatic saving:** off. Agents save only what you ask them to. `gbrain config set memory.auto_writeback salient` would save the lasting facts you state, with their source.
+- **Upkeep:** on (free, runs while the gbrain server is open). Turn off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on, keeping redacted copies of conversations locally; nothing leaves the machine. Turn off with `gbrain transcripts archive off`.
+
+**Privacy if several people use this agent:** everyone who talks to the agent reads the same brain, so one person could see another's memories. If that applies, run `gbrain setup openclaw --serves several --members <id,...>` to give each person their own scope.
+
+A hosted version also exists at gbrain.io; I didn't use it.

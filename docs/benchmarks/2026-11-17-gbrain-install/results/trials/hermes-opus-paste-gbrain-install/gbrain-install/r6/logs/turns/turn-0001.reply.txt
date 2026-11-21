@@ -1,0 +1,44 @@
+GBrain memory is added to this agent and works keyless. A real remember/recall round trip passed both from the CLI and over MCP through the exact server command Hermes registered. One check is still open: I couldn't confirm a fresh Hermes chat session recalling a fact end to end. The test launch timed out (exit 124) with no answer and I didn't have time to find out why.
+
+What I set up:
+- **Install:** gbrain v0.60.734.0 (`gbrain --version` prints 0.60.734.0). That tag is also the current `stable` tag. The security scanner here blocked both `bun install -g` and `curl | bash`. So I installed Bun 1.4.4 from Bun's own package and used the guide's git-clone route: clone to /harness-state/gbrain, check out tag v0.60.734.0, then `bun install && bun link`. The binary is /harness-state/.bun/bin/gbrain, and /harness-state/.profile now adds it to PATH.
+- **Brain:** created with `gbrain init --pglite --no-embedding`: local, no API keys, nothing paid. The pending setup migrations finished (exit 0).
+- **Hermes connection:** gbrain is registered as an MCP server in /harness-state/hermes/config.yaml. `hermes mcp test gbrain` connected and found 8 tools.
+- **Your identity and instructions:** unchanged. `gbrain setup hermes --instructions-only` added a marked "check GBrain first" block *after* your existing text in SOUL.md, plus a per-turn reminder hook that `hermes hooks doctor` reports healthy.
+  - `gbrain setup` still exits 1 with `turn_hook_not_loaded`, even though `hermes hooks doctor` lists the hook as healthy. I believe this is a false alarm but haven't confirmed it.
+  - Backups are in /harness-state/hermes/backups/ (SOUL.md.pre-gbrain, config.yaml.pre-gbrain).
+
+Round-trip results:
+- **CLI:** `gbrain remember` saved fact #1 (marker HX-7731, provenance install-check). A separate process got it back with `gbrain recall --entity "gbrain install check"`, and exact keyword recall on `HX-7731` also found it.
+- **MCP:** a `remember` call saved fact #2 (token ZQ-4410). A fresh server process found it with `recall` by both keyword and entity.
+
+Both test facts are still in the brain. Remove them with `gbrain forget` on fact IDs 1 and 2 once you've confirmed recall from a new Hermes session.
+
+Search mode in effect: **conservative**, picked automatically because there's no chat key and no reranker. You can change it any time:
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+1. conservative (in effect): 4K budget, up to 10 chunks, no reranker.
+2. balanced: 12K budget, 25 chunks, reranked (needs a Voyage key).
+3. tokenmax: no budget, 50 chunks, reranked; the widest retrieval.
+
+To switch: `gbrain config set search.mode <mode>`. To check what's running: `gbrain search modes`.
+
+Other first-run settings in effect:
+- **Automatic fact saving:** off; only what you ask it to remember is saved. GBrain recommends `gbrain config set memory.auto_writeback salient`.
+- **Free upkeep:** on while a gbrain session is open. Turn off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on, local only since there's no key. Turn off with `gbrain transcripts archive off`.
+
+Next step: start a new Hermes session, ask it to recall "gbrain install check" (it should return HX-7731), then forget facts 1 and 2.

@@ -1,0 +1,18 @@
+I tried to install gbrain again, but Hermes's security scanner blocked it, so gbrain is still not installed.
+
+The second attempt cloned the v0.60.734.0 tag with `git clone` instead of using `bun install`. The scanner blocked it because it read part of the version number in the command as a raw IP address (0.0.0.1) in a download command. That's almost certainly a false positive, but I can't approve it with no user present. Telling me to carry on doesn't switch that check off, so I've stopped rather than work around it.
+
+Bun 1.4.4 is still installed at `~/.bun/bin/bun`. For your free, no-API-key setup I'd use a local brain with no embeddings, which is the keyless default in the docs.
+
+To finish, either of these works:
+
+1. Run it yourself:
+
+    export PATH="$HOME/.bun/bin:$PATH"
+    bun install -g github:garrytan/gbrain#v0.60.734.0
+    gbrain --version
+    gbrain init --pglite --no-embedding
+
+   Use `gbrain setup claude-code` (or `codex`) instead of the last line if you want it wired into one of those agents.
+
+2. Set `approvals.single_query_mode: approve` in your Hermes `config.yaml` and run me again. I'll do the install and setup above and check that saving and recalling a memory works.

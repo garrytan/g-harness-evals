@@ -1,0 +1,21 @@
+I didn't finish the install. Bun 1.4.4 is installed, but the gbrain package itself is not.
+
+The docs that say `#stable` are AGENTS.md (`bun install -g github:garrytan/gbrain#stable`) and the README. The pinning section of docs/STABILITY.md gives the command for a specific release, and I checked that tag `v0.60.734.0` exists (commit a278ddf).
+
+What happened:
+
+- **Bun:** the official installer pipes a script into bash, and Hermes blocked that. I installed Bun from its GitHub release zip instead, so it's at `~/.bun/bin/bun`.
+- **gbrain:** Hermes's security scanner stopped `bun add -g ... github:garrytan/gbrain#v0.60.734.0`. Its package checks couldn't run in offline mode, so it couldn't vet the package. That doesn't mean the package is bad. This session has no way to ask you for approval, so the scanner blocks by default. I didn't use another install method to get around the scanner.
+
+To finish, run this yourself:
+
+    export PATH="$HOME/.bun/bin:$PATH"
+    V=0.60.734.0
+    git ls-remote --exit-code --tags https://github.com/garrytan/gbrain refs/tags/v$V >/dev/null && \
+      { ! bun pm ls -g 2>/dev/null | grep -q 'gbrain@' || bun remove -g gbrain; } && \
+      bun add -g --backend=copyfile github:garrytan/gbrain#v$V
+    gbrain --version
+
+Or set `approvals.single_query_mode: approve` in Hermes's config.yaml and ask me again.
+
+Running `gbrain upgrade` will move you off v0.60.734.0. If you want to stay on it, also run `gbrain config set self_upgrade.mode off`.

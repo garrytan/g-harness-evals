@@ -1,0 +1,80 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "gbrain v0.60.734.0 is installed and wired into Hermes.\n\nWhat's on disk\n- Bun 1.4.4 at /harness-state/.bun (installed first — gbrain's floor, and the official bun.sh script was downloaded and inspected, not piped to shell; note ~/.bashrc now exports the bun PATH).\n- gbrain CLI at /harness-state/.bun/bin/gbrain, `gbrain --version` → 0.60.734.0, installed from `github:garrytan/gbrain#v0.60.734.0` (not npm — doctor's npm_squat check confirms it's the real binary).\n- Local brain: PGLite at /harness-state/.gbrain/brain.pglite, keyless (`gbrain init --pglite --no-embedding`). Search is keyword-only until you add a Voyage/OpenAI key.\n- Wired into Hermes via `hermes mcp add gbrain … gbrain serve --surface starter --advertise verbs` with GBRAIN_HOME=/harness-state. `hermes mcp test gbrain` → connected in 1.9s, 8 tools (remember, recall, entity, forget, delta, context_pack, synthesize, request_tools). The tools appear in new sessions.\n- Setup migrations applied (`apply-migrations --yes`, exit 0). Verified with remember/recall round-trip; the test fact was purged afterward (live stores deleted, mirror effect committed — the brain is empty again).\n\n`gbrain doctor`: healthy, 75/100, no blocking issues. The warnings are all consequences of being keyless: brain score 33 (no embeddings), auto_chronicle / partial_embedding can't run without a chat key, one transcript page flagged for an unrun secret audit.\n\nSettings in effect (all changeable, none paid without a key you provide)\n- search mode: conservative (~$4/mo downstream on Haiku at 10k queries) — `gbrain config set search.mode balanced|tokenmax`\n- auto writeback: off — agents save only what you ask; recommended `salient` for a personal brain\n- upkeep: on (free tier while a gbrain serve session is open); conversation archive: on (one redacted page per conversation per day, nothing leaves the machine keyless) — turn off with `gbrain transcripts archive off`\n- self-upgrade: notify mode; 0.60.737.0 exists upstream, pinned to 734.0 as requested (`gbrain self-upgrade` moves it)\n\nNot done, deliberately: no skills scaffolded into your workspace, no autopilot/cron service, no API keys, no Postgres migration. Say the word if you want any of them.",
+  "exit": 0,
+  "started_at": "2026-11-18T05:52:36.643Z",
+  "ended_at": "2026-11-18T05:55:56.836Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-18T05:55:56.691Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": false,
+   "wired": [
+    "hermes/config.yaml"
+   ],
+   "ok": true
+  },
+  "events": 259
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Goukloudrand.",
+  "reply_text": "Saved to gbrain (fact #3, entity `goukloudrand`): \"Goukloudrand is the name of the new cat belonging to the user's sister.\" A malformed first attempt (#2) got expired as a duplicate; recall on that entity now returns just the one fact.\n\nTwo small notes: the brain is keyword-only, so it matched on exact wording rather than meaning, and Hermes picks up the gbrain tools in new sessions, not this one.",
+  "exit": 0,
+  "started_at": "2026-11-18T05:55:56.843Z",
+  "ended_at": "2026-11-18T05:56:26.569Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-18T05:56:26.488Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": false,
+   "wired": [
+    "hermes/config.yaml"
+   ],
+   "ok": true
+  },
+  "events": 41
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Goukloudrand.",
+  "exit": 0,
+  "started_at": "2026-11-18T05:56:26.571Z",
+  "ended_at": "2026-11-18T05:56:43.384Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-18T05:56:43.310Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": false,
+   "wired": [
+    "hermes/config.yaml"
+   ],
+   "ok": true
+  },
+  "events": 5
+ }
+]

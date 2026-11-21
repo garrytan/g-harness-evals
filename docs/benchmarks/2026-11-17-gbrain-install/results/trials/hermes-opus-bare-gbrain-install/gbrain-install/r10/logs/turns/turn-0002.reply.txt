@@ -1,0 +1,39 @@
+gbrain is set up as a free local brain with no API keys. Saving and recalling a fact works from the command line, but I couldn't connect it to Hermes.
+
+**What's set up**
+- **The brain:** stored on this machine at `/harness-state/.gbrain/brain.pglite`. It has no API keys, so nothing leaves the machine and nothing costs money.
+- **Test:** I saved a fact ("gbrain install check"), recalled it, then withdrew it with `gbrain forget`. The fact text still stays in history.
+- **Health check:** `gbrain doctor` scores 90/100 with only warnings. The low "brain score" (25/100) is expected for an empty brain with no embeddings. One warning offers a preview-only trust repair for the internal memory page that test fact created; I left it alone because the docs say to ask you first.
+
+**Settings in effect (all gbrain's defaults)**
+- **Search mode:** conservative, the smallest amount of retrieved text per query. It was picked automatically because there's no key. Without embeddings, search is keyword-only. If an agent model later reads results, the estimated input cost at 10K queries a month for Haiku / Sonnet / Opus is about:
+  - conservative: $4 / $80 / $160
+  - balanced: $10 / $200 / $400
+  - tokenmax: $20 / $400 / $800
+
+  To change it: `gbrain config set search.mode <mode>`.
+- **Automatic fact saving:** off, so agents save only what you ask them to remember. gbrain recommends `salient` (durable facts you state, saved with their source), but it's opt-in: `gbrain config set memory.auto_writeback salient`.
+- **Free upkeep:** on while an agent's gbrain session is open. To turn it off: `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on, one redacted page per conversation per day, kept on this machine. To turn it off: `gbrain transcripts archive off`.
+
+**Not connected to Hermes**
+Hermes blocks agents from editing its config file, so I couldn't add gbrain as a tool server there. I also didn't run `gbrain setup hermes --instructions-only`, because it writes to that same file. It would also tell Hermes to check a brain that Hermes can't reach yet.
+
+To finish, add this to `/harness-state/hermes/config.yaml` yourself:
+
+    mcp_servers:
+      gbrain:
+        command: /harness-state/.bun/bin/gbrain
+        args: [serve, --surface, starter, --advertise, verbs]
+        env:
+          GBRAIN_HOME: /harness-state
+          PATH: /harness-state/.bun/bin:/usr/local/bin:/usr/bin:/bin
+        connect_timeout: 60.0
+        enabled: true
+
+Then run `gbrain setup hermes --instructions-only` and start a new session. That command adds a short "check the brain first" note to `SOUL.md` and a per-turn hook.
+
+To add your notes: `gbrain import <dir> --no-embed`.
+
+⚠️ File-mutation verifier: 1 file edit(s) FAILED this turn despite any wording above that may suggest otherwise. Run `git status` or `read_file` to confirm what actually landed.
+  • `/harness-state/hermes/config.yaml` — [patch] Refusing to write to Hermes config file: `/harness-state/hermes/config.yaml` Agent cannot modify security-sensitive configuration. Edit `~/.hermes/config.yaml` directly or use 'hermes…

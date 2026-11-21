@@ -15,7 +15,7 @@ LABEL org.opencontainers.image.title="harness-eval Codex CLI harness" \
       harness-eval.source="https://www.npmjs.com/package/@openai/codex" \
       harness-eval.topology="in-container"
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl jq procps ripgrep \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl jq procps ripgrep unzip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g --no-audit --no-fund "@openai/codex@${CODEX_VERSION}" \

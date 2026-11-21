@@ -12,7 +12,7 @@ LABEL org.opencontainers.image.title="harness-eval OpenClaw harness" \
       harness-eval.source="https://www.npmjs.com/package/openclaw" \
       harness-eval.topology="in-container"
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl ripgrep python3 \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl ripgrep python3 unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # npm 12 blocks lifecycle scripts unless allowed; npm 11 accepts the flag with a warning.

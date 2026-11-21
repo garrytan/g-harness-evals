@@ -1,0 +1,107 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "I installed gbrain v0.60.734.0, and `gbrain --version` reports `gbrain 0.60.734.0`.\n\n- **Bun:** the docs require Bun 1.4.4 or newer, so I installed Bun 1.4.4 with the official script. It's in `~/.bun/bin`.\n- **gbrain:** I ran the README's install command with the version tag in place of `#stable`: `bun install -g github:garrytan/gbrain#v0.60.734.0`. That resolved to commit `a278ddf`.\n- **PATH:** your shell profile doesn't add `~/.bun/bin` to PATH yet, so run `export PATH=\"$HOME/.bun/bin:$PATH\"` in a new shell before using `gbrain`.\n\n`gbrain doctor` stops with `no_brain`, which just means no brain has been created yet. I left two setup steps from the docs undone because they change your configuration, so you can choose when to run them:\n\n```bash\ngbrain init --pglite --no-embedding   # create a local brain\ngbrain setup claude-code              # register the MCP server and add brain-first instructions to ~/.claude/CLAUDE.md\n```\n\ngbrain also printed a notice that this install now follows the stable channel. The docs say updates are only installed if you approve them or turn on automatic upgrades, so you'll stay on v0.60.734.0 unless you do one of those.",
+  "exit": 0,
+  "started_at": "2026-11-17T12:41:34.480Z",
+  "ended_at": "2026-11-17T12:42:08.518Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T12:42:08.366Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": false,
+   "brain_path": null,
+   "mcp": false,
+   "instructions": false,
+   "hook": false,
+   "wired": [],
+   "ok": false
+  },
+  "events": 8
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "reply",
+  "text": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+  "reply_text": "gbrain is set up and connected to Claude Code. It's free and needs no API keys. I used the defaults gbrain recommends, and a save-and-recall test worked.\n\n**What I ran:**\n1. **`gbrain init --pglite --no-embedding`** created a local brain at `~/.gbrain/brain.pglite`. These defaults are now on:\n   - **Search mode:** conservative.\n   - **Saving:** agents save only what you ask them to remember.\n   - **Upkeep:** free upkeep runs while a session is open.\n   - **Conversation archive:** gbrain keeps one redacted page per conversation per day. With no key, nothing leaves this machine.\n2. **`gbrain setup claude-code --no-hooks`** was the command init suggested. It did three things:\n   - Registered the `gbrain` MCP server at user scope in `.claude.json`.\n   - Wrote the instructions that tell agents to check the brain first into a new `CLAUDE.md` in your Claude config folder.\n   - Set up no hooks and no paid providers.\n\n   gbrain's own connection test passed.\n3. **Round-trip test:** `gbrain remember \"gbrain install check\"` saved the fact, and `gbrain recall` found it.\n\n**Health:** `gbrain doctor` scores 85/100 with no failures. The brain score of 25/100 is expected without keys: embeddings score 0 because they're off, and links and orphans score 0 because the brain is nearly empty.\n\nWithout an embedding provider, search matches keywords only. It also catches only exact duplicate facts, so the same fact saved in different words is stored twice.\n\n**What's left for you:**\n- Open a new Claude Code session, since settings are read at startup. Check that `/mcp` lists gbrain, then ask it to recall \"gbrain install check\".\n- The test fact is still saved. Have the agent forget it once you've checked, or leave it; it's harmless.\n- To load existing notes, run `gbrain import <dir> --no-embed`.",
+  "exit": 0,
+  "started_at": "2026-11-17T12:42:08.519Z",
+  "ended_at": "2026-11-17T12:42:39.118Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T12:42:38.922Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": false,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 3,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Miroplud.",
+  "reply_text": "I've saved it in gbrain: your sister's new cat is called Miroplud. I filed it under your sister, since I don't know her name yet. If you tell me, I can file it under her name instead.\n\nRight now, agents only save what you ask them to remember. gbrain can also save important facts you mention, like preferences and decisions, automatically. Say if you'd like that turned on.",
+  "exit": 0,
+  "started_at": "2026-11-17T12:42:39.119Z",
+  "ended_at": "2026-11-17T12:42:53.092Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T12:42:52.880Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": false,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 4,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Miroplud**. You told me that earlier today.",
+  "exit": 0,
+  "started_at": "2026-11-17T12:42:53.093Z",
+  "ended_at": "2026-11-17T12:43:01.119Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T12:43:00.979Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": false,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

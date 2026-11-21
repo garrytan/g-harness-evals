@@ -1,0 +1,19 @@
+GBrain still isn't installed. The same safety block stopped the install again, so nothing after it ran: no brain, no Hermes registration, no remember/recall check.
+
+The block comes from the command security scanner. In unattended single-query mode it won't allow installing a package it couldn't check online, and the only way past it is a config approval setting. Your go-ahead covers the setup choices, not overriding that check. So I didn't change your config or try a different install route to get around the scanner.
+
+Your defaults are noted for when it can run:
+- No API keys, so it stays free (keyword search only).
+- Tokenmax search mode, the guide's recommended default.
+- Save facts from conversations only when asked, not automatically.
+- No extra bundled skills, scheduled jobs or background services.
+
+Either of these unblocks it:
+1. Run this in an interactive terminal (Bun 1.4.4 is already in `~/.bun/bin`):
+
+       export PATH="$HOME/.bun/bin:$PATH"
+       bun install -g github:garrytan/gbrain#v0.60.734.0
+
+2. Or set `approvals.single_query_mode: approve` in Hermes's config.yaml if you're comfortable letting unattended runs execute flagged commands, then re-run your request.
+
+Once it's installed, the rest runs without you. I'll create the brain, apply the defaults above, register it in Hermes with your identity and instructions untouched, and check that a note can be saved and read back with real GBrain calls.

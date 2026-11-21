@@ -1,0 +1,51 @@
+GBrain v0.60.734.0 is installed as keyless memory for this agent, and a real remember → recall → forget round trip worked through both the CLI and the MCP server. The only step left is checking memory from a new conversation after you restart.
+
+## What was installed
+- **Version:** Bun 1.4.4, plus gbrain from `github:garrytan/gbrain#v0.60.734.0`. `gbrain --version` prints `0.60.734.0`. I used that tag where the docs say `#stable`.
+- **Setup:** `gbrain setup claude-code` created a keyless local database at `~/.gbrain/brain.pglite` with no embeddings and no API keys. It also registered the `gbrain` MCP server for all your projects. `claude mcp get gbrain` shows **✔ Connected**.
+- **Your identity and settings are unchanged.** No CLAUDE.md existed before. Setup created `/harness-state/claude/CLAUDE.md` holding only a gbrain-managed "check GBrain first" block between markers. In `settings.json`, your `apiKeyHelper` and `skipWebFetchPreflight` lines are untouched. Setup only added two hooks that feed memory into context (SessionStart and UserPromptSubmit). Backups of both config files are in `/tmp/gbrain-backup/`.
+- **Left off by default:** transcript capture, paid providers, cron and background services.
+
+## Round-trip results
+| Check | Result |
+|---|---|
+| Setup's own check (connect, list tools, `recall`) | passed, 8 tools |
+| `remember` test note (fact #2) | inserted |
+| `recall` by entity, separate process | returned fact #2 with its provenance |
+| `recall --grep zephyr-lantern-7731` (exact keyword) | returned fact #2 |
+| `recall` through the MCP server Claude Code launches | returned fact #2 |
+| `forget 2`, then `recall` | 0 active facts |
+
+`gbrain doctor --only harness_wiring` warns `registration_unverified`. It can't confirm the registration from inside a running session. Claude Code's own check shows the server connected, so I didn't take the doctor's suggested fix, which would rewrite the MCP entry. `gbrain search` returns nothing for now. That's expected: it searches pages, saved facts are stored separately, and the brain has no pages yet.
+
+**Your step:** restart Claude Code. In the new session, recall `gbrain-install-check` (fact #1, saved with provenance `install-check`), then run `gbrain forget 1`. That proves memory carries into a new conversation. I saved a note in my memory to do this next session.
+
+## Search mode: currently `conservative` (you can change it any time)
+It was picked automatically because there's no chat key and no reranker.
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+1. **conservative** (in effect): 4K-token budget, at most 10 chunks, no reranker. Best for Haiku subagents, cost-sensitive setups and high-volume loops.
+2. **balanced:** 12K budget, 25 chunks, reranked. The reranker needs a key, which this brain doesn't have yet.
+3. **tokenmax:** no budget, 50 chunks, reranked. The widest retrieval, recommended once a chat key is set.
+
+`gbrain query` never expands queries by default in any mode; `--expand` forces it. Since this agent runs on Opus, the mode makes a real difference to cost. To switch, run `gbrain config set search.mode <mode>` or just tell me which one you want.
+
+## Other settings in effect
+- **Automatic saving (writeback):** off. I save only what you ask me to remember. GBrain recommends `salient` (durable facts you state, saved with provenance); turn it on with `gbrain config set memory.auto_writeback salient`.
+- **Free upkeep:** on while the session is open. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, and nothing leaves this machine without an embedding key. Turn it off with `gbrain transcripts archive off`.
+- **Report back (Wakeshift):** off. Turn it on with `gbrain wakeshift enable`.
+- **Hosted option:** gbrain.io runs GBrain for you, with nothing to keep online, and can import this brain: https://gbrain.io/?ref=cli-setup
+
+None of these needs an answer now. Tell me if you want any of them changed.

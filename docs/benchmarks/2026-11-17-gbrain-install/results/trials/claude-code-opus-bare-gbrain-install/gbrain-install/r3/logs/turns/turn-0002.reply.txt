@@ -1,0 +1,30 @@
+gbrain is set up and connected to Claude Code, with no API keys and no paid services. It takes effect in your next Claude Code session, where `/mcp` should list gbrain.
+
+**What setup did**
+- Created a local brain at `~/.gbrain/brain.pglite`. It runs keyword search only, so nothing is sent off this machine.
+- Registered gbrain as a tool server for Claude Code, at user scope. `claude mcp get gbrain` reports it as connected.
+- Added two hooks, SessionStart and UserPromptSubmit, to `settings.json`, and a new `CLAUDE.md` with a short block telling agents to check the brain first.
+- Left automatic transcript capture and paid providers off.
+
+**Checks**
+- The setup check passed.
+- I saved a test fact, recalled it, and deleted it; that worked.
+- `gbrain doctor` scores 95/100. The only warning says Claude Code has no gbrain registration, but Claude Code itself reports gbrain as connected, so the warning is outdated and I left it.
+
+**Settings in effect** (each can be changed with one command)
+
+| Setting | Now | To change |
+|---|---|---|
+| Search mode | conservative: a small search budget (about 4K tokens of results per query), chosen because there are no keys | `gbrain config set search.mode balanced` or `tokenmax` |
+| Automatic saving | **salient**, which I turned on: agents save lasting facts you state, noting where each came from. It costs nothing without keys | `gbrain config set memory.auto_writeback off` |
+| Background upkeep | on, free, runs only while a session is open | `gbrain config set maintenance.auto false` |
+| Conversation archive | on: one page per conversation per day with sensitive details removed, kept on this machine | `gbrain transcripts archive off` |
+| Starter pages | none | `gbrain setup claude-code --shape personal` |
+
+**Things to know**
+- Without keys, gbrain can't spot near-duplicate facts (only exact repeats) and search matches keywords only.
+- To add semantic search later, see the embedding command `gbrain init` printed during setup. It needs a Voyage key, which costs money.
+- `gbrain setup claude-code --remove` undoes only what setup wrote.
+- I deleted the temporary clone in `/tmp`.
+
+Setup also pointed to hosted GBrain at gbrain.io, which can import this brain.

@@ -1,0 +1,23 @@
+Nothing is left that I can do from here. The brain is installed and working with the free defaults and no API keys, but it still isn't connected to Hermes.
+
+- **Done:** gbrain 0.60.734.0 is installed with a free local brain at `/harness-state/.gbrain` and no API keys. The defaults are in effect: search mode conservative, automatic fact saving off, free upkeep on, conversation archive on. Saving, recalling and forgetting a test fact worked, and `gbrain doctor` reports 90/100 with only warnings.
+- **Blocked:** Hermes refuses to let me edit `/harness-state/hermes/config.yaml`. That's where the gbrain connection has to go. I also didn't run gbrain's own setup command instead, because it would write to the same protected file.
+
+To finish, paste this at the end of `/harness-state/hermes/config.yaml`:
+
+    mcp_servers:
+      gbrain:
+        command: /harness-state/.bun/bin/gbrain
+        args: [serve, --surface, starter, --advertise, verbs]
+        env:
+          GBRAIN_HOME: /harness-state
+          PATH: /harness-state/.bun/bin:/usr/local/bin:/usr/bin:/bin
+        connect_timeout: 60.0
+        enabled: true
+
+Then run:
+
+    export PATH="$HOME/.bun/bin:$PATH"
+    gbrain setup hermes --instructions-only
+
+That second command tells Hermes to check the brain before answering. Start a new Hermes session afterwards, and gbrain's memory tools will be available.

@@ -1,0 +1,99 @@
+{"type": "system", "subtype": "init", "model": "gpt-6.1-sol", "session_id": "20261118_092916_0520ea", "timestamp": 1794994157689}
+{"type": "tool_use", "name": "web_extract", "input": {"urls": ["https://raw.githubusercontent.com/garrytan/gbrain/v0.60.734.0/README.md"], "char_limit": 20000}, "timestamp": 1794994167191}
+{"type": "tool_result", "name": "web_extract", "output": "{\n  \"results\": [\n    {\n      \"url\": \"https://raw.githubusercontent.com/garrytan/gbrain/v0.60.734.0/README.md\",\n      \"title\": \"raw.githubusercontent.com\",\n      \"content\": \"<h1><picture><source media=\\\"(prefers-color-scheme: dark)\\\" srcset=\\\"docs/images/brand/gbrain-wordmark-light.svg\\\"><img src=\\\"docs/images/brand/gbrain-wordmark.svg\\\" alt=\\\"GBrain\\\" height=\\\"52\\\"></picture></h1>\\n\\n**One brain for you and your company, read by every agent you\\nuse.** Put your own notes and your company's docs in one place: a facts page, a decisions log, call transcripts. Claude Code, Codex and your other agents look there before they answer, so they stop starting from zero and work from what you and your team actually wrote down.\\nGBrain is MIT-licensed and free to self-host, and it starts with no API keys: search is by keyword until you add one. gbrain.io is optional paid hosting.\\n\\n> [!TIP]\\n> **Need hosted? First time running an agent?** Try\\n\\n...\\n\\nNew releases come out many times a day, but the install command below gives you the **stable channel**: a release reaches it only after the full test suite and a two-hour, 600,000-page load test pass on that exact release, and only when an important fix is waiting or stable is a week old.\\n\\n...\\n\\n[docs/STABILITY.md](docs/STABILITY.md) explains that promise, how often stable moves, how to pin a version or go back, and what the faster alpha channel is for.\\n\\n## Install\\n\\n> [!TIP]\\n> **Fastest: hosted GBrain at [gbrain.io](https://gbrain.io/cli?ref=readme), for any harness.** One command launches a GBrain hosted on\\ngbrain.io; Claude Code, Codex, ChatGPT, Cursor and every other AI you use connect to it, with nothing to keep online.\\n>\\n> ```bash\\n> curl -sSL https://gbrainio.terminalwire.sh | bash\\n> gbrainio terminal connect      # in a new terminal\\n> gbrainio workspace new         # pick a plan in the browser\\n> curl -fsSL https://bun.sh/install | bash   # skip if Bun\\n1.4.4+ is installed\\n> export PATH=\\\"$HOME/.bun/bin:$PATH\\\"\\n> bun install -g github:garrytan/gbrain#stable   # the gbrain CLI only; no local brain\\n> # Claude Code (an existing gbrain entry is kept):\\n> (claude mcp get gbrain >/dev/null 2>&1 || claude mcp add --transport http --scope user gbrain\\n\\n...\\n\\nInstall only via `bun install -g github:garrytan/gbrain#stable`\\n> (the soaked stable channel; `#latest-stable` is the alpha line with every release)\\n> or `git clone --branch stable` + `bun install && bun link`. Installed by mistake? `gbrain doctor` gives the fix.\\n> Schema not migrated ([#218](https://github.com/garrytan/gbrain/issues/218))? Run\\n> `gbrain apply-migrations --yes --no-autopilot-install`; if it exits 1, run `gbrain doctor --json`, not another `--yes` (`wedged`: relay its fix).\\n\\n```bash\\nbun install -g github:garrytan/gbrain#stable\\ngbrain setup claude-code              # or: gbrain setup codex\\ngbrain init --pglite --no-embedding   # any other harness, or no agent\\n```\\n`gbrain setup` shows what it will write first (`--dry-run` previews, `--remove` undoes), creates a keyless brain only if none exists, wires MCP, hooks and a brain-first block in the agent's instruction file (`--no-instructions` skips it), and smoke-tests them ([setup guide](docs/guides/setup.md)). For any other coding agent, paste:\\n\\n```text\\nAdd GBrain memory to this existing agent. Read and follow:\\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\\nKeep my current identity and instructions, start keyless, and show me the\\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\\n```\\nPostgres, thin clients, API keys and upgrades: [docs/INSTALL.md](docs/INSTALL.md). Agents: [INSTALL_FOR_AGENTS.md](INSTALL_FOR_AGENTS.md). Memory-only walkthrough: [give your coding agent a memory](docs/tutorials/connect-coding-agent.md).\\n\\n### Add your notes and your company's docs\\nPoint GBrain at two folders of Markdown files: your own notes (an Obsidian vault works) and your company's docs. In the company folder, keep `facts.md` (numbers and statements agents may repeat), `decisions.md` (each decision with its date, its reason and who made it) and call transcripts saved as `.md` files.\\n\\n```bash\\ngbrain sources add notes --path ~/notes --federated --force      # your notes\\ngbrain sources add company --path ~/company --federated --force  # company docs\\ngbrain sync --all                                                # rerun after edits\\n```\\n\\nThen open a new agent session and ask *\\\"What did we decide about a free plan, and\\nwhy?\\\"*: the answer comes from your decisions log. `--federated` puts the folder in default search, and `--force` accepts a folder that isn't a git repository; in a folder that is one, GBrain reads only committed files, so commit your edits before you sync.\\nTo see the shape first, `gbrain sources demo company-brain` runs a fictional company in a few seconds without touching your brain. Before you share a company brain with a team, read the [company-bra...", "duration_ms": 559, "is_error": false, "timestamp": 1794994167766}
+{"type": "tool_use", "name": "terminal", "input": {"command": "pwd; command -v bun || true; command -v gbrain || true; command -v git || true; command -v unzip || true; printf '\\nExisting config directories\\n'; for p in \"$HOME/.gbrain\" \"$HOME/.bun\"; do if test -d \"$p\"; then printf '%s exists\\n' \"$p\"; fi; done; printf '\\nPATH=%s\\n' \"$PATH\""}, "timestamp": 1794994172026}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"/workspace\\n/usr/bin/git\\n/usr/bin/unzip\\n\\nExisting config directories\\n\\nPATH=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games\", \"exit_code\": 0, \"error\": null}", "duration_ms": 292, "is_error": false, "timestamp": 1794994172332}
+{"type": "tool_use", "name": "web_extract", "input": {"urls": ["https://raw.githubusercontent.com/garrytan/gbrain/v0.60.734.0/docs/INSTALL.md", "https://raw.githubusercontent.com/garrytan/gbrain/v0.60.734.0/INSTALL_FOR_AGENTS.md"], "char_limit": 40000}, "timestamp": 1794994172334}
+{"type": "tool_result", "name": "web_extract", "output": "{\n  \"results\": [\n    {\n      \"url\": \"https://raw.githubusercontent.com/garrytan/gbrain/v0.60.734.0/docs/INSTALL.md\",\n      \"title\": \"\",\n      \"content\": \"# Install\\n\\n> [!TIP]\\n> **Fastest: hosted GBrain at [gbrain.io](https://gbrain.io/cli?ref=install-md), for any harness.** One command launches a GBrain hosted on gbrain.io; Claude Code, Codex, ChatGPT, Cursor and every other AI you use connect to it, with nothing to keep online.\\n>\\n> ```bash\\n> curl -sSL https://gbrainio.terminalwire.sh | bash\\n> gbrainio terminal connect      # in a new terminal\\n> gbrainio workspace new         # pick a plan in the browser\\n> curl -fsSL https://bun.sh/install | bash   # skip if Bun 1.4.4+ is installed\\n> export PATH=\\\"$HOME/.bun/bin:$PATH\\\"\\n> bun install -g github:garrytan/gbrain#stable   # the gbrain CLI only; no local brain\\n> # Claude Code (an existing gbrain entry is kept):\\n> (claude mcp get gbrain >/dev/null 2>&1 || claude mcp add --transport http --scope user gbrain https://gbrain.io/mcp) && gbrain setup claude-code --instructions-only\\n> # Codex (an existing gbrain entry is kept):\\n> (codex mcp get gbrain >/dev/null 2>&1 || codex mcp add gbrain --url https://gbrain.io/mcp) && gbrain setup codex --instructions-only\\n> ```\\n>\\n> `gbrain setup <harness> --instructions-only` tells the agent the brain is there; agents seldom call an MCP server nobody told them about. It writes the [brain-first block](guides/setup.md#brain-first-instructions) into `~/.claude/CLAUDE.md` or Codex's `AGENTS.md` (a non-empty `AGENTS.override.md` instead when Codex has one) with a per-turn rule hook, and leaves the MCP entry alone; the same command with `--no-instructions` added takes them out.\\n>\\n> The installer is a shell script for macOS and Linux; read it before you run it.\\n\\n## Here's how to self-host it\\n\\nGBrain is MIT-licensed and free to self-host. The recommended start adds memory to the agent you already use and keeps its identity: [Grok Bot](guides/grok-bot.md), [Muse](guides/muse.md), or [Codex / Claude Code](tutorials/connect-coding-agent.md) (`gbrain setup claude-code` or `gbrain setup codex`). An existing hosted brain connects through [harness access](guides/hosted-harness-access.md). A new personal agent with identity files and a private repo uses the [bootstrap guide](guides/bootstrap.md). Read [memory boundaries](guides/memory-boundaries.md) before enabling cloud providers.\\n\\nThe paths below are the manual equivalents. Pick one; mix later if needed.\\n\\n## 1. Run with an agent platform\\n\\nAlready running [OpenClaw](https://github.com/garrytan/openclaw) or [Hermes](https://github.com/garrytan/hermes)?\\n\\n```bash\\nbun install -g github:garrytan/gbrain#stable\\ngbrain init --pglite --no-embedding   # keyless; no server\\ngbrain skillpack scaffold --harness openclaw --workspace <ws>   # OpenClaw: the five-skill brain-first core\\ngbrain skillpack scaffold --all       # Hermes or any other workspace: every bundled skill (skills/manifest.json)\\ngbrain doctor                         # inspect diagnostics and expected empty-brain warnings\\n```\\n\\nScaffolding creates skill files; it does not prove the harness has loaded them.\\nConnect and verify the intended harness before calling it activated. Entity\\ncapture, recurring jobs and paid enrichment require separate opt-in; none of\\nthe commands above schedules a daily enrichment job.\\n\\nScaffolded skills are first-class files in your agent repo — edit freely. To pull upstream gbrain improvements later, `gbrain skillpack reference <name>` diffs your local copy vs the bundle, and `gbrain skillpack reference --all --update-untouched` replaces the skills you never edited (`--dry-run` previews). If your `RESOLVER.md` / `AGENTS.md` still carries the managed `skillpack install` fence, `gbrain skillpack migrate-fence` strips it once and keeps the routing rows inside it.\\n\\nTo upgrade later, use the [memory-only upgrade path](#memory-only-upgrades)\\nunless services and provider work were deliberately configured. Upgrade runs\\nschema migrations and post-upgrade work; non-TTY execution is supported and\\nskips interactive prompts, not all side effects.\\n\\n## Memory-only upgrades\\n\\n```bash\\nGBRAIN_NO_AUTOPILOT_INSTALL=1 GBRAIN_NO_REEMBED=1 gbrain upgrade --no-autopilot-install\\n```\\n\\nThe autopilot opt-out reaches the migration\\norchestrators, and skips existing service-unit rewrites. Other migrations still\\nrun. `GBRAIN_NO_REEMBED=1` independently skips potentially paid reindexing.\\nThe same command upgrades a clone linked with Bun: it fetches, checks the new\\nrelease's Bun floor, fast-forwards to the checked commit and runs\\n`bun install`. Avoid a bare `git pull`, which skips that check. When the new\\nrelease needs a newer Bun, `gbrain upgrade` refuses and changes nothing (exit\\n78): run `bun upgrade`, then the upgrade again\\n([Bun floor](guides/upgrades-auto-update.md#bun-floor)).\\nVerify a known keyword result, saved fact and process reopen after upgrading.\\nSee the [agent upgrade steps](....", "duration_ms": 1418, "is_error": false, "timestamp": 1794994173802}
+{"type": "tool_use", "name": "terminal", "input": {"command": "curl -fsSL https://bun.sh/install -o \"$TMPDIR/gbrain-bun-install.sh\" && bash \"$TMPDIR/gbrain-bun-install.sh\" && export PATH=\"$HOME/.bun/bin:$PATH\" && bun --version && bun install -g 'github:garrytan/gbrain#v0.60.734.0'", "timeout": 600}, "timestamp": 1794994179056}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": -1, \"error\": \"BLOCKED: Security scan — [MEDIUM] Package threat intelligence could not be completed: Tirith could not complete every configured runtime threat-intelligence check for package 'github:garrytan/gbrain#v0.60.734.0' (default-version resolution was skipped by offline mode; deps.dev metadata lookup was skipped by offline mode; ecosyste.ms metadata lookup was skipped by offline mode). This is incomplete verification, not evidence that the package is malicious. but single-query mode (-q) runs without a user present to approve it. Find an alternative approach that avoids this command. To allow dangerous commands in single-query mode, set approvals.single_query_mode: approve in config.yaml.\", \"status\": \"blocked\"}", "duration_ms": 174, "is_error": true, "timestamp": 1794994179234}
+{"type": "text", "text": "\n\nInstallation", "timestamp": 1794994185098}
+{"type": "text", "text": " was", "timestamp": 1794994185099}
+{"type": "text", "text": " blocked", "timestamp": 1794994185099}
+{"type": "text", "text": " by", "timestamp": 1794994185100}
+{"type": "text", "text": " the", "timestamp": 1794994185100}
+{"type": "text", "text": " environment", "timestamp": 1794994185101}
+{"type": "text", "text": "’s", "timestamp": 1794994185101}
+{"type": "text", "text": " security", "timestamp": 1794994185101}
+{"type": "text", "text": " gate", "timestamp": 1794994185102}
+{"type": "text", "text": ":", "timestamp": 1794994185102}
+{"type": "text", "text": " package", "timestamp": 1794994185103}
+{"type": "text", "text": " threat", "timestamp": 1794994185103}
+{"type": "text", "text": "-int", "timestamp": 1794994185103}
+{"type": "text", "text": "elligence", "timestamp": 1794994185104}
+{"type": "text", "text": " checks", "timestamp": 1794994185104}
+{"type": "text", "text": " couldn", "timestamp": 1794994185105}
+{"type": "text", "text": "’t", "timestamp": 1794994185210}
+{"type": "text", "text": " complete", "timestamp": 1794994185210}
+{"type": "text", "text": " in", "timestamp": 1794994185312}
+{"type": "text", "text": " offline", "timestamp": 1794994185313}
+{"type": "text", "text": " mode", "timestamp": 1794994185314}
+{"type": "text", "text": ",", "timestamp": 1794994185314}
+{"type": "text", "text": " and", "timestamp": 1794994185447}
+{"type": "text", "text": " this", "timestamp": 1794994185447}
+{"type": "text", "text": " non", "timestamp": 1794994185559}
+{"type": "text", "text": "-inter", "timestamp": 1794994185560}
+{"type": "text", "text": "active", "timestamp": 1794994185560}
+{"type": "text", "text": " session", "timestamp": 1794994185561}
+{"type": "text", "text": " cannot", "timestamp": 1794994185674}
+{"type": "text", "text": " approve", "timestamp": 1794994185674}
+{"type": "text", "text": " proceeding", "timestamp": 1794994185675}
+{"type": "text", "text": ".\n\n", "timestamp": 1794994185789}
+{"type": "text", "text": "Nothing", "timestamp": 1794994185789}
+{"type": "text", "text": " was", "timestamp": 1794994185904}
+{"type": "text", "text": " installed", "timestamp": 1794994185905}
+{"type": "text", "text": ".", "timestamp": 1794994185905}
+{"type": "text", "text": " Once", "timestamp": 1794994185906}
+{"type": "text", "text": " package", "timestamp": 1794994186126}
+{"type": "text", "text": " checks", "timestamp": 1794994186135}
+{"type": "text", "text": " are", "timestamp": 1794994186136}
+{"type": "text", "text": " available", "timestamp": 1794994186137}
+{"type": "text", "text": " or", "timestamp": 1794994186137}
+{"type": "text", "text": " installation", "timestamp": 1794994186138}
+{"type": "text", "text": " is", "timestamp": 1794994186252}
+{"type": "text", "text": " approved", "timestamp": 1794994186253}
+{"type": "text", "text": ",", "timestamp": 1794994186254}
+{"type": "text", "text": " retry", "timestamp": 1794994186254}
+{"type": "text", "text": " the", "timestamp": 1794994186468}
+{"type": "text", "text": " exact", "timestamp": 1794994186479}
+{"type": "text", "text": " pinned", "timestamp": 1794994186479}
+{"type": "text", "text": " command", "timestamp": 1794994186599}
+{"type": "text", "text": ":\n\n", "timestamp": 1794994186600}
+{"type": "text", "text": " ", "timestamp": 1794994186600}
+{"type": "text", "text": " bun", "timestamp": 1794994186714}
+{"type": "text", "text": " install", "timestamp": 1794994186714}
+{"type": "text", "text": " -", "timestamp": 1794994186715}
+{"type": "text", "text": "g", "timestamp": 1794994186715}
+{"type": "text", "text": " '", "timestamp": 1794994186716}
+{"type": "text", "text": "github", "timestamp": 1794994186716}
+{"type": "text", "text": ":", "timestamp": 1794994186717}
+{"type": "text", "text": "gar", "timestamp": 1794994186717}
+{"type": "text", "text": "ry", "timestamp": 1794994186718}
+{"type": "text", "text": "tan", "timestamp": 1794994186718}
+{"type": "text", "text": "/g", "timestamp": 1794994186719}
+{"type": "text", "text": "brain", "timestamp": 1794994186719}
+{"type": "text", "text": "#", "timestamp": 1794994186720}
+{"type": "text", "text": "v", "timestamp": 1794994186720}
+{"type": "text", "text": "0", "timestamp": 1794994186720}
+{"type": "text", "text": ".", "timestamp": 1794994186721}
+{"type": "text", "text": "60", "timestamp": 1794994186827}
+{"type": "text", "text": ".", "timestamp": 1794994186827}
+{"type": "text", "text": "734", "timestamp": 1794994186828}
+{"type": "text", "text": ".", "timestamp": 1794994186829}
+{"type": "text", "text": "0", "timestamp": 1794994186830}
+{"type": "text", "text": "'\n\n", "timestamp": 1794994186830}
+{"type": "text", "text": "B", "timestamp": 1794994186831}
+{"type": "text", "text": "un", "timestamp": 1794994186831}
+{"type": "text", "text": " must", "timestamp": 1794994186832}
+{"type": "text", "text": " also", "timestamp": 1794994186832}
+{"type": "text", "text": " be", "timestamp": 1794994186833}
+{"type": "text", "text": " installed", "timestamp": 1794994186833}
+{"type": "text", "text": " first", "timestamp": 1794994186940}
+{"type": "text", "text": ";", "timestamp": 1794994186941}
+{"type": "text", "text": " it", "timestamp": 1794994186941}
+{"type": "text", "text": " isn", "timestamp": 1794994186942}
+{"type": "text", "text": "’t", "timestamp": 1794994186942}
+{"type": "text", "text": " currently", "timestamp": 1794994186942}
+{"type": "text", "text": " available", "timestamp": 1794994186943}
+{"type": "text", "text": ".", "timestamp": 1794994186943}
+{"type": "result", "session_id": "20261118_092916_0520ea", "exit_code": 0, "text": "Installation was blocked by the environment’s security gate: package threat-intelligence checks couldn’t complete in offline mode, and this non-interactive session cannot approve proceeding.\n\nNothing was installed. Once package checks are available or installation is approved, retry the exact pinned command:\n\n  bun install -g 'github:garrytan/gbrain#v0.60.734.0'\n\nBun must also be installed first; it isn’t currently available.", "tokens": {"input": 12, "output": 618, "total": 86810, "cache_read": 55949, "cache_write": 30231}, "duration_ms": 29549, "timestamp": 1794994187238}

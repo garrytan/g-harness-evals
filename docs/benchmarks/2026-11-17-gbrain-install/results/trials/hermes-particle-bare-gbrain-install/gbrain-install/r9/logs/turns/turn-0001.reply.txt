@@ -1,0 +1,20 @@
+Installed and wired.
+
+What's on disk
+- gbrain 0.60.734.0 (the release you named), installed from the `v0.60.734.0` tag — not `#stable`, which now points at 0.60.737.0 and would have installed that instead. Source tarball is at /harness-state/hermes/cache/scratch/gbrain-v0.60.734.0.tar.gz (sha256 61a907cb…), extracted and `bun link`-ed to /harness-state/.bun/bin/gbrain. Bun 1.4.4 installed first, as the guide requires.
+- `gbrain --version` → `gbrain 0.60.734.0`; `gbrain doctor` → status healthy, health_score 100 (schema at head, migrations 0.11.0–0.53.0 applied; the 0.53.0 shared-skills step left only an optional host action).
+- Local keyless brain: PGLite at /harness-state/.gbrain/brain.pglite — no server, no API key, nothing leaves the machine.
+
+Connected to Hermes (per docs/mcp/HERMES.md)
+- `mcp_servers.gbrain` in /harness-state/hermes/config.yaml → `gbrain serve --surface starter --advertise verbs`, GBRAIN_HOME=/harness-state. `hermes mcp test gbrain` connects and discovers 8 tools (recall, remember, entity, forget, context_pack, delta, synthesize, request_tools).
+- Brain-first block appended to /harness-state/hermes/SOUL.md (below your identity text) plus the per-turn `pre_llm_call` hook, which `hermes hooks doctor` reports healthy and allowlisted. `gbrain setup` still prints a `turn_hook_not_loaded` line on re-run — that's a false negative in its own check (it greps for hook lines starting with `[`); gbrain doctor's harness_wiring check itself says "wired, approved".
+- Core memory file at /workspace/.hermes.md (currently 0 entries — fresh brain).
+- Round trip verified: `gbrain remember` + `gbrain recall --grep` returns the fact. New Hermes sessions (not this one) will see the tools as mcp__gbrain__*.
+
+Settings in effect now, changeable any time
+- Search mode: conservative (auto-applied — no chat key or reranker, so it keeps a 4K budget). Downstream input cost of retrieved payload at 10K queries/mo: conservative $4/$80/$160, balanced $10/$200/$400, tokenmax $20/$400/$800 (Haiku 5.5 / Sonnet 5.5 / Opus 5.5). `gbrain config set search.mode balanced|tokenmax`.
+- Writeback: off — agents save only what you ask them to remember. `gbrain config set memory.auto_writeback salient` turns on saving durable facts you state.
+- Upkeep: on (free, runs while a gbrain session is open). `gbrain config set maintenance.auto false` turns it off.
+- Conversation archive: on — one redacted page per agent conversation per day, nothing leaves the machine without an embedding key. `gbrain transcripts archive off`.
+
+One thing left for you: the brain is unbound, so if several people talk to this agent it can answer one with another's memory. If that's the case, `gbrain setup hermes --serves several --members <id,...>`; if it's just you, `--stdio-member <member>`.

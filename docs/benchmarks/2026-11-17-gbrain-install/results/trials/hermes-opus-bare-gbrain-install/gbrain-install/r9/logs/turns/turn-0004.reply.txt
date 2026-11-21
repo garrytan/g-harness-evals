@@ -1,0 +1,29 @@
+gbrain is installed and working, but Hermes can't use it yet. Hooking it into Hermes means editing Hermes's own config file, which I'm not allowed to do, so that last step is yours.
+
+What works now:
+- gbrain v0.60.734.0 runs from `~/.bun/bin/gbrain`, on the free local setup: keyword search only, no API keys, nothing leaves this machine.
+- `~/.bashrc` now adds `~/.bun/bin` to PATH, so new shells will find `gbrain`.
+- I started gbrain's connection service (`gbrain serve --surface starter --advertise verbs`) by hand and it answered. It offered the memory tools: `recall`, `remember`, `entity`, `forget`, `synthesize`, `context_pack`, `delta` and `request_tools`.
+- The test fact from earlier is gone and the brain is empty.
+
+What I didn't do: when I tried to add gbrain to `/harness-state/hermes/config.yaml`, Hermes refused because that file is security-sensitive. gbrain's own `gbrain setup hermes` would edit that same file (and `SOUL.md`), so I didn't use it to get around the block.
+
+To connect it, add this to the end of `/harness-state/hermes/config.yaml` (these are the docs' recommended settings):
+
+```
+mcp_servers:
+  gbrain:
+    command: /harness-state/.bun/bin/gbrain
+    args: [serve, --surface, starter, --advertise, verbs]
+    env:
+      GBRAIN_HOME: /harness-state
+    connect_timeout: 60.0
+    enabled: true
+```
+
+Then, optionally, run `gbrain setup hermes --instructions-only`. It adds a note to `SOUL.md` and a short per-turn reminder to `config.yaml`, telling Hermes to check gbrain before answering. Start a new Hermes session after either step.
+
+The source and docs are in `~/src/gbrain-0.60.734.0`. The Hermes instructions are in `docs/mcp/HERMES.md` there.
+
+⚠️ File-mutation verifier: 1 file edit(s) FAILED this turn despite any wording above that may suggest otherwise. Run `git status` or `read_file` to confirm what actually landed.
+  • `/harness-state/hermes/config.yaml` — [patch] Refusing to write to Hermes config file: `/harness-state/hermes/config.yaml` Agent cannot modify security-sensitive configuration. Edit `~/.hermes/config.yaml` directly or use 'hermes…

@@ -1,0 +1,38 @@
+Installed **GBrain v0.60.734.0** in keyless mode and connected it to Codex. Your identity and existing instructions were preserved; memory instructions were added.
+
+Verified with real GBrain MCP calls:
+
+- `remember` → `recall`
+- Recall after reopening the server
+- Exact keyword search
+- Correction and withdrawal
+
+**Search-mode choice:** conservative remains active. Change anytime with `gbrain config set search.mode <mode>`.
+
+| Mode | Retrieval budget | Maximum chunks |
+|---|---:|---:|
+| **conservative** | 4K tokens | 10 |
+| balanced | 12K tokens | 25 |
+| tokenmax | Unlimited | 50 |
+
+The guide’s illustrative downstream API costs—not your harness subscription price:
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+Automatic fact saving and capture hooks are **off**. Free session upkeep and the default local conversation archive are **on**. Disable the archive with `gbrain transcripts archive off`.
+
+A new-conversation test remains pending. Restart Codex and say: **“Recall the GBrain install-check marker, verify it, then forget it.”** A harmless marker is saved for that check.
+
+[Installation report and verification evidence](/workspace/gbrain-install-report.md)

@@ -1,0 +1,24 @@
+Installed and verified.
+
+**What I did**
+
+1. **Checked the source first.** `garrytan/gbrain` is a real OpenClaw/Hermes-adjacent CLI (MIT, ~33k stars); tag `v0.60.734.0` exists at commit `a278ddf`. Note the npm package named `gbrain` (v1.3.1) is a *different, unrelated* package that the project explicitly warns can shadow the real binary — so a git spec was the right call, not `npm install -g gbrain`.
+2. **Installed Bun** — gbrain requires Bun ≥ 1.4.4 and it wasn't present. Official installer script (`bun.sh/install`, downloaded and inspected before running).
+3. **Used the project's own "Pinning a version" recipe** from `docs/STABILITY.md` rather than blindly swapping `#stable`: verify tag via `git ls-remote`, remove any prior global gbrain, then `bun add -g --backend=copyfile github:garrytan/gbrain#v0.60.734.0`.
+
+**Result**
+
+```
+gbrain 0.60.734.0            (at /harness-state/.bun/bin/gbrain)
+bun 1.4.4
+global: gbrain@github:garrytan/gbrain#a278ddf   ← matches tag v0.60.734.0
+```
+
+**Two things worth knowing**
+
+- `#stable` is a moving branch, not a version — I pinned the exact tag as you asked, so this install stays on 0.60.734.0 through `bun update`. Only `gbrain upgrade` moves it, so don't run that while you want to stay pinned. To silence update notices: `gbrain config set self_upgrade.mode off`.
+- This is a standalone CLI/daemon, **not** an OpenClaw plugin — nothing to register via `openclaw plugins`, and no local brain was created (CLI only, as the docs' default install does).
+
+Also note `~/.bun/bin` isn't on this shell's default `PATH`; start future `gbrain` calls with `export PATH="$HOME/.bun/bin:$PATH"` or add it to the shell rc.
+
+Want me to go further — e.g. `gbrain init --pglite --no-embedding` for a keyless local brain, or `gbrain setup` to wire MCP + brain-first instructions into an agent?

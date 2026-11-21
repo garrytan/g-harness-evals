@@ -1,0 +1,22 @@
+I couldn't install gbrain. Hermes's safety scanner blocked both install commands, and this session runs without a user present, so nobody could approve them.
+
+What happened:
+
+1. The docs say to install with `bun install -g github:garrytan/gbrain#stable`, so I put your tag where `#stable` goes: `bun install -g github:garrytan/gbrain#v0.60.734.0`.
+2. Bun needs to be installed first. Bun's official installer pipes a script into bash, which the scanner blocks. Instead I downloaded Bun 1.4.4 straight from its GitHub releases into `~/.bun/bin/bun`, and it runs.
+3. The `bun install` command was blocked. The scanner couldn't finish its package-safety checks because it is set to offline mode. It says this means the check was incomplete, not that the package is malicious.
+4. The docs' other route is to clone the tag with git and run `bun install && bun link`. That was blocked too, because the scanner misread the version number `0.60.734.0` as an IP address.
+
+I didn't try to rephrase the commands to get past the scanner.
+
+To finish, either:
+
+- Run it yourself:
+  ```
+  export PATH="$HOME/.bun/bin:$PATH"
+  bun install -g github:garrytan/gbrain#v0.60.734.0
+  gbrain --version
+  ```
+- Or set `approvals.single_query_mode: approve` in Hermes's `config.yaml` (or run me in an interactive session where you can approve the command), and I'll re-run it.
+
+The docs warn never to run `npm install -g gbrain` or `bun add -g gbrain`. The `gbrain` package on npm is unrelated to this project.

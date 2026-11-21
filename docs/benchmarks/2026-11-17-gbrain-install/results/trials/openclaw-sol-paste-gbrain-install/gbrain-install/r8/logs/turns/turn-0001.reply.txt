@@ -1,0 +1,41 @@
+**GBrain v0.60.734.0 is installed locally and its memory round trip passed. Native OpenClaw integration is partially blocked.**
+
+- **Preserved:** your identity, existing instructions, and native memory.
+- **Keyless:** local PGLite storage and keyword retrieval; no paid providers enabled.
+- **Added:** an additive memory section in `/workspace/AGENTS.md` and launcher `/workspace/bin/gbrain-memory`.
+- **Storage:** `/harness-state/.gbrain/brain.pglite`, source `default`.
+
+### Verified with real GBrain calls
+- `remember` → fresh-process `recall`: exact synthetic fact returned.
+- Correction → recall: only the corrected fact remained active.
+- `forget` → recall: zero active test facts.
+- Indexed page → exact keyword search: matched; cleanup → search returned no results.
+
+**Remaining blocker:** the OpenClaw setup control could not register MCP or activate the per-turn hook. The CLI fallback works, but native tool activation and new-conversation recall remain **unverified**. One synthetic restart marker remains for that final check; other fixtures were cleaned up.
+
+### Search-mode choice
+**Conservative is active**, appropriate for this keyless start.
+
+1. **Conservative:** 4K-token budget, up to 10 chunks, no reranker.
+2. **Balanced:** 12K-token budget, up to 25 chunks, reranking when configured.
+3. **Tokenmax:** no retrieval budget, up to 50 chunks, reranking when configured.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are the guide’s illustrative downstream API estimates—not your subscription price or total bill. You can choose another mode anytime; that alone does not enable paid providers.
+
+**Other defaults:** automatic fact saving/capture off; free in-session upkeep on; local redacted conversation archive on (`gbrain transcripts archive off` disables it). No daemon, schedule, connector, or off-host backup was configured. Recalled memory still enters your assistant model’s context.
+
+Full evidence and pending activation steps: `/workspace/GBRAIN-SETUP-STATUS.md`.

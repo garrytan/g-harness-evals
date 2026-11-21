@@ -1,0 +1,33 @@
+gbrain is set up as a free local brain with no API keys and is connected to OpenClaw. One piece is unconfirmed: gbrain's own check says the per-turn rule plugin isn't live in the running gateway, which probably needs a gateway restart. I couldn't trigger a restart because the OpenClaw system tool stopped mid-session and told me to start a new conversation.
+
+**What I set up:**
+- **Brain:** created with `gbrain init --pglite --no-embedding`. It's a local database at `/harness-state/.gbrain/brain.pglite` with keyword search only, and none of your notes leave this machine.
+- **Memory tools:** OpenClaw now has a `gbrain` memory server (`gbrain serve --surface starter --advertise verbs`), and `openclaw mcp doctor gbrain --probe` reports it as `ok`.
+- **Agent instructions:** `gbrain setup openclaw` wrote a block into `/workspace/AGENTS.md` that tells the agent to check the brain first. That file didn't exist before.
+- **Per-turn rule:** the same setup installed and enabled a small plugin, `gbrain-turn-rule`, that adds the check-the-brain rule to every turn.
+
+**Tests:** I saved and then recalled a test fact, and recall found it. I then withdrew it with `gbrain forget`. `gbrain doctor` gives 90/100 overall, with all checks OK and some warnings. Its separate brain score is low (25/100) because there's no embedding key and the brain is still empty.
+
+**The plugin check:** OpenClaw's own inspection shows `gbrain-turn-rule` loaded with its hook. gbrain's check (`turn_hook_not_loaded`) still says it isn't active and asks for a gateway restart. If the restart doesn't happen on its own, restart the gateway or ask a new OpenClaw conversation to do it. The memory tools and the `AGENTS.md` instructions already work without it, and `AGENTS.md` takes effect in new sessions.
+
+**Settings in effect** (you can change any of them later):
+
+| Setting | Current | To change |
+|---|---|---|
+| Search mode | `conservative` (small 4K results per search; picked because there's no API key) | `gbrain config set search.mode balanced` or `tokenmax` |
+| Automatic saving of facts you state | off (saves only what you ask it to) | `gbrain config set memory.auto_writeback salient` (gbrain's recommendation) |
+| Free background upkeep | on | `gbrain config set maintenance.auto false` |
+| Daily summary of each conversation | on, stays local | `gbrain transcripts archive off` |
+
+gbrain shows these monthly cost estimates for 10K searches, based on how much text each search feeds the AI model:
+
+```
+                  Haiku 5.5   Sonnet 5.5   Opus 5.5
+  conservative    $4/mo       $80/mo       $160/mo
+  balanced        $10/mo      $200/mo      $400/mo
+  tokenmax        $20/mo      $400/mo      $800/mo
+```
+
+gbrain itself costs nothing as set up.
+
+If several people talk to this agent, gbrain warns that everyone sees the same memory. Running `gbrain setup openclaw --serves several --members <ids>` gives each person their own. If it's only you, you can ignore this.

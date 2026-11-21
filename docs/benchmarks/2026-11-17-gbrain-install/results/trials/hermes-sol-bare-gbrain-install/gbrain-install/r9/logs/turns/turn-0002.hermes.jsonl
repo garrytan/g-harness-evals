@@ -1,0 +1,108 @@
+{"type": "system", "subtype": "init", "model": "gpt-6.1-sol", "session_id": "20261118_092916_0520ea", "timestamp": 1794994192729}
+{"type": "tool_use", "name": "terminal", "input": {"command": "command -v bun || true; command -v gbrain || true; test ! -f \"$TMPDIR/gbrain-bun-install.sh\" || printf 'Bun installer exists\\n'; git ls-remote --tags https://github.com/garrytan/gbrain.git refs/tags/v0.60.734.0", "timeout": 60}, "timestamp": 1794994203664}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"a278ddf45887e10f70e91e6c78e63d6822d4e492\\trefs/tags/v0.60.734.0\", \"exit_code\": 0, \"error\": null}", "duration_ms": 869, "is_error": false, "timestamp": 1794994204532}
+{"type": "tool_use", "name": "terminal", "input": {"command": "curl -fsSL https://bun.sh/install -o \"$TMPDIR/gbrain-bun-install.sh\"", "timeout": 60}, "timestamp": 1794994209163}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": 0, \"error\": null}", "duration_ms": 314, "is_error": false, "timestamp": 1794994209484}
+{"type": "tool_use", "name": "web_extract", "input": {"urls": ["https://raw.githubusercontent.com/garrytan/gbrain/v0.60.734.0/package.json"], "char_limit": 6000}, "timestamp": 1794994209486}
+{"type": "tool_result", "name": "web_extract", "output": "{\n  \"results\": [\n    {\n      \"url\": \"https://raw.githubusercontent.com/garrytan/gbrain/v0.60.734.0/package.json\",\n      \"title\": \"\",\n      \"content\": \"{\\n  \\\"name\\\": \\\"gbrain\\\",\\n  \\\"description\\\": \\\"Postgres-native personal knowledge brain with hybrid RAG search\\\",\\n  \\\"type\\\": \\\"module\\\",\\n  \\\"imports\\\": {\\n    \\\"#postgres\\\": {\\n      \\\"types\\\": \\\"./vendor/postgres/types/index.d.ts\\\",\\n      \\\"require\\\": \\\"./vendor/postgres/cjs/src/index.js\\\",\\n      \\\"default\\\": \\\"./vendor/postgres/src/index.js\\\"\\n    }\\n  },\\n  \\\"main\\\": \\\"src/core/index.ts\\\",\\n  \\\"bin\\\": {\\n    \\\"gbrain\\\": \\\"src/cli.ts\\\"\\n  },\\n  \\\"exports\\\": {\\n    \\\".\\\": \\\"./src/core/index.ts\\\",\\n    \\\"./engine\\\": \\\"./src/core/engine.ts\\\",\\n    \\\"./types\\\": \\\"./src/core/types.ts\\\",\\n    \\\"./operations\\\": \\\"./src/core/operations.ts\\\",\\n    \\\"./minions\\\": \\\"./src/core/minions/index.ts\\\",\\n    \\\"./engine-factory\\\": \\\"./src/core/engine-factory.ts\\\",\\n    \\\"./engine-open\\\": \\\"./src/core/engine-open.ts\\\",\\n    \\\"./pglite-engine\\\": \\\"./src/core/pglite-engine.ts\\\",\\n    \\\"./link-extraction\\\": \\\"./src/core/link-extraction.ts\\\",\\n    \\\"./import-file\\\": \\\"./src/core/import-file.ts\\\",\\n    \\\"./transcription\\\": \\\"./src/core/transcription.ts\\\",\\n    \\\"./embedding\\\": \\\"./src/core/embedding.ts\\\",\\n    \\\"./config\\\": \\\"./src/core/config.ts\\\",\\n    \\\"./markdown\\\": \\\"./src/core/markdown.ts\\\",\\n    \\\"./backoff\\\": \\\"./src/core/backoff.ts\\\",\\n    \\\"./search/hybrid\\\": \\\"./src/core/search/hybrid.ts\\\",\\n    \\\"./search/expansion\\\": \\\"./src/core/search/expansion.ts\\\",\\n    \\\"./search/evidence-delivery\\\": \\\"./src/core/search/evidence-delivery.ts\\\",\\n    \\\"./eval/longmemeval/reader\\\": \\\"./src/eval/longmemeval/reader.ts\\\",\\n    \\\"./think\\\": \\\"./src/core/think/index.ts\\\",\\n    \\\"./ai/gateway\\\": \\\"./src/core/ai/gateway.ts\\\",\\n    \\\"./ai/invocation-guard\\\": \\\"./src/core/ai/invocation-guard.ts\\\",\\n    \\\"./core/model-pricing\\\": \\\"./src/core/model-pricing.ts\\\",\\n    \\\"./extract\\\": \\\"./src/commands/extract.ts\\\",\\n    \\\"./ingestion\\\": \\\"./src/core/ingestion/index.ts\\\",\\n    \\\"./ingestion/test-harness\\\": \\\"./src/core/ingestion/test-harness.ts\\\",\\n    \\\"./core/guardrails\\\": \\\"./src/core/guardrails.ts\\\",\\n    \\\"./core/skillopt\\\": \\\"./src/core/skillopt/index.ts\\\",\\n    \\\"./skill-resolver\\\": \\\"./src/core/skills/resolver/index.ts\\\",\\n    \\\"./pglite-lock\\\": \\\"./src/core/pglite-lock.ts\\\",\\n    \\\"./version\\\": \\\"./src/version.ts\\\"\\n  },\\n  \\\"scripts\\\": {\\n    \\\"dev\\\": \\\"bun run src/cli.ts\\\",\\n    \\\"build\\\": \\\"bun build --compile --no-compile-autoload-bunfig --define GBRAIN_BUILD_COMMIT=\\\\\\\\\\\\\\\"$(git rev-parse HEAD)\\\\\\\\\\\\\\\" --outfile bin/gbrain src/cli.ts src/core/skills/resolver/hook-worker.ts\\\",\\n    \\\"build:all\\\": \\\"bun build --compile --no-compile-autoload-bunfig --define GBRAIN_BUILD_COMMIT=\\\\\\\\\\\\\\\"$(git rev-parse HEAD)\\\\\\\\\\\\\\\" --target=bun-darwin-arm64 --outfile bin/gbrain-darwin-arm64 src/cli.ts src/core/skills/resolver/hook-worker.ts && bun build --compile --no-compile-autoload-bunfig --define GBRAIN_BUILD_COMMIT=\\\\\\\\\\\\\\\"$(git rev-parse HEAD)\\\\\\\\\\\\\\\" --target=bun-linux-x64 --outfile bin/gbrain-linux-x64 src/cli.ts src/core/skills/resolver/hook-worker.ts\\\",\\n    \\\"build:admin\\\": \\\"cd admin && bun run build && cd .. && bun run scripts/build-admin-embedded.ts\\\",\\n    \\\"build:admin-embedded\\\": \\\"bun run scripts/build-admin-embedded.ts\\\",\\n    \\\"build:schema\\\": \\\"bun run scripts/build-schema.ts\\\",\\n    \\\"build:schema-migrations\\\": \\\"bun run scripts/build-schema-migrations.ts\\\",\\n    \\\"new:migration\\\": \\\"bun run scripts/build-schema-migrations.ts --new\\\",\\n    \\\"build:llms\\\": \\\"bun run scripts/build-llms.ts\\\",\\n    \\\"wave-security-scan\\\": \\\"bash scripts/wave-security-scan.sh\\\",\\n    \\\"audit:contributors\\\": \\\"bun scripts/contributor-audit.ts\\\",\\n    \\\"build:flag-registry\\\": \\\"bun run scripts/generate-flag-registry.ts\\\",\\n    \\\"build:operation-manifest\\\": \\\"bun run scripts/build-operation-manifest.ts\\\",\\n    \\\"weights:mine\\\": \\\"bun run scripts/mine-shard-weights.ts\\\",\\n    \\\"build:pglite-snapshot\\\": \\\"bun run scripts/build-pglite-snapshot.ts\\\",\\n    \\\"bench:efficiency\\\": \\\"bash scripts/bench/efficiency/run-all.sh\\\",\\n    \\\"bench:parity\\\": \\\"bash scripts/bench/contract-parity.sh\\\",\\n    \\\"test\\\": \\\"bash scripts/run-unit-parallel.sh\\\",\\n    \\\"test:admin\\\": \\\"playwright test --config admin/playwright.config.ts\\\",\\n    \\\"eval:autocut\\\": \\\"bun test test/search/autocut-eval.test.ts\\\",\\n    \\\"test:full\\\": \\\"bun run verify && bash scripts/run-unit-parallel.sh && bun run test:slow && (if [ -n \\\\\\\"$DATABASE_URL\\\\\\\" ]; then bash scripts/run-e2e.sh; else echo '[test:full] skipped E2E (no DATABASE_URL); run docker-compose -f docker-compose.ci.yml up + bun run test:e2e to include' 1>&2; fi)\\\",\\n    \\\"verify\\\": \\\"bash scripts/run-verify-parallel.sh\\\",\\n    \\\"check:source-config-leak\\\": \\\"bash scripts/check-source-config-leak.sh\\\",\\n    \\\"check:no-pii-agent-voice\\\": \\\"bash scripts/check-no-pii-in-agent-voice.sh\\\",\\n    \\\"check:synthetic-corpus-privacy\\\": \\\"bash scripts/check-synthetic-corpus-privacy.sh\\\",\\n\\n[... m...", "duration_ms": 664, "is_error": false, "timestamp": 1794994210162}
+{"type": "tool_use", "name": "read_file", "input": {"path": "/harness-state/hermes/cache/scratch/gbrain-bun-install.sh", "limit": 400}, "timestamp": 1794994212369}
+{"type": "tool_result", "name": "read_file", "output": "{\"content\": \"1|#!/usr/bin/env bash\\n2|set -euo pipefail\\n3|\\n4|platform=$(uname -ms)\\n5|\\n6|if [[ ${OS:-} = Windows_NT ]]; then\\n7|  if [[ $platform != MINGW64* ]]; then\\n8|    powershell -c \\\"irm bun.sh/install.ps1|iex\\\"\\n9|    exit $?\\n10|  fi\\n11|fi\\n12|\\n13|# Reset\\n14|Color_Off=''\\n15|\\n16|# Regular Colors\\n17|Red=''\\n18|Green=''\\n19|Dim='' # White\\n20|\\n21|# Bold\\n22|Bold_White=''\\n23|Bold_Green=''\\n24|\\n25|if [[ -t 1 ]]; then\\n26|    # Reset\\n27|    Color_Off='\\\\033[0m' # Text Reset\\n28|\\n29|    # Regular Colors\\n30|    Red='\\\\033[0;31m'   # Red\\n31|    Green='\\\\033[0;32m' # Green\\n32|    Dim='\\\\033[0;2m'    # White\\n33|\\n34|    # Bold\\n35|    Bold_Green='\\\\033[1;32m' # Bold Green\\n36|    Bold_White='\\\\033[1m'    # Bold White\\n37|fi\\n38|\\n39|error() {\\n40|    echo -e \\\"${Red}error${Color_Off}:\\\" \\\"$@\\\" >&2\\n41|    exit 1\\n42|}\\n43|\\n44|info() {\\n45|    echo -e \\\"${Dim}$@ ${Color_Off}\\\"\\n46|}\\n47|\\n48|info_bold() {\\n49|    echo -e \\\"${Bold_White}$@ ${Color_Off}\\\"\\n50|}\\n51|\\n52|success() {\\n53|    echo -e \\\"${Green}$@ ${Color_Off}\\\"\\n54|}\\n55|\\n56|command -v unzip >/dev/null ||\\n57|    error 'unzip is required to install bun'\\n58|\\n59|if [[ $# -gt 2 ]]; then\\n60|    error 'Too many arguments, only 2 are allowed. The first can be a specific tag of bun to install. (e.g. \\\"bun-v0.1.4\\\") The second can be a build variant of bun to install. (e.g. \\\"debug-info\\\")'\\n61|fi\\n62|\\n63|case $platform in\\n64|'Darwin x86_64')\\n65|    target=darwin-x64\\n66|    ;;\\n67|'Darwin arm64')\\n68|    target=darwin-aarch64\\n69|    ;;\\n70|'Linux aarch64' | 'Linux arm64')\\n71|    target=linux-aarch64\\n72|    ;;\\n73|'MINGW64'*'ARM64'* | 'MINGW64'*'aarch64'*)\\n74|    target=windows-aarch64\\n75|    ;;\\n76|'MINGW64'*)\\n77|    target=windows-x64\\n78|    ;;\\n79|'Linux riscv64')\\n80|    error 'Not supported on riscv64'\\n81|    ;;\\n82|'Linux x86_64' | *)\\n83|    target=linux-x64\\n84|    ;;\\n85|esac\\n86|\\n87|case \\\"$target\\\" in\\n88|'linux'*)\\n89|    if [ -f /etc/alpine-release ]; then\\n90|        target=\\\"$target-musl\\\"\\n91|    fi\\n92|    ;;\\n93|esac\\n94|\\n95|if [[ $target = darwin-x64 ]]; then\\n96|    # Is this process running in Rosetta?\\n97|    # redirect stderr to devnull to avoid error message when not running in Rosetta\\n98|    if [[ $(sysctl -n sysctl.proc_translated 2>/dev/null) = 1 ]]; then\\n99|        target=darwin-aarch64\\n100|        info \\\"Your shell is running in Rosetta 2. Downloading bun for $target instead\\\"\\n101|    fi\\n102|fi\\n103|\\n104|GITHUB=${GITHUB-\\\"https://github.com\\\"}\\n105|\\n106|github_repo=\\\"$GITHUB/oven-sh/bun\\\"\\n107|\\n108|# A pinned older version ($1) may still split haswell/nehalem; probe AVX2 and\\n109|# request `-baseline` on miss. Current releases alias that name.\\n110|case \\\"$target\\\" in\\n111|'darwin-x64'*)\\n112|    if [[ $(sysctl -a | grep machdep.cpu | grep AVX2) == '' ]]; then\\n113|        target=\\\"$target-baseline\\\"\\n114|    fi\\n115|    ;;\\n116|'linux-x64'*)\\n117|    if [[ $(cat /proc/cpuinfo | grep avx2) = '' ]]; then\\n118|        target=\\\"$target-baseline\\\"\\n119|    fi\\n120|    ;;\\n121|esac\\n122|\\n123|exe_name=bun\\n124|\\n125|if [[ $# = 2 && $2 = debug-info ]]; then\\n126|    target=$target-profile\\n127|    exe_name=bun-profile\\n128|    info \\\"You requested a debug build of bun. More information will be shown if a crash occurs.\\\"\\n129|fi\\n130|\\n131|if [[ $# = 0 ]]; then\\n132|    bun_uri=$github_repo/releases/latest/download/bun-$target.zip\\n133|else\\n134|    bun_uri=$github_repo/releases/download/$1/bun-$target.zip\\n135|fi\\n136|\\n137|install_env=BUN_INSTALL\\n138|bin_env=\\\\$$install_env/bin\\n139|\\n140|install_dir=${!install_env:-$HOME/.bun}\\n141|bin_dir=$install_dir/bin\\n142|exe=$bin_dir/bun\\n143|\\n144|if [[ ! -d $bin_dir ]]; then\\n145|    mkdir -p \\\"$bin_dir\\\" ||\\n146|        error \\\"Failed to create install directory \\\\\\\"$bin_dir\\\\\\\"\\\"\\n147|fi\\n148|\\n149|curl --fail --location --progress-bar --output \\\"$exe.zip\\\" \\\"$bun_uri\\\" ||\\n150|    error \\\"Failed to download bun from \\\\\\\"$bun_uri\\\\\\\"\\\"\\n151|\\n152|unzip -oqd \\\"$bin_dir\\\" \\\"$exe.zip\\\" ||\\n153|    error 'Failed to extract bun'\\n154|\\n155|mv \\\"$bin_dir/bun-$target/$exe_name\\\" \\\"$exe\\\" ||\\n156|    error 'Failed to move extracted bun to destination'\\n157|\\n158|chmod +x \\\"$exe\\\" ||\\n159|    error 'Failed to set permissions on bun executable'\\n160|\\n161|rm -r \\\"$bin_dir/bun-$target\\\" \\\"$exe.zip\\\"\\n162|\\n163|tildify() {\\n164|    if [[ $1 = $HOME/* ]]; then\\n165|        local replacement=\\\\~/\\n166|\\n167|        echo \\\"${1/$HOME\\\\//$replacement}\\\"\\n168|    else\\n169|        echo \\\"$1\\\"\\n170|    fi\\n171|}\\n172|\\n173|success \\\"bun was installed successfully to $Bold_Green$(tildify \\\"$exe\\\")\\\"\\n174|\\n175|if command -v bun >/dev/null; then\\n176|    # Install completions, but we don't care if it fails\\n177|    IS_BUN_AUTO_UPDATE=true $exe completions &>/dev/null || :\\n178|\\n179|    echo \\\"Run 'bun --help' to get started\\\"\\n180|    exit\\n181|fi\\n182|\\n183|refresh_command=''\\n184|\\n185|tilde_bin_dir=$(tildify \\\"$bin_dir\\\")\\n186|quoted_install_dir=\\\\\\\"${install_...", "duration_ms": 14, "is_error": false, "timestamp": 1794994212388}
+{"type": "tool_use", "name": "terminal", "input": {"command": "bash \"$TMPDIR/gbrain-bun-install.sh\" && \"$HOME/.bun/bin/bun\" --version; git clone --depth 1 --branch v0.60.734.0 https://github.com/garrytan/gbrain.git \"$HOME/gbrain\"", "timeout": 600}, "timestamp": 1794994215578}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": -1, \"error\": \"BLOCKED: Security scan — [MEDIUM] URL uses raw IP address: URL points to IP address 0.0.0.1 instead of a domain name; [MEDIUM] Schemeless URL in sink context: URL without explicit scheme passed to a command that downloads/executes content; [HIGH] Nested executable body could not be resolved: The shell will execute a grouped, encoded, or dynamically selected value, but Tirith cannot prove the complete executable body. The command is blocked instead of trusting its benign-looking outer leader.; [HIGH] nested command analysis was incomplete: A destructive command may be hidden beyond Tirith's bounded nested-shell depth, lexical-candidate, input, or retained-body budget. but single-query mode (-q) runs without a user present to approve it. Find an alternative approach that avoids this command. To allow dangerous commands in single-query mode, set approvals.single_query_mode: approve in config.yaml.\", \"status\": \"blocked\"}", "duration_ms": 174, "is_error": true, "timestamp": 1794994215762}
+{"type": "text", "text": "\n\nI", "timestamp": 1794994218518}
+{"type": "text", "text": "’ve", "timestamp": 1794994218519}
+{"type": "text", "text": " selected", "timestamp": 1794994218520}
+{"type": "text", "text": " the", "timestamp": 1794994218520}
+{"type": "text", "text": " free", "timestamp": 1794994218521}
+{"type": "text", "text": " defaults", "timestamp": 1794994218521}
+{"type": "text", "text": ":", "timestamp": 1794994218546}
+{"type": "text", "text": " local", "timestamp": 1794994218551}
+{"type": "text", "text": " storage", "timestamp": 1794994218552}
+{"type": "text", "text": ",", "timestamp": 1794994218656}
+{"type": "text", "text": " keyword", "timestamp": 1794994218658}
+{"type": "text", "text": " search", "timestamp": 1794994218661}
+{"type": "text", "text": ",", "timestamp": 1794994218661}
+{"type": "text", "text": " no", "timestamp": 1794994218667}
+{"type": "text", "text": " API", "timestamp": 1794994218670}
+{"type": "text", "text": " keys", "timestamp": 1794994218676}
+{"type": "text", "text": ",", "timestamp": 1794994218677}
+{"type": "text", "text": " no", "timestamp": 1794994218677}
+{"type": "text", "text": " paid", "timestamp": 1794994218678}
+{"type": "text", "text": " enrichment", "timestamp": 1794994218762}
+{"type": "text", "text": ",", "timestamp": 1794994218773}
+{"type": "text", "text": " and", "timestamp": 1794994218780}
+{"type": "text", "text": " no", "timestamp": 1794994218782}
+{"type": "text", "text": " background", "timestamp": 1794994218785}
+{"type": "text", "text": " services", "timestamp": 1794994218787}
+{"type": "text", "text": ".\n\n", "timestamp": 1794994218793}
+{"type": "text", "text": "Installation", "timestamp": 1794994218795}
+{"type": "text", "text": " is", "timestamp": 1794994218799}
+{"type": "text", "text": " still", "timestamp": 1794994218802}
+{"type": "text", "text": " blocked", "timestamp": 1794994218805}
+{"type": "text", "text": " by", "timestamp": 1794994218807}
+{"type": "text", "text": " the", "timestamp": 1794994218808}
+{"type": "text", "text": " environment", "timestamp": 1794994218808}
+{"type": "text", "text": "’s", "timestamp": 1794994218809}
+{"type": "text", "text": " security", "timestamp": 1794994218809}
+{"type": "text", "text": " policy", "timestamp": 1794994218865}
+{"type": "text", "text": ".", "timestamp": 1794994218877}
+{"type": "text", "text": " It", "timestamp": 1794994218878}
+{"type": "text", "text": " rejected", "timestamp": 1794994218980}
+{"type": "text", "text": " both", "timestamp": 1794994218992}
+{"type": "text", "text": " the", "timestamp": 1794994218996}
+{"type": "text", "text": " package", "timestamp": 1794994219088}
+{"type": "text", "text": "-install", "timestamp": 1794994219204}
+{"type": "text", "text": " command", "timestamp": 1794994219215}
+{"type": "text", "text": " and", "timestamp": 1794994219217}
+{"type": "text", "text": " the", "timestamp": 1794994219223}
+{"type": "text", "text": " Bun", "timestamp": 1794994219224}
+{"type": "text", "text": " installer", "timestamp": 1794994219225}
+{"type": "text", "text": ";", "timestamp": 1794994219297}
+{"type": "text", "text": " your", "timestamp": 1794994219308}
+{"type": "text", "text": " preferences", "timestamp": 1794994219392}
+{"type": "text", "text": " don", "timestamp": 1794994219403}
+{"type": "text", "text": "’t", "timestamp": 1794994219405}
+{"type": "text", "text": " override", "timestamp": 1794994219498}
+{"type": "text", "text": " that", "timestamp": 1794994219510}
+{"type": "text", "text": " gate", "timestamp": 1794994219512}
+{"type": "text", "text": ",", "timestamp": 1794994219610}
+{"type": "text", "text": " and", "timestamp": 1794994219621}
+{"type": "text", "text": " I", "timestamp": 1794994219626}
+{"type": "text", "text": " won", "timestamp": 1794994219629}
+{"type": "text", "text": "’t", "timestamp": 1794994219630}
+{"type": "text", "text": " disable", "timestamp": 1794994219636}
+{"type": "text", "text": " it", "timestamp": 1794994219638}
+{"type": "text", "text": ".\n\n", "timestamp": 1794994219641}
+{"type": "text", "text": "Nothing", "timestamp": 1794994219644}
+{"type": "text", "text": " was", "timestamp": 1794994219646}
+{"type": "text", "text": " installed", "timestamp": 1794994219647}
+{"type": "text", "text": ".", "timestamp": 1794994219647}
+{"type": "text", "text": " Completing", "timestamp": 1794994219705}
+{"type": "text", "text": " the", "timestamp": 1794994219717}
+{"type": "text", "text": " pinned", "timestamp": 1794994219722}
+{"type": "text", "text": " v", "timestamp": 1794994219723}
+{"type": "text", "text": "0", "timestamp": 1794994219815}
+{"type": "text", "text": ".", "timestamp": 1794994219828}
+{"type": "text", "text": "60", "timestamp": 1794994219834}
+{"type": "text", "text": ".", "timestamp": 1794994219837}
+{"type": "text", "text": "734", "timestamp": 1794994219848}
+{"type": "text", "text": ".", "timestamp": 1794994219851}
+{"type": "text", "text": "0", "timestamp": 1794994219853}
+{"type": "text", "text": " install", "timestamp": 1794994219857}
+{"type": "text", "text": " requires", "timestamp": 1794994219863}
+{"type": "text", "text": " an", "timestamp": 1794994219864}
+{"type": "text", "text": " environment", "timestamp": 1794994219864}
+{"type": "text", "text": " where", "timestamp": 1794994219865}
+{"type": "text", "text": " the", "timestamp": 1794994219912}
+{"type": "text", "text": " security", "timestamp": 1794994220012}
+{"type": "text", "text": " checks", "timestamp": 1794994220022}
+{"type": "text", "text": " can", "timestamp": 1794994220028}
+{"type": "text", "text": " pass", "timestamp": 1794994220028}
+{"type": "text", "text": " or", "timestamp": 1794994220123}
+{"type": "text", "text": " an", "timestamp": 1794994220221}
+{"type": "text", "text": " operator", "timestamp": 1794994220330}
+{"type": "text", "text": " can", "timestamp": 1794994220340}
+{"type": "text", "text": " approve", "timestamp": 1794994220341}
+{"type": "text", "text": " execution", "timestamp": 1794994220427}
+{"type": "text", "text": ".", "timestamp": 1794994220434}
+{"type": "result", "session_id": "20261118_092916_0520ea", "exit_code": 0, "text": "I’ve selected the free defaults: local storage, keyword search, no API keys, no paid enrichment, and no background services.\n\nInstallation is still blocked by the environment’s security policy. It rejected both the package-install command and the Bun installer; your preferences don’t override that gate, and I won’t disable it.\n\nNothing was installed. Completing the pinned v0.60.734.0 install requires an environment where the security checks can pass or an operator can approve execution.", "tokens": {"input": 15, "output": 531, "total": 168268, "cache_read": 161133, "cache_write": 6589}, "duration_ms": 27876, "timestamp": 1794994220605}

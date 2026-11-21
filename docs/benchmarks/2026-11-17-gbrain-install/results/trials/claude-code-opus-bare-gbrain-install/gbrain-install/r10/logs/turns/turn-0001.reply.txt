@@ -1,0 +1,22 @@
+I installed gbrain v0.60.734.0 by running `bun install -g github:garrytan/gbrain#v0.60.734.0` where the docs say `#stable`. It resolved to commit `a278ddf`, which matches the tag, and `gbrain --version` prints `gbrain 0.60.734.0`.
+
+**What I did**
+1. **Bun 1.4.4:** it wasn't on the machine, so I installed it with the docs' `bun.sh` installer. It lives in `~/.bun/bin`. You'll need to add that to your PATH yourself if your shell profile doesn't already include it.
+2. **gbrain CLI:** installed globally from the pinned tag, not from npm. The docs warn that the npm package called `gbrain` is a different project.
+3. **Brain and Claude Code setup:** I ran `gbrain setup claude-code`, the keyless step the guide treats as part of installing.
+   - It created a local brain at `~/.gbrain/brain.pglite`. No API keys are configured, so it uses keyword search only.
+   - It registered a `gbrain` MCP server in `.claude.json` and added two hooks (SessionStart, UserPromptSubmit) in `settings.json`.
+   - It also created a new user-level `CLAUDE.md` that tells the agent to check the brain first.
+   - Its built-in check passed: the MCP server started, listed 8 tools and answered a recall request.
+
+**One warning to know about:** `gbrain doctor` scores 95 and has one warning, `harness_wiring`, saying Claude Code has no gbrain MCP registration. This session read its config before setup wrote it, so I expect a new session to clear it. To confirm, open one and check that `/mcp` lists gbrain.
+
+**Settings now in effect** (change any time):
+- **Search mode:** conservative. With no API keys, the higher modes can't run. Switch with `gbrain config set search.mode balanced|tokenmax`. The docs estimate retrieval input cost at 10K queries a month as $4 / $80 / $160 for conservative, $10 / $200 / $400 for balanced and $20 / $400 / $800 for tokenmax (Haiku / Sonnet / Opus).
+- **Automatic saving:** off, so agents save only what you ask them to remember. The docs recommend `gbrain config set memory.auto_writeback salient`, which saves lasting facts you state.
+- **Free upkeep:** on. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on. It keeps one redacted page per session per day, and nothing leaves the machine without an embedding key. Turn it off with `gbrain transcripts archive off`.
+- **Starter pages:** none were created. `gbrain setup claude-code --shape personal|company|both` adds some.
+- **Transcript capture and paid providers:** both off.
+
+There is also a hosted version at gbrain.io if you'd rather not run it locally. I removed the temporary clone I used to read the docs.

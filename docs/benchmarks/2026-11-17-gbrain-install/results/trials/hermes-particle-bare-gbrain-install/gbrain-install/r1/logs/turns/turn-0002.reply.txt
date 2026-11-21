@@ -1,0 +1,19 @@
+Done — gbrain is installed, has a live brain, and is wired into Hermes.
+
+What's in place
+- CLI v0.60.734.0 (exact tag you named, commit a278ddf verified) at `~/.bun/bin/gbrain`, Bun 1.4.4, PATH set in `~/.bashrc`.
+- Brain: PGLite at `/harness-state/.gbrain/brain.pglite` — local file, keyless, no server, no Docker. Schema at v318 (current).
+- Hermes wiring: stdio MCP server `gbrain` registered via `hermes mcp add`; `hermes mcp test gbrain` connects in ~2s and lists 8 memory tools. Brain-first instruction block in `SOUL.md` and a `pre_llm_call` hook in `config.yaml`.
+- Verified with real calls: `remember` → fact #1, `recall` → returns it. `gbrain doctor`: health 90/100, one warning, schema and connection clean.
+
+Settings in effect (all free, no keys)
+- Search mode: conservative, keyword-only (no embedding provider, so no vectors — that's the no-key tradeoff).
+- Auto-writeback: salient (durable facts you state get saved with provenance; transient ones expire in 3d).
+- Free upkeep on while a gbrain session is open; conversation archive on (one redacted page/day, local only).
+- Nothing paid is enabled and no key is configured. Semantic search would need a Voyage key — skipping it as you asked.
+
+Two caveats worth knowing
+1. MCP tools load at session start, so this session can't see them. A new Hermes session will have `mcp__gbrain__*`.
+2. `gbrain` runs from the linked checkout at `/workspace/gbrain` — don't delete that directory. I also left pre-change backups at `/harness-state/hermes/backups/{config.yaml,SOUL.md}.pre-gbrain.bak`.
+
+To start using it: `gbrain import ~/notes/ --no-embed` to index markdown, or just ask in a new session.

@@ -1,0 +1,61 @@
+GBrain is installed and verified. Here's the report.
+
+## What was installed
+
+| Item | Result |
+|---|---|
+| Runtime | Bun 1.4.4 (at the gbrain floor) in `~/.bun/bin` |
+| gbrain | **0.60.734.0**, installed where the docs say `#stable`: `bun install -g github:garrytan/gbrain#v0.60.734.0` (resolved to commit `a278ddf`) |
+| Brain | Keyless PGLite at `/harness-state/.gbrain/brain.pglite`, schema v318, `gbrain doctor` = **healthy, 100** |
+| Provider keys | None configured — nothing paid can run; keyword retrieval only, embeddings off |
+
+**Identity preserved:** your workspace had no `AGENTS.md`/`SOUL.md` to begin with, so nothing was replaced. I did *not* run the soul-audit/bootstrap interview. The only instruction file added is GBrain's managed brain-first block in `/workspace/AGENTS.md`, fenced by `<!-- gbrain:brain-first:begin/end -->` so you can edit around it or remove it with `gbrain setup openclaw --instructions-only --no-instructions`.
+
+## Wiring into this agent
+
+- MCP server `gbrain` registered stdio (`serve --surface starter --advertise verbs`, `GBRAIN_HOME=/harness-state`), probe reports **8 tools** (`remember`, `recall`, `entity`, `search`, `query`, `get_page`, `forget`, `request_tools`…), `openclaw mcp doctor gbrain` = ok.
+- Per-turn brain-first rule plugin `gbrain-turn-rule` installed and **activated** (it fires beside each user turn — the OpenClaw route the docs prefer, since a listed skill gets followed only 1–3% of the time).
+- Ran `openclaw mcp reload` so the tools land on your **next turn** without restarting the gateway. I did not restart the gateway mid-conversation.
+
+## Round trip verified with real calls
+
+- **CLI (separate processes):** `remember` → fact #1 `inserted`, then `recall --grep` in a new process returned it (proves local persistence). Fact #1 was then `forget`-ten as the docs' install-check cleanup.
+- **MCP protocol (the path the agent will use):** `initialize` → `tools/list` → `tools/call remember` → fact #2 `inserted` (entity `gbrain-mcp-check`, provenance `install-check`) → `tools/call recall` returned the fact with its provenance and `origin: mcp:remember`.
+- Fact #2 is deliberately left in place as the marker to re-`recall` after your next turn/session; run `gbrain forget 2` once you've seen it come back.
+
+## Search mode — your choice
+
+Currently **conservative** (auto-applied: no chat key and no reranker, so a tight 4K budget was the only honest default).
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+1. **conservative** — 4K budget, 10 chunks, no reranker. In effect now; best while keyless.
+2. **balanced** — 12K budget, 25 chunks, reranked (needs a reranker key to actually rerank).
+3. **tokenmax** — no budget, 50 chunks, reranked. Recommended once you add a chat key.
+
+I can't switch it mid-answer without your pick — say the word and I'll run `gbrain config set search.mode <mode>` and confirm with `gbrain search modes`.
+
+## Other first-run settings in effect
+
+- **Writeback: off** — I save only what you explicitly ask. `gbrain config set memory.auto_writeback salient` turns on durable-fact saving with provenance (recommended for a personal brain).
+- **Upkeep: on** — free, runs while the gbrain session is open. Off: `gbrain config set maintenance.auto false`.
+- **Conversation archive: on** — one redacted page per conversation per day, local only while keyless. Off: `gbrain transcripts archive off`.
+
+## Notes
+
+- Skip-listed as the docs instruct: no daemon, cron, autopilot, connectors, or paid enrichment. The v0.53.0 shared-skills migration left a host-publication step pending (no grants changed); harmless for memory-only use.
+- I did not scaffold the five bundled skills into the workspace — OpenClaw shows every workspace skill in every prompt, so they cost tokens each turn, and the turn rule already covers brain-first. Happy to add them if you want.
+- OpenClaw's config writer rewrote `openclaw.json` as plain JSON, dropping its existing JSON5 comments (values unchanged).
+- Worth knowing: hosted GBrain at gbrain.io is the alternative if you'd rather not keep this brain online — but this one is local and yours.

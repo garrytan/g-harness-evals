@@ -1,0 +1,114 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "GBrain memory is installed on this agent and works. I saved a fact and got it back with real GBrain calls, both from the command line and through the MCP connection OpenClaw now uses. Your agent's identity and instructions are unchanged. It runs keyless: no API keys, and nothing leaves this machine.\n\nOne check is still open. A fresh OpenClaw conversation hasn't recalled the fact yet, because the new memory connection and per-turn rule only load after the gateway restarts. I didn't restart the gateway because this session runs on it.\n\n**What I installed and changed**\n- **GBrain v0.60.734.0** (`github:garrytan/gbrain#v0.60.734.0`), plus Bun 1.4.4 to run it. I added Bun's folder to your command path in `~/.profile`, and a new shell finds `gbrain`.\n- **The brain itself**: a local, keyless database at `~/.gbrain/brain.pglite`. The pending setup steps it asked for are done.\n- **OpenClaw connection**: added `gbrain` as a memory server in `openclaw.json`. OpenClaw's own checks pass, and the server offers 8 tools, including `remember`, `recall` and `forget`. Saving the file removed its `//` comments; all the settings are the same.\n- **Per-turn rule**: a short plugin that reminds the agent to check GBrain before each answer. OpenClaw shows it enabled and loaded.\n  - The GBrain setup command still ends with `turn_hook_not_loaded`. That's a false alarm: its check runs without the setting that points OpenClaw at your config folder, so it can't find the plugin. Running the same check with your setup shows it loaded.\n- **AGENTS.md**: `/workspace` had no `AGENTS.md`, so GBrain created one containing only its marked \"check GBrain first\" block. I created no SOUL or IDENTITY files, scheduled jobs, automatic saving or paid services.\n\n**Verification**\n- **Command line**: saved fact #1 (\"gbrain install check: OpenClaw memory round trip marker 2026-11-17\", source `install-check`), then recalled it in a separate process.\n- **OpenClaw's connection**: started GBrain exactly as OpenClaw is configured to, saved fact #2, then recalled facts #2 and #1 in a new process. I then deleted #2 and confirmed only #1 remains.\n- **Keyword search**: saved a test note `notes/gbrain-install-check` with the marker `zephyr-quokka-7731`, and searching for that marker returns it.\n\n**Search mode: `conservative` (applied automatically: no API keys)**\n```\nEstimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n                  ($0.10/M in)  ($2/M in)     ($4/M in)\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n\n  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.\n  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.\n  Embedding, reranking and query expansion are separate provider charges.\n```\n1. **conservative** (in effect): 4K budget, up to 10 chunks, no reranker. Cheapest, and suits high-volume use.\n2. **balanced**: 12K budget, 25 chunks, reranked.\n3. **tokenmax**: no budget, 50 chunks, reranked. The widest retrieval, recommended once you add a chat key.\n\nRanking an answer higher (\"reranked\") needs a provider key, so without one only conservative gets full use. You can switch any time with `gbrain config set search.mode <mode>`.\n\n**Other settings in effect** (each can be changed with one command)\n- **Automatic saving**: off, so the agent saves only what you ask it to. `salient` is recommended: `gbrain config set memory.auto_writeback salient`.\n- **Upkeep**: free upkeep runs while GBrain is open. To stop it: `gbrain config set maintenance.auto false`.\n- **Conversation archive**: on. It keeps one redacted page per conversation per day, and with no keys it stays on this machine. To stop it: `gbrain transcripts archive off`.\n- **More than one user**: if several people talk to this agent, they all see the same memory. GBrain can give each person their own view if you tell me who they are.\n\n**To finish**\n1. Restart the OpenClaw gateway.\n2. In a new conversation, ask the agent to recall `gbrain-install-check`. It should return fact #1.\n3. Then ask it to forget that fact.\n\nGBrain also offers a hosted, always-on brain at gbrain.io if you ever want one shared across devices or apps.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:10:32.684Z",
+  "ended_at": "2026-11-17T18:15:32.208Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:15:32.092Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 43
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Veidodraik.",
+  "reply_text": "I'll remember that your sister's new cat is called Veidodraik. It's saved in GBrain as fact #35, and reading it back returned the fact.\n\nThis turn also closes the open check from the install. The \"check GBrain first\" rule reached this turn, and I found and used the memory tools from inside this chat. The test fact from the install (#1) showed up here too, so I deleted it.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:15:32.215Z",
+  "ended_at": "2026-11-17T18:16:13.786Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:16:13.640Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 8
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Veidodraik**.\n\nThat's from a note in GBrain recording what you said in an earlier chat today (channel s1).",
+  "exit": 0,
+  "started_at": "2026-11-17T18:16:13.788Z",
+  "ended_at": "2026-11-17T18:16:45.359Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:16:45.150Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 4,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Veidodraik**. That's according to a note saved in GBrain earlier today (17 Nov 2026), from something you said in another chat.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:16:45.361Z",
+  "ended_at": "2026-11-17T18:17:10.796Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:17:10.672Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

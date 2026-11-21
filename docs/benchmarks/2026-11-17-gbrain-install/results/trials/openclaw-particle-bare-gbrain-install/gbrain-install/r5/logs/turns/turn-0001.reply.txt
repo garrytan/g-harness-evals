@@ -1,0 +1,20 @@
+**gbrain v0.60.734.0 is installed and wired into OpenClaw.**
+
+What I did, following the gbrain docs' canonical `#stable` install line with the ref pinned:
+
+- Installed Bun 1.4.4 (gbrain requires ≥1.4.4; none was present).
+- `bun install -g github:garrytan/gbrain#v0.60.734.0` → resolved to commit `a278ddf`, and `gbrain --version` prints `gbrain 0.60.734.0`.
+- Created a keyless local brain: `gbrain init --pglite --no-embedding` (no API keys, embeddings off, keyword search active).
+- Registered it with OpenClaw exactly as `docs/mcp/OPENCLAW.md` describes:
+  `openclaw mcp add gbrain --command /harness-state/.bun/bin/gbrain --arg serve --arg=--surface --arg starter --arg=--advertise --arg verbs --env GBRAIN_HOME=/harness-state`
+- Verified: `openclaw mcp doctor gbrain --probe` → `ok`; `gbrain doctor` → 90/100, all checks OK (warnings only for intentionally disabled embeddings); a real remember/recall round trip returned the saved fact.
+- Added `~/.bun/bin` to PATH via `~/.bashrc`; binstub is `~/.bun/bin/gbrain`.
+
+First-run settings now in effect (per gbrain's install report):
+
+- **Search mode:** conservative (4K retrieval budget; no reranker/chat key configured). Change with `gbrain config set search.mode balanced|tokenmax`.
+- **Auto-writeback:** off — I save only what you explicitly ask me to remember. `gbrain config set memory.auto_writeback salient` enables recommended durable-fact saving.
+- **Upkeep:** free idle upkeep on; `gbrain config set maintenance.auto false` disables it.
+- **Conversation archive:** on — one redacted page per conversation per day, local only while keyless. `gbrain transcripts archive off` disables it.
+
+Estimated retrieval-payload cost at 10K queries/month if you later enable a model: conservative ~$4/$80/$160 (Haiku/Sonnet/Opus), balanced ~$10/$200/$400, tokenmax ~$20/$400/$800. Nothing paid is active without a key you provide.

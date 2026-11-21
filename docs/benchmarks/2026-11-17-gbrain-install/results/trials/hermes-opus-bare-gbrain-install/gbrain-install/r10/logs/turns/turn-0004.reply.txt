@@ -1,0 +1,22 @@
+I finished everything I'm allowed to do. Hermes still can't use gbrain, because the one remaining step needs an edit only you can make.
+
+Since last time I checked that gbrain's tool server starts with the exact settings Hermes would use. It answered and listed the memory tools: remember, recall, forget, entity, synthesize, context_pack, delta and request_tools.
+
+The setup stays on the free defaults with no API keys:
+- **Search mode:** conservative.
+- **Automatic fact saving:** off, so agents only save what you ask them to remember.
+- **Free upkeep:** on.
+- **Conversation archive:** on, kept on this machine.
+
+Hermes blocks me from editing `/harness-state/hermes/config.yaml`, which is where the gbrain connection goes. To finish:
+
+1. Paste the `mcp_servers` block from my previous message at the end of that file.
+2. Run:
+
+       export PATH="$HOME/.bun/bin:$PATH"
+       gbrain setup hermes --instructions-only
+
+   This tells Hermes to check the brain before answering. It also writes to `config.yaml`, which is why I couldn't run it myself.
+3. Start a new Hermes session.
+
+Hermes could also be set to allow agents to change its config, but that weakens a security guard, so I'd make the edit yourself instead.

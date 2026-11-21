@@ -1,0 +1,19 @@
+gbrain is set up on this machine as a free, local brain that needs no API keys. It's registered with OpenClaw, which reports it OK. A test memory saved and came back correctly. One part may still need a gateway restart, which I couldn't do (details below).
+
+**What I set up**
+- **The brain:** a local database at `/harness-state/.gbrain/brain.pglite` with keyword search only. Nothing is sent to any outside service and nothing costs money.
+- **Connection to OpenClaw:** I added gbrain as a tool server in `/harness-state/openclaw/openclaw.json`. It uses gbrain's recommended small set of memory tools.
+- **"Check memory first" instructions:** gbrain created `/workspace/AGENTS.md` with a block telling the agent to look in gbrain before answering. It also installed and enabled a small OpenClaw plugin, `gbrain-turn-rule`, that repeats that rule on every message.
+- **Health check:** `gbrain doctor` scores it 90/100 with no failures. The lower "brain score" is only because the brain is empty and has no embeddings, which is what the free setup means.
+
+**Settings in effect** (gbrain's defaults; each can be changed with one command)
+- **Search mode:** `conservative`, chosen because there's no API key. Other options are `gbrain config set search.mode balanced` or `tokenmax`.
+- **Automatic saving of facts:** off, so agents save only what you ask them to remember. gbrain recommends `salient`, which saves lasting facts you state, with a note of where each came from: `gbrain config set memory.auto_writeback salient`.
+- **Free background upkeep:** on. To turn it off: `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, and with no embedding key nothing leaves this machine. To turn it off: `gbrain transcripts archive off`.
+
+**Still open**
+- **Gateway restart:** gbrain says the `gbrain-turn-rule` plugin needs a gateway restart to load. My restart request through OpenClaw failed with an error asking for a new conversation. OpenClaw does show the plugin as loaded and attached to each message, but gbrain's own check still reports it as not active. A restart should settle it either way. The `AGENTS.md` instructions take effect in any new session regardless.
+- **Test memory:** I left the fact "gbrain install check" in the brain. gbrain warns that deleting a fact saved without a person or project attached withdraws it everywhere, so I didn't delete it.
+
+The `gbrain` command lives in `/harness-state/.bun/bin`. Add that folder to your PATH to run it from a shell.

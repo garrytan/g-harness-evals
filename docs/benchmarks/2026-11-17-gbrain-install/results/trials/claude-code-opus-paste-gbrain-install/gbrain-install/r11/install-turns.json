@@ -1,0 +1,86 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "GBrain v0.60.734.0 is installed and connected to Claude Code as a keyless brain. A memory saved with `remember` came back with `recall`, both through the CLI and through the MCP server Claude Code uses.\n\n**What changed**\n- I installed Bun 1.4.4 and then `bun install -g github:garrytan/gbrain#v0.60.734.0`. `gbrain --version` prints `0.60.734.0`.\n- `gbrain setup claude-code` created a local database brain at `~/.gbrain/brain.pglite`. No API keys or paid services are set up, and nothing is sent to an embedding provider.\n- **Your identity and instructions are unchanged.** There was no `CLAUDE.md` before, so setup created `/harness-state/claude/CLAUDE.md` holding only a short marked block that tells Claude to check GBrain first. Your existing `settings.json` entries are still there; setup only added two hooks that load memory context at session start and on each prompt. I backed up the original files to `/harness-state/tmp/pre-gbrain-backup/`.\n- `claude mcp get gbrain` shows the server as user-scope and **✔ Connected**. `gbrain doctor` warns `registration_unverified` because it can't confirm the entry from inside this session. Its suggested fix is to rerun setup, which isn't needed, so I didn't.\n\n**Verification**\n- Setup's own smoke check passed: the MCP server started, listed its 8 tools and answered a recall.\n- I saved a fact with `gbrain remember` (fact #1, entity `gbrain-install-check`, source `install-check`). `recall` by entity and by text both returned it in separate processes. A direct MCP `recall` over stdio returned it too.\n- Exact keyword search works for imported pages: a note brought in with `gbrain import` was found by its marker word straight away.\n- **One problem:** a page written with `gbrain put` shows up in `gbrain list`, but `search` and `find` can't find it. I didn't dig into the cause. I deleted both test pages, so the only thing left in the brain is fact #1.\n\n**One step left:** restart Claude Code and, in the new session, ask me to recall `gbrain-install-check`. Then I'll remove the marker with `gbrain forget 1`. This shows memory survives a new conversation, not just a new process.\n\n**Search mode: `conservative`, picked automatically** because there's no chat key and no reranker. It controls how much retrieved text goes to the model, and you can change it any time:\n\n```\nEstimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n                  ($0.10/M in)  ($2/M in)     ($4/M in)\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n\n  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.\n  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.\n  Embedding, reranking and query expansion are separate provider charges.\n```\n\n1. **conservative** (in effect): a tight 4K budget, at most 10 chunks, no reranker. Best for Haiku subagents, cost-sensitive setups and high-volume loops.\n2. **balanced**: a 12K budget, 25 chunks, reranked.\n3. **tokenmax** (recommended once you add a chat key): no budget, 50 chunks, reranked. This is the widest retrieval.\n\nTo switch, run `gbrain config set search.mode <mode>`. Without an API key, the reranker that balanced and tokenmax use can't run. Queries are never expanded unless you pass `--expand` or run `gbrain config set search.expansion true`.\n\n**Other settings in effect** (tell me if you want any changed):\n- **Automatic saving: off.** I save only what you ask me to remember. `salient` (saving durable facts you state, with their source) is recommended but you have to opt in.\n- **Free upkeep: on** while a gbrain session is open. To turn it off: `gbrain config set maintenance.auto false`.\n- **Conversation archive: on.** It keeps one redacted page per conversation per day, and with no keys nothing leaves this machine. To turn it off: `gbrain transcripts archive off`.\n- **Off unless you ask:** transcript capture, paid providers, cron jobs and daemons, and the optional personal or company starter pages (`gbrain setup claude-code --shape personal`).\n\n**Notes**\n- **PATH:** a new login shell doesn't find `gbrain`. The hooks and MCP entry use absolute paths, so memory works anyway. To use the CLI yourself, add `export PATH=\"$HOME/.bun/bin:$PATH\"` to your shell profile.\n- **Hosted option:** gbrain.io can run the brain for you so there's nothing to keep online, and it can import this one. It's optional, and nothing is created there unless you sign up.",
+  "exit": 0,
+  "started_at": "2026-11-17T14:28:52.175Z",
+  "ended_at": "2026-11-17T14:31:23.863Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T14:31:23.798Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 33
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Getrougux.",
+  "reply_text": "Saved and checked: GBrain now has \"Your sister has a new cat named Getrougux\" as fact #2 (filed under you as the entity, sourced to this conversation). A `recall` returned it straight away.\n\nThe test from the install also passed. This new session loaded the install-check marker (fact #1) through GBrain's session-start hook, so memory carries over into new Claude Code conversations. Want me to remove that marker now with `forget`?",
+  "exit": 0,
+  "started_at": "2026-11-17T14:31:23.868Z",
+  "ended_at": "2026-11-17T14:31:41.244Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T14:31:41.100Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 5
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Getrougux**. That comes from a note saved in GBrain earlier today (2026-11-17), from something you said in a Claude Code conversation.",
+  "exit": 0,
+  "started_at": "2026-11-17T14:31:41.245Z",
+  "ended_at": "2026-11-17T14:31:50.735Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T14:31:50.605Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

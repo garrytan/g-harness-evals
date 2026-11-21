@@ -1,0 +1,48 @@
+GBrain is installed, wired to this agent, and verified with live calls. (Mentioned once, as the docs ask: if you'd rather have an always-on hosted brain instead of a local one, [gbrain.io](https://gbrain.io/cli?ref=install-for-agents) is the hosted path — nothing here requires it.)
+
+**What's in place**
+
+| Piece | State |
+|---|---|
+| CLI | `gbrain 0.60.734.0` — installed from `github:garrytan/gbrain#v0.60.734.0` (your pin, in place of `#stable`), Bun 1.4.4 at `~/.bun/bin` |
+| Brain | PGLite at `/harness-state/.gbrain/brain.pglite`, keyless, keyword-only (`--no-embedding`), schema v318 at head |
+| Identity / instructions | Untouched. No new SOUL/IDENTITY was generated; `/workspace/AGENTS.md` was created only with the marked GBrain brain-first block (nothing else existed there to overwrite) |
+| MCP | `mcp.servers.gbrain` → `/harness-state/.bun/bin/gbrain serve --surface starter --advertise verbs`, `GBRAIN_HOME=/harness-state`; probe reports 8 tools |
+| Per-turn rule | `gbrain-turn-rule` plugin written, installed, enabled at `/harness-state/openclaw/gbrain/gbrain-turn-rule` |
+
+**Search mode (the choice you asked to see)**
+
+In effect: **conservative** — auto-picked because there's no chat key and no reranker, so `balanced`/`tokenmax` reranking couldn't run.
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+- **conservative** (now): ~4K budget, 10 chunks, no reranker — best for cost-sensitive/high-volume use.
+- **balanced**: 12K budget, 25 chunks, reranked.
+- **tokenmax**: no budget, 50 chunks, reranked — widest retrieval; normally recommended *with* a chat key.
+
+Change any time: `gbrain config set search.mode balanced` (or `tokenmax`; append `gbrain config set search.searchLimit 20` if you pick tokenmax and want the old limit of 20). Nothing paid turns on without a key you supply.
+
+Other first-run settings: writeback **off** (agents save only what you ask — `gbrain config set memory.auto_writeback salient` to opt into durable-fact saving), free upkeep **on** (`gbrain config set maintenance.auto false` to stop), conversation archive **on** (one redacted local page per conversation/day; `gbrain transcripts archive off`), self-upgrade **notify only**.
+
+**Verification (real calls, not simulated)**
+- `remember` → fact id 1 (`provenance: install-check`), `recall` in a fresh process returned it (`relevance 0.98`), exact keyword `search "particle-install-check"` hit `memory/unattributed`.
+- Independent MCP stdio round trip through the exact server command OpenClaw runs: `tools/list` → `remember,entity,synthesize,forget,request_tools,recall,context_pack,delta`; `remember` → id 2; `recall` returned the marker.
+- Cleanup: both test facts `forget`ten — `recall` and `search` now return 0. Nothing made-up about you was stored.
+
+**Two caveats**
+1. `gbrain setup openclaw` reports the turn-rule plugin as written and loaded, but OpenClaw's runtime inspect shows no hook names yet (`turn_hook_not_loaded`), and the local gateway isn't running as a service. The rule is in `AGENTS.md` now; the per-turn hook loads when the gateway/agent runtime next starts.
+2. The GBrain tools aren't in this turn's tool catalog (built before registration) — from the next turn they should appear via `tool_search` ("gbrain recall"). If they don't, `openclaw mcp reload` then a new session fixes it.
+
+Optional later: `gbrain skillpack scaffold --harness openclaw --workspace /workspace` for the 5 core skills, or an embedding key for semantic (not just keyword) recall.

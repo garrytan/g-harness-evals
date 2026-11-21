@@ -1,0 +1,45 @@
+Installed **GBrain v0.60.734.0**, keyless, without replacing your identity or existing instructions.
+
+### Verified
+- Real **MCP remember → recall** round trip, including closing and reopening the server before recall.
+- Exact keyword search, correction, and withdrawal passed.
+- OpenClaw’s MCP probe passed; its memory-reminder hook reports **loaded**.
+- Test facts were withdrawn; a generic verification note remains.
+
+Database: `/harness-state/.gbrain/brain.pglite`  
+Detailed receipt: `/workspace/GBRAIN-INSTALL.md`
+
+**Not yet verified:** automatic recall in a fresh OpenClaw conversation. An expiring test marker is ready for that check. Start a fresh chat and say **“Verify my GBrain installation”** without supplying the marker.
+
+### Search-mode choice
+**Conservative is active**, appropriate for this keyless setup. You can choose any time:
+
+1. **conservative** — 4K budget, 10 chunks maximum, no reranker.
+2. **balanced** — 12K budget, 25 chunks, reranking when configured.
+3. **tokenmax** — uncapped budget, 50 chunks, reranking when configured; recommended with a chat key.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are illustrative downstream API costs—not your harness subscription price or a GBrain fee. No paid providers were enabled. Tell me a mode name to change it.
+
+### Settings in effect
+- **Automatic fact saving/capture:** off; explicit remember requests only.
+- **Conversation archive:** on by the guide’s default—one locally stored, redacted page per conversation per day. Disable with `gbrain transcripts archive off`.
+- **Free upkeep:** on while GBrain’s agent session is open.
+- **No API keys, paid enrichment, scheduled jobs, or background services added.**
+- GBrain storage/search stays local; recalled content still reaches this agent’s model.
+- Off-host backup is **not configured or verified**.
+
+Keyless search works; semantic search and near-duplicate detection remain unavailable without a separately approved provider.

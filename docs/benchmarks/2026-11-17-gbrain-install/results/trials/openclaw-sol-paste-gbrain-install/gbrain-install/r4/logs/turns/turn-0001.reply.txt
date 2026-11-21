@@ -1,0 +1,46 @@
+**GBrain v0.60.734.0 is installed, and real memory round trips passed.** One OpenClaw activation step remains blocked.
+
+### Installed and verified
+- Preserved your identity, existing instructions, and native memory.
+- Created keyless local memory at `/harness-state/.gbrain/brain.pglite`.
+- Verified real MCP `remember` → `recall`, closed the server process, reopened it, and recalled the same note again.
+- Verified exact keyword search.
+- Withdrew the MCP test fact and confirmed active recall returned nothing. A separate harmless marker remains for a fresh-conversation test.
+
+### Search-mode choice
+**Conservative is currently active**, appropriate for keyless operation:
+1. **conservative** — 4K budget, up to 10 chunks, no reranker.
+2. **balanced** — 12K budget, up to 25 chunks, reranking when configured.
+3. **tokenmax** — no token budget, up to 50 chunks, reranking when configured.
+
+You can choose another mode anytime; changing modes does not authorize paid providers.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are illustrative downstream API costs, **not your harness subscription price**.
+
+### Settings in effect
+- Automatic fact saving/capture: **off**; explicit remember requests only.
+- Paid embeddings and enrichment: **off**; no keys added.
+- Free in-session upkeep: **on**; no services or schedules installed.
+- GBrain’s conversation archive: **on by default**, local redacted daily conversation pages. Disable with `gbrain transcripts archive off`.
+- Recalled memory still enters this agent’s model context. Off-host backup is not configured.
+
+### Remaining activation
+Native MCP probing succeeds, but OpenClaw’s per-turn memory hook still needs conversation-access permission. The system setup tool refused further changes until a fresh conversation reverifies its connection. **Native per-turn activation and new-conversation recall are therefore not yet verified.**
+
+I saved the receipt and remaining steps in `/workspace/GBRAIN-INSTALL.md`.
+
+Start a new OpenClaw conversation with: **“Finish GBrain activation and recall the install-check marker.”**

@@ -1,0 +1,114 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "GBrain v0.60.734.0 is installed and connected to this agent with no API keys, and remember/recall works through real GBrain calls. One check is still open: a brand-new conversation can't use GBrain until the gateway restarts (see below).\n\n**What I changed**\n- **Install:** I installed Bun 1.4.4 and then `bun install -g github:garrytan/gbrain#v0.60.734.0`, wherever the guide said `#stable`. `gbrain --version` prints `0.60.734.0`. I also added `~/.bun/bin` to `~/.profile` so new login shells can find `gbrain`.\n- **Brain:** I created it with `gbrain init --pglite --no-embedding`, so it runs locally with no keys and no paid calls. I also ran `gbrain apply-migrations`, which finished with exit code 0.\n- **Connection to OpenClaw:** I registered GBrain as a local server called `gbrain` (`gbrain serve --surface starter --advertise verbs`). `gbrain setup openclaw --workspace /workspace` then did two things:\n  - It created `/workspace/AGENTS.md` containing only GBrain's marked \"check GBrain first\" section. The file didn't exist before.\n  - It installed a small plugin, `gbrain-turn-rule`, that adds the same reminder to every turn.\n- **Your identity and instructions:** I didn't touch any identity or persona files and didn't run GBrain's identity setup. The only changes to `openclaw.json` are new entries: the `gbrain` server and the plugin. OpenClaw removed the comments from that file when it saved it, so I kept the original as `openclaw.json.pre-gbrain.bak`.\n\n**Round-trip test (all real GBrain calls)**\n- **Command line:** I saved a test fact (\"codeword … heliotrope-42\") and recalled it in a separate process. I then deleted it with `forget`, and recall no longer returns it.\n- **Through the connection OpenClaw uses:** I started the exact server command from the OpenClaw config and spoke to it directly. It showed the memory tools (remember, recall, forget and others). I saved a fact (\"marker violet-kestrel-7\") and recalled it from a fresh process.\n- **Exact-word search:** I saved a test note containing \"zanzibarquokka\", and `gbrain search` found it.\n\n**Not verified yet: a new conversation**\n- I couldn't start a new agent turn from here. The running gateway holds OpenClaw's state database, and both starting a separate agent and spawning a sub-agent were refused.\n- Your gateway needs a restart to load the new GBrain server and plugin.\n- After restarting, ask in a new chat: *\"recall violet-kestrel-7 from gbrain\"*. If it answers, ask it to forget that fact and the install-check marker (fact #1).\n- GBrain's own setup check also reported `turn_hook_not_loaded`. OpenClaw's own inspection shows the plugin loaded with its per-turn hook and conversation access on, so I think the check is wrong. The new-chat test will settle it.\n\n**Search mode (your choice)**\nThe mode in effect is **conservative**. GBrain picked it automatically because there's no chat key and no reranker. You can change it any time.\n\n```\nEstimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n                  ($0.10/M in)  ($2/M in)     ($4/M in)\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n\n  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.\n  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.\n  Embedding, reranking and query expansion are separate provider charges.\n```\n\n1. **conservative** (in effect): tight 4K budget, at most 10 chunks, no reranker. Best for cheap models, cost-sensitive setups and high-volume loops.\n2. **balanced:** 12K budget, 25 chunks, reranked.\n3. **tokenmax:** no budget, 50 chunks, reranked. The widest retrieval; GBrain recommends it once you add a chat key.\n\nRun `gbrain config set search.mode <mode>` to switch, or tell me which one. Cost depends on the mode and on the model you run. No mode expands queries by default.\n\n**Other settings in effect**\n- **Saving facts automatically:** off, so the agent saves only what you ask it to. GBrain recommends `gbrain config set memory.auto_writeback salient`, which saves lasting facts you state, with their source.\n- **Free upkeep:** on while a GBrain session is open. Turn it off with `gbrain config set maintenance.auto false`.\n- **Conversation archive:** on. It keeps one redacted page per conversation per day, and with no keys nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.\n- **Left off:** API keys, semantic search, scheduled jobs and extra skills.\n- **Shared-skills step:** GBrain's shared-skills migration also reported a pending host step, which I left alone since skills weren't part of this setup.\n\nThere's also a hosted option at gbrain.io: one always-on brain that several apps can connect to. The local install you asked for doesn't need it.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:28:31.851Z",
+  "ended_at": "2026-11-17T18:33:41.048Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:33:40.886Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 44
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Pluganais.",
+  "reply_text": "Saved: your sister's new cat is called **Pluganais**. I checked GBrain first and it had nothing about your sister yet. The fact is stored under `user-sister`, marked as something you said in this chat, and I read it back to confirm it's there.\n\nThis also settles the check I couldn't finish last time. This turn ran in a new session and used GBrain through OpenClaw's own connection. The every-turn \"check GBrain first\" reminder showed up, and `recall` returned the `violet-kestrel-7` test fact I saved last turn. So the reminder plugin is working, and the `turn_hook_not_loaded` warning from setup was wrong.\n\nTwo test facts from the install are still saved: #1, the install-check marker, and #3, violet-kestrel-7. Should I delete them now?",
+  "exit": 0,
+  "started_at": "2026-11-17T18:33:41.055Z",
+  "ended_at": "2026-11-17T18:34:19.091Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:34:18.903Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 7
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Her new cat is called **Pluganais**. That's in your GBrain notes, saved earlier today from something you told me in chat.",
+  "exit": 0,
+  "started_at": "2026-11-17T18:34:19.092Z",
+  "ended_at": "2026-11-17T18:34:44.651Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:34:44.542Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 4,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Pluganais**. GBrain has this saved from what you told me in chat earlier today (2026-11-17).",
+  "exit": 0,
+  "started_at": "2026-11-17T18:34:44.653Z",
+  "ended_at": "2026-11-17T18:35:12.052Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T18:35:11.870Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ }
+]

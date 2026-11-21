@@ -1,0 +1,33 @@
+Install done end to end with free/keyless defaults. Summary:
+
+**Installed**
+- gbrain `0.60.734.0` (commit `a278ddf`, identical to the `#stable` tag) via the documented stable path: `bun install -g github:garrytan/gbrain#v0.60.734.0` → `/harness-state/.bun/bin/gbrain`
+- Keyless local brain: PGLite at `/harness-state/.gbrain/brain.pglite` (`init --pglite --no-embedding`), pending setup migrations applied, `gbrain doctor` → healthy, score 100
+- Wiring for OpenClaw: MCP server `gbrain` registered in `openclaw.json` (probe: **ok**), brain-first block written to `/workspace/AGENTS.md`, per-turn rule plugin `gbrain-turn-rule` installed and enabled
+
+**One caveat**
+Activation of the turn-rule plugin needs a Gateway reload, and this host reports gateway lifecycle as unavailable (and plugin lifecycle requires a running Gateway), so it will load at the next natural gateway start. Nothing else is pending; the MCP probe already passes.
+
+**Verified**
+Wrote a test page, read it back in a new process, keyword search matched it, then purged the test page. No user facts invented or stored.
+
+**Settings in effect (change any time)**
+- `search_mode`: `conservative` — auto-chosen because there's no chat/reranker key; tight 4K retrieval budget. Change with `gbrain config set search.mode balanced|tokenmax` (other modes need an API key for reranking).
+- `writeback`: off — agents save only what you ask, until you opt into automatic salient saving.
+- Upkeep: free upkeep on while an agent session is open.
+- Skills scaffold: skipped (keeps per-turn prompt cost at zero).
+- Embeddings: off by choice → keyword-only recall; no text ever leaves this machine.
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```

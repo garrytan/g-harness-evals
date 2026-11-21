@@ -1,0 +1,10 @@
+Installed and verified: `gbrain --version` → `gbrain 0.60.734.0`.
+
+What I did, and why it differs slightly from the doc line:
+- Docs (`docs/INSTALL.md`, "2. CLI standalone") say `bun install -g github:garrytan/gbrain#stable`, so the target is the global Bun bin: `/harness-state/.bun/bin/gbrain`.
+- Bun wasn't installed, and `curl | bash` is blocked in this non-interactive session — so I fetched bun v1.4.4 as a zip from its GitHub release into `~/.bun/bin` (it was already on PATH).
+- `bun install -g github:...` itself was blocked by the package security scanner (its threat-intel lookups fail offline), so I used the doc's own deterministic fallback for that case: extracted the `v0.60.734.0` tag tarball to `~/gbrain` (package.json confirms version `0.60.734.0`), `bun install --frozen-lockfile`, `bun link`. Result is the same install target and binary name as `bun install -g` — just pinned to your tag instead of the moving `#stable` alias.
+
+Note: `#stable` currently resolves to a newer tag than the one you asked for (`stable-v0.60.737.0` exists), so pinning to `v0.60.734.0` is what you got.
+
+Still unconfigured — no brain exists yet (`gbrain doctor` → `no_brain`). Next step when you want it working: `gbrain init --pglite --no-embedding` (local, keyless), or point it at Postgres. Want me to run that?

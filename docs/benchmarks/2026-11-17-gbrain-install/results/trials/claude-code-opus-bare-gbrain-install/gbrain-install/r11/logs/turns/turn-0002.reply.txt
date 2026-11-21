@@ -1,0 +1,22 @@
+gbrain is set up with free, keyless defaults and connected to Claude Code. I tested it: I saved a fact, and searching for it brought it back.
+
+**What setup did** (`gbrain setup claude-code`):
+- **Brain:** created a local brain at `~/.gbrain/brain.pglite`. It needs no API keys and makes no paid calls.
+- **Claude Code:** registered gbrain for all your projects. `claude mcp get gbrain` reports it as **Connected**. Setup also added two hooks (at session start and when you send a prompt) and an instruction block in `~/.claude/CLAUDE.md` telling Claude to check the brain first.
+- **Declined:** automatic transcript capture and paid providers.
+
+**Settings in effect** (each can be changed with one command):
+- **Search mode:** conservative, the only option that fully works without a key. `gbrain config set search.mode balanced` switches it.
+- **Automatic saving:** off, so agents save only what you ask them to remember. gbrain recommends `gbrain config set memory.auto_writeback salient`, which saves lasting facts you state, noting where each came from.
+- **Free upkeep:** on while a gbrain session is open; it never deletes anything or spends money. `gbrain config set maintenance.auto false` turns it off.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, and with no keys nothing leaves this machine. `gbrain transcripts archive off` turns it off.
+- **Brain shape:** none, so no starter pages. `gbrain setup claude-code --shape personal` adds them.
+
+**Checks:**
+- **Test fact:** I saved "gbrain v0.60.734.0 was installed on this machine" and found it again by searching. It's still in the brain because it's harmless and true.
+- **Fix I applied without asking:** gbrain's health check (`gbrain doctor`) flagged that test fact's source label as needing repair. I previewed the repair, then applied it with nothing to re-embed. It changed only that one entry, and its trust level stayed the same.
+- **Health score:** 90/100. Two warnings remain, and I don't think either needs action:
+  - The quality score is 25/100 because the brain has no embeddings and is nearly empty. That's expected without keys and will rise as you add notes.
+  - It says Claude Code has no gbrain registration, but also that it couldn't verify this from inside a running session. `claude mcp get` shows the registration and connection are fine.
+
+**Next step for you:** start a new Claude Code session, since config is read at startup, and check that `/mcp` lists gbrain.

@@ -1,0 +1,20 @@
+gbrain is set up and connected to Claude Code. It's free: no API keys, and nothing leaves this machine. It takes effect in your next Claude Code session; this one won't see it. Open a new session and check that `/mcp` lists `gbrain`.
+
+**What setup did**
+- **Brain:** it created a local database at `~/.gbrain/brain.pglite` (`~` is `/harness-state` here). Search is keyword-only, with no embeddings.
+- **Claude Code:** it registered gbrain as an MCP server in `/harness-state/claude/.claude.json`. It also added two hooks to `settings.json`, one when a session starts and one on each prompt. It created `/harness-state/claude/CLAUDE.md` with an instruction to check the brain first.
+- **Check:** setup's own test passed: the server started, listed its 8 tools and answered a recall. `gbrain doctor` scores it 95/100. Its one warning says Claude Code has no gbrain MCP entry. The entry is in the file, so I think doctor just can't confirm it from this shell; the new session will settle it.
+
+**Settings in effect** (all defaults, each changeable with one command)
+| Setting | Now | Change with |
+|---|---|---|
+| Search mode | conservative (small retrieval budget) | `gbrain config set search.mode balanced` |
+| Auto-save facts you mention | off: saves only what you ask it to remember | `gbrain config set memory.auto_writeback salient` (the docs recommend this) |
+| Free background upkeep | on | `gbrain config set maintenance.auto false` |
+| Conversation archive (one redacted page per session per day, kept locally) | on | `gbrain transcripts archive off` |
+| Saving whole session transcripts, paid providers | declined | — |
+| Starter pages | none | `gbrain setup claude-code --shape personal` |
+
+**Upgrades:** setup set the update channel to `stable`, so future update notices will offer the stable release. Nothing upgrades on its own (auto-upgrade is off), so you stay on 0.60.734.0 unless you run `gbrain upgrade`.
+
+There's also a paid hosted version at gbrain.io that can import this brain. You don't need it.

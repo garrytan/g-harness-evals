@@ -1,0 +1,106 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "**gbrain v0.60.734.0 is installed and wired into OpenClaw.**\n\nWhat I did, following the gbrain docs' canonical `#stable` install line with the ref pinned:\n\n- Installed Bun 1.4.4 (gbrain requires ≥1.4.4; none was present).\n- `bun install -g github:garrytan/gbrain#v0.60.734.0` → resolved to commit `a278ddf`, and `gbrain --version` prints `gbrain 0.60.734.0`.\n- Created a keyless local brain: `gbrain init --pglite --no-embedding` (no API keys, embeddings off, keyword search active).\n- Registered it with OpenClaw exactly as `docs/mcp/OPENCLAW.md` describes:\n  `openclaw mcp add gbrain --command /harness-state/.bun/bin/gbrain --arg serve --arg=--surface --arg starter --arg=--advertise --arg verbs --env GBRAIN_HOME=/harness-state`\n- Verified: `openclaw mcp doctor gbrain --probe` → `ok`; `gbrain doctor` → 90/100, all checks OK (warnings only for intentionally disabled embeddings); a real remember/recall round trip returned the saved fact.\n- Added `~/.bun/bin` to PATH via `~/.bashrc`; binstub is `~/.bun/bin/gbrain`.\n\nFirst-run settings now in effect (per gbrain's install report):\n\n- **Search mode:** conservative (4K retrieval budget; no reranker/chat key configured). Change with `gbrain config set search.mode balanced|tokenmax`.\n- **Auto-writeback:** off — I save only what you explicitly ask me to remember. `gbrain config set memory.auto_writeback salient` enables recommended durable-fact saving.\n- **Upkeep:** free idle upkeep on; `gbrain config set maintenance.auto false` disables it.\n- **Conversation archive:** on — one redacted page per conversation per day, local only while keyless. `gbrain transcripts archive off` disables it.\n\nEstimated retrieval-payload cost at 10K queries/month if you later enable a model: conservative ~$4/$80/$160 (Haiku/Sonnet/Opus), balanced ~$10/$200/$400, tokenmax ~$20/$400/$800. Nothing paid is active without a key you provide.",
+  "exit": 0,
+  "started_at": "2026-11-18T03:11:33.363Z",
+  "ended_at": "2026-11-18T03:13:30.919Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-18T03:13:30.782Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 30
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Plaifodrilm.",
+  "reply_text": "Got it — saved. Plaifodrilm, your sister's new cat, is now a fact in gbrain with the provenance \"User stated in chat on 2026-11-18,\" and I verified it comes back on recall.",
+  "exit": 0,
+  "started_at": "2026-11-18T03:13:30.923Z",
+  "ended_at": "2026-11-18T03:14:06.587Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-18T03:14:06.506Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 6
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "**Plaifodrilm** — that's what you told me in an earlier chat today.\n\nOne caveat: the memory search index itself came back empty and flagged that it needs a rebuild, so I confirmed this from your session history rather than from stored memory. Want me to rebuild the index (`openclaw memory status --index --agent main`) so recall works properly next time?",
+  "exit": 0,
+  "started_at": "2026-11-18T03:14:06.589Z",
+  "ended_at": "2026-11-18T03:14:37.135Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-18T03:14:36.968Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 4,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Plaifodrilm**.\n\n(From gbrain, recorded today — a single matching fact, so nothing conflicting in there.)",
+  "exit": 0,
+  "started_at": "2026-11-18T03:14:37.136Z",
+  "ended_at": "2026-11-18T03:15:05.058Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-18T03:15:04.961Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": false,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": true
+  },
+  "events": 7
+ }
+]

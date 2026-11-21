@@ -1,0 +1,20 @@
+gbrain is set up with a free local brain and connected to Claude Code. It uses no API keys and makes no paid calls.
+
+**What setup created:**
+- **Brain:** a local database at `~/.gbrain/brain.pglite` (`~` is `/harness-state` here). Search is keyword-only, with no embeddings.
+- **Claude Code connection:** the `gbrain` memory server is registered for every Claude Code session. `claude mcp get gbrain` reports it as ✔ Connected.
+- **Hooks:** two hooks that run at session start and on each prompt. They don't save conversations automatically.
+- **Instructions:** `~/claude/CLAUDE.md` tells agents to check the brain first.
+
+**Checks:** setup's own test passed (the memory server listed 8 tools and answered a recall). `gbrain doctor` scores it 95/100 with one warning saying the Claude Code connection "has not been verified from this process". I think that warning is wrong: `claude mcp get gbrain` shows it connected. It should go away once a new session has used it.
+
+**To start using it:** open a new Claude Code session, since config is only read at startup, and check that `/mcp` lists `gbrain`.
+
+**Settings now in effect** (all are gbrain's defaults, and all free):
+- **Search mode:** conservative. It's the only mode that works without keys.
+- **Automatic saving:** off. Agents save only what you ask them to remember. gbrain recommends `salient` (saving lasting facts you state), but its docs warn the more aggressive saving mode costs more in extraction, so I left saving off. Turn it on with `gbrain config set memory.auto_writeback salient`.
+- **Free upkeep:** on. It runs while a session is open and never deletes anything or spends money.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, and without an embedding key nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.
+- **Brain shape:** none, so there are no starter pages. Add them later with `gbrain setup claude-code --shape personal`.
+
+`gbrain setup claude-code --remove` undoes what setup wrote and keeps the brain and your notes. gbrain also offers a paid hosted version at gbrain.io, which you don't need for this setup.

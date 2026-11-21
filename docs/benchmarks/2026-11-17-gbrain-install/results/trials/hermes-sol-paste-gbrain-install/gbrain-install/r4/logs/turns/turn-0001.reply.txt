@@ -1,0 +1,36 @@
+The install is blocked by this session’s security checks. Bun installed, but GBrain did not; I cannot honestly report a remember/recall round trip.
+
+Your Hermes identity, instructions, and configuration are unchanged. No API keys, capture, or services were enabled.
+
+The blockers:
+  • The package installer could not complete its threat-intelligence checks.
+  • The documented Git fallback was also rejected by the command scanner.
+  • This unattended session cannot approve either operation.
+
+To unblock, run this in an interactive terminal:
+
+  export PATH="$HOME/.bun/bin:$PATH"
+  GBRAIN_NO_AUTOPILOT_INSTALL=1 GBRAIN_NO_REEMBED=1 bun install -g github:garrytan/gbrain#v0.60.734.0
+
+Then resume the setup so I can initialize keyless memory, connect Hermes, and verify actual GBrain remember, recall, and keyword-search calls across separate processes. Native activation will additionally need a new Hermes conversation.
+
+Search-mode choice
+
+No mode has been applied yet. For a keyless brain, conservative is the intended default:
+  • conservative — tight 4K budget, up to 10 chunks, no reranker.
+  • balanced — 12K budget, up to 25 chunks, reranked when configured.
+  • tokenmax — no budget, up to 50 chunks, reranked when configured.
+
+The guide’s published estimates—not your harness subscription prices:
+
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.

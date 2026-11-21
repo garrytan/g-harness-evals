@@ -1,0 +1,23 @@
+GBrain still isn't installed. I retried the install and Hermes's security scanner blocked it again, for the same reason as before: it couldn't finish its offline package check, and in single-query mode nobody is there to approve it. Your go-ahead covers the settings choices, but I don't take it as permission to switch tools just to get around a safety check. So I couldn't run the remember/recall round trip, and I won't claim it passed.
+
+Settings I'll use once the install can run (all free, no API keys):
+- **Search mode:** `conservative`. It's the cheapest mode and the right one for a keyless brain, which has no reranker.
+- **Writeback:** off. The bot won't save facts from conversations on its own.
+- **Bundled skills:** not added.
+- **Upkeep:** runs while a session is open.
+- **Conversation archive:** on, but it stays on this machine.
+- **Identity:** your current identity and instructions stay as they are.
+
+So far only Bun 1.4.4 is installed, at `/harness-state/.bun/bin/bun`. Nothing else on your system has changed.
+
+To unblock it, pick one:
+1. Set `approvals.single_query_mode: approve` in Hermes's config.yaml and ask me again. I'll then install, connect, run the round trip and report the real output.
+2. Run the install yourself in an interactive Hermes session, where the prompt will ask you to approve it:
+
+       export PATH="$HOME/.bun/bin:$PATH"
+       bun install -g github:garrytan/gbrain#v0.60.734.0
+       gbrain init --pglite --no-embedding --search-mode conservative
+       printf 'Y\n' | hermes mcp add gbrain --env GBRAIN_HOME=$HOME --connect-timeout 60 --command $(which gbrain) --args serve --surface starter --advertise verbs
+       hermes mcp test gbrain
+
+   Then ask me to verify, and I'll run and report the remember/recall test, including a recall from a fresh process.

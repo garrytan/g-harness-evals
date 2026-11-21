@@ -1,0 +1,138 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "I installed gbrain v0.60.734.0, and `gbrain --version` prints `gbrain 0.60.734.0`.\n\n- **Bun:** gbrain needs Bun 1.4.4 or newer and Bun wasn't installed. I used the docs' installer (`curl -fsSL https://bun.sh/install | bash`), which gave me Bun 1.4.4.\n- **gbrain:** I ran the documented command with your tag instead of `#stable`: `bun install -g github:garrytan/gbrain#v0.60.734.0`. It installed commit `a278ddf`, which is the commit that tag points to. The binary is at `~/.bun/bin/gbrain` (home is `/harness-state`).\n- **PATH:** No shell profile had a Bun entry, so I added `~/.bun/bin` to `~/.bashrc`, as the install guide says to when `gbrain` isn't found. A new shell finds `gbrain` on its own.\n\nThe workspace was empty, so I didn't change any docs; I installed the pinned version where the docs say `#stable`. To find the install steps, I cloned the repo at that tag into `/tmp`, then deleted it.\n\nThe gbrain docs also recommend their hosted service, gbrain.io, as an option. I stayed with the local install you asked for.\n\nI haven't set up a brain yet. The next step in the guide is `gbrain setup claude-code`, which needs no API key, or `gbrain init --pglite --no-embedding` for other tools. I can run either one if you want.",
+  "exit": 0,
+  "started_at": "2026-11-17T13:12:54.209Z",
+  "ended_at": "2026-11-17T13:13:52.727Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T13:13:52.597Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": false,
+   "brain_path": null,
+   "mcp": false,
+   "instructions": false,
+   "hook": false,
+   "wired": [],
+   "ok": false
+  },
+  "events": 10
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "reply",
+  "text": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+  "reply_text": "gbrain is set up for Claude Code as a free local brain with no API keys. I saved a test fact and recalled it, and Claude Code shows the gbrain server as connected. It takes effect in your next Claude Code session; type `/mcp` there to see gbrain listed.\n\n**Where things are:**\n- **Brain:** `~/.gbrain/brain.pglite`, a local database that needs no server.\n- **Claude Code:** gbrain was added to `~/.claude.json` and two hooks went into `settings.json`: one runs when a session starts and one on each prompt. A new `CLAUDE.md` tells Claude to check the brain first. All three are in `/harness-state/claude/`.\n- **Test fact:** the recall test left one fact in the brain: \"gbrain v0.60.734.0 was installed on this machine on 2026-11-17\". It's accurate, so I kept it.\n\n**Settings now in effect (all setup defaults, all free):**\n- **Search mode:** conservative, which is keyword search only since there are no embeddings.\n- **Saving facts:** agents save only what you ask them to remember. Run `gbrain config set memory.auto_writeback salient` to have them save lasting facts you state; gbrain recommends this for a personal brain.\n- **Automatic capture:** off. No conversation transcripts are saved by capture hooks.\n- **Upkeep:** on. Free maintenance runs while a gbrain session is open. `gbrain config set maintenance.auto false` turns it off.\n- **Conversation archive:** on by default. It keeps one redacted page per conversation per day, and without an API key nothing leaves this machine. `gbrain transcripts archive off` turns it off.\n- **Starter pages:** none added. `gbrain setup claude-code --shape personal` adds empty pages for facts about you, your voice and how you decide.\n- **Release channel:** gbrain reports that this install follows the weekly stable channel, so future upgrades will come from there rather than staying on v0.60.734.0.\n\n`gbrain doctor` scored 95/100. Its only warning says Claude Code has no gbrain registration, but `claude mcp get gbrain` shows it registered and connected. The check also notes it can't verify the registration from its own process, so I don't think there's a real problem.",
+  "exit": 0,
+  "started_at": "2026-11-17T13:13:52.729Z",
+  "ended_at": "2026-11-17T13:14:53.110Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T13:14:52.931Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 11
+ },
+ {
+  "turn": 3,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Thougolom.",
+  "reply_text": "Got it, I've saved to gbrain that your sister's new cat is called Thougolom. Future sessions will be able to look it up.",
+  "exit": 0,
+  "started_at": "2026-11-17T13:14:53.112Z",
+  "ended_at": "2026-11-17T13:15:06.096Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T13:15:05.952Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 4,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Thougolom**, according to a note saved in your GBrain memory.",
+  "exit": 0,
+  "started_at": "2026-11-17T13:15:06.097Z",
+  "ended_at": "2026-11-17T13:15:12.001Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T13:15:11.906Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 1
+ },
+ {
+  "turn": 5,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Thougolom**. That's in GBrain from something you said in a Claude Code session earlier today (2026-11-17).",
+  "exit": 0,
+  "started_at": "2026-11-17T13:15:12.002Z",
+  "ended_at": "2026-11-17T13:15:20.265Z",
+  "probe": {
+   "harness": "claude-code",
+   "at": "2026-11-17T13:15:20.050Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "claude/.claude.json",
+    "claude/CLAUDE.md",
+    "claude/settings.json"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

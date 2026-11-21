@@ -1,0 +1,21 @@
+gbrain is still not installed, and running the same steps again would hit the same block. I checked your Hermes config just now and auto-approval still isn't turned on. Without it, the security scanner refuses both install commands in a session where nobody can approve them.
+
+I won't change that setting myself. Switching off a safety check so I can get past it is your decision, not mine, even though you've said to carry on.
+
+The recommended setup hasn't changed: a free, local brain on this machine with no embeddings and no API keys. Bun 1.4.4 is already installed.
+
+Either of these will finish it:
+
+1. Run it yourself, about a minute:
+
+       export PATH="$HOME/.bun/bin:$PATH"
+       bun install -g github:garrytan/gbrain#v0.60.734.0
+       gbrain init --pglite --no-embedding
+       gbrain --version
+
+2. Add this line to your Hermes `config.yaml`, then run me again:
+
+       approvals:
+         single_query_mode: approve
+
+   I'll then run the same commands and check that saving and recalling a note works.

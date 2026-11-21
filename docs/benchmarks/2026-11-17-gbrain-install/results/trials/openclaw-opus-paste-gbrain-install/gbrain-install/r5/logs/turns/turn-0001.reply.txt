@@ -1,0 +1,46 @@
+GBrain memory is installed and connected to your existing OpenClaw agent, and a remember/recall round trip worked with real GBrain calls. Your current agent hasn't picked up the new tools yet; they need a gateway restart or a new session (details below).
+
+**What's installed**
+- **GBrain v0.60.734.0** (`github:garrytan/gbrain#v0.60.734.0`), installed with Bun 1.4.4. I added `~/.bun/bin` to `~/.profile` so new shells find it.
+- **The brain:** a keyless local database at `~/.gbrain/brain.pglite`. No API keys and no embeddings, so nothing leaves this machine. I also ran the five pending setup migrations it reported.
+- **The connection:** OpenClaw now has `gbrain` as an MCP server (the standard memory tools). `openclaw mcp doctor gbrain --probe` reports **ok**.
+- **Instructions:** `gbrain setup openclaw` created `/workspace/AGENTS.md`. The file didn't exist before, so it contains only GBrain's "check the brain first" block. It also installed a small plugin, `gbrain-turn-rule`, that adds the same reminder to every turn.
+- **Your identity and instructions are unchanged.** I made no persona or soul changes, set up no private repo, scheduled nothing and turned on no automatic saving.
+
+**Verification (real GBrain calls)**
+- **Command line:** I saved fact #1 (an install-check marker) and fact #2 (a generic test note, nothing about you). Each command runs in its own process, so getting them back shows they persist on disk. Lookup by subject, exact-word search (`--grep "conservative mode"`) and the wider `--query` search all returned them.
+- **Through the MCP server:** I started the exact command OpenClaw registered and spoke to it directly. It listed its tools, saved fact #3 through `remember`, and `recall` returned #3 along with #2, which the command line had saved.
+- **Not tested yet:** this conversation can't see the new tools, so I haven't confirmed recall from a fresh OpenClaw conversation. After a gateway restart, ask the agent to recall "gbrain install check". Then remove the marker with `gbrain forget 1`.
+
+**Search mode: conservative is in effect, and you can change it any time**
+It was picked automatically because there's no chat API key and no reranker. Here is GBrain's cost matrix, as printed:
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+1. **conservative** (in effect): about 4K tokens per lookup, at most 10 results, no reranking. Suits cheap models and high volume.
+2. **balanced:** about 12K tokens, 25 results, reranked.
+3. **tokenmax:** no budget cap, 50 results, reranked. This is GBrain's recommendation once you add a chat key. The widest retrieval.
+
+Cost depends on both the mode and the model you run. This agent runs Opus 5.5, so that's the column that applies. The prices are GBrain's published examples, not what your subscription charges. Query expansion is off in every mode. Switch modes with `gbrain config set search.mode <mode>`; balanced and tokenmax only rerank once a reranker key is configured.
+
+**Other settings in effect**
+- **Automatic saving: off.** The agent saves only what you ask it to remember. GBrain recommends `gbrain config set memory.auto_writeback salient`, which saves durable facts you state, with a note of where each came from.
+- **Free upkeep: on** while a GBrain session is open. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive: on** (one redacted page per conversation per day). Turn it off with `gbrain transcripts archive off`.
+
+**Things to know**
+- **Restart needed:** restart the gateway or start a new session so the new tools, plugin and `AGENTS.md` take effect. I didn't restart the gateway this conversation runs on.
+- **Setup reported a false error.** `gbrain setup openclaw` exited with `turn_hook_not_loaded`, but OpenClaw's own check shows `gbrain-turn-rule` loaded with its turn hook. GBrain's check clears the variable that points to your OpenClaw data folder, so it looks in `~/.openclaw` instead. When I reproduced its check that way, it found no plugin there.
+- **Your config file lost its comments.** `openclaw mcp add` removed the comments from `openclaw.json`. The original is saved as `openclaw.json.pre-gbrain.bak` in the same folder.
+- **One optional step is pending.** Migration v0.53.0, which shares GBrain's skills with connected agents, wants host approval. Plain memory doesn't need it, so I left it alone.
+- **Hosted option:** GBrain also has a hosted service at gbrain.io, one always-on brain that several agents can share. It's optional; this install runs entirely on this machine.

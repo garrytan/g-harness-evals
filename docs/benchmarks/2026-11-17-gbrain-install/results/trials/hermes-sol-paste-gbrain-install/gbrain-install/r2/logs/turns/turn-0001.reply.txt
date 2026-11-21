@@ -1,0 +1,51 @@
+Installed GBrain v0.60.734.0, pinned to the requested tag, with local PGLite storage at /harness-state/.gbrain.
+
+Your original identity text and existing settings are preserved. Added the GBrain MCP connection and memory instructions; no keys, paid providers, automatic fact capture, cron jobs, or services were enabled.
+
+Verified with real GBrain calls:
+  • remember → recall succeeded through MCP.
+  • Closed and reopened the MCP server; recall still returned test fact #4.
+  • Forgot that fact and verified it disappeared from active recall.
+  • Exact keyword retrieval passed.
+  • Hermes MCP connection and recall hook passed their native checks.
+
+Search-mode choice
+
+Active: conservative — selected because no chat key or reranker is configured.
+
+  conservative: 4K-token cap, 10 chunks, no reranker.
+  balanced: 12K-token cap, 25 chunks, reranking when configured.
+  tokenmax: no token cap, 50 chunks, reranking when configured.
+
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+
+These are illustrative model API costs, not your harness subscription price. Change modes anytime with:
+  gbrain config set search.mode conservative
+  gbrain config set search.mode balanced
+  gbrain config set search.mode tokenmax
+
+Other settings
+  Automatic fact saving: off; explicit remembering works.
+  Free upkeep: on while the GBrain session is open.
+  Local conversation archive: on by default. Disable with:
+    gbrain transcripts archive off
+  Optional skill scaffolding: skipped.
+
+Keyless GBrain retrieval is local, but recalled content still reaches this agent’s model.
+
+Remaining verification
+
+Restart Hermes to load the new tools into your next conversation. A new-conversation recall test was attempted but its inference connection failed, so I’m not claiming that stage passed. Fact #1 remains as a harmless restart fixture: ask “Recall concepts/gbrain-install-check,” then forget fact #1.
+
+Detailed verification:
+  /harness-state/hermes/cache/scratch/gbrain-install-verification.json

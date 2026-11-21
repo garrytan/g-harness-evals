@@ -1,0 +1,118 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.734.0 (`github:garrytan/gbrain#v0.60.734.0`) wherever the docs say #stable.",
+  "reply_text": "**GBrain v0.60.734.0 is installed and working locally, keyless. Native OpenClaw activation is partially blocked.** Your identity, existing instructions, and native memory were preserved.\n\n### Verified with real GBrain calls\n- `remember` saved test fact **#1**; separate-process `recall` retrieved it.\n- Correction created **#2**, superseding #1.\n- `forget` withdrew #2; subsequent recall returned **zero active facts**.\n- Exact keyword search retrieved a persisted test page.\n\nDatabase: `/harness-state/.gbrain/brain.pglite`, source `default`.\n\n### Search-mode choice\n**Conservative is active**—recommended for this keyless start:\n1. **conservative:** 4K budget, 10 chunks, no reranker.\n2. **balanced:** 12K budget, 25 chunks, reranking when configured.\n3. **tokenmax:** no fixed budget, 50 chunks, widest retrieval.\n\n```text\nEstimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n                  ($0.10/M in)  ($2/M in)     ($4/M in)\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n\n  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.\n  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.\n  Embedding, reranking and query expansion are separate provider charges.\n```\n\nThese are the guide’s illustrative model-input estimates, **not your subscription pricing**. You can choose another mode anytime; no paid providers were enabled.\n\n### Settings and remaining blocker\n- Automatic fact capture: **off**.\n- Free idle upkeep: **on while GBrain is open**; no service or schedule installed.\n- Conversation archive: **on by default**, storing redacted daily conversation pages locally. Disable with `gbrain transcripts archive off`.\n- Recalled memory still enters your agent model’s context.\n\nThe MCP connection is registered but disabled. The memory-rule plugin is installed, but its required conversation-access permission remains unset. OpenClaw’s setup tool then refused further changes and explicitly required a **new conversation to reverify the runtime**.\n\nStart a new chat with: **“Finish the GBrain activation using GBRAIN-INSTALL-STATUS.md.”** That file records the remaining steps and a saved marker for a genuine cross-conversation recall test. CLI fallback instructions are already in `AGENTS.md`; native activation and cross-conversation recall are **not yet verified**.",
+  "exit": 0,
+  "started_at": "2026-11-17T21:19:53.255Z",
+  "ended_at": "2026-11-17T21:26:05.488Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T21:26:05.313Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/extensions/gbrain-turn-rule",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 55
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Raidrouvur.",
+  "reply_text": "Remembered—your sister’s new cat is called **Raidrouvur**. 🐈",
+  "exit": 0,
+  "started_at": "2026-11-17T21:26:05.503Z",
+  "ended_at": "2026-11-17T21:26:52.984Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T21:26:52.896Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/extensions/gbrain-turn-rule",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 8
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister’s new cat is called **Raidrouvur**. 🐈",
+  "exit": 0,
+  "started_at": "2026-11-17T21:26:52.986Z",
+  "ended_at": "2026-11-17T21:27:35.505Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T21:27:35.299Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/extensions/gbrain-turn-rule",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 8
+ },
+ {
+  "turn": 4,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "I checked GBrain, but couldn’t retrieve the name. The search was limited, so I can’t confidently say it isn’t saved—and I don’t want to guess.",
+  "exit": 0,
+  "started_at": "2026-11-17T21:27:35.508Z",
+  "ended_at": "2026-11-17T21:28:19.815Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-17T21:28:19.665Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.734.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/extensions/gbrain-turn-rule",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 9
+ }
+]

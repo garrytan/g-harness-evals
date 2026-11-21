@@ -1,0 +1,18 @@
+Finished the setup with the free/keyless defaults. No API keys, no hosted service, no paid providers.
+
+**What I did**
+- Installed and enabled gbrain's OpenClaw turn-rule plugin (`gbrain-turn-rule`) so the agent gets a "check GBrain first" rule each turn.
+- Wrote the brain-first instructions block into `/workspace/AGENTS.md` (new file, managed markers).
+- Registered the stdio MCP server `gbrain` in `/harness-state/openclaw/openclaw.json`, pointing at `/harness-state/.bun/bin/gbrain serve --surface starter --advertise verbs`.
+- Local brain initialized keyless at `/harness-state/.gbrain` (PGLite, keyword search, embeddings disabled).
+- Round-trip verified: `gbrain remember` → `gbrain recall` returned the saved fact.
+
+**Verification**
+- `gbrain doctor --only harness_wiring --json` → `status: healthy`, score 100; turn hook state `wired`, instructions `current`.
+- `openclaw mcp doctor gbrain --probe` → `gbrain: ok`.
+- `gbrain --version` → `0.60.734.0`.
+
+**One environment caveat**
+There's no running Gateway service in this container (`ws://127.0.0.1:18789` refused; no supported service manager), so the turn-rule hook can't be live-loaded into the current process. It's installed/enabled in config and will load on the next Gateway start; the brain-first block in `AGENTS.md` already applies to new sessions. gbrain's own check reports the hook as wired.
+
+Default behavior now: conservative memory (saves only what you ask), local-only upkeep, redacted conversation archive on — all free and on this machine.

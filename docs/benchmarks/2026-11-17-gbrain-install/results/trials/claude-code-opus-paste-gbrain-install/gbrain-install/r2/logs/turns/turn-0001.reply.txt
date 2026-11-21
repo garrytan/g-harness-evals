@@ -1,0 +1,43 @@
+GBrain memory is now installed in this Claude Code agent. Your existing identity and instructions are unchanged, it runs without any API keys, and a remember/recall round trip worked with real GBrain calls.
+
+**What was installed**
+- **Bun 1.4.4** and **gbrain 0.60.734.0**, installed from `github:garrytan/gbrain#v0.60.734.0` in place of `#stable`.
+- **`gbrain setup claude-code`** created a local PGLite brain at `~/.gbrain/brain.pglite` with no embeddings. It registered the `gbrain` MCP server for all your projects and added two read-only hooks that run when a session starts and when you send a prompt. Its own startup check passed. `claude mcp get gbrain` shows it as **✔ Connected**.
+- **Your config:** `settings.json` still has `apiKeyHelper` and `skipWebFetchPreflight`, with the hooks added next to them. There was no `CLAUDE.md` before, so setup created one holding only a "check GBrain first" block. Backups of the original config files are in `/tmp/gbrain-backup/`.
+- **Left off, as the install guide recommends:** automatic saving of facts from your conversations, any paid providers, scheduled jobs, starter pages, and the optional bundled skills.
+
+**Round-trip test**
+1. `gbrain remember` saved a test marker with provenance `install-check` (fact #1). It was a made-up marker, not a fact about you.
+2. `gbrain recall --entity install-check` in a separate process returned the exact text.
+3. A brand-new Claude Code session (`claude -p`) recalled the same text through the gbrain MCP `recall` tool.
+4. `gbrain forget 1` withdrew the marker, and a follow-up recall no longer returns it.
+
+**Worth knowing**
+- `gbrain doctor --only harness_wiring` warns that the registration is "unverified", even though Claude Code itself shows it connected and the MCP recall worked. I didn't rerun setup to clear the warning, because that would rewrite your MCP config.
+- This session started before gbrain was registered, so the MCP tools load from your next session on.
+- Keyword `search` only covers pages. You have no pages yet, so it returns nothing until you add notes. Facts are retrieved with `recall`.
+- Conversation archiving is **on by default**: gbrain keeps one redacted page per conversation per day, and with no API keys nothing leaves this machine. To turn it off: `gbrain transcripts archive off`.
+- Upkeep is **on**: free maintenance runs while a gbrain session is open.
+- There's also a hosted option at gbrain.io, which I didn't use.
+
+**Search mode: `conservative` is in effect.** It was picked automatically because there's no chat key and no reranker. You can change it at any time:
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+1. **conservative** (current): a tight 4K budget with at most 10 chunks and no reranker. Best for Haiku subagents, cost-sensitive setups and high-volume loops.
+2. **balanced**: a 12K budget with 25 chunks, reranked.
+3. **tokenmax**: no budget, with 50 chunks, reranked. It gives the widest retrieval and is recommended once a chat key is set.
+
+The reranker in balanced and tokenmax needs a provider key, so on this keyless brain they can't rerank. Query expansion is off in every mode by default. To switch, run `gbrain config set search.mode <mode>` (check with `gbrain search modes`). You can also turn on automatic saving of facts you state (`salient`, the recommended setting) or add starter pages for a personal or company brain whenever you like.

@@ -1,0 +1,22 @@
+gbrain is set up with its free defaults: no API keys, nothing paid, and everything stays on this machine.
+
+**What setup did:**
+- Created a local brain at `/harness-state/.gbrain/brain.pglite`, using keyword search with no embeddings.
+- Registered gbrain as a memory server for every Claude Code session. `claude mcp get gbrain` reports it as **✔ Connected**.
+- Added two hooks (at session start and on each prompt) and a "check the brain first" instruction to `/harness-state/claude/CLAUDE.md`.
+- Its built-in test passed: it connected, listed 8 tools and answered a recall query.
+
+**Health check:** `gbrain doctor` scores it 95/100. Its one warning says Claude Code has no gbrain registration, but `claude mcp get gbrain` shows it registered and connected. The doctor's message itself says it "has not been verified from this process", so the warning looks wrong rather than a real fault. I left it alone.
+
+**To use it:** open a new Claude Code session, because config is only read at startup, and check that `/mcp` lists gbrain.
+
+**Settings in effect**, each with the command to change it:
+- **Search mode: conservative.** It's the only mode that works without keys. Switch with `gbrain config set search.mode balanced|tokenmax`.
+- **Automatic saving: off.** Agents save only what you ask them to remember. gbrain recommends `salient`, which saves lasting facts you state, along with where they came from. Turn it on with `gbrain config set memory.auto_writeback salient`. Until you choose, gbrain will ask again in a later session.
+- **Session capture hooks: off.** The extra hooks that save conversations when a session ends weren't installed. Re-run setup with `--capture` to add them.
+- **Free upkeep: on.** It runs only while a gbrain session is open and never deletes or pays for anything. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive: on.** It keeps one redacted page per conversation per day, and nothing leaves the machine without a key. Turn it off with `gbrain transcripts archive off`.
+- **Brain shape: none.** There are no starter pages. `gbrain setup claude-code --shape personal` adds empty pages for facts about you, your voice and how you decide.
+- **Release channel: stable.** You installed v0.60.734.0, but gbrain now follows its weekly stable channel for updates. `gbrain config set self_upgrade.channel alpha` gets every release instead.
+
+As before, the hosted version at gbrain.io can import this brain if you ever want one that runs without your machine. `gbrain notices mute hosted_option` stops it from mentioning that.

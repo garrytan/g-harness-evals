@@ -1,0 +1,25 @@
+gbrain is fully set up for Claude Code: a free, local brain with no API keys. The new Claude Code session I launched to check reports the `gbrain` memory server as **Connected**, and setup's own check passed, with `recall` answering through it. You'll need to open a new Claude Code session for it to show up there.
+
+**What I ran:**
+1. A dry run of `gbrain setup claude-code` first. It confirmed nothing would be paid for and no conversations would be saved by hooks, so I ran the real setup with its defaults.
+2. Setup created the brain at `~/.gbrain/brain.pglite`, a database stored as a local file with no server. There's no embedding model, so it uses plain keyword search.
+3. It changed these Claude Code files, all under `/harness-state/claude/`:
+   - `.claude.json` registers the gbrain memory server.
+   - `settings.json` adds hooks that load relevant memory at session start and on each prompt.
+   - `CLAUDE.md` is a new file with a rule telling the agent to check the brain first.
+
+**One warning to ignore:** `gbrain doctor` scored 95/100 and warns that Claude Code has no gbrain registration. That's wrong: the entry is in the file above and Claude Code shows it as Connected. The warning admits it "has not been verified from this process", and I took no action on it.
+
+**Settings in effect** (all free, nothing sent off this machine):
+
+| Setting | Current value | To change |
+|---|---|---|
+| Search mode | conservative: small 4K budget, picked because there are no keys | `gbrain config set search.mode balanced` or `tokenmax` |
+| Automatic saving | off: agents save only what you ask them to remember | `gbrain config set memory.auto_writeback salient` (gbrain's recommendation for a personal brain) |
+| Upkeep | on: free maintenance runs while a gbrain session is open | `gbrain config set maintenance.auto false` |
+| Conversation archive | on: one redacted page per conversation per day, stored locally | `gbrain transcripts archive off` |
+| Starter pages | none | `gbrain setup claude-code --shape personal` |
+
+The search modes differ in how much text each search hands back to the model. gbrain puts the cost of that text in Sonnet usage at 10K searches a month at about $80 for conservative, $200 for balanced and $400 for tokenmax. These are estimates, not gbrain charges; if you use a Claude subscription, they aren't your prices.
+
+To use real semantic search later, you'd add an API key and re-run init with an embedding model; gbrain printed that command during setup. Its update notice says the install now follows the stable channel, so upgrades will come from there rather than staying on v0.60.734.0. gbrain also asked me to mention once that gbrain.io can host this brain for you: https://gbrain.io/?ref=cli-setup.

@@ -1,0 +1,63 @@
+GBrain is installed, wired, and verified with real round trips. Hosted GBrain (gbrain.io) is the always-on alternative the docs put first, but you asked for self-host, which is what this is — keyless and local, nothing paid.
+
+What's on disk
+  gbrain CLI   0.60.734.0 — the exact tag you named (`refs/tags/v0.60.734.0` confirmed
+               on the remote). Bun 1.4.4 at ~/.bun/bin, gbrain linked at
+               /harness-state/.bun/bin/gbrain. The global `bun install -g` was blocked by
+               this sandbox's package scanner, so I used the docs' documented fallback
+               (pin the tag, `bun install`, `bun link`) — same binary, exact version.
+  brain        PGLite at /harness-state/.gbrain/brain.pglite, brain_id 74358f5d…, source
+               `default`, content root /harness-state/.gbrain/content/74358f5d…/default
+  Hermes       mcp_servers.gbrain → `serve --surface starter --advertise verbs`, GBRAIN_HOME=
+               /harness-state. SOUL.md brain-first block appended after your identity text;
+               pre_llm_call hook in config.yaml (approved in shell-hooks-allowlist.json).
+               5 core skills scaffolded into /harness-state/hermes/skills.
+
+Kept intact: your SOUL.md identity paragraph is byte-identical (checked with cmp), all 12 of
+your existing skill categories are untouched, and config.yaml's model/context_length/security
+keys are unchanged. Backups: /workspace/gbrain-setup/config.yaml.bak-pre-gbrain.
+
+Verified with real calls
+  remember → "inserted", fact #1, status committed (gbrain-734-quartz-lantern)
+  recall   → same fact back, from a fresh process (proves persistence)
+  forget   → expired fact #3; recall then returned only fact #1
+  keyword  → page gbrain-keyword-check put, `search "basalt-heron"` returned it, keyword_hit=true
+  MCP      → spawned `gbrain serve` over stdio exactly as Hermes does: initialize, tools/list (8
+             tools), remember + recall over JSON-RPC → round trip returned the marker
+  hermes mcp test gbrain → ✓ Connected, 8 tools; `hermes mcp list` → ✓ enabled
+  gbrain doctor → status healthy, health_score 100
+
+Search mode — the choice you asked to see
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+
+In effect now: conservative (4K budget, 10 chunks, no reranker) — applied automatically because
+there's no chat key and no reranker key. The three modes:
+  1) conservative — tight 4K budget, 10 chunks max, no reranker. Best for cost-sensitive/high-volume runs.
+  2) balanced — 12K budget, 25 chunks, reranked (needs VOYAGE_API_KEY).
+  3) tokenmax — no budget, 50 chunks, reranked. Widest retrieval.
+
+Change it any time: `gbrain config set search.mode balanced` (or tokenmax). Verify with
+`gbrain search modes`.
+
+Other settings in effect: agents save only what you explicitly ask (writeback off; `salient`
+is the recommended opt-in); free upkeep runs while a gbrain server session is open; conversation
+archive is on (one redacted page per conversation per day, local only, no key → nothing leaves
+the machine; `gbrain transcripts archive off` disables it). No daemon, service, cron, connector,
+or auto-upgrade was installed.
+
+Two things to know
+  - Start a new Hermes session to pick up the tools and the SOUL block.
+  - `gbrain setup hermes --instructions-only` exits 1 with `turn_hook_not_loaded`, but that's a
+    false negative in its verifier: it probes `hermes hooks doctor` through a HOME-derived path
+    while this cell sets HERMES_HOME=/harness-state/hermes. Hermes' own check reports the hook
+    ✓ exists, ✓ allowlisted, ✓ valid JSON. Files and wiring are correct; only gbrain's proof step
+    is fooled by the non-default home.

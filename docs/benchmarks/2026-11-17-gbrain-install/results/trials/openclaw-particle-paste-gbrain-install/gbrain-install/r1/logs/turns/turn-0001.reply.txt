@@ -1,0 +1,45 @@
+GBrain is installed, connected, and verified. Here's the state.
+
+## What's in place
+
+- **GBrain CLI 0.60.734.0** — installed at the pinned release you asked for (`github:garrytan/gbrain#v0.60.734.0`, exactly where the docs say `#stable`), on Bun 1.4.4 at `/harness-state/.bun/bin/gbrain`.
+- **Keyless brain** — `gbrain init --pglite --no-embedding`: local embedded Postgres at `/harness-state/.gbrain/brain.pglite`, no API keys, no server, no daemon, no cron.
+- **OpenClaw wiring** — registered stdio MCP server `gbrain` in `/harness-state/openclaw/openclaw.json` (`serve --surface starter --advertise verbs`); `openclaw mcp probe gbrain` reports **8 tools**.
+- **Brain-first instructions** — `/workspace/AGENTS.md` now carries gbrain's marked block, plus the `gbrain-turn-rule` per-turn hook plugin (enabled, `before_prompt_build`, `allowConversationAccess: true`, runtime status **loaded**).
+- **Your identity/instructions preserved** — there were no prior AGENTS.md/SOUL.md files and I changed no agent, model, or provider settings. `mcp add` rewrote the config file without its JSON5 comments; every value survived intact (verified: model, workspace `/workspace`, `skipBootstrap`, memory settings).
+
+## Search mode (your choice)
+
+Verified with `gbrain search modes`: **conservative** is active — auto-applied because there's no chat key and no reranker, so keyword retrieval only.
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+1. **conservative** (active) — 4K budget, 10 chunks, no reranker. Best for cheap/high-volume.
+2. **balanced** — 12K budget, 25 chunks, reranked (needs a key for the reranker).
+3. **tokenmax** — no budget, 50 chunks, reranked; widest retrieval.
+
+Change any time: `gbrain config set search.mode balanced`. Mode affects retrieval payload size, and cost depends on both the mode and the model reading it.
+
+Other first-run settings in effect: automatic fact saving **off** (only what you ask to remember; `gbrain config set memory.auto_writeback salient` enables it), free upkeep **on**, conversation archive **on** (redacted, local-only while keyless; `gbrain transcripts archive off` disables). Optional gbrain skills weren't scaffolded — that path is gated on a shared-skills approval, and the per-turn rule is the documented primary route anyway.
+
+## Verification (real calls)
+
+- **CLI round trip:** `remember` → fact #1 (provenance `install-check`, entity `concepts/gbrain-install`), then `recall` in a **separate process** returned it verbatim.
+- **MCP round trip:** spoke JSON-RPC to `gbrain serve` exactly as OpenClaw does — `tools/list` → `remember, entity, synthesize, forget, request_tools, recall, context_pack, delta`; `recall` found fact #1; `remember` created marker fact #2 (`7f3a9c`); `recall` returned it; `forget` removed it. Fact #1 intentionally kept as the install note; brain now holds 1 fact, 0 pages.
+- **Hook caveat:** gbrain's own runtime check prints `turn_hook_not_loaded` because it spawns `openclaw` without this host's `OPENCLAW_CONFIG_PATH` (I reproduced it: same command with the env unset reports "Plugin not found"). The authoritative runtime inspect shows the plugin loaded with `typedHooks: before_prompt_build`, and `gbrain doctor --only harness_wiring` reports `wired (native)`.
+
+One note: the gateway here has no host lifecycle manager, so I couldn't restart it; I used `openclaw mcp reload` instead. The gbrain tools and the per-turn rule appear from the next session turn onward — this turn's runtime was built before the install.
+
+If you'd rather not self-host, hosted GBrain (gbrain.io) is the other one-command path; I didn't use it since you asked for the local release.

@@ -1,0 +1,52 @@
+GBrain is installed and wired into this agent — identity and instructions untouched. Summary:
+
+## Installed
+- **Bun 1.4.4** → `/harness-state/.bun/bin`, `PATH` line added to `~/.profile` (no shell rc existed).
+- **gbrain v0.60.734.0** installed from the pinned tag `github:garrytan/gbrain#v0.60.734.0` (resolve `a278ddf`) in place of the doc's `#stable`. `gbrain --version` → `gbrain 0.60.734.0`.
+- Brain: **keyless PGLite, no embeddings** — `~/.gbrain/brain.pglite`, schema v318, content root `~/.gbrain/content/82e01395-…/default`, 0 pages. Pending setup migrations applied (`apply-migrations --yes --no-autopilot-install`, exit 0). No keys, no daemon, no cron.
+
+## Wiring (existing agent, as-is)
+- `mcp.servers.gbrain` → `/harness-state/.bun/bin/gbrain serve --surface starter --advertise verbs` with `GBRAIN_HOME=/harness-state` (absolute path, since the gateway's PATH lacks `~/.bun/bin`).
+- `gbrain setup openclaw --workspace /workspace` wrote the managed brain-first block into `/workspace/AGENTS.md` and installed + enabled the `gbrain-turn-rule` plugin (per-turn rule) with `hooks.allowConversationAccess`.
+- No scaffolding of the 5 skills (they cost prompt tokens every turn; `gbrain skillpack scaffold --harness openclaw` adds them if you want the fallback).
+- ⚠️ `openclaw mcp add` rewrote `openclaw.json` and stripped its JSON5 comment header; I restored the comments verbatim and kept `openclaw.json.pre-gbrain.bak`.
+
+## Verification (real calls)
+- `gbrain doctor` → **healthy, 100/100**, `harness_wiring`: instructions current, turn hook wired.
+- `openclaw mcp doctor gbrain --probe --json` → `ok`.
+- Raw MCP stdio session (`serve --surface starter`): `initialize` → `gbrain 0.60.734.0`, `tools/list` → 8 tools (`remember, recall, entity, forget, synthesize, context_pack, delta, request_tools`).
+- CLI: `remember "…round-trip probe 7f3c1a…" --content-origin user_said --provenance install-check` → committed, then `recall` in a **separate process** returned the fact; `search` hit it by exact keyword.
+- MCP: `remember` "…probe 9d2e4b written over the stdio memory surface" → ok, then `recall {grep:"9d2e4b"}` in a fresh server process returned it.
+- Both markers are install-check probes (no invented facts about you). They stay until after the restart, then I'll recall and forget them.
+
+**Needs one action from you:** the running gateway hasn't loaded `mcp.servers.gbrain` or the turn hook yet, and I can't restart the gateway host from inside (`Gateway host lifecycle is unavailable`). Restart OpenClaw/the gateway, and on the first turn after that ask me to check GBrain — I'll confirm the tools appear and clean up the markers. Until then gbrain is reachable by CLI and by MCP probe, not yet by my in-session tools.
+
+## Search mode in effect: `conservative`
+Auto-picked: no chat key and no reranker. Switch any time with `gbrain config set search.mode <mode>`.
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+1. **conservative** — 4K budget, 10 chunks, no reranker (Haiku subagents, cost-sensitive, high volume).
+2. **balanced** — 12K budget, 25 chunks, reranked.
+3. **tokenmax** — no budget, 50 chunks, reranked (recommended with a chat key; widest retrieval). Keep 20 results: `gbrain config set search.searchLimit 20`.
+
+`gbrain query` doesn't expand by default in any mode; `--expand` forces it, `gbrain config set search.expansion true` makes it the default. This matrix is downstream model input only — embeddings, rerank, expansion and synthesis are separate provider charges.
+
+## Other settings in effect
+- **writeback: off** — only what you ask me to remember is saved. Recommended opt-in: `gbrain config set memory.auto_writeback salient`.
+- **upkeep: on** — free, runs while a gbrain session is open; nothing deleted or paid. Off: `gbrain config set maintenance.auto false`.
+- **conversation archive: on** — one redacted page per conversation per day in the `conversations` source. Keyless, so nothing leaves this machine. Off: `gbrain transcripts archive off`.
+- **skills scaffold: skipped**; **self-upgrade: `notify` on stable** (reports releases, installs none).
+
+Say a mode (or any of the above) and I'll apply it — nothing above blocks memory.

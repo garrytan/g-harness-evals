@@ -149,6 +149,8 @@ describe('gbrain calls and tokens', () => {
     expect(githubRateLimited([shell('bun install -g github:garrytan/gbrain', 'error: GET https://codeload.github.com/garrytan/gbrain/tar.gz/stable - 429')])).toBe(true);
     expect(githubRateLimited([shell('npm install -g gbrain', 'npm error 429 Too Many Requests - GET https://registry.npmjs.org/gbrain')])).toBe(false);
     expect(githubRateLimited([{ ...shell('x'), kind: 'text', output: 'GitHub rate limit exceeded' }])).toBe(false);
+    expect(githubRateLimited([shell('gh api repos/garrytan/gbrain', 'You have exceeded a secondary rate limit. github.com')])).toBe(true);
+    expect(githubRateLimited([shell('cat ~/gbrain/docs/guides/skills.md', 'Each data source skill owns the API contract: endpoints, auth, rate limits, gotchas. See github.com/garrytan/gbrain.')])).toBe(false);
   });
 });
 

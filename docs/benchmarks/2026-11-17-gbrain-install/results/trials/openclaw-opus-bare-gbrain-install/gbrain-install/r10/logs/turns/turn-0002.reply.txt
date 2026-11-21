@@ -1,0 +1,32 @@
+gbrain is set up as a free local brain with no API keys and nothing paid turned on. OpenClaw can reach it. It's untested in a live chat: the gbrain tools don't show up in this conversation yet, and I couldn't restart the gateway.
+
+**Checks that passed**
+- **Brain:** created with `gbrain init --pglite --no-embedding`, stored at `/harness-state/.gbrain/brain.pglite`. It has no server, no embeddings and no paid calls, so search is keyword-only.
+- **OpenClaw connection:** gbrain is registered with OpenClaw as `gbrain` (an MCP server, which is how OpenClaw reaches outside tools). `openclaw mcp probe gbrain` connects and finds 8 tools: gbrain's seven memory commands plus one that unlocks the rest.
+- **Brain-first rule:** I ran `gbrain setup openclaw --instructions-only --workspace /workspace`. It created a new `/workspace/AGENTS.md` telling the agent to check gbrain first. It also installed and enabled a small plugin, `gbrain-turn-rule`, that repeats that reminder on every message.
+- **Memory:** saving a test fact (`gbrain install check`) and finding it again both worked.
+
+**Still open**
+- **Hook warning:** `gbrain setup` still reports `turn_hook_not_loaded`, even though `openclaw plugins inspect` shows the plugin loaded with its hook and `gbrain doctor` calls the hook "wired". The warning may clear after a restart.
+- **Gateway restart:** my restart request was refused with "start a new OpenClaw conversation". If the hook isn't active in a fresh chat, run `openclaw gateway restart`.
+- **Config rewrite:** adding gbrain rewrote `/harness-state/openclaw/openclaw.json` as plain JSON, which dropped its explanatory comments. The settings themselves didn't change, and the commented original is at `openclaw.json.bak`.
+
+**Settings in effect** (change any of them whenever you like):
+
+| Setting | Current | To change |
+|---|---|---|
+| Search mode | `conservative` (chosen automatically because there's no API key) | `gbrain config set search.mode balanced` or `tokenmax` |
+| Saving facts automatically | off: it saves only what you ask it to remember | `gbrain config set memory.auto_writeback salient` (gbrain's recommended setting) |
+| Free background upkeep | on while a session is open | `gbrain config set maintenance.auto false` |
+| Conversation archive | on, local only: one redacted page per conversation per day | `gbrain transcripts archive off` |
+
+The search mode decides how much retrieved text goes into each answer. Here is gbrain's cost estimate for that text at 10K queries a month:
+
+```
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+```
+
+**To test it:** open a new chat and ask me to recall "gbrain install check". Once that works, ask me to forget it: it's only a test fact, and I left it there for that check.

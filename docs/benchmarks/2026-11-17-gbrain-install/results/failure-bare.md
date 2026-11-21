@@ -1,0 +1,7 @@
+| Step | Failed runs | Person-needed events | Top last gbrain codes | Example trials | As read | Reader note |
+|---|---|---|---|---|---|---|
+| binary | 14 | 47 |  | gbrain-install-2026-11/hermes-opus-bare-gbrain-install/gbrain-install/r1, gbrain-install-2026-11/hermes-opus-bare-gbrain-install/gbrain-install/r2 |  |  |
+| brain | 0 | 62 |  |  |  |  |
+| wired | 2 | 11 |  | gbrain-install-2026-11/hermes-opus-bare-gbrain-install/gbrain-install/r10, gbrain-install-2026-11/hermes-opus-bare-gbrain-install/gbrain-install/r9 |  |  |
+| saved | 22 | 3 | doctor_alert_unknown (7), first_run_decisions (2), revision_required (2) | gbrain-install-2026-11/openclaw-opus-bare-gbrain-install/gbrain-install/r1, gbrain-install-2026-11/openclaw-opus-bare-gbrain-install/gbrain-install/r10 |  |  |
+| recalled | 21 | 5 | first_run_decisions (13), pglite_busy (3), content_drift_sweep (1) | gbrain-install-2026-11/claude-code-opus-bare-gbrain-install/gbrain-install/r1, gbrain-install-2026-11/claude-code-opus-bare-gbrain-install/gbrain-install/r10 |  |  |

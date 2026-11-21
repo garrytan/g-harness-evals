@@ -1,0 +1,25 @@
+gbrain is set up and connected to Claude Code. It's free, uses no API keys, and nothing leaves this machine. Setup's own test passed, `claude mcp get gbrain` shows it **✔ Connected**, and the health check scores 95/100.
+
+**What was set up**
+- **Brain:** a new local database at `/harness-state/.gbrain/brain.pglite`. It needs no server and searches by keyword only, with no embeddings.
+- **Claude Code:** gbrain is registered as a user-wide tool server, two hooks run at session start and on each prompt to load memory, and a "check the brain first" instruction is now in `/harness-state/claude/CLAUDE.md` (a new file).
+- **PATH:** I added `export PATH="$HOME/.bun/bin:$PATH"` to a new `/harness-state/.bashrc`, so `gbrain` works in new shells.
+- **Left off:** capturing session transcripts through hooks, and paid providers.
+
+**Settings in effect** (all defaults)
+
+| Setting | In effect | To change |
+|---|---|---|
+| Search mode | `conservative`: the only mode that fully works without a chat key or reranker | `gbrain config set search.mode balanced` or `tokenmax` |
+| Saving facts automatically | off: agents save only what you ask them to remember | `gbrain config set memory.auto_writeback salient` (gbrain recommends this) |
+| Upkeep | on: free maintenance while a gbrain session is open; deletes nothing and spends nothing | `gbrain config set maintenance.auto false` |
+| Conversation archive | on: one redacted page per conversation per day, kept on this machine | `gbrain transcripts archive off` |
+| Starter pages | none | `gbrain setup claude-code --shape personal` |
+
+The search modes differ in how much retrieved text goes to the model. gbrain estimates the extra input cost at 10K queries a month with Sonnet 5.5 as $80 for conservative, $200 for balanced and $400 for tokenmax. That's billed by whichever model provider you already use, not by gbrain.
+
+**Still to do**
+- **Start a new Claude Code session.** Tools load at session start, so this one doesn't have gbrain. In the new session, `/mcp` should list it.
+- **Ignore the one health-check warning.** It says Claude Code has no gbrain registration. The registration exists; the check just hasn't confirmed it from its own process yet. It should clear once a new session uses gbrain.
+
+There's also a paid hosted version at gbrain.io that can import this brain. To stop seeing that notice, run `gbrain notices mute hosted_option`.

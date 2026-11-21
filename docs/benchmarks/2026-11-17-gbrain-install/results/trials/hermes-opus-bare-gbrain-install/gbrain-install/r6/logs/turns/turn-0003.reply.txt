@@ -1,0 +1,21 @@
+gbrain is still not installed. I haven't retried, because your go-ahead doesn't change what's stopping it.
+
+Hermes's security scanner blocked both install routes. This session runs with nobody present to approve commands, so the scanner refuses anything it flags:
+
+1. `bun install -g github:garrytan/gbrain#v0.60.734.0`: it couldn't finish its package safety checks while offline.
+2. `git clone --branch v0.60.734.0`: it misread part of the version number as an IP address, almost certainly a false positive.
+
+I could try rewording the command until something slips past the scanner, but that would be dodging a safety check rather than satisfying it, so I won't. Only you can lift it.
+
+Bun 1.4.4 is already installed at `~/.bun/bin/bun`. My recommended setup is free and needs no API keys: a local brain stored on this machine, with no embeddings.
+
+Either of these finishes it:
+
+1. Run it yourself:
+
+       export PATH="$HOME/.bun/bin:$PATH"
+       bun install -g github:garrytan/gbrain#v0.60.734.0
+       gbrain --version
+       gbrain init --pglite --no-embedding
+
+2. Add `approvals.single_query_mode: approve` to your Hermes `config.yaml` and run me again. I'll do the same steps and check that storing and recalling a note works.

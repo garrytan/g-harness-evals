@@ -1,0 +1,44 @@
+Installed GBrain v0.60.734.0 from the exact release tag and registered it with Hermes.
+
+Your original identity and existing configuration are preserved. Added a marked memory-policy section and brain-first hook; Hermes’s hook check passes.
+
+Verified with real GBrain calls:
+  CLI and MCP remember → recall passed.
+  Recall persisted after reopening the process.
+  Exact keyword search passed.
+  Correction and withdrawal passed; test fixtures no longer appear in active recall/search.
+
+A fresh Hermes conversation could not be verified: the existing inference provider returned connection errors. Restart Hermes to load the new tools in your interactive session.
+
+Current settings:
+  Search: conservative, keyword-only, no GBrain provider keys.
+  Automatic fact saving/capture: off.
+  Free in-session upkeep: on.
+  Local redacted conversation archive: on. Disable with:
+    gbrain transcripts archive off
+  No daemon, cron, connectors, or paid enrichment installed.
+
+Search-mode choice:
+  conservative — 4K-token budget, 10 chunks, no reranker; active.
+  balanced — 12K-token budget, 25 chunks, reranking when configured.
+  tokenmax — no token budget, 50 chunks, reranking when configured.
+
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+
+These are illustrative model API costs, not your subscription price. Keyless retrieval is local, but recalled text reaches your agent’s model provider.
+
+Change mode anytime:
+  gbrain config set search.mode conservative|balanced|tokenmax
+
+Database: /harness-state/.gbrain/brain.pglite
+Verification record: /harness-state/gbrain-install-verification.json

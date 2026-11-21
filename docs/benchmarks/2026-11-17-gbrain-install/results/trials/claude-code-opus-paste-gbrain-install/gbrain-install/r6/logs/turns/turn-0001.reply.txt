@@ -1,0 +1,48 @@
+GBrain v0.60.734.0 is installed and connected to Claude Code as keyless memory. A remember/recall round trip worked through both the CLI and the MCP server. Your identity and instructions are unchanged.
+
+**What was installed**
+- **Bun 1.4.4** in `~/.bun`. gbrain came from `github:garrytan/gbrain#v0.60.734.0` instead of `#stable`, and `gbrain --version` reports `0.60.734.0`.
+- **`gbrain setup claude-code`** created:
+  - a new keyless brain at `~/.gbrain/brain.pglite` (no API keys, no server);
+  - the `gbrain` MCP server in `.claude.json` (`claude mcp get gbrain` shows **✔ Connected**);
+  - two read-only context hooks (SessionStart, UserPromptSubmit) in `settings.json`;
+  - a new `CLAUDE.md` containing only the "check GBrain first" block.
+- **Left as it was:** your existing `apiKeyHelper` setting. There was no earlier `CLAUDE.md` or identity file, and I didn't run the identity setup. Automatic capture, paid providers, scheduled jobs and the starter-page option are all off.
+
+**Round-trip results (real calls)**
+- **CLI:** I saved fact #1 (an install-check marker) and fact #2 (a generic test note). Separate processes then recalled them by entity, exact keyword (`--grep`) and question. Each call is a new process, so this also shows the data persists on disk.
+- **MCP:** I started the exact server command Claude Code registered. It listed 8 tools (remember, recall, forget, entity, …). `remember` saved fact #3, and `recall` returned #3 and #1. A fresh CLI process then found #3 too.
+- **Forget:** I withdrew #2 and #3, and a later recall no longer returned them.
+
+**Still open**
+- **Restart needed:** this session started before gbrain was registered, so I can't see its tools yet. For the same reason `gbrain doctor` warns `registration_unverified`, though Claude Code itself shows the server connected. I left marker #1 in place: after you restart, ask me to recall `gbrain-install-check` and then forget it.
+- **PATH:** the Bun installer didn't change your shell profile. The MCP server and hooks use full paths, so they work anyway. To run `gbrain` yourself, add `export PATH="$HOME/.bun/bin:$PATH"` to your shell profile.
+- **Hosted option:** gbrain.io offers a hosted brain, which nothing here requires or uses.
+
+**Search mode: `conservative` is in effect.** Setup picked it automatically because there's no chat key and no reranker. Cost matrix:
+
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+1. **conservative** (current): tight 4K budget, at most 10 chunks, no reranker. Best for Haiku subagents, cost-sensitive setups and high-volume loops.
+2. **balanced**: 12K budget, 25 chunks, reranked.
+3. **tokenmax**: no budget, 50 chunks, reranked. The widest retrieval; recommended once you have a chat key.
+
+The reranking in balanced and tokenmax needs a provider key, and this brain has none. Query expansion is off in every mode; `--expand` turns it on for one call, and `gbrain config set search.expansion true` makes it the default. Change the mode any time with `gbrain config set search.mode <mode>`, or tell me and I'll do it.
+
+**Other settings in effect**
+- **Automatic saving: off.** I only save what you ask me to remember. gbrain recommends `salient`, which saves durable facts you state, with their source: `gbrain config set memory.auto_writeback salient`.
+- **Upkeep: on.** Free maintenance runs while a session is open. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive: on.** It keeps one redacted page per conversation per day, and nothing leaves this machine without an embedding key. Turn it off with `gbrain transcripts archive off`.
+- **Starter pages: none.** For starter pages, run `gbrain setup claude-code --shape personal` (or `company` / `both`).

@@ -1,0 +1,25 @@
+Installed **gbrain v0.60.734.0** from `github:garrytan/gbrain#v0.60.734.0`, with Bun 1.4.4, and connected it to Codex.
+
+Verified MCP connectivity, memory persistence across processes, and keyword search.
+
+Current settings: local keyless storage, `conservative` search, automatic fact saving off, free session upkeep on, and local redacted conversation archiving on. Disable archiving with `gbrain transcripts archive off`.
+
+The docs’ retrieval cost estimates are:
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are illustrative model API costs, separate from your subscription. Change modes with `gbrain config set search.mode <mode>`.
+
+**Restart Codex to load the tools.** Cross-session recall remains to be checked; a temporary verification marker is saved for that check.

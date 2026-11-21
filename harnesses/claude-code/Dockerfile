@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.title="harness-eval Claude Code harness" \
       harness-eval.source="https://www.npmjs.com/package/@anthropic-ai/claude-code" \
       harness-eval.topology="in-container"
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl ripgrep procps \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl ripgrep procps unzip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g --prefix /opt/harness --allow-scripts=@anthropic-ai/claude-code "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \

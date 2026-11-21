@@ -1,0 +1,17 @@
+gbrain is still not installed. The install command was blocked again, and your message doesn't change that. I didn't try to get around it.
+
+The block comes from Hermes's security scanner. In this single-query session it can only be lifted by an approval setting in config.yaml, not by a message in chat. I could route the install another way (clone the repo and `bun link` it, or run it from a script) or change that setting myself. Each of those would bypass the check rather than satisfy it, so I've left them alone.
+
+Bun 1.4.4 is installed at ~/.bun/bin, and I confirmed the v0.60.734.0 tag exists. To finish, pick one:
+
+1. Run it yourself. This uses the free, keyless defaults I'd recommend:
+
+       export PATH="$HOME/.bun/bin:$PATH"
+       bun add -g --backend=copyfile github:garrytan/gbrain#v0.60.734.0
+       gbrain init --pglite --no-embedding
+       gbrain config set self_upgrade.mode off
+       gbrain --version
+
+   `--pglite --no-embedding` gives you a local brain with keyword search and no API keys. Turning off `self_upgrade` keeps you on v0.60.734.0.
+
+2. Have me do it. Set `approvals.single_query_mode: approve` in config.yaml yourself, or run me in an interactive session where you can approve the command. I'll then do the same steps and confirm the version.

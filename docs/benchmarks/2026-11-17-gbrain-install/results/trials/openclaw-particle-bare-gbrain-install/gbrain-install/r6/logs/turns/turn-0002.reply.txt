@@ -1,0 +1,19 @@
+Done — gbrain is installed, initialized, and wired into this Gateway, all keyless and local.
+
+**What's in place**
+- **gbrain 0.60.734.0** at `/harness-state/.bun/bin/gbrain` (binary from tag `v0.60.734.0`, commit `a278ddf`)
+- **Brain:** embedded PGLite at `~/.gbrain/brain.pglite`, schema v318, content root `~/.gbrain/content/40d94bc8…/default`
+- **Keyless:** no embedding provider, so search is keyword-only; nothing leaves this machine and no paid calls can occur
+- **OpenClaw integration:** registered as a stdio MCP server (`openclaw mcp add gbrain …`) — doctor says `ok`, probe reports **8 tools**
+- **Smoke test passed:** saved a private fact via `gbrain remember`, recalled it, then deleted it
+- **Doctor:** `status: healthy`, score **100/100**
+
+**Settings in effect** (change any time)
+- Search mode **conservative** — chosen automatically because there's no chat/reranker key; balances nothing paid. Change: `gbrain config set search.mode balanced|tokenmax`
+- Writeback **off** — I save only what you ask me to remember. Recommended opt-in for durable facts: `gbrain config set memory.auto_writeback salient`
+- Free upkeep **on** while a gbrain session is open (`gbrain config set maintenance.auto false` to disable)
+- Conversation archive **on** — one redacted page/day from agent sessions, local only (`gbrain transcripts archive off` to disable)
+
+New MCP tools become available to me on the next session. If you later add a Voyage or OpenAI key, semantic search can be enabled without losing anything: `gbrain init --force --embedding-model voyage:voyage-4 --embedding-dimensions 1024 --path ~/.gbrain/brain.pglite`.
+
+I skipped the optional per-turn recall hook (`gbrain setup openclaw`), since the MCP tools already give memory access without rewriting the workspace instructions or adding a prompt hook — say the word if you want it.

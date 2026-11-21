@@ -1,0 +1,31 @@
+All done — installed and verified end-to-end, entirely free/keyless, with the defaults you asked me to pick.
+
+## Installed
+- **gbrain 0.60.734.0** (commit `a278ddf`, == current `stable`) via `bun install -g github:garrytan/gbrain#v0.60.734.0` — the global-Bun bin the repo docs designate for `#stable`.
+- Binary: `/harness-state/.bun/bin/gbrain` (`gbrain --version` → `0.60.734.0`).
+- Prereq **Bun 1.4.4** installed first (gbrain requires ≥1.4.4).
+
+## Brain initialized (keyless, local)
+- Engine **PGLite** (no server), **no embeddings**, at `/harness-state/.gbrain/brain.pglite`.
+- Schema **v318** (latest); the 5 pending setup migrations applied cleanly.
+- `gbrain doctor` → **healthy, 100/100**, all checks ok.
+
+## Verified memory works
+Round-tripped a test fact: `remember` → `recall` found it → `forget` withdrew it → recall empty. So read/write works with zero API keys (keyword-only search).
+
+## Settings in effect (defaults I chose — all free, none paid)
+- **Search mode: conservative** — keyless (no reranker/chat key), tight 4K budget. Change: `gbrain config set search.mode {conservative|balanced|tokenmax}`.
+- **Writeback: off** — agents save only what you explicitly ask; no automatic extraction (needs a key anyway). Opt into `salient` later if wanted.
+- **Upkeep: on** — free idle upkeep while a gbrain session is open. Off: `gbrain config set maintenance.auto false`.
+- **Conversation archive: on** — one redacted page/day from sessions, local only; nothing leaves the machine without an embedding key. Off: `gbrain transcripts archive off`.
+
+**Cost: $0.** Nothing paid can turn on without a key you provide.
+
+## One optional step I intentionally left for you
+gbrain isn't wired to an agent harness yet. Its own contract flags that as a *user* decision (not something I should auto-apply), so I stopped there. To give this OpenClaw agent the brain, register it as a stdio MCP server:
+```
+gbrain serve --surface starter --advertise verbs   # as MCP stdio server in the OpenClaw host
+```
+Say the word and I'll wire it into OpenClaw's MCP config for you.
+
+Note: `$HOME/.bun/bin` isn't on the default PATH — add `export PATH="$HOME/.bun/bin:$PATH"` to your profile or use the full path.

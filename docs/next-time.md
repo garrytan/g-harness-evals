@@ -12,6 +12,7 @@ Every report ends with a Next time section: what we'd change if we ran the run a
 - [2026-11-12-fable-5-2-coding-cc322](benchmarks/2026-11-12-fable-5-2-coding-cc322/next-time.md)
 - [2026-11-14-fable-diagnosis](benchmarks/2026-11-14-fable-diagnosis/next-time.md)
 - [2026-11-14-shared-bot-scope](benchmarks/2026-11-14-shared-bot-scope/next-time.md)
+- [2026-11-17-gbrain-install](benchmarks/2026-11-17-gbrain-install/results/README.md#next-time)
 - [2026-11-review-real-bugs](benchmarks/2026-11-review-real-bugs/next-time.md)
 
 ## Changelog
