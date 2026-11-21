@@ -216,7 +216,7 @@ describe('gbrain tasks and grading', () => {
     writeFileSync(join(d, 'calls.jsonl'), [{ server: 'ash-tracker', method: 'initialize', ok: true }, { server: 'ash-tracker', method: 'tools/list', ok: true }].map((l) => JSON.stringify(l)).join('\n') + '\n');
     writeFileSync(join(d, 'expected.json'), JSON.stringify({ request: 'g', kind: 'tool', rung: '150', servers, acceptable: [{ server: 'gbrain', tool: 'search', required: { query: { $contains: 'sorter' } } }],
       local_logs: [{ server: 'gbrain', path: relayLog, tools_list: join(d, 'gb', 'tools-list.json') }], discovery: [{ server: 'gbrain', tool: 'request_tools' }] }));
-    const p = Bun.spawnSync(['python3', GRADE, '--expected', join(d, 'expected.json'), '--log', join(d, 'calls.jsonl'), '--ready', join(d, 'none.json'), '--out', join(d, 'out')], { stdout: 'pipe', stderr: 'pipe', env: { PATH: '/usr/local/bin:/usr/bin:/bin' } });
+    const p = Bun.spawnSync(['python3', GRADE, '--expected', join(d, 'expected.json'), '--log', join(d, 'calls.jsonl'), '--out', join(d, 'out')], { stdout: 'pipe', stderr: 'pipe', env: { PATH: '/usr/local/bin:/usr/bin:/bin' } });
     expect(p.exitCode).toBe(0);
     const o = JSON.parse(readFileSync(join(d, 'out', 'outcomes.json'), 'utf8'));
     expect(o).toMatchObject({ infra: { code: 'HE-MCP-002' }, right_tool: false, reward: 0 });

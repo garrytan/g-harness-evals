@@ -115,6 +115,7 @@ export function classify(body: Record<string, any>, servers: Array<{ server: str
 }
 
 interface Row {
+  job: string;
   variant: string; version: string; rung: string; gbrain_cell?: string; gbrain_counts?: Record<Place, number>; tools: number; trial: string | null; first_request_chars: number | null; est_tokens: number | null;
   counts: Record<Place, number>; servers_connected: number | null; servers_expected: number; infra: unknown; requests: number; note?: string;
 }
@@ -148,7 +149,7 @@ export function analyze(out: string): { rows: Row[]; perTool: Array<Record<strin
     const requests = trial ? bodiesBy.get(trial) ?? [] : [];
     const cellModel = j.model.replace('/', ':');
     const first = agentLoopRequests(requests, cellModel)[0];
-    const row: Row = { variant: j.variant, version: j.version, rung: j.rung, tools, trial, first_request_chars: null, est_tokens: null, counts, servers_connected: outcomes ? outcomes.servers_connected.length : null, servers_expected: servers.length, infra: outcomes ? outcomes.infra : trial ? 'no verifier outcome' : 'no trial', requests: requests.length };
+    const row: Row = { job: j.job, variant: j.variant, version: j.version, rung: j.rung, tools, trial, first_request_chars: null, est_tokens: null, counts, servers_connected: outcomes ? outcomes.servers_connected.length : null, servers_expected: servers.length, infra: outcomes ? outcomes.infra : trial ? 'no verifier outcome' : 'no trial', requests: requests.length };
     if (first) {
       const chars = JSON.stringify(first.body).length;
       row.first_request_chars = chars;
@@ -176,19 +177,22 @@ export function gbrainServer(out: string, cell: string): { server: string; tools
   return { server: 'gbrain', tools: dump.tools.map((t: any) => ({ name: t.name, description: t.description ?? '', inputSchema: t.inputSchema })) };
 }
 
-async function runJobs(o: { out: string; venv: string; jobs: string[]; concurrency: number }): Promise<void> {
+async function runJobs(o: { out: string; venv: string; jobs: string[]; concurrency: number }): Promise<number> {
   const env = { PATH: [join(o.venv, 'bin'), '/usr/local/bin', '/usr/bin', '/bin'].join(':'), HOME: process.env.HOME ?? '/tmp', TZ: 'UTC', PYTHONPATH: [join(REPO, 'scripts/mcp-at-scale'), join(REPO, 'scripts/frontier-harbor')].join(':'), PYTHONDONTWRITEBYTECODE: '1' };
   const queue = [...o.jobs];
+  let failed = 0;
   const worker = async () => {
     for (let job = queue.shift(); job; job = queue.shift()) {
       const p = Bun.spawn([join(o.venv, 'bin/harbor'), 'run', '-y', '-c', join(o.out, 'configs', job + '.json')], { cwd: o.out, env, stdout: Bun.file(join(o.out, 'logs', job + '.log')), stderr: 'pipe' });
       const code = await p.exited;
+      if (code !== 0) failed++;
       const err = await new Response(p.stderr).text();
       if (err) writeFileSync(join(o.out, 'logs', job + '.stderr'), err);
       console.log(new Date().toISOString() + ' ' + job + ' exited ' + code);
     }
   };
   await Promise.all(Array.from({ length: o.concurrency }, worker));
+  return failed;
 }
 
 export function gatewayIp(): string {
@@ -266,8 +270,10 @@ if (import.meta.main) {
     const egress = argv.includes('--egress');
     const jobs = writeJobs({ out, variants, rungs, brokerPort, requestId: request.id, versions, gbrainCells, egress });
     writeFileSync(join(out, 'listing-run.json'), JSON.stringify({ started: new Date().toISOString(), catalog: flag('--catalog') ?? 'synthetic', mode: search ? 'search' : 'listing', environment: egress ? EGRESS_ENVIRONMENT : 'docker', jobs, skipped: SKIPPED }, null, 1) + '\n');
-    await runJobs({ out, venv, jobs: jobs.map((j) => j.job), concurrency: Number(flag('--concurrency') ?? 3) });
-    up.stop();
+    try {
+      const failed = await runJobs({ out, venv, jobs: jobs.map((j) => j.job), concurrency: Number(flag('--concurrency') ?? 3) });
+      if (egress && failed) process.exitCode = 1;
+    } finally { up.stop(); }
   }
   const { rows, perTool } = analyze(out);
   writeFileSync(join(out, 'listing-map.json'), JSON.stringify({ generated: new Date().toISOString(), places: PLACES, rows, skipped: SKIPPED }, null, 1) + '\n');

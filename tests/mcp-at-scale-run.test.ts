@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
-  addUsage, appendRow, buildRow, bundleSpec, checkSpec, leaseRefusal, loadSpec, newUsage, readRows, rowArm, runnerInfra, scanForKeys,
-  sharedOrder, showSpec, UsageReader, INTERIM_DESIGN, VERSIONS, leaseRunId, plannedTaskInputs, shardIdentity, type CellPlan, type LoadedSpec, type PlannedTrial,
+  addUsage, appendRow, buildRow, bundleSpec, checkSpec, leaseRefusal, loadSpec, newUsage, observedCliVersion, readRows, rowArm, runnerInfra, scanForKeys,
+  sharedOrder, showSpec, UsageReader, INTERIM_DESIGN, VERSIONS, leaseRunId, plannedTaskInputs, shardIdentity, type CellPlan, type LoadedSpec, type Plan, type PlannedTrial,
 } from '../scripts/mcp-at-scale/run.ts';
 import { materialize } from '../scripts/mcp-at-scale/materialize.ts';
 import { BudgetRun } from '../runner/ledger/budget-ledger.ts';
-import { interimUnits } from '../scripts/mcp-at-scale/analysis/interim.ts';
+import { DESIGN_FILE, interimUnits } from '../scripts/mcp-at-scale/analysis/interim.ts';
 import { clusterOf } from '../scripts/mcp-at-scale/requests/seal.ts';
 
 const EXAMPLE = resolve(import.meta.dir, '../scripts/mcp-at-scale/specs/example.json');
@@ -26,6 +26,14 @@ function variant(change: (s: any) => void, setText?: string): LoadedSpec {
   return loadSpec(join(dir, 'spec.json'));
 }
 const problemsOf = (l: LoadedSpec) => checkSpec(l).problems;
+const sha = (p: string) => new Bun.CryptoHasher('sha256').update(readFileSync(p)).digest('hex');
+/** A completed interim look whose decision was computed from shard a's phase 1 final in dir. */
+const interimFor = (spec: LoadedSpec, dir: string) => ({
+  schema: 'he-mcp-at-scale-interim-state/1', look: 'interim', status: 'complete', run_id: spec.spec.run_id,
+  design_sha256: sha(DESIGN_FILE), sets_sha256: spec.spec.sets.map((s) => s.sha256),
+  decisions: Object.fromEntries(INTERIM_DESIGN.comparisons.map((c) => [c.id, 'continue'])),
+  phase1_shards: { a: sha(join(dir, 'trials.jsonl')) },
+});
 const REPO = resolve(import.meta.dir, '..');
 const keyless = { PATH: dirname(process.execPath) + ':/usr/local/bin:/usr/bin:/bin', HOME: tmp(), TZ: 'UTC' };
 const run = (...args: string[]) => Bun.spawnSync(args, { cwd: REPO, env: keyless, stdout: 'pipe', stderr: 'pipe' });
@@ -45,6 +53,15 @@ describe('separate phase launches', () => {
     expect(shown).toContain('phase 1: lease $2.50 (mcp-example:a:p1), expected 4h, TTL 8h');
     expect(shown).toContain('phase 2: lease $3.50 (mcp-example:a:p2), expected 2.5h, TTL 6h');
     expect(problemsOf(phased((s) => { s.shards[0].phases[1].lease_usd = 3.51; })).join(' ')).toContain('phase leases must add up');
+  });
+  test('a spec with an interim look rejects unphased shards and duplicate planned analysis keys', () => {
+    const l = phased((s) => {
+      s.cells.push({ ...s.cells[0], id: 'duplicate' });
+      s.shards.push({ name: 'unphased', cells: ['duplicate'], lease_usd: 2 });
+    });
+    const problems = problemsOf(l).join('\n');
+    expect(problems).toContain('all shards must have phases');
+    expect(problems).toContain('share the analysis key');
   });
   test('phase 2 refuses without phase 1 final receipts before credentials, staging, or spend', () => {
     const l = phased();
@@ -76,7 +93,7 @@ describe('separate phase launches', () => {
       writeFileSync(join(dir, 'run-identity.json'), JSON.stringify(identity));
       writeFileSync(join(dir, 'accounting.json'), JSON.stringify(a));
       writeFileSync(join(dir, 'ledger-summary.json'), JSON.stringify({ run_id: lease, lease_usd, committed_usd: 0 }));
-      writeFileSync(join(dir, 'ledger.sqlite'), '');
+      BudgetRun.openLease({ runId: lease, leaseUsd: lease_usd, ledgerPath: join(dir, 'ledger.sqlite') });
       writeFileSync(join(dir, 'key-scan.json'), JSON.stringify({ patterns: {}, values: {}, unreadable: 0 }));
       writeFileSync(join(dir, 'catalog-calls.jsonl'), '');
       writeFileSync(join(dir, 'trials.jsonl'), phaseRows(phase).map((t) => JSON.stringify(t)).join('\n') + '\n');
@@ -86,7 +103,9 @@ describe('separate phase launches', () => {
       expect(complete().exitCode).toBe(0);
     }
     const bundled = bundleSpec(l, tmp());
-    expect(runts('phase-check', '--spec', bundled, '--name', 'a', '--phase', '1', '--out', join(dest, 'phase-1/final/a'), '--fake-upstream').exitCode).toBe(0);
+    const interimState = join(dest, 'phase-1/final/a/interim-state.json');
+    writeFileSync(interimState, JSON.stringify(interimFor(l, join(dest, 'phase-1/final/a'))));
+    expect(runts('phase-check', '--spec', bundled, '--name', 'a', '--phase', '1', '--out', join(dest, 'phase-1/final/a'), '--interim-state', interimState, '--fake-upstream').exitCode).toBe(0);
     const phase2 = join(dest, 'phase-2/final/a/trials.jsonl');
     const original = readFileSync(phase2, 'utf8');
     writeFileSync(phase2, original + JSON.stringify(phaseRows(1)[0]) + '\n');
@@ -404,6 +423,31 @@ describe('row writer', () => {
     expect(row).toMatchObject({ trial_id: 'run/cc/30/r-001', set: 'R', spec_set: 'r', harness: 'claude-code', arm: 'native', rung: 30, order: 4, duration_s: 90.5, gap_s: 12.25, meter_key: 'k1' });
   });
 
+  test('a trial whose metered model or setup-probed CLI version is not the cell\'s is INFRA HE-MCP-047, and agent logs do not supply versions', () => {
+    const trial = tmp();
+    const rollout = join(trial, 'agent/sessions/2026/11/20/rollout-2026-11-20T00-00-00-s1.jsonl');
+    mkdirSync(join(rollout, '..'), { recursive: true });
+    writeFileSync(rollout, JSON.stringify({ type: 'session_meta', payload: { id: 's1', cli_version: '0.171.0' } }) + '\n' + JSON.stringify({ type: 'event_msg', payload: {} }) + '\n');
+    const codex: CellPlan = { ...cell, cell: { ...cell.cell, id: 'cx', variant: 'codex', model: 'openai/gpt-6.1-sol' }, harness: 'codex', cls: 'McpCodex', version: '0.170.0' };
+    expect(observedCliVersion(trial)).toBeNull();
+    const evidence = join(trial, 'observed-cli-version.json');
+    writeFileSync(evidence, JSON.stringify('0.171.0'));
+    const sol = { usd: 0.02, requests: 2, unpriced: 0, byModel: { 'openai:gpt-6.2-sol': { usd: 0.02, requests: 2 } } };
+    const row = buildRow({ ...base, cell: codex, outcomes, usage: null, meter: sol, cliVersion: observedCliVersion(trial) });
+    expect(row.infra).toMatchObject({ code: 'HE-MCP-047', source: 'runner' });
+    expect(row.infra?.detail).toContain('metered openai:gpt-6.2-sol, not the cell model openai:gpt-6.1-sol');
+    expect(row.infra?.detail).toContain('observed version 0.171.0, not the pinned 0.170.0');
+    expect(row.reward).toBeNull();
+    expect(row.observed).toEqual({ models: ['openai:gpt-6.2-sol'], version: '0.171.0' });
+    const versionOnly = buildRow({ ...base, cell: codex, outcomes, usage: null, meter: { ...sol, byModel: { 'openai:gpt-6.1-sol': { usd: 0.02, requests: 2 } } }, cliVersion: '0.171.0' });
+    expect(versionOnly.infra?.code).toBe('HE-MCP-047');
+    writeFileSync(evidence, JSON.stringify('2.1.312'));
+    const clean = buildRow({ ...base, outcomes, usage: null, housekeeping: ['anthropic:claude-haiku-5-5'], cliVersion: observedCliVersion(trial),
+      meter: { usd: 0.03, requests: 3, unpriced: 0, byModel: { 'anthropic:claude-opus-5-5': { usd: 0.03, requests: 2 }, 'anthropic:claude-haiku-5-5': { usd: 0, requests: 1 } } } });
+    expect(clean.infra).toBeNull();
+    expect(clean.observed).toEqual({ models: ['anthropic:claude-opus-5-5'], version: '2.1.312' });
+  });
+
   test('the grader INFRA stands and the trial is not scored', () => {
     const graded = { ...outcomes, reward: 0, infra: { code: 'HE-MCP-001', detail: 'github not connected' } };
     const row = buildRow({ ...base, outcomes: graded, usage: null, meter: null });
@@ -469,5 +513,266 @@ describe('key scan', () => {
     expect(Object.values(s.patterns).flat().every((f) => f === 'a.log')).toBe(true);
     expect(s.values).toEqual({ FAKE_KEY: ['b.json'] });
     expect(JSON.stringify(s)).not.toContain('aaaaaaaaaa');
+  });
+});
+
+
+describe('review fixes before the counted run', () => {
+  const commit = () => run('git', 'rev-parse', 'HEAD').stdout.toString().trim();
+  const phasedSpec = () => variant((s) => { s.trial_headroom_usd = 1; s.shards[0].phases = [{ lease_usd: 2.5, expected_hours: 4 }, { lease_usd: 3.5, expected_hours: 2.5 }]; });
+  /** Shard a's phase final as run-shard-vm.sh leaves it: every planned row, a drained lease, a clean key scan. */
+  function phaseFinal(l: LoadedSpec, plan: Plan, dest: string, phase: 1 | 2, cleaned = true): string {
+    const dir = join(dest, 'phase-' + phase, 'final', 'a');
+    mkdirSync(dir, { recursive: true });
+    const lease = leaseRunId(l.spec, 'a', phase);
+    const lease_usd = l.spec.shards[0]!.phases![phase - 1]!.lease_usd;
+    const identity = shardIdentity(l, plan, 'a', commit(), true, true, phase);
+    BudgetRun.openLease({ runId: lease, leaseUsd: lease_usd, ledgerPath: join(dir, 'ledger.sqlite') });
+    writeFileSync(join(dir, 'run-identity.json'), JSON.stringify(identity));
+    writeFileSync(join(dir, 'accounting.json'), JSON.stringify({ lease, lease_usd, committed_usd: 0, drained: true, undrained: [], identity }));
+    writeFileSync(join(dir, 'ledger-summary.json'), JSON.stringify({ run_id: lease, lease_usd, committed_usd: 0 }));
+    writeFileSync(join(dir, 'key-scan.json'), JSON.stringify({ patterns: {}, values: {}, unreadable: 0 }));
+    writeFileSync(join(dir, 'catalog-calls.jsonl'), '');
+    const rows = [...plan.cells.values()].flatMap((c) => c.trials.filter((t) => t.phase === phase).map((t) => ({ ...t, run_id: l.spec.run_id, shard: 'a', host_log: 'catalog-calls.jsonl' })));
+    writeFileSync(join(dir, 'trials.jsonl'), rows.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    if (cleaned) writeFileSync(join(dir, 'cleanup.json'), JSON.stringify({ cleanup: 'done' }));
+    return dir;
+  }
+
+  test('phase completion reads ledger.sqlite itself: one drained lease, committed as the accounting records', () => {
+    const l = phasedSpec();
+    const { plan } = checkSpec(l);
+    const complete = (dir: string) => runts('phase-complete', '--spec', l.path, '--name', 'a', '--phase', '1', '--out', dir, '--fake-upstream');
+    const empty = phaseFinal(l, plan, tmp(), 1, false);
+    writeFileSync(join(empty, 'ledger.sqlite'), '');
+    expect(complete(empty).stderr.toString()).toContain('does not reconcile');
+    const open = phaseFinal(l, plan, tmp(), 1, false);
+    BudgetRun.openLease({ runId: leaseRunId(l.spec, 'a', 1), leaseUsd: 2.5, ledgerPath: join(open, 'ledger.sqlite') }).reserve(0.4, 'a request still in flight');
+    expect(complete(open).stderr.toString()).toContain('does not reconcile');
+    expect(existsSync(join(open, 'cleanup.json'))).toBe(false);
+    const good = phaseFinal(l, plan, tmp(), 1, false);
+    expect(complete(good).exitCode).toBe(0);
+  });
+
+  test('the interim look takes only a phase 1 index built from every complete, drained phase 1 final', () => {
+    const l = phasedSpec();
+    const { plan } = checkSpec(l);
+    const dest = tmp();
+    const index = (dir: string, ...finals: string[]) => runts('phase-1-index', '--spec', l.path, '--out', dir, '--fake-upstream', '--finals', ...finals);
+    const unclean = phaseFinal(l, plan, dest, 1, false);
+    const refused = index(join(dest, 'index'), unclean);
+    expect(refused.exitCode).toBe(2);
+    expect(refused.stderr.toString()).toContain('missing phase final receipt: cleanup.json');
+    expect(existsSync(join(dest, 'index', 'phase-1-index.json'))).toBe(false);
+    expect(index(join(dest, 'index')).exitCode).toBe(2);
+    writeFileSync(join(unclean, 'cleanup.json'), JSON.stringify({ cleanup: 'done' }));
+    const accounting = readFileSync(join(unclean, 'accounting.json'), 'utf8');
+    writeFileSync(join(unclean, 'accounting.json'), JSON.stringify({ ...JSON.parse(accounting), drained: false }));
+    expect(index(join(dest, 'index'), unclean).stderr.toString()).toContain('not drained');
+    writeFileSync(join(unclean, 'accounting.json'), accounting);
+    const rows1 = readFileSync(join(unclean, 'trials.jsonl'), 'utf8');
+    writeFileSync(join(unclean, 'trials.jsonl'), rows1.split('\n').slice(1).join('\n'));
+    expect(index(join(dest, 'index'), unclean).stderr.toString()).toContain('missing from the phase final');
+    writeFileSync(join(unclean, 'trials.jsonl'), rows1);
+    const built = index(join(dest, 'index'), unclean);
+    expect(built.exitCode).toBe(0);
+    const receipt = JSON.parse(readFileSync(join(dest, 'index', 'phase-1-index.json'), 'utf8'));
+    expect(receipt).toMatchObject({ schema: 'he-mcp-at-scale-phase-1-index/1', shards: { a: sha(join(unclean, 'trials.jsonl')) }, trials_sha256: sha(join(dest, 'index', 'trials.jsonl')) });
+    const rows = readRows(join(dest, 'index', 'trials.jsonl'));
+    expect(rows.length).toBe(readRows(join(unclean, 'trials.jsonl')).length);
+    expect(rows.every((r) => r.phase === 1 && existsSync(resolve(dest, 'index', r.host_log!)))).toBe(true);
+  });
+
+  test('phase 2 needs the interim look\'s recorded decision, computed from this shard\'s phase 1 trials', () => {
+    const l = phasedSpec();
+    const { plan } = checkSpec(l);
+    const dest = tmp();
+    const prior = phaseFinal(l, plan, dest, 1);
+    const check = (...extra: string[]) => runts('phase-check', '--spec', l.path, '--name', 'a', '--phase', '1', '--out', prior, '--fake-upstream', ...extra);
+    expect(check().stderr.toString()).toContain('needs the interim look');
+    const state = join(dest, 'state.json');
+    writeFileSync(state, JSON.stringify({ ...interimFor(l, prior), status: 'started', decisions: undefined }));
+    expect(check('--interim-state', state).stderr.toString()).toContain('no recorded decision');
+    writeFileSync(state, JSON.stringify({ ...interimFor(l, prior), phase1_shards: { a: 'another phase 1 index' } }));
+    expect(check('--interim-state', state).stderr.toString()).toContain('not computed from this shard');
+    writeFileSync(state, JSON.stringify({ ...interimFor(l, prior), design_sha256: 'non-frozen design' }));
+    expect(check('--interim-state', state).stderr.toString()).toContain('does not match the frozen run');
+    writeFileSync(state, JSON.stringify({ ...interimFor(l, prior), decisions: {} }));
+    expect(check('--interim-state', state).stderr.toString()).toContain('no recorded decision for every frozen comparison');
+    writeFileSync(state, JSON.stringify(interimFor(l, prior)));
+    expect(check('--interim-state', state).exitCode).toBe(0);
+    const launch = run('bash', 'scripts/mcp-at-scale/run-shard-vm.sh', '--spec', l.path, '--name', 'a', '--dest', dest, '--phase', '2', '--fake-upstream');
+    expect(launch.exitCode).toBe(2);
+    expect(launch.stderr.toString()).toContain('needs the interim look');
+    expect(existsSync(join(dest, 'phase-2'))).toBe(false);
+    const direct = runts('shard', '--spec', l.path, '--name', 'a', '--out', join(dest, 'phase-2'), '--phase', '2', '--prior-phase', prior, '--fake-upstream');
+    expect(direct.exitCode).toBe(2);
+    expect(direct.stderr.toString()).toContain('needs the interim look');
+  });
+
+  test('a lease refusal stays HE-MCP-042 when the verifier wrote nothing or the grader found INFRA, so the shard stops', () => {
+    const u = newUsage();
+    addUsage(u, line({ outcome: 'refused', status: 402, reason: 'lease mcp:a has $0.01 left; the request reserves $1.28' }));
+    const meter = { usd: 0, requests: 1, unpriced: 0, byModel: {} };
+    expect(buildRow({ ...base, outcomes: null, usage: u, meter }).infra).toMatchObject({ code: 'HE-MCP-042', source: 'runner' });
+    expect(buildRow({ ...base, outcomes: null, result: null, trialDirFound: false, usage: u, meter }).infra?.code).toBe('HE-MCP-042');
+    const graded = buildRow({ ...base, outcomes: { ...outcomes, reward: 0, infra: { code: 'HE-MCP-001', detail: 'github not connected' } }, usage: u, meter });
+    expect(graded.infra).toMatchObject({ code: 'HE-MCP-042', source: 'runner' });
+    expect(graded.outcomes?.infra?.code).toBe('HE-MCP-042');
+  });
+
+  /** One run of shard a of the example spec on a fake Harbor (bash), keyless, with docker stubbed. */
+  function fakeShard(harbor: string, prep: (out: string, plan: Plan) => void = () => {}) {
+    const l = loadSpec(EXAMPLE);
+    const { plan } = checkSpec(l);
+    const out = tmp();
+    writeFileSync(join(out, 'run-identity.json'), JSON.stringify(shardIdentity(l, plan, 'a', commit(), true, true)));
+    prep(out, plan);
+    const bin = tmp(), venv = tmp();
+    writeFileSync(join(bin, 'docker'), '#!/bin/sh\n[ "$1 $2" = "network inspect" ] && echo 127.0.0.1\nexit 0\n', { mode: 0o755 });
+    mkdirSync(join(venv, 'bin'));
+    writeFileSync(join(venv, 'bin/harbor'), harbor, { mode: 0o755 });
+    const listeners = Array.from({ length: 3 }, () => Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('fixture') }));
+    const [proxy, broker, fake] = listeners.map((s) => String(s.port));
+    for (const s of listeners) s.stop(true);
+    const result = Bun.spawnSync([process.execPath, 'scripts/mcp-at-scale/run.ts', 'shard', '--spec', l.path, '--name', 'a', '--out', out,
+      '--proxy-port', proxy!, '--broker-port', broker!, '--fake-port', fake!, '--venv', venv, '--fake-upstream'],
+    { cwd: REPO, env: { ...keyless, PATH: bin + ':' + keyless.PATH }, stdout: 'pipe', stderr: 'pipe', timeout: 60_000 });
+    return { out, result, plan };
+  }
+  const harbor = (extra = '') => '#!/bin/bash\nexec python3 - "$4" <<\'PY\'\nimport json, os, sys\nc = json.load(open(sys.argv[1]))\n'
+    + 't = os.path.join(c["jobs_dir"], c["job_name"], c["job_name"] + "__t1")\nos.makedirs(os.path.join(t, "verifier"), exist_ok=True)\n'
+    + 'open(os.path.join(t, "result.json"), "w").write("{}")\n'
+    + 'open(os.path.join(t, "verifier", "outcomes.json"), "w").write(json.dumps({"request": "r", "kind": "tool", "infra": None, "calls": [], "right_tool": False, "wrong_tools": [], "reward": 0}))\n'
+    + extra + 'PY\n';
+
+  test('an error in the middle of a shard still drains, accounts and scans for keys, and exits non-zero', () => {
+    const duplicate = 'req, rung = os.path.basename(c["tasks"][0]["path"]).rsplit("__r", 1)\n'
+      + 'open("trials.jsonl", "a").write(json.dumps({"trial_id": "mcp-example/%s/%s/%s" % (c["agents"][0]["kwargs"]["cell"], rung, req)}) + "\\n")\n';
+    const { out, result } = fakeShard(harbor(duplicate));
+    expect(result.exitCode).toBe(7);
+    expect(JSON.parse(readFileSync(join(out, 'accounting.json'), 'utf8'))).toMatchObject({ drained: true });
+    expect(JSON.parse(readFileSync(join(out, 'key-scan.json'), 'utf8'))).toMatchObject({ patterns: {}, values: {} });
+    expect(existsSync(join(out, 'ledger-summary.json'))).toBe(true);
+    expect(JSON.parse(readFileSync(join(out, 'stop.json'), 'utf8'))).toMatchObject({ reason: 'error', detail: expect.stringContaining('HE-MCP-045') });
+  }, 90_000);
+
+  test('a resumed trial takes only a meter key bound by its own attempt, never the abandoned attempt\'s spend', () => {
+    const { out, result, plan } = fakeShard(harbor(), (dir, p) => {
+      const t = p.cells.get('cc-opus-r30')!.trials[0]!;
+      const job = 'cc-opus-r30__a1__r' + t.rung + '-' + t.request;
+      mkdirSync(join(dir, 'jobs', job, 'abandoned'), { recursive: true });
+      writeFileSync(join(dir, 'binds.jsonl'), JSON.stringify({ at: '2026-11-19T00:00:00Z', trial: 'abandoned-attempt', cell: 'cc-opus-r30', attempt: 1, harness: 'claude-code', model: 'anthropic:claude-opus-5-5', models: [], job }) + '\n');
+      writeFileSync(join(dir, 'proxy-usage.ndjson'), JSON.stringify(line({ key: 'abandoned-attempt', input_tokens: 5000, actual_usd: 0.75 })) + '\n');
+    });
+    const first = plan.cells.get('cc-opus-r30')!.trials[0]!;
+    const row = readRows(join(out, 'trials.jsonl')).find((r) => r.trial_id === first.trial_id);
+    expect(result.stderr.toString()).not.toContain('HE-MCP-045');
+    expect(row).toMatchObject({ meter_key: null, usage: null });
+    expect(readdirSync(join(out, 'jobs-abandoned')).length).toBe(1);
+  }, 90_000);
+
+  /** run-shard-vm.sh in a copy of the repository with bun, git and ubi-runner.sh stubbed; the runner's output and exit come from files in HOME. */
+  function vmLauncher() {
+    const root = tmp();
+    const mcp = join(root, 'scripts/mcp-at-scale'), ubi = join(root, 'scripts/ubicloud'), bin = join(root, 'bin');
+    for (const d of [mcp, ubi, bin]) mkdirSync(d, { recursive: true });
+    writeFileSync(join(mcp, 'run-shard-vm.sh'), readFileSync(join(REPO, 'scripts/mcp-at-scale/run-shard-vm.sh')));
+    writeFileSync(join(bin, 'bun'), '#!/bin/sh\ncase "$*" in *phase-ttl*) echo "8 mcp-example:a:p1";; esac\nexit 0\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'git'), ['#!/bin/bash', 'case "$*" in', '  *"diff --quiet"*|*"checkout -q"*) exit 0;;', '  "clone "*) mkdir -p "${@: -1}";;', '  *"rev-parse"*) echo stub-head;;', '  *) exit 1;;', 'esac'].join('\n'), { mode: 0o755 });
+    writeFileSync(join(ubi, 'ubi-runner.sh'), ['#!/bin/bash', 'case "$1" in',
+      '  run) cat "$HOME/runner-says" 2>/dev/null', '    if [ -e "$HOME/runner-waits" ]; then trap \'exit 143\' TERM; while [ ! -e "$HOME/stopped" ]; do sleep 0.1; done; fi', '    exit "$(cat "$HOME/runner-exit")";;',
+      '  ssh) echo "$3" > "$HOME/ssh-command"; [ ! -e "$HOME/ssh-fails" ] || exit 255; touch "$HOME/stopped";;',
+      '  pull) if [ -e "$HOME/pull-hangs" ]; then sleep 60; fi;;',
+      '  down) echo "$2" >> "$HOME/downed";;', 'esac'].join('\n'), { mode: 0o755 });
+    const fromHome = (home: string, records: string | undefined, dest: string, says: string, exit: number, ...extra: string[]) => {
+      mkdirSync(home, { recursive: true });
+      writeFileSync(join(home, 'runner-says'), says);
+      writeFileSync(join(home, 'runner-exit'), String(exit));
+      return Bun.spawnSync(['bash', join(mcp, 'run-shard-vm.sh'), '--spec', EXAMPLE, '--name', 'a', '--dest', join(root, dest), '--phase', '1', '--pull-seconds', '1', '--fake-upstream', ...extra],
+        { env: { ...keyless, HOME: home, PATH: bin + ':' + keyless.PATH, UBI_OWNER: 'test', UBICLOUD_API_KEY: 'fake-local-fixture',
+          ...(records ? { HE_MCP_LAUNCH_RECORDS: records } : {}) }, stdout: 'pipe', stderr: 'pipe' });
+    };
+    const launch = (dest: string, says: string, exit: number, ...extra: string[]) => fromHome(root, undefined, dest, says, exit, ...extra);
+    return { root, launch, fromHome };
+  }
+  const started = '2026-11-20T00:00:00.000Z shard a: 0 trial(s) recorded, 3 to run (phase 1 only)\n';
+
+  test('one launch record per lease: a new destination cannot open the same shard and phase again', () => {
+    const { launch } = vmLauncher();
+    expect(launch('first', started, 0).exitCode).toBe(0);
+    const again = launch('second', started, 0);
+    expect(again.exitCode).toBe(2);
+    expect(again.stderr.toString()).toContain('lease mcp-example:a:p1 already has a launch record');
+    const failed = vmLauncher();
+    expect(failed.launch('first', started + 'proxy up\n', 1).exitCode).toBe(1);
+    expect(failed.launch('first', '', 0).stderr.toString()).toContain('already has a launch record');
+  });
+
+  test('a launch that failed before run.ts shard started never opened the lease, so it can be retried', () => {
+    const { root, launch } = vmLauncher();
+    const failed = launch('dest', 'ubi-runner: create failed (HTTP 403); nothing was created\n', 1);
+    expect(failed.exitCode).toBe(1);
+    expect(failed.stderr.toString()).toContain('its launch record is released');
+    expect(existsSync(join(root, '.local/state/mcp-at-scale/launches/mcp-example:a:p1'))).toBe(false);
+    const retry = launch('dest', started, 0);
+    expect(retry.stderr.toString()).not.toContain('launch record');
+    expect(retry.exitCode).toBe(0);
+    expect(existsSync(join(root, '.local/state/mcp-at-scale/launches/mcp-example:a:p1'))).toBe(true);
+  });
+
+  test('a replacement uses the shared lease claim, and an unknown failed launch keeps the claim', () => {
+    const { root, fromHome } = vmLauncher();
+    const records = join(root, 'shared');
+    expect(fromHome(join(root, 'home-a'), records, 'a', 'connection lost\n', 1).exitCode).toBe(1);
+    expect(fromHome(join(root, 'home-b'), records, 'b', '', 0).stderr.toString()).toContain('already has a launch record');
+    expect(fromHome(join(root, 'home-b'), undefined, 'a', '', 0).stderr.toString()).toContain('already has phase launch evidence');
+  });
+
+  test('a shard past its local deadline is stopped on the VM, so the runner pulls and destroys it instead of waiting on the TTL reaper', () => {
+    const { root, launch } = vmLauncher();
+    writeFileSync(join(root, 'runner-waits'), '');
+    writeFileSync(join(root, 'pull-hangs'), '');
+    const stopped = launch('dest', started, 130, '--deadline-seconds', '3');
+    expect(stopped.exitCode).toBe(130);
+    expect(stopped.stderr.toString()).toContain('deadline: ');
+    expect(readFileSync(join(root, 'ssh-command'), 'utf8')).toContain("pkill -TERM -f '^bun scripts/mcp-at-scale/run.ts shard'");
+    expect(readFileSync(join(root, 'downed'), 'utf8')).toContain('ubirun-test-');
+    const cut = vmLauncher();
+    expect(cut.launch('dest', started, 0, '--deadline-seconds', String(8 * 3600 - 900)).stderr.toString()).toContain('--deadline-seconds is a whole number of seconds, under 27900');
+    writeFileSync(join(cut.root, 'runner-waits'), '');
+    writeFileSync(join(cut.root, 'ssh-fails'), '');
+    const unreachable = cut.launch('dest', started, 0, '--deadline-seconds', '2');
+    expect(unreachable.exitCode).toBe(124);
+    expect(unreachable.stderr.toString()).toContain('could not reach');
+    expect(readFileSync(join(cut.root, 'downed'), 'utf8')).toContain('ubirun-test-');
+  }, 30_000);
+
+  test('the egress check fails closed on a failed listing run or missing trial evidence', () => {
+    const root = tmp(), home = join(root, 'home'), bin = join(root, 'bin');
+    for (const d of [join(root, 'scripts/mcp-at-scale'), join(home, '.bun/bin'), join(home, 'he-harbor-venv/bin'), bin]) mkdirSync(d, { recursive: true });
+    writeFileSync(join(root, 'scripts/mcp-at-scale/listing-map.ts'), '');
+    writeFileSync(join(home, 'he-harbor-venv/bin/harbor'), '', { mode: 0o755 });
+    writeFileSync(join(bin, 'sudo'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'sg'), '#!/bin/bash\nexec bash -c "$3"\n', { mode: 0o755 });
+    writeFileSync(join(home, '.bun/bin/bun'), ['#!/bin/bash', '[ "$1" = install ] && exit 0', 'mode=$(cat "$HOME/mode")', 'while [ $# -gt 0 ]; do [ "$1" = --out ] && out=$2; shift; done',
+      '[ "$mode" = fail ] && exit 1', 'mkdir -p "$out"', 'echo \'{"rows":[{"job":"j1","infra":null,"first_request_chars":45},{"job":"j2","infra":null,"first_request_chars":46}]}\' > "$out/listing-map.json"', 'echo \'{"jobs": [{"job": "j1"}, {"job": "j2"}]}\' > "$out/listing-run.json"',
+      'for j in j1 j2; do', '  [ "$mode" = partial ] && [ $j = j2 ] && continue', '  mkdir -p "$out/jobs/$j/t1/verifier"',
+      '  infra=null; [ "$mode" = infra ] && infra=\'{"code":"HE-MCP-001"}\'', '  printf \'{"infra":%s,"ready":{"ok":true}}\\n\' "$infra" > "$out/jobs/$j/t1/verifier/outcomes.json"',
+      '  echo \'{"method":"ready","ok":true}\' > "$out/jobs/$j/t1/verifier/catalog-calls.jsonl"', 'done'].join('\n'), { mode: 0o755 });
+    const check = (mode: string) => {
+      writeFileSync(join(home, 'mode'), mode);
+      return Bun.spawnSync(['bash', join(REPO, 'scripts/mcp-at-scale/egress-check.sh')], { cwd: root, env: { ...keyless, HOME: home, PATH: bin + ':' + keyless.PATH }, stdout: 'pipe', stderr: 'pipe' });
+    };
+    const failed = check('fail');
+    expect(failed.exitCode).toBe(1);
+    expect(failed.stderr.toString()).toContain('the listing run exited 1');
+    const partial = check('partial');
+    expect(partial.exitCode).toBe(1);
+    expect(partial.stderr.toString()).toContain('job j2 left no outcomes.json');
+    expect(check('infra').stderr.toString()).toContain('lacks a usable verifier outcome');
+    const good = check('good');
+    expect(good.exitCode).toBe(0);
+    expect(good.stdout.toString()).toContain('egress-check: done');
   });
 });

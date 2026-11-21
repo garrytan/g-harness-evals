@@ -33,9 +33,10 @@ versions.json instead of pin.json, every other class checks the harness's own --
 installed version as harness_version with the pin.json one under "mcp_version" (HE-MCP-050 on a mismatch or any other version).
 
 Every class records its MCP set-up under "mcp_cell" in harness_settings.json. After agent setup and before the agent
-starts, every class probes the catalog host's /healthz from inside the trial container and writes the result, with the
-cell's connect mode (CONNECT: "lazy" for Pi codemode and deferred, which connect MCP servers on first use, else "eager"),
-to /logs/agent/mcp-ready.json for grade.py's connection rule.
+starts, every class probes the catalog host's /_he/ready from inside the trial container with the cell's connect mode
+(CONNECT: "lazy" for Pi codemode and deferred, which connect MCP servers on first use, else "eager"). The host logs it, and
+grade.py's connection rule reads it from that log; the record the probe writes to /logs/agent/mcp-ready.json is for
+people reading the trial only, since the agent can write there.
 """
 
 from __future__ import annotations
@@ -121,11 +122,13 @@ def pi_mcp_json(servers: list[Any], exposure: str) -> dict[str, Any]:
 
 
 READY_PROBE = r'''
-import json, sys, time, urllib.request
+import json, sys, time, urllib.parse, urllib.request
 url, connect, variant = sys.argv[1:4]
 out = {"ok": False, "url": url, "attempts": 0, "error": None, "connect": connect, "variant": variant}
 if url == "-":
     out["error"] = "the cell has no HTTP MCP server to probe"
+else:
+    url += "?" + urllib.parse.urlencode({"connect": connect, "variant": variant})
 for i in range(10 if url != "-" else 0):
     out["attempts"] = i + 1
     try:
@@ -138,15 +141,16 @@ for i in range(10 if url != "-" else 0):
         out["error"] = "%s: %s" % (type(e).__name__, str(e)[:200])
     time.sleep(1)
 open("/logs/agent/mcp-ready.json", "w").write(json.dumps(out) + "\n")
+sys.exit(0 if out["ok"] else 1)
 '''
 
 
-def health_url(servers: list[Any]) -> str:
-    """The catalog host's /healthz, from the first streamable HTTP server's URL (http://catalog:8080/mcp/<server>)."""
+def ready_url(servers: list[Any]) -> str:
+    """The catalog host's /_he/ready, from the first streamable HTTP server's URL (http://catalog:8080/mcp/<server>)."""
     for s in servers:
         url = getattr(s, "url", None)
         if url and "/mcp/" in url:
-            return url.split("/mcp/", 1)[0] + "/healthz"
+            return url.split("/mcp/", 1)[0] + "/_he/ready"
     return "-"
 
 
@@ -182,8 +186,18 @@ class _McpCell:
 
     async def setup(self, environment: BaseEnvironment) -> None:
         await super().setup(environment)  # type: ignore[misc]
-        args = " ".join(shlex.quote(a) for a in (health_url(self._cell_servers()), self.CONNECT, self.VARIANT))
-        await environment.exec(command="mkdir -p /logs/agent && python3 -c " + shlex.quote(READY_PROBE) + " " + args, timeout_sec=60)
+        args = " ".join(shlex.quote(a) for a in (ready_url(self._cell_servers()), self.CONNECT, self.VARIANT))
+        probe = await environment.exec(command="mkdir -p /logs/agent && python3 -c " + shlex.quote(READY_PROBE) + " " + args, timeout_sec=60)
+        if probe.return_code != 0:
+            raise RuntimeError("HE-MCP-001 the catalog was not ready during agent setup")
+        if self.HARNESS in ("claude-code", "codex"):
+            cli = "claude" if self.HARNESS == "claude-code" else "codex"
+            command = 'export PATH="$HOME/.local/bin:$PATH"; claude --version' if cli == "claude" else self.get_version_command()
+            checked = await environment.exec(command=command, timeout_sec=30)
+            version = installed_version(self.HARNESS, checked.stdout or "") if checked.return_code == 0 else None
+            if version is None:
+                raise RuntimeError(f"HE-MCP-047 could not observe the {cli} version before running the agent")
+            (Path(self.logs_dir).parent / "observed-cli-version.json").write_text(json.dumps(version) + "\n")
 
     def _write_settings(self) -> None:
         super()._write_settings()  # type: ignore[misc]

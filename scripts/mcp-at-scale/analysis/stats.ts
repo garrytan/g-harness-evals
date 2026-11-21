@@ -10,6 +10,7 @@
 // arm is native, tool-search-off (Claude Code, ENABLE_TOOL_SEARCH=false), pi-deferred, pi-direct, or gbrain-<surface>
 // (full, starter, verbs, registered). A trial whose outcomes carry infra (HE-MCP-001, HE-MCP-002) is counted and never
 // scored: a pair with an INFRA side is left out of every contrast and counted under infra_excluded.
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { clusteredPairedDelta, type PairedItem } from '../../../runner/stats/paired.ts';
@@ -23,7 +24,7 @@ export const RUNGS = [30, 75, 150, 300] as const;
 export interface Outcomes {
   request: string; kind: 'tool' | 'none'; rung: string | number | null; servers_expected: string[]; servers_connected: string[]; servers_missing: string[];
   infra: { code: string; detail: string } | null;
-  calls: Array<{ server: string; tool: string; arguments: unknown; validation_ok: boolean | null; fixture: string | null }>;
+  calls: Array<{ server: string; tool: string; arguments: unknown; validation_ok: boolean | null; fixture: string | null; result_ok?: boolean | null }>;
   right_tool: boolean | null; first_right_call: number | null; wrong_tools: string[]; tool_when_none: boolean | null; invalid_calls: number; reward: number;
 }
 export interface Trial {
@@ -59,6 +60,13 @@ export function loadTrials(path: string): Trial[] {
   });
 }
 
+/** The digest of a set of trials as the analysis scores them, in trial id order: what binds a look to the trials it read. */
+export function trialsDigest(trials: Trial[]): string {
+  const rows = trials.map((t) => [t.trial_id, t.set, t.harness, t.model, t.arm, t.rung, t.request, t.rep ?? 1, t.outcomes, t.usage ?? null] as const)
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+}
+
 export const isInfra = (t: Trial) => !t.outcomes || !!t.outcomes.infra;
 export const hasTranscript = ({ effort }: Trial) => (effort?.source === 'trajectory' || effort?.source === 'openclaw-session') && effort.turns > 0;
 export const setup = (t: Trial) => t.harness + ':' + t.model;
@@ -89,10 +97,11 @@ export const VALUES = {
   input_tokens: (t: Trial) => (isInfra(t) || !t.usage ? null : t.usage.input_tokens),
 };
 
-/** Set T success: every rule end_state.fired names was answered by the host (the call's fixture id) with valid arguments. */
+/** Set T success: every rule end_state.fired names was answered by the host (the call's fixture id, never the neutral
+ *  default) with a successful result to arguments the schema accepted. */
 export function taskSuccess(t: Trial, item: TItem | undefined): number | null {
   if (isInfra(t) || !item) return null;
-  const fired = new Set(t.outcomes!.calls.filter((c) => c.validation_ok !== false && c.fixture).map((c) => c.fixture!));
+  const fired = new Set(t.outcomes!.calls.filter((c) => c.validation_ok === true && c.result_ok === true && c.fixture && c.fixture !== 'default').map((c) => c.fixture!));
   return item.end_state.fired.every((f) => fired.has(f)) ? 1 : 0;
 }
 
@@ -112,9 +121,19 @@ export function contrastOf(pairs: PairedItem[], extra: { infra_excluded?: number
     p_two_sided: r6(s.p_two_sided), p_method: s.p_method, se_cluster: r6(s.se_cluster), design_effect: r6(s.design_effect), discordant: binary ? pairs.filter((p) => p.a !== p.b).length : null };
 }
 
-/** Pairs B against A by key; a pair with an INFRA side is counted and left out; cluster from the request. */
+/** Pairs B against A by key; a pair with an INFRA side is counted and left out; cluster from the request. Two trials on
+ *  one side with the same key are refused, never collapsed: a key names one setup, item and repetition. */
 export function paired(a: Trial[], b: Trial[], value: (t: Trial) => number | null, key: (t: Trial) => string, cluster: (t: Trial) => string): Contrast {
-  const left = new Map(a.map((t) => [key(t), t])), right = new Map(b.map((t) => [key(t), t]));
+  const index = (side: Trial[]) => {
+    const m = new Map<string, Trial>();
+    for (const t of side) {
+      const k = key(t);
+      if (m.has(k)) throw new Error('HE-MCP-031 trials ' + m.get(k)!.trial_id + ' and ' + t.trial_id + ' share the pairing key ' + k);
+      m.set(k, t);
+    }
+    return m;
+  };
+  const left = index(a), right = index(b);
   const pairs: PairedItem[] = [];
   let infra = 0, unpaired = 0;
   for (const [k, x] of left) {

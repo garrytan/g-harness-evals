@@ -2,10 +2,11 @@
 // The ambiguity audit of the request sets (internal-task plan, decision G, and the 2026-11-19 batch-routing change): GPT-6 Astra
 // and Claude Opus 5.5 each list every tool in the 300-tool catalog that a request's text allows; a tool either lists outside
 // the author's set (or a no-tool disagreement) is queued for Gemini 4 Carbon, a third family, which rules it acceptable
-// (the item's acceptable set widens), not acceptable, or ambiguous (the item is dropped). A set T task is never
-// widened, since its acceptable entry is the chain's last step and it is graded on end state: a tool ruled acceptable
-// for it is listed under t_alternatives in audit-status.json, and a task with a real substitute for one of its steps
-// is replaced. A near-twin bait item is never dropped or widened because a judge picked its twin. Drop counts are reported per stratum.
+// (the item's acceptable set widens), not acceptable, or ambiguous (the item is dropped). An answer with no tool ruled
+// acceptable for a request that needs one drops the item too, as ambiguous. A set T task is never widened, since its
+// acceptable entry is the chain's last step and it is graded on end state: a tool ruled acceptable for it is listed
+// under t_alternatives in audit-status.json, and the task, which now has a real substitute for one of its steps, is
+// marked replace until it is rewritten. A near-twin bait item is never dropped or widened because a judge picked its twin. Drop counts are reported per stratum.
 //
 // Labelling goes through the providers' batch APIs with prompt caching: the catalog is a
 // shared prefix (Anthropic cache_control on the system block, OpenAI prompt_cache_key over the system message; Gemini 4
@@ -27,7 +28,7 @@
 // list-price estimate per batch) and makes no network call. Without it, submit sends each batch once: confirmed submissions
 // are skipped on retry and uncertain submissions require reconciliation. collect fetches ended batches, writes
 // <out>/<stage>/answers.jsonl and settles each reservation. apply writes <out>/audit-status.json (per item: passed, widened,
-// dropped or pending; pilot-gates.ts reads it) and <out>/audited/<set>.jsonl with widened acceptable sets.
+// dropped, replace or pending; pilot-gates.ts reads it) and <out>/audited/<set>.jsonl with widened acceptable sets.
 // Keys are read by name at call time and never printed.
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -430,7 +431,7 @@ export const stratumOf = (it: Item) => (it.set === 'R' ? 'R/' + it.stratum + (it
 
 export function applyAudit(items: Item[], labels: Map<string, Map<string, unknown>>, adjudications: Map<string, Map<string, unknown>>) {
   const { queue, twin_kept, unlabelled } = auditQueue(items, labels);
-  const status: Record<string, 'passed' | 'widened' | 'dropped' | 'pending'> = {};
+  const status: Record<string, 'passed' | 'widened' | 'dropped' | 'replace' | 'pending'> = {};
   const audited: Item[] = [];
   const drops: Record<string, number> = {};
   const alternatives: Record<string, string[]> = {};
@@ -439,10 +440,10 @@ export function applyAudit(items: Item[], labels: Map<string, Map<string, unknow
     const mine = queue.filter((q) => q.item === it.id);
     const verdicts = mine.map((q) => ({ q, v: adjudications.get(q.item + '\u0000' + q.tool)?.get(ADJUDICATOR.name) as Verdict | undefined }));
     if (verdicts.some((x) => !x.v)) { status[it.id] = 'pending'; audited.push(it); continue; }
-    if (verdicts.some((x) => x.v!.verdict === 'ambiguous')) { status[it.id] = 'dropped'; drops[stratumOf(it)] = (drops[stratumOf(it)] ?? 0) + 1; continue; }
-    const widen = verdicts.filter((x) => x.v!.verdict === 'acceptable' && x.q.tool !== NO_TOOL);
+    if (verdicts.some((x) => x.v!.verdict === 'ambiguous' || (x.v!.verdict === 'acceptable' && x.q.tool === NO_TOOL))) { status[it.id] = 'dropped'; drops[stratumOf(it)] = (drops[stratumOf(it)] ?? 0) + 1; continue; }
+    const widen = verdicts.filter((x) => x.v!.verdict === 'acceptable');
     if (!widen.length) { status[it.id] = 'passed'; audited.push(it); continue; }
-    if (it.set === 'T') { status[it.id] = 'passed'; alternatives[it.id] = widen.map((x) => x.q.tool); audited.push(it); continue; }
+    if (it.set === 'T') { status[it.id] = 'replace'; alternatives[it.id] = widen.map((x) => x.q.tool); audited.push(it); continue; }
     const extra: Acceptable[] = widen.map((x) => { const [server, tool] = x.q.tool.split('/') as [string, string]; return { server, tool, ...(x.v!.required ? { required: x.v!.required } : {}) }; });
     status[it.id] = 'widened';
     audited.push({ ...it, acceptable: [...it.acceptable, ...extra] } as Item);

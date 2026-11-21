@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { analyze, context, decision1, decision4, FIX_METHOD_CEILING } from '../scripts/mcp-at-scale/analysis/analyze.ts';
+import { analyze, cell, context, decision1, decision4, FIX_METHOD_CEILING, rungContrast } from '../scripts/mcp-at-scale/analysis/analyze.ts';
 import { dryGate, gate, surfaceRan, type Arm, type ArmsFile } from '../scripts/mcp-at-scale/analysis/pilot-gates.ts';
 import { conditionalPower, decide, interimUnits, look, obfBounds, STOPPED_NOTE, type Design } from '../scripts/mcp-at-scale/analysis/interim.ts';
 import { COMPARISONS, gbrainMargin, gbrainNiPower, pilotEstimates, sdd, table } from '../scripts/mcp-at-scale/analysis/power.ts';
@@ -65,6 +65,18 @@ describe('power', () => {
 });
 
 describe('analysis and decisions', () => {
+  test('repeated trials pair by repetition, unpaired repetitions are counted, and a duplicate key stops the analysis', () => {
+    const t = (rung: number, rep: number, right: boolean) => ({ trial_id: 'x/' + rung + '/' + rep, set: 'R', harness: 'h', model: 'm', arm: 'native', rung, request: 'r1', rep,
+      outcomes: { kind: 'tool', infra: null, right_tool: right, wrong_tools: [], calls: [] } } as unknown as Trial);
+    const c = context([t(30, 1, true), t(300, 1, true), t(30, 2, true), t(300, 2, false), t(30, 3, true)], []);
+    expect(rungContrast(c, 'h', 300)).toMatchObject({ n_pairs: 2, delta: -0.5, unpaired: 1 });
+    expect(() => rungContrast(context([t(30, 1, true), t(300, 1, true), { ...t(300, 1, false), trial_id: 'again' }], []), 'h', 300)).toThrow('HE-MCP-031');
+  });
+  test('outcomes the runner never measures are reported as not measured, not as zero', () => {
+    const hermes = Object.entries(result.cells).find(([k]) => k.startsWith('hermes:') && k.endsWith(' native'))![1] as Record<string, ReturnType<typeof cell>>;
+    expect(hermes[30]).toMatchObject({ cache_broken_after_load: null, builtin_substitution: null });
+    expect(hermes[30]!.not_measured).toContain('the runner does not record them');
+  });
   test('INFRA trials are counted and never scored', () => {
     expect(result.counts.infra).toBeGreaterThan(0);
     expect(result.counts.scored + result.counts.infra).toBe(main.trials.length);
@@ -223,6 +235,11 @@ describe('pilot gates (R111)', () => {
     expect(r.map((x) => [x.arm, x.pass])).toEqual(arms().arms.map((a) => [a.id, true]));
     expect(r[0]!.checks.b_judge.reasons[0]).toContain('not applicable');
   });
+  test('a model or version mismatch cannot prove an arm ran, but its spend remains counted', () => {
+    const allInfra = pilot.trials.map((t) => ({ ...t, outcomes: { ...t.outcomes!, infra: { code: 'HE-MCP-047', detail: 'version mismatch' } } }));
+    const r = gate({ arms: arms(), pilot: allInfra, sets: sets(), audit: audit(), catalogDir: CATALOG, surfaces: SYNTHETIC_SURFACES });
+    expect(r.every((arm) => !arm.checks.a_part_under_test_ran.pass && arm.spent_usd > 0)).toBe(true);
+  });
   test('a changed request cannot reuse the audit status of the original item', () => {
     const changed = sets();
     changed.R = changed.R.map((item, i) => i === 0 ? { ...item, text: item.text + ' Use the details above.' } : item);
@@ -349,7 +366,22 @@ describe('end to end on synthetic outcomes (2 harnesses x 4 rungs)', () => {
     expect(a.decision2_3.map((h: { harness: string; slip_point: number | null }) => [h.harness, h.slip_point])).toEqual([['claude-code', null], ['hermes', 150]]);
     expect(a.places.length).toBeGreaterThan(0);
     const state = join(dir, 'state.json');
-    const first = run([join(A, 'interim.ts'), 'look', '--trials', join(dir, 'trials.jsonl'), '--sets', ...sets, '--state', state, '--out', join(dir, 'interim')]);
+    const lookArgs = [join(A, 'interim.ts'), 'look', '--trials', join(dir, 'trials.jsonl'), '--sets', ...sets, '--state', state];
+    const unproven = run([...lookArgs, '--out', join(dir, 'interim')]);
+    expect(unproven.code).toBe(2);
+    expect(unproven.err).toContain('phase 1 is not shown complete and drained');
+    expect(existsSync(state)).toBe(false);
+    const sha = (p: string) => new Bun.CryptoHasher('sha256').update(readFileSync(p)).digest('hex');
+    const receipt = { schema: 'he-mcp-at-scale-phase-1-index/1', run_id: 'synthetic', shards: { a: 'synthetic' },
+      trials_sha256: sha(join(dir, 'trials.jsonl')), design_sha256: sha(join(A, 'interim-design.json')), sets_sha256: sets.map(sha) };
+    writeFileSync(join(dir, 'phase-1-index.json'), JSON.stringify({ ...receipt, trials_sha256: 'a partial index' }));
+    expect(run([...lookArgs, '--out', join(dir, 'interim')]).code).toBe(2);
+    expect(existsSync(state)).toBe(false);
+    writeFileSync(join(dir, 'phase-1-index.json'), JSON.stringify(receipt));
+    const partialLook = run([join(A, 'interim.ts'), 'look', '--trials', join(dir, 'trials.jsonl'), '--sets', sets[0]!, '--state', state, '--out', join(dir, 'interim')]);
+    expect(partialLook.err).toContain('do not match the phase 1 index');
+    expect(existsSync(state)).toBe(false);
+    const first = run([...lookArgs, '--out', join(dir, 'interim')]);
     expect(first.code).toBe(0);
     expect(first.out).toContain('slip:hermes: stop_efficacy');
     expect(first.out).toContain(STOPPED_NOTE);
@@ -370,6 +402,14 @@ describe('end to end on synthetic outcomes (2 harnesses x 4 rungs)', () => {
     expect(hermes.sequence).toHaveLength(1);
     expect(hermes.sequence[0].slips).toBeNull();
     expect(hermes.sequence[0].final_look).toMatchObject({ interim_decision: 'stop_efficacy', z: null, boundary_crossed: null, note: STOPPED_NOTE });
+    const otherDir = join(dir, 'other');
+    mkdirSync(otherDir);
+    const other = readFileSync(join(dir, 'trials.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).map((t) => (t.outcomes ? { ...t, outcomes: { ...t.outcomes, invalid_calls: 1 } } : t));
+    writeFileSync(join(otherDir, 'trials.jsonl'), other.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    const rebound = run([join(A, 'analyze.ts'), '--trials', join(otherDir, 'trials.jsonl'), '--sets', ...sets, '--interim-state', state, '--out', join(dir, 'refused-trials')]);
+    expect(rebound.code).not.toBe(0);
+    expect(rebound.err).toContain('interim state was computed from different trials');
+    expect(existsSync(join(dir, 'refused-trials'))).toBe(false);
     const invalidState = join(dir, 'invalid-state.json');
     writeFileSync(invalidState, JSON.stringify({ ...JSON.parse(readFileSync(state, 'utf8')), design_sha256: 'not-the-frozen-design' }));
     const refused = run([...analysisArgs, '--interim-state', invalidState, '--out', join(dir, 'refused')]);

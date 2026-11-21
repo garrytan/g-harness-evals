@@ -37,7 +37,7 @@ const u = (...parts: (string | number)[]) => parseInt(createHash('sha256').updat
 function outcomes(o: { item: Item; rung: number; servers: string[]; right: boolean; wrongTool: string | null; none: boolean; noneCalled: boolean; infra: boolean; fixtures?: string[] }): Outcomes {
   const calls: Outcomes['calls'] = [];
   const it = o.item;
-  if (o.fixtures) for (const f of o.fixtures) { const s = (it as TItem).fixtures.find((x) => x.id === f)!; calls.push({ server: s.server!, tool: s.tool, arguments: {}, validation_ok: true, fixture: f }); }
+  if (o.fixtures) for (const f of o.fixtures) { const s = (it as TItem).fixtures.find((x) => x.id === f)!; calls.push({ server: s.server!, tool: s.tool, arguments: {}, validation_ok: true, fixture: f, result_ok: true }); }
   else if (!o.none) {
     if (o.wrongTool) calls.push({ server: o.wrongTool.split('/')[0]!, tool: o.wrongTool.split('/')[1]!, arguments: {}, validation_ok: true, fixture: 'default' });
     if (o.right) { const a = (it as RItem | GItem).acceptable[0]!; calls.push({ server: a.server, tool: a.tool, arguments: {}, validation_ok: true, fixture: 'default' }); }

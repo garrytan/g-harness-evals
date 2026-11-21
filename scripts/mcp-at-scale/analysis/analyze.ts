@@ -12,7 +12,8 @@
 // at the plan's assumptions, marked provisional).
 //
 // Pairs and clusters: a request is paired with itself across rungs (or arms) within a setup (harness and model); a
-// harness's two models are pooled with the model in the pair key. Tool requests cluster by target core tool, no-tool
+// harness's two models are pooled with the model in the pair key. Repetitions pair by number (rep 1 with rep 1), a
+// repetition without its partner is counted as unpaired, and two trials with one key stop the analysis. Tool requests cluster by target core tool, no-tool
 // requests and set T tasks by themselves, set G requests by target gbrain tool. Ranges are the cluster bootstrap's 95%
 // percentile interval and p is the cluster sign-flip test (runner/stats/paired.ts). INFRA trials are counted per cell and
 // never scored: a pair with an INFRA side is left out and counted.
@@ -45,8 +46,9 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Item, TItem } from '../requests/sets.ts';
+import { lookTrials } from './interim.ts';
 import { gbrainMargin } from './power.ts';
-import { RUNGS, contrastOf, hasTranscript, isInfra, isOpus, loadTrials, paired, rate, readJsonl, requestIndex, setup, setupItemRep, taskSuccess, VALUES, type Contrast, type Requests, type Trial } from './stats.ts';
+import { RUNGS, contrastOf, hasTranscript, isInfra, isOpus, loadTrials, paired, rate, readJsonl, requestIndex, setup, setupItemRep, taskSuccess, trialsDigest, VALUES, type Contrast, type Requests, type Trial } from './stats.ts';
 
 export const SLIP_BAR = 0.05;
 export const HOLD_BOUND = -0.07;
@@ -73,12 +75,12 @@ type InterimDecisions = Record<string, InterimDecision>;
 const isStopped = (decision: InterimDecision) => decision.startsWith('stop_');
 const stopNote = (decision: InterimDecision) => STOPPED_NOTE + (decision === 'stop_futility' ? ' (futility)' : '');
 
-function loadInterimDecisions(path: string, sets: string[], margin: number): InterimDecisions {
+function loadInterimDecisions(path: string, sets: string[], margin: number, trials: Trial[], items: Item[]): InterimDecisions {
   const designFile = join(import.meta.dir, 'interim-design.json');
   const sha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
-  const design = JSON.parse(readFileSync(designFile, 'utf8')) as { comparisons: { id: string }[] };
+  const design = JSON.parse(readFileSync(designFile, 'utf8')) as { comparisons: { id: string }[]; seed: string; fraction: number };
   const state = JSON.parse(readFileSync(path, 'utf8')) as {
-    schema?: string; look?: string; status?: string; design_sha256?: string; sets_sha256?: string[]; gbrain_margin?: number; decisions?: InterimDecisions;
+    schema?: string; look?: string; status?: string; design_sha256?: string; sets_sha256?: string[]; gbrain_margin?: number; trials_digest?: string; decisions?: InterimDecisions;
   };
   if (state?.schema !== 'he-mcp-at-scale-interim-state/1' || state.look !== 'interim' || state.status !== 'complete') {
     throw new Error('final analysis requires a completed interim state');
@@ -87,6 +89,9 @@ function loadInterimDecisions(path: string, sets: string[], margin: number): Int
     throw new Error('interim state does not match the frozen design and request sets');
   }
   if (state.gbrain_margin !== margin) throw new Error('final analysis does not match the interim gbrain margin');
+  if (!state.trials_digest || state.trials_digest !== trialsDigest(lookTrials(trials, items, design).kept)) {
+    throw new Error('interim state was computed from different trials than these trials hold for the look\'s units');
+  }
   const decisions = state.decisions;
   if (!decisions || Object.keys(decisions).length !== design.comparisons.length || !design.comparisons.every(({ id }) =>
     ['continue', 'no data at the look', 'stop_efficacy', 'stop_opposite', 'stop_futility'].includes(decisions[id] ?? ''))) {
@@ -119,7 +124,7 @@ const where = (c: Ctx, f: Partial<Pick<Trial, 'harness' | 'model' | 'arm' | 'set
 /** One harness's right-tool (or other) contrast, rung r against 30, native arm, set R; models pooled in the key. */
 export function rungContrast(c: Ctx, harness: string, rung: number, value: (t: Trial) => number | null = VALUES.right_tool, model?: string): Contrast {
   const rows = where(c, { harness, arm: 'native', set: 'R' }).filter((t) => !model || t.model === model);
-  return paired(rows.filter((t) => t.rung === 30), rows.filter((t) => t.rung === rung), value, (t) => t.model + '|' + t.request, c.cl);
+  return paired(rows.filter((t) => t.rung === 30), rows.filter((t) => t.rung === rung), value, setupItemRep, c.cl);
 }
 
 /** Decision 2's fixed sequence for one harness. */
@@ -151,7 +156,7 @@ export function opusMean(c: Ctx, rung: number): Record<string, Contrast> {
   for (const h of harnesses) {
     const mine = rows.filter((t) => t.harness === h);
     const ref: Trial[] = mine.filter((t) => mean.has(t.request)).map((t) => ({ ...t, trial_id: t.trial_id + '#mean', harness: 'opus-mean', outcomes: { ...t.outcomes!, infra: null } }));
-    out[h] = paired(ref, mine, (t) => (t.harness === 'opus-mean' ? mean.get(t.request)! : VALUES.right_tool(t)), (t) => t.request, c.cl);
+    out[h] = paired(ref, mine, (t) => (t.harness === 'opus-mean' ? mean.get(t.request)! : VALUES.right_tool(t)), (t) => JSON.stringify([t.model, t.request, t.rep ?? 1]), c.cl);
   }
   return out;
 }
@@ -170,8 +175,7 @@ export function cell(c: Ctx, s: string, arm: string, rung: number) {
     right_tool: rate(rows, VALUES.right_tool, c.cl), wrong_tool: rate(rows, VALUES.wrong_tool, c.cl), tool_when_none: rate(rows, VALUES.tool_when_none, c.cl),
     usd_per_request: rate(rows, VALUES.usd, c.cl), input_tokens_per_request: withUsage.length ? Math.round(input / withUsage.length) : null,
     cache_read_share: input ? Number((cacheRead / input).toFixed(4)) : null,
-    cache_broken_after_load: scored.filter((t) => t.cache_break_after_load).length,
-    builtin_substitution: { trials: scored.filter((t) => (t.builtin_attempts ?? 0) > 0).length, attempts: scored.reduce((x, t) => x + (t.builtin_attempts ?? 0), 0) },
+    cache_broken_after_load: null, builtin_substitution: null, not_measured: 'cache_broken_after_load and builtin_substitution: the runner does not record them',
     search_effort: { found: eff.length, with_transcript: transcripts.length, search_calls_before_right: mean(eff.map((t) => t.effort!.search_calls_before_right)), turns_before_right: mean(eff.map((t) => t.effort!.turns_before_right ?? 0)) },
   };
 }
@@ -225,14 +229,14 @@ export function setT(c: Ctx) {
   const v = (t: Trial) => taskSuccess(t, c.tItems.get(t.request));
   const setups = [...new Set(rows.map(setup))].sort();
   return {
-    pooled_300_vs_30: paired(rows.filter((t) => t.rung === 30), rows.filter((t) => t.rung === 300), v, (t) => setup(t) + '|' + t.request, c.cl),
+    pooled_300_vs_30: paired(rows.filter((t) => t.rung === 30), rows.filter((t) => t.rung === 300), v, setupItemRep, c.cl),
     per_setup: Object.fromEntries(setups.map((s) => [s, { 30: rate(rows.filter((t) => setup(t) === s && t.rung === 30), v, c.cl), 300: rate(rows.filter((t) => setup(t) === s && t.rung === 300), v, c.cl) }])),
   };
 }
 
 export function mechanismContrast(c: Ctx, p: (typeof MECHANISM_PAIRS)[number], rung: number, value: (t: Trial) => number | null = VALUES.right_tool): Contrast {
   const rows = where(c, { harness: p.harness, set: 'R', rung }).filter((t) => isOpus(t.model));
-  return paired(rows.filter((t) => t.arm === p.search), rows.filter((t) => t.arm === p.send_everything), value, (t) => t.model + '|' + t.request, c.cl);
+  return paired(rows.filter((t) => t.arm === p.search), rows.filter((t) => t.arm === p.send_everything), value, setupItemRep, c.cl);
 }
 
 export function decision4(c: Ctx) {
@@ -261,7 +265,7 @@ export function decision1(c: Ctx, margin: number, provisional: boolean) {
   const g = (s: string) => where(c, { arm: 'gbrain-' + s, set: 'G', rung: 150 });
   if (!g('full').length) return null;
   const half = (rows: Trial[], h: string) => rows.filter((t) => { const it = c.req.byId.get(t.request); return it?.set === 'G' && it.half_kind === h; });
-  const key = (t: Trial) => setup(t) + '|' + t.request;
+  const key = setupItemRep;
   const ni = (x: Contrast) => !!x.ci95 && x.ci95[0] > -margin;
   const native150 = where(c, { arm: 'native', set: 'R', rung: 150 });
   const harnesses = [...new Set(g('full').map((t) => t.harness))].sort();
@@ -381,8 +385,9 @@ if (import.meta.main) {
     process.exit(2);
   }
   const margins = flag('--margins') ? JSON.parse(readFileSync(flag('--margins')!, 'utf8')) as { gbrain?: number } : null;
-  const interimDecisions = interim ? loadInterimDecisions(interim, sets, margins?.gbrain ?? gbrainMargin()) : undefined;
-  const a = analyze({ trials: loadTrials(trials), items: sets.flatMap((f) => readJsonl<Item>(f)), places: flag('--places') ? JSON.parse(readFileSync(flag('--places')!, 'utf8')) : null, margin: margins?.gbrain ?? null, interimDecisions });
+  const rows = loadTrials(trials), items = sets.flatMap((f) => readJsonl<Item>(f));
+  const interimDecisions = interim ? loadInterimDecisions(interim, sets, margins?.gbrain ?? gbrainMargin(), rows, items) : undefined;
+  const a = analyze({ trials: rows, items, places: flag('--places') ? JSON.parse(readFileSync(flag('--places')!, 'utf8')) : null, margin: margins?.gbrain ?? null, interimDecisions });
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'analysis.json'), JSON.stringify(a, null, 1) + '\n');
   writeFileSync(join(out, 'analysis.md'), render(a));

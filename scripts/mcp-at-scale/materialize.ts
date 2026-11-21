@@ -195,7 +195,7 @@ export async function materialize(o: { catalog: string; requests: McpRequest[]; 
       writeFileSync(join(dir, 'environment', 'Dockerfile'), 'FROM ' + (o.gbrain ? o.gbrain.image : MAIN_IMAGE) + '\nWORKDIR /app\n');
       const gbrain = o.gbrain && v.gbrain ? relaySidecar(o.gbrain.image, v.gbrain.args, name) : undefined;
       writeFileSync(join(dir, 'environment', 'docker-compose.yaml'), JSON.stringify(compose({ tag: image.tag, rung, request: r.id, fixtures: r.fixtures ?? [], token, gbrain }), null, 1) + '\n');
-      const expected: Record<string, unknown> = { request: r.id, kind: r.kind, rung, servers: [...servers.map((s) => s.server), ...(v.gbrain ? ['gbrain'] : [])], acceptable: r.acceptable ?? [] };
+      const expected: Record<string, unknown> = { request: r.id, kind: r.kind, rung, require_ready: true, servers: [...servers.map((s) => s.server), ...(v.gbrain ? ['gbrain'] : [])], acceptable: r.acceptable ?? [] };
       if (v.gbrain) Object.assign(expected, { gbrain_cell: v.gbrain.cell, gbrain_serve_args: v.gbrain.args, discovery: [{ server: 'gbrain', tool: 'request_tools' }] });
       writeFileSync(join(dir, 'tests', 'expected.json'), JSON.stringify(expected, null, 1) + '\n');
       cpSync(join(HERE, 'grade.py'), join(dir, 'tests', 'grade.py'));

@@ -18,17 +18,24 @@
 // Decisions: z at or past the interim bound stops (efficacy; for a two-sided test a crossing on the other side stops too)
 // and the output says "stopped early, estimate possibly overstated"; else conditional power below 10% stops for futility;
 // else the run continues to the final look at the final bound.
-// The state file records the look before any trial is read; a second call that finds it exits 4 and reads nothing.
+// The look reads only a phase 1 index that run.ts phase-1-index built (its phase-1-index.json beside --trials, naming the
+// index's sha256): every phased shard's phase 1 complete, drained and cleaned up. Without one it exits 2 and the look is
+// not taken. The state file records the look before any trial is read, with each shard's phase 1 trials.jsonl sha256 (which
+// run-shard-vm.sh checks before phase 2) and, once complete, the digest of the trials read (which analyze.ts checks); a
+// second call that finds it exits 4 and reads nothing.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { clusterOf } from '../requests/seal.ts';
 import type { Item } from '../requests/sets.ts';
 import { context, mechanismContrast, rungContrast, STOPPED_NOTE } from './analyze.ts';
 import { gbrainMargin } from './power.ts';
-import { loadTrials, normalCdf, paired, readJsonl, setupItemRep, VALUES, type Contrast, type Trial } from './stats.ts';
+import { loadTrials, normalCdf, paired, readJsonl, setupItemRep, trialsDigest, VALUES, type Contrast, type Trial } from './stats.ts';
 
 export const DESIGN_FILE = join(import.meta.dir, 'interim-design.json');
+/** The receipt scripts/mcp-at-scale/run.ts phase-1-index writes beside the phase 1 trial index it built. */
+export const PHASE1_INDEX = 'phase-1-index.json';
+export const PHASE1_INDEX_SCHEMA = 'he-mcp-at-scale-phase-1-index/1';
 export { STOPPED_NOTE };
 export interface Comparison { id: string; kind: 'slip' | 'gbrain_ni' | 'mechanism'; harness?: string; rung?: number; surface?: string; half?: 'starter' | 'full_only'; search?: string; send_everything?: string;
   alpha: number; sides: 1 | 2; direction: 'higher' | 'lower'; planned_effect: number; margin?: number | null }
@@ -79,10 +86,16 @@ export function decide(x: Contrast, cmp: Comparison, margin: number, design: Des
   return { id: cmp.id, decision, contrast: x, bounds: b, z: Number(z.toFixed(4)), conditional_power: Number(cp.toFixed(4)), ...(shift ? { margin } : {}), note };
 }
 
+/** The trials of the look's units, the only ones it reads. */
+export function lookTrials(trials: Trial[], items: Item[], design: Pick<Design, 'seed' | 'fraction'>) {
+  const units = interimUnits(items, design.seed, design.fraction);
+  const byId = new Map(items.map((i) => [i.id, i]));
+  return { units, kept: trials.filter((t) => { const it = byId.get(t.request); return !!it && units.has(clusterOf(it).cluster); }) };
+}
+
 export function look(o: { trials: Trial[]; items: Item[]; design: Design; margin?: number | null }) {
-  const units = interimUnits(o.items, o.design.seed, o.design.fraction);
+  const { units, kept } = lookTrials(o.trials, o.items, o.design);
   const byId = new Map(o.items.map((i) => [i.id, i]));
-  const kept = o.trials.filter((t) => { const it = byId.get(t.request); return !!it && units.has(clusterOf(it).cluster); });
   const c = context(kept, o.items);
   const margin = o.margin ?? gbrainMargin();
   const results = o.design.comparisons.map((cmp) => {
@@ -95,7 +108,7 @@ export function look(o: { trials: Trial[]; items: Item[]; design: Design; margin
     }
     return decide(x, cmp, cmp.margin ?? margin, o.design);
   });
-  return { units: units.size, trials_read: kept.length, trials_outside_units: o.trials.length - kept.length, gbrain_margin: margin, results };
+  return { units: units.size, trials_read: kept.length, trials_outside_units: o.trials.length - kept.length, trials_digest: trialsDigest(kept), gbrain_margin: margin, results };
 }
 
 if (import.meta.main) {
@@ -119,13 +132,24 @@ if (import.meta.main) {
     process.exit(4);
   }
   const sha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
-  const record: Record<string, unknown> = { schema: 'he-mcp-at-scale-interim-state/1', look: 'interim', status: 'started', at: new Date().toISOString(), design_sha256: sha(designPath), trials_sha256: sha(trials), sets_sha256: sets.map(sha) };
+  let index: { schema?: string; run_id?: string; trials_sha256?: string; design_sha256?: string; sets_sha256?: string[]; shards?: Record<string, string> } | null = null;
+  try { index = JSON.parse(readFileSync(join(dirname(trials), PHASE1_INDEX), 'utf8')); } catch { index = null; }
+  if (index?.schema !== PHASE1_INDEX_SCHEMA || index.trials_sha256 !== sha(trials) || !index.shards || !Object.keys(index.shards).length) {
+    console.error('refused: ' + trials + ' has no matching ' + PHASE1_INDEX + ' beside it, so phase 1 is not shown complete and drained (run.ts phase-1-index writes both once every phased shard\'s phase 1 is); the look was not taken');
+    process.exit(2);
+  }
+  const designSha = sha(designPath), setsSha = sets.map(sha);
+  if (!index.run_id || designSha !== index.design_sha256 || JSON.stringify(setsSha) !== JSON.stringify(index.sets_sha256)) {
+    console.error('refused: the design or request sets do not match the phase 1 index; the look was not taken');
+    process.exit(2);
+  }
+  const record: Record<string, unknown> = { schema: 'he-mcp-at-scale-interim-state/1', look: 'interim', status: 'started', at: new Date().toISOString(), run_id: index.run_id, design_sha256: designSha, trials_sha256: index.trials_sha256, sets_sha256: setsSha, phase1_shards: index.shards };
   writeFileSync(state, JSON.stringify(record, null, 1) + '\n', { flag: 'wx' });
   const margins = flag('--margins') ? JSON.parse(readFileSync(flag('--margins')!, 'utf8')) as { gbrain?: number } : null;
   const r = look({ trials: loadTrials(trials), items: sets.flatMap((f) => readJsonl<Item>(f)), design, margin: margins?.gbrain ?? null });
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'interim.json'), JSON.stringify(r, null, 1) + '\n');
-  writeFileSync(state, JSON.stringify({ ...record, status: 'complete', completed_at: new Date().toISOString(), gbrain_margin: r.gbrain_margin,
+  writeFileSync(state, JSON.stringify({ ...record, status: 'complete', completed_at: new Date().toISOString(), trials_digest: r.trials_digest, gbrain_margin: r.gbrain_margin,
     decisions: Object.fromEntries(r.results.map((x) => [x.id, x.decision])) }, null, 1) + '\n');
   console.log('interim look: ' + r.units + ' units, ' + r.trials_read + ' trials read (' + r.trials_outside_units + ' outside the interim units left unread)');
   for (const x of r.results) console.log(x.id + ': ' + x.decision + (x.z !== null ? ' (z ' + x.z + ', interim bound ' + x.bounds.interim.toFixed(2) + ', conditional power ' + x.conditional_power + ')' : '') + ' - ' + x.note);

@@ -83,6 +83,9 @@ describe('validator', () => {
     const bad = { ...clone(sets.R[0]!), stratum: 'vague' } as unknown as Item;
     expect(schemaProblems([bad]).length).toBe(1);
     expect(schemaProblems([{ ...clone(sets.T[0]!), fixtures: [sets.T[0]!.fixtures[0]] }]).length).toBe(1);
+    const namedDefault = clone(sets.T[0]!);
+    namedDefault.fixtures[0]!.id = 'default';
+    expect(schemaProblems([namedDefault]).join('\n')).toContain('fixture id default is reserved');
   });
   test('the CLI validates a set file', () => {
     const f = join(tmp, 'set-r.jsonl');
@@ -130,10 +133,22 @@ describe('set T fixtures in the catalog host\'s own format', () => {
     const calls = host.lines.filter((l) => l.method === 'tools/call');
     expect(calls.map((l) => l.fixture)).toEqual(['default', 's1', 's2']);
     const outcomes = { request: item.id, kind: 'tool', rung: '30', servers_expected: [], servers_connected: [], servers_missing: [], infra: null, right_tool: true, first_right_call: 2, wrong_tools: [], tool_when_none: null, invalid_calls: 0, reward: 1,
-      calls: calls.map((l) => ({ server: l.server, tool: l.tool!, arguments: l.arguments, validation_ok: l.validation?.ok ?? null, fixture: l.fixture ?? null })) } as Outcomes;
+      calls: calls.map((l) => ({ server: l.server, tool: l.tool!, arguments: l.arguments, validation_ok: l.validation?.ok ?? null, fixture: l.fixture ?? null, result_ok: l.ok ?? null })) } as Outcomes;
     const trial = { trial_id: 'x', set: 'T', harness: 'h', model: 'm', arm: 'native', rung: 30, request: item.id, outcomes } as Trial;
     expect(taskSuccess(trial, item)).toBe(1);
     expect(taskSuccess({ ...trial, outcomes: { ...outcomes, calls: outcomes.calls.slice(0, 2) } }, item)).toBe(0);
+  });
+  test('set T credits a step only for a successful host answer to valid arguments, never a failed call or the neutral default', () => {
+    const item = { id: 't1', set: 'T', kind: 'tool', text: '', fixtures: [], end_state: { fired: ['s1', 's2'] }, acceptable: [] } as unknown as TItem;
+    const step = (fixture: string, extra: object = {}) => ({ server: 'a', tool: 't', arguments: {}, validation_ok: true, fixture, result_ok: true, ...extra });
+    const trial = (calls: object[]) => ({ trial_id: 'x', set: 'T', harness: 'h', model: 'm', arm: 'native', rung: 30, request: 't1',
+      outcomes: { request: 't1', kind: 'tool', infra: null, calls } } as unknown as Trial);
+    expect(taskSuccess(trial([step('s1'), step('s2')]), item)).toBe(1);
+    expect(taskSuccess(trial([step('s1'), step('s2', { result_ok: false })]), item)).toBe(0);
+    expect(taskSuccess(trial([step('s1'), step('s2', { validation_ok: null })]), item)).toBe(0);
+    expect(taskSuccess(trial([step('s1'), step('s2', { result_ok: undefined })]), item)).toBe(0);
+    const named = { ...item, end_state: { fired: ['s1', 'default'] } } as TItem;
+    expect(taskSuccess(trial([step('s1'), step('default')]), named)).toBe(0);
   });
 });
 
@@ -309,8 +324,18 @@ describe('set T in the audit', () => {
     const labels = new Map([[t.id, new Map<string, unknown>([['opus', { no_tool_needed: false, acceptable: ['x/lookup'] }], ['astra', { no_tool_needed: false, acceptable: [] }]])]]);
     const adj = new Map([[t.id + '\u0000x/lookup', new Map<string, unknown>([['carbon', { verdict: 'acceptable', required: null }]])]]);
     const a = applyAudit([t], labels, adj);
-    expect(a.status[t.id]).toBe('passed');
+    expect(a.status[t.id]).toBe('replace');
     expect(a.t_alternatives[t.id]).toEqual(['x/lookup']);
     expect((a.audited[0] as TItem).acceptable).toEqual(t.acceptable);
+  });
+  test('an accepted no-tool answer drops a request that needs a tool instead of passing it', () => {
+    for (const it of [sets.R.find((i) => i.kind === 'tool')!, sets.T[0]!]) {
+      const labels = new Map([[it.id, new Map<string, unknown>([['opus', { no_tool_needed: true, acceptable: [] }], ['astra', { no_tool_needed: false, acceptable: [] }]])]]);
+      const adj = new Map([[it.id + '\u0000' + NO_TOOL, new Map<string, unknown>([['carbon', { verdict: 'acceptable', required: null }]])]]);
+      const a = applyAudit([it], labels, adj);
+      expect(a.status[it.id]).toBe('dropped');
+      expect(a.audited).toEqual([]);
+      expect(Object.values(a.drops_by_stratum)).toEqual([1]);
+    }
   });
 });

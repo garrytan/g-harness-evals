@@ -5,13 +5,14 @@ In a task container it runs as tests/grade.py with tests/expected.json beside it
 sidecar (GET <HE_CATALOG_URL>/_he/log with the token in HE_CATALOG_LOG_TOKEN, which only the verifier's environment holds),
 keeps a copy as catalog-calls.jsonl, and writes outcomes.json and reward.txt to the output directory (/logs/verifier).
 
-    python3 grade.py [--expected tests/expected.json] [--log <calls.jsonl>] [--ready /logs/agent/mcp-ready.json]
-                     [--out /logs/verifier]
+    python3 grade.py [--expected tests/expected.json] [--log <calls.jsonl>] [--out /logs/verifier]
 
-mcp-ready.json is the readiness probe scripts/mcp-at-scale/agents.py runs from inside the trial container after agent setup
-and before the agent starts: {ok, url, attempts, error, connect, variant}. connect is how the cell's harness connects MCP
-servers: "eager" (at start: Claude Code, Codex, Hermes, OpenClaw, Gemini CLI, Pi direct) or "lazy" (on first use: Pi
-codemode and deferred). With no probe file the trial is graded as eager.
+Readiness comes from the catalog host's own log, never from a file in the trial container, which the agent can write. The
+probe scripts/mcp-at-scale/agents.py runs from inside the trial container after agent setup and before the agent starts
+asks the host for /_he/ready with the cell's connect mode, and the host logs it as a "ready" line. connect is how the
+cell's harness connects MCP servers: "eager" (at start: Claude Code, Codex, Hermes, OpenClaw, Gemini CLI, Pi direct) or
+"lazy" (on first use: Pi codemode and deferred). Only a ready line logged before any MCP request counts, so a request the
+agent sends later changes nothing. With no such line (the probe could not reach the host) the trial is graded as eager.
 
 Connection rule (decided for internal-task, 2026-11-19):
   eager  every rung server must get initialize and tools/list, else HE-MCP-001;
@@ -21,8 +22,8 @@ Connection rule (decided for internal-task, 2026-11-19):
          one-turn text reply, exits before tools/list (keyless check, 2026-11-19), so initialize alone is not a failed
          connect. A connect that fails inside the harness and is followed by no MCP use is not visible in this log; the
          readiness probe still proves the host was up.
-  either HE-MCP-003 when the probe ran and could not reach the catalog host, so a host that was down is never scored;
-         it comes before HE-MCP-002, since a host the trial could not reach also leaves its log unreadable.
+  A host that was down is never scored: it leaves no ready line, so the trial is graded as eager and every server is
+  missing (HE-MCP-001), or its log is unreadable (HE-MCP-002).
 
 outcomes.json:
   request, kind ("tool" or "none"), rung
@@ -30,9 +31,9 @@ outcomes.json:
   servers_connected     servers that successfully answered both initialize and tools/list
   servers_missing       expected but not connected
   servers_incomplete    servers that got initialize or tools/list but not both
-  connect, ready        the cell's connect mode and the readiness probe record (null when there was none)
+  connect, ready        the cell's connect mode and the host's ready line (null when there was none)
   infra                 null, or {code, detail}: HE-MCP-001 a server was not connected under the rule above,
-                        HE-MCP-002 the log could not be read, HE-MCP-003 the readiness probe could not reach the host.
+                        HE-MCP-002 the log could not be read.
                         An INFRA trial is counted and published, never scored.
   calls                 tools/call lines, in order: server, tool, arguments, validation ok, fixture
   right_tool            tool requests: the call matched the required arguments and was not rejected. GBrain must
@@ -62,7 +63,6 @@ from typing import Any
 
 INFRA_MISSING = "HE-MCP-001"
 INFRA_LOG = "HE-MCP-002"
-INFRA_NOT_READY = "HE-MCP-003"
 GBRAIN_EVIDENCE = Path("/he-gbrain-evidence")
 
 
@@ -85,8 +85,18 @@ def args_match(required: dict[str, Any] | None, args: Any) -> bool:
     return all(k in a and matches(m, a[k]) for k, m in (required or {}).items())
 
 
-def grade(expected: dict[str, Any], lines: list[dict[str, Any]] | None, log_error: str | None = None,
-          ready: dict[str, Any] | None = None) -> dict[str, Any]:
+def ready_line(lines: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    """The host's ready line, when one came before any other request the host logged."""
+    for line in lines or []:
+        if line.get("method") != "ready":
+            return None
+        if line.get("ok") is True:
+            return {"ok": True, "connect": line.get("connect"), "variant": line.get("variant")}
+    return None
+
+
+def grade(expected: dict[str, Any], lines: list[dict[str, Any]] | None, log_error: str | None = None) -> dict[str, Any]:
+    ready = ready_line(lines)
     servers = list(expected["servers"])
     seen: dict[str, set[str]] = {s: set() for s in servers}
     calls: list[dict[str, Any]] = []
@@ -112,10 +122,10 @@ def grade(expected: dict[str, Any], lines: list[dict[str, Any]] | None, log_erro
     connect = "lazy" if (ready or {}).get("connect") == "lazy" else "eager"
     not_connected = f"{len(missing)} of {len(servers)} expected MCP servers were not connected (initialize and tools/list): {', '.join(missing)}"
     infra = None
-    if ready is not None and not ready.get("ok"):
-        infra = {"code": INFRA_NOT_READY, "detail": f"the readiness probe could not reach the catalog host at {ready.get('url')} from the trial container: {ready.get('error')}"}
-    elif lines is None:
+    if lines is None:
         infra = {"code": INFRA_LOG, "detail": f"the catalog host's log could not be read: {log_error}"}
+    elif expected.get("require_ready") and (not ready or ready.get("connect") not in ("lazy", "eager")):
+        infra = {"code": INFRA_MISSING, "detail": "the catalog host did not log readiness before the first MCP request"}
     elif connect == "eager" and missing:
         infra = {"code": INFRA_MISSING, "detail": not_connected}
     elif connect == "lazy" and missing and (calls or tried_listing):
@@ -169,7 +179,6 @@ def main() -> int:
     here = Path(__file__).resolve().parent
     ap.add_argument("--expected", default=str(here / "expected.json"))
     ap.add_argument("--log", default=None)
-    ap.add_argument("--ready", default="/logs/agent/mcp-ready.json")
     ap.add_argument("--out", default="/logs/verifier")
     a = ap.parse_args()
     expected = json.loads(Path(a.expected).read_text())
@@ -190,13 +199,7 @@ def main() -> int:
                     (out_dir / "gbrain-tools-list.json").write_text(tools_list.read_text())
             except Exception as e:  # noqa: BLE001
                 lines, err = None, f"GBrain evidence: {type(e).__name__}: {str(e)[:300]}"
-    try:
-        ready = json.loads(Path(a.ready).read_text())
-    except FileNotFoundError:
-        ready = None
-    except Exception as e:  # noqa: BLE001
-        ready = {"ok": False, "url": None, "error": f"the probe record could not be read: {type(e).__name__}: {str(e)[:200]}"}
-    result = grade(expected, lines, err, ready)
+    result = grade(expected, lines, err)
     (out_dir / "outcomes.json").write_text(json.dumps(result, indent=1) + "\n")
     (out_dir / "reward.txt").write_text(str(result["reward"]) + "\n")
     print(json.dumps({k: result[k] for k in ("request", "infra", "right_tool", "wrong_tools", "tool_when_none", "reward")}))

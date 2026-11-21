@@ -22,7 +22,8 @@
 // The log is the evaluator's: one JSON line per completed request, including tool failures, but only successful
 // initialize and tools/list responses count as connections. run is a random id per host process. GET /_he/log returns it to a caller holding the token in
 // the variable --log-token-env names (header x-he-log-token), so a verifier can read it and the agent cannot. GET
-// /healthz answers ok. Stdio mode serves one server the same way (logging locally), or with --upstream relays every
+// /healthz answers ok. GET /_he/ready?connect=<eager|lazy>&variant=<v> (the trial's readiness probe, agents.py) answers
+// ok and logs a "ready" line with them, which grade.py reads as the cell's connect mode. Stdio mode serves one server the same way (logging locally), or with --upstream relays every
 // request to a running host so the sidecar's log stays the one record.
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -47,7 +48,7 @@ export interface Fixtures { default?: FixtureResult; requests: Record<string, Fi
 export interface LogLine {
   at: string; run: string; trial: string | null; request: string | null; transport: 'http' | 'stdio'; server: string; method: string;
   tool?: string; arguments?: unknown; validation?: { ok: boolean | null; error?: string }; fixture?: string;
-  client?: unknown; protocol_requested?: unknown; ok?: boolean;
+  client?: unknown; protocol_requested?: unknown; ok?: boolean; connect?: string | null; variant?: string | null;
 }
 
 export const DEFAULT_RESULT: FixtureResult = { json: { results: [], total: 0, note: 'No results matched.' } };
@@ -192,6 +193,10 @@ export function createHost(o: HostOptions) {
   const fetch = async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     if (url.pathname === '/healthz') return new Response('ok\n');
+    if (url.pathname === '/_he/ready') {
+      write({ transport: 'http', server: '', method: 'ready', ok: true, connect: url.searchParams.get('connect'), variant: url.searchParams.get('variant') });
+      return new Response('ok\n');
+    }
     if (url.pathname === '/_he/log') {
       if (!o.logToken || req.headers.get('x-he-log-token') !== o.logToken) return new Response('not found\n', { status: 404 });
       return new Response(lines.map((l) => JSON.stringify(l) + '\n').join(''), { headers: { 'content-type': 'application/x-ndjson' } });

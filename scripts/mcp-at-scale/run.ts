@@ -27,15 +27,18 @@
 //
 // Resume: run shard again with the same --out. Trials with a row are skipped; a trial that started without a row (the
 // machine stopped mid-trial) has its job directory moved to <out>/jobs-abandoned/ and runs again. Its spend stays in the
-// ledger. The lease reopens under the same id, so lease_usd and the output cap must not change.
+// ledger; the new attempt's row takes only a meter key bound after it started, never the abandoned attempt's. The lease reopens under the same id, so lease_usd and the output cap must not change.
 // Lease: before each trial the shard reads the lease; with less than trial_headroom_usd left it stops (exit 4, stop.json).
 // A trial the proxy refused for budget (HTTP 402) is recorded as INFRA HE-MCP-042 and the shard stops the same way.
+// A trial whose metered models (less the harness's housekeeping ones) or setup-probed harness version differ from the
+// cell's is INFRA HE-MCP-047; the row's observed field records what ran.
 // --fake-upstream runs the keyless proof: scripts/frontier-harbor/fake-upstream.ts behind the proxy, every provider key a
 // canary value that must never show up in <out>. Without it the shard's provider keys must be set in this process's
 // environment; run.ts takes every provider key out of its own environment before anything else runs, so only the proxy
 // gets them.
 // Exit: 0 done; 1 spec problems; 2 usage or a missing key, Harbor or gbrain build (nothing ran); 3 the proxy or broker did
-// not start; 4 stopped on the lease; 5 the key scan found something; 6 the meter did not drain; 130 stopped by a signal.
+// not start; 4 stopped on the lease; 5 the key scan found something; 6 the meter did not drain; 7 an error stopped the shard
+// mid-run (the drain, accounting and key scan still ran); 130 stopped by a signal.
 //
 // Spec (JSON):
 //   { "schema": "mcp-at-scale/1", "run_id": "<id>", "catalog"?: "<dir in the repo>" (default tasks/mcp-at-scale/catalog),
@@ -54,10 +57,11 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { appendFileSync, closeSync, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { ledgerStatus, verifyLedger } from '../../runner/ledger/budget-ledger.ts';
 import { KEY_ENV, upstreamTrouble, type Meter, type UsageLine } from '../../runner/proxy/metering-proxy.ts';
 import { ALLOW, TOKEN_PATTERNS } from '../publish-audit.ts';
 import { checkCatalog, loadCatalog, rungServers, type Catalog } from './catalog-load.ts';
-import { interimUnits } from './analysis/interim.ts';
+import { DESIGN_FILE, interimUnits, PHASE1_INDEX, PHASE1_INDEX_SCHEMA, type Design } from './analysis/interim.ts';
 import { buildGbrain, GBRAIN_CELLS } from './gbrain.ts';
 import { EGRESS_ENVIRONMENT, gatewayIp, SKIPPED, VARIANTS } from './listing-map.ts';
 import { acceptableAtRung, materialize, treeSha256, type McpRequest, type PlannedTask } from './materialize.ts';
@@ -70,7 +74,8 @@ export const SPEC_SCHEMA = 'mcp-at-scale/1';
 export const ROW_SCHEMA = 'mcp-at-scale-trial/1';
 export const DEFAULT_CATALOG = 'tasks/mcp-at-scale/catalog';
 /** The frozen harness and gbrain releases (versions.json): a spec may name these besides pin.json's versions. */
-export const INTERIM_DESIGN = JSON.parse(readFileSync(join(import.meta.dir, 'analysis/interim-design.json'), 'utf8')) as { seed: string; fraction: number };
+const interimDesignBytes = readFileSync(DESIGN_FILE);
+export const INTERIM_DESIGN = JSON.parse(interimDesignBytes.toString('utf8')) as Design;
 export const VERSIONS = JSON.parse(readFileSync(join(import.meta.dir, 'versions.json'), 'utf8')) as { harnesses: Record<string, { version: string }>; gbrain: { tag: string; commit: string } };
 const SLOT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** The row arm (analysis/stats.ts) of each mechanism variant; every other variant is a native arm. */
@@ -186,6 +191,7 @@ export function checkSpec(l: LoadedSpec, o: { catalog?: Catalog; pin?: any; vers
 
   const shardOf = new Map<string, string>();
   if (!Array.isArray(s.shards) || !s.shards.length) bad('shards must list at least one shard');
+  if (s.shards?.some((sh) => sh.phases !== undefined) && s.shards.some((sh) => sh.phases === undefined)) bad('all shards must have phases when the spec uses an interim look');
   const shardNames = new Set<string>();
   for (const sh of s.shards ?? []) {
     if (typeof sh.name !== 'string' || !SLOT.test(sh.name)) { bad('shard name ' + JSON.stringify(sh.name) + ' must be letters, digits, dot, underscore or dash'); continue; }
@@ -218,6 +224,7 @@ export function checkSpec(l: LoadedSpec, o: { catalog?: Catalog; pin?: any; vers
   if (num(s.cap_usd) && num(s.reserve_usd) && leases + s.reserve_usd > s.cap_usd + 1e-9) bad('the leases ($' + leases.toFixed(2) + ') plus reserve_usd ($' + s.reserve_usd.toFixed(2) + ') exceed cap_usd ($' + s.cap_usd.toFixed(2) + ')');
 
   if (!Array.isArray(s.cells) || !s.cells.length) bad('cells must list at least one cell');
+  const analysisKeys = new Map<string, string>();
   for (const c of s.cells ?? []) {
     const where = 'cell ' + c.id;
     if (typeof c.id !== 'string' || !SLOT.test(c.id)) { bad('cell id ' + JSON.stringify(c.id) + ' must be letters, digits, dot, underscore or dash'); continue; }
@@ -278,7 +285,14 @@ export function checkSpec(l: LoadedSpec, o: { catalog?: Catalog; pin?: any; vers
       const phase: 1 | 2 = lookUnits.has(clusterOf(items.get(id)!).cluster) ? 1 : 2;
       return { trial_id: trialId(s.run_id, c.id, rung, id, rep), cell: c.id, set: poolIds.get(id)!, item_set: items.get(id)!.set, request: id, rung, rep, phase, order: 0 };
     }).sort((a, b) => a.phase - b.phase).map((t, i) => ({ ...t, order: i }));
-    cells.set(c.id, { cell: c, harness: v.harness, cls: v.cls, version: version ?? '', arm: rowArm(c), shard: shardOf.get(c.id) ?? '', trials });
+    const arm = rowArm(c);
+    for (const t of trials) {
+      const key = JSON.stringify([v.harness, c.model, arm, t.rung, t.request, t.rep]);
+      const prior = analysisKeys.get(key);
+      if (prior) bad('HE-MCP-031 trials ' + prior + ' and ' + t.trial_id + ' share the analysis key ' + key);
+      else analysisKeys.set(key, t.trial_id);
+    }
+    cells.set(c.id, { cell: c, harness: v.harness, cls: v.cls, version: version ?? '', arm, shard: shardOf.get(c.id) ?? '', trials });
   }
   const defined = new Set((s.cells ?? []).map((c) => c.id));
   for (const [c, sh] of shardOf) if (!defined.has(c)) bad('shard ' + sh + ' names cell ' + c + ', which the spec does not define');
@@ -343,34 +357,60 @@ export interface TrialRow {
   usage: { usd: number; requests: number; forwarded: number; refused: number; failed: number; input_tokens: number; output_tokens: number;
     cache_read_tokens: number; cache_write_tokens: number; cache_read_share: number | null; unpriced: number; undrained: number; by_model: Meter['byModel'] } | null;
   effort: Effort | null; host_log: string | null; harbor_exception: { type: string; message: string } | null;
+  observed: { models: string[]; version: string | null };
   started_at: string; ended_at: string; duration_s: number; gap_s: number | null;
 }
 export interface RowInput {
   runId: string; shard: string; planned: PlannedTrial; cell: CellPlan; job: string; meterKey: string | null;
   result: Record<string, any> | null; outcomes: Record<string, any> | null; meter: Meter | null; usage: TrialUsage | null;
   effort: Effort | null; hostLog: string | null; startedAt: string; endedAt: string; gapS: number | null; trialDirFound: boolean;
+  housekeeping?: string[]; cliVersion?: string | null;
 }
 
-/** The INFRA a runner sees and the grader cannot: Harbor gave no trial or no verdict, the lease refused a request, the
- *  meter did not drain, or the provider failed. The grader's own INFRA comes first. */
+export function observedCliVersion(trialDir: string | null): string | null {
+  if (!trialDir) return null;
+  try {
+    const value: unknown = JSON.parse(readFileSync(join(trialDir, 'observed-cli-version.json'), 'utf8'));
+    return typeof value === 'string' && value ? value : null;
+  } catch { return null; }
+}
+
+export function observedRun(i: Pick<RowInput, 'cell' | 'meter' | 'housekeeping' | 'cliVersion'>): { models: string[]; version: string | null; problem: string | null } {
+  const want = i.cell.cell.model.replace('/', ':');
+  const models = Object.keys(i.meter?.byModel ?? {}).filter((m) => !(i.housekeeping ?? []).includes(m)).sort();
+  const version = i.cliVersion ?? null;
+  const problems = [
+    ...models.filter((m) => m !== want).map((m) => 'the proxy metered ' + m + ', not the cell model ' + want),
+    ...(i.cliVersion !== undefined && (i.cell.harness === 'codex' || i.cell.harness === 'claude-code') && version !== i.cell.version
+      ? ['the ' + i.cell.harness + ' setup observed version ' + (version ?? 'none') + ', not the pinned ' + i.cell.version] : []),
+  ];
+  return { models, version, problem: problems.length ? problems.join('; ') : null };
+}
+
+/** The INFRA a runner sees and the grader cannot: the lease refused a request, Harbor gave no trial or no verdict, the
+ *  meter did not drain, or the provider failed. A lease refusal comes first, ahead of the grader's own INFRA too, so the
+ *  shard always stops on it; otherwise the grader's INFRA comes first. */
 export function runnerInfra(i: Pick<RowInput, 'result' | 'outcomes' | 'meter' | 'usage' | 'trialDirFound'>): { code: string; detail: string } | null {
   const ex = i.result?.exception_info;
+  if (i.usage && i.usage.lease_refused > 0) return { code: 'HE-MCP-042', detail: i.usage.lease_refused + ' request(s) refused because the lease could not reserve them' };
   if (!i.trialDirFound) return { code: 'HE-MCP-040', detail: 'Harbor left no trial directory' };
   if (!i.outcomes) return ex
     ? { code: 'HE-MCP-040', detail: 'Harbor trial failed before a verdict: ' + String(ex.exception_type ?? 'exception') + ': ' + String(ex.exception_message ?? '').slice(0, 300) }
     : { code: 'HE-MCP-041', detail: 'the verifier wrote no outcomes.json' };
-  if (i.usage && i.usage.lease_refused > 0) return { code: 'HE-MCP-042', detail: i.usage.lease_refused + ' request(s) refused because the lease could not reserve them' };
   if (i.meter && (i.meter.undrained ?? 0) > 0) return { code: 'HE-MCP-043', detail: i.meter.undrained + ' request(s) still in flight when the meter was finalized; the cost is incomplete' };
   if (upstreamTrouble(i.meter)) return { code: 'HE-MCP-044', detail: 'the provider failed during the trial: ' + JSON.stringify(i.meter!.upstream) };
   return null;
 }
 
-/** One trials.jsonl row. outcomes is grade.py's outcomes.json; when the runner finds INFRA the grader did not, the row's
+/** One trials.jsonl row. outcomes is grade.py's outcomes.json; when the runner finds INFRA the grader did not (or a lease
+ *  refusal, which replaces the grader's), the row's
  *  outcomes carry it in infra (so analysis/stats.ts leaves the trial out) and infra.source says "runner". */
 export function buildRow(i: RowInput): TrialRow {
   const c = i.cell;
-  const graderInfra = i.outcomes?.infra ? { code: String(i.outcomes.infra.code), detail: String(i.outcomes.infra.detail ?? ''), source: 'grader' as const } : null;
-  const mine = graderInfra ? null : runnerInfra(i);
+  const seen = observedRun(i);
+  const found = runnerInfra(i) ?? (seen.problem ? { code: 'HE-MCP-047', detail: seen.problem } : null);
+  const graderInfra = i.outcomes?.infra && found?.code !== 'HE-MCP-042' ? { code: String(i.outcomes.infra.code), detail: String(i.outcomes.infra.detail ?? ''), source: 'grader' as const } : null;
+  const mine = graderInfra ? null : found;
   const infra: Infra | null = graderInfra ?? (mine ? { ...mine, source: 'runner' } : null);
   const outcomes = i.outcomes ? (mine ? { ...i.outcomes, infra: { code: mine.code, detail: mine.detail } } : i.outcomes) : null;
   const u = i.usage;
@@ -389,6 +429,7 @@ export function buildRow(i: RowInput): TrialRow {
     } : null,
     effort: i.effort, host_log: i.hostLog,
     harbor_exception: ex ? { type: String(ex.exception_type ?? 'exception'), message: String(ex.exception_message ?? '').slice(0, 300) } : null,
+    observed: { models: seen.models, version: seen.version },
     started_at: i.startedAt, ended_at: i.endedAt, duration_s: secs(i.startedAt, i.endedAt), gap_s: i.gapS,
   };
 }
@@ -496,6 +537,13 @@ function finalAccountingProblem(dir: string, identity: ShardIdentity, lease: str
       || Math.abs(a.committed_usd - summary.committed_usd) > 1e-6 || summary.committed_usd < 0 || summary.committed_usd > cap + 1e-6) {
       return 'phase ledger is not drained under its lease';
     }
+    const ledger = join(dir, 'ledger.sqlite');
+    const verified = verifyLedger(ledger);
+    const held = verified.ok ? ledgerStatus({ ledgerPath: ledger, runId: lease }) : null;
+    if (!held?.run || held.runs !== 1 || held.totals.open_reservations_usd !== 0 || Math.abs(held.run.budget_usd - cap) > 1e-9
+      || Math.abs(held.run.committed_usd - a.committed_usd) > 1e-6 || Math.abs(held.totals.committed_usd - a.committed_usd) > 1e-6) {
+      return 'phase ledger.sqlite does not reconcile with its final accounting (one drained lease, committed as recorded)';
+    }
     if (!scan.patterns || !scan.values || scan.unreadable !== 0 || Object.keys(scan.patterns).length || Object.keys(scan.values).length) {
       return 'phase key scan is not clean';
     }
@@ -529,25 +577,79 @@ function phaseRows(l: LoadedSpec, plan: Plan, shard: SpecShard, phase: Phase, di
   return rows;
 }
 
+/** A phase final's rows with each host log made relative to out, the directory of the index they go into. */
+function rebased(rows: TrialRow[], dir: string, out: string): TrialRow[] {
+  return rows.map((r) => {
+    if (!r.host_log) return r;
+    const log = resolve(dir, r.host_log);
+    if (!log.startsWith(dir + '/') || !existsSync(log)) throw new Error('missing or invalid phase host log for ' + r.trial_id);
+    return { ...r, host_log: relative(out, log) };
+  });
+}
+
 function mergePhases(l: LoadedSpec, plan: Plan, shard: SpecShard, out: string, commit: string, fake: boolean) {
   const rows = ([1, 2] as const).flatMap((phase) => {
     const dir = phaseDir(out, shard.name, phase);
-    return phaseRows(l, plan, shard, phase, dir, commit, fake).map((r) => {
-      if (!r.host_log) return r;
-      const log = resolve(dir, r.host_log);
-      if (!log.startsWith(dir + '/') || !existsSync(log)) throw new Error('missing or invalid phase host log for ' + r.trial_id);
-      return { ...r, host_log: relative(out, log) };
-    });
+    return rebased(phaseRows(l, plan, shard, phase, dir, commit, fake), dir, out);
   });
   writeFileSync(join(out, 'trials.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n', { flag: 'wx' });
   return rows.length;
+}
+
+/** The interim look's input: every phased shard's phase 1 final, each complete, drained and cleaned up (phaseRows), as one
+ *  index at <out>/trials.jsonl, with <out>/phase-1-index.json naming each shard's phase 1 trials.jsonl sha256 and the
+ *  index's. interim.ts look refuses an index without it. */
+export function phase1Index(l: LoadedSpec, plan: Plan, finals: string[], out: string, commit: string, fake: boolean): number {
+  const byShard = new Map<string, string>();
+  for (const d of finals) {
+    const dir = resolve(d);
+    const name = String(jsonAt(dir, 'run-identity.json').shard);
+    if (byShard.has(name)) throw new Error('two phase 1 finals for shard ' + name);
+    byShard.set(name, dir);
+  }
+  const phased = l.spec.shards.filter((s) => s.phases);
+  const missing = phased.filter((s) => !byShard.has(s.name)).map((s) => s.name);
+  if (!phased.length || missing.length || byShard.size !== phased.length) {
+    throw new Error('the phase 1 index needs exactly one phase 1 final per phased shard' + (missing.length ? '; missing ' + missing.join(', ') : ''));
+  }
+  const shards: Record<string, string> = {};
+  const rows = phased.flatMap((sh) => {
+    const dir = byShard.get(sh.name)!;
+    const r = rebased(phaseRows(l, plan, sh, 1, dir, commit, fake), dir, out);
+    shards[sh.name] = sha256(readFileSync(join(dir, 'trials.jsonl')));
+    return r;
+  });
+  const text = rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+  mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, 'trials.jsonl'), text, { flag: 'wx' });
+  writeFileSync(join(out, PHASE1_INDEX), JSON.stringify({ schema: PHASE1_INDEX_SCHEMA, run_id: l.spec.run_id, shards, trials_sha256: sha256(text),
+    design_sha256: sha256(interimDesignBytes), sets_sha256: l.spec.sets.map((set) => set.sha256) }, null, 1) + '\n', { flag: 'wx' });
+  return rows.length;
+}
+
+/** Why phase 2 of a shard may not start: no completed interim look, or a look computed from other phase 1 trials. */
+export function interimProblem(l: LoadedSpec, statePath: string | undefined, shard: string, phase1Dir: string): string | null {
+  try {
+    const s = JSON.parse(readFileSync(statePath!, 'utf8'));
+    if (s.schema !== 'he-mcp-at-scale-interim-state/1' || s.look !== 'interim' || s.status !== 'complete' || !s.decisions) return 'the interim look has no recorded decision';
+    if (s.phase1_shards?.[shard] !== sha256(readFileSync(join(phase1Dir, 'trials.jsonl')))) return 'the interim decision was not computed from this shard\'s phase 1 trials';
+    if (s.run_id !== l.spec.run_id || s.design_sha256 !== sha256(interimDesignBytes)
+      || JSON.stringify(s.sets_sha256) !== JSON.stringify(l.spec.sets.map((set) => set.sha256))) return 'the interim decision does not match the frozen run, design and request sets';
+    const roster = l.spec.shards.map((sh) => sh.name).sort();
+    if (JSON.stringify(Object.keys(s.phase1_shards).sort()) !== JSON.stringify(roster)
+      || !Object.values(s.phase1_shards).every((hash) => typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash))) return 'the interim decision does not cover all phase 1 shards';
+    const decisions = ['no data at the look', 'continue', 'stop_efficacy', 'stop_opposite', 'stop_futility'];
+    if (Object.keys(s.decisions).length !== INTERIM_DESIGN.comparisons.length
+      || !INTERIM_DESIGN.comparisons.every((comparison) => decisions.includes(s.decisions[comparison.id]))) return 'the interim look has no recorded decision for every frozen comparison';
+    return null;
+  } catch { return 'phase 2 needs the interim look\'s completed state file (--interim-state)'; }
 }
 
 // ---- the shard --------------------------------------------------------------------------------------------------------
 
 interface ShardOptions { out: string; venv: string; fake: boolean; phase?: Phase; priorPhase?: string; egress: boolean; gbrain?: string; proxyPort: number; brokerPort: number; fakePort: number; keys: Record<string, string> }
 const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: REPO, env: baseEnv(), stdout: 'pipe' }).stdout.toString().trim();
-interface Stop { reason: 'lease' | 'signal'; detail: string }
+interface Stop { reason: 'lease' | 'signal' | 'error'; detail: string }
 
 const baseEnv = () => ({ PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp', TZ: 'UTC' });
 const say = (out: string, m: string) => { const line = new Date().toISOString() + ' ' + m; console.log(line); appendFileSync(join(out, 'run.log'), line + '\n'); };
@@ -590,6 +692,8 @@ export async function runShard(l: LoadedSpec, plan: Plan, name: string, o: Shard
     try {
       if (!o.priorPhase) throw new Error('phase 2 needs --prior-phase with phase 1 final receipts');
       prior = phaseRows(l, plan, shard, 1, o.priorPhase, commit, o.fake);
+      const interim = interimProblem(l, join(o.priorPhase, 'interim-state.json'), name, o.priorPhase);
+      if (interim) throw new Error('shard ' + name + ' phase 2: ' + interim);
     } catch (e) { console.error((e as Error).message); return 2; }
   }
   const cells = shard.cells.map((c) => plan.cells.get(c)!).map((c) => (o.phase ? { ...c, trials: c.trials.filter((t) => t.phase === o.phase) } : c));
@@ -628,6 +732,7 @@ export async function runShard(l: LoadedSpec, plan: Plan, name: string, o: Shard
   }
 
   const models = slotModels(cells);
+  const housekeeping = new Map(cells.map((c) => [c.cell.id, slotModels([c]).filter((m) => m !== c.cell.model.replace('/', ':'))]));
   const providers = [...new Set(models.map((m) => m.split(':')[0]!))];
   const keyNames = providers.map((p) => KEY_ENV[p as keyof typeof KEY_ENV]).filter(Boolean);
   const missing = o.fake ? [] : keyNames.filter((k) => !o.keys[k]);
@@ -721,6 +826,7 @@ export async function runShard(l: LoadedSpec, plan: Plan, name: string, o: Shard
       };
       writeFileSync(join(out, 'configs', job + '.json'), JSON.stringify(config, null, 1) + '\n');
       const startedAt = new Date().toISOString();
+      const bindsBefore = binds().length;
       const p = Bun.spawn([join(o.venv, 'bin/harbor'), 'run', '-y', '-c', join(out, 'configs', job + '.json')], { cwd: out, env: harborEnv, stdout: Bun.file(join(out, 'logs', job + '.log')), stderr: Bun.file(join(out, 'logs', job + '.stderr')) });
       running.add(p);
       const guard = setTimeout(() => { try { p.kill('SIGINT'); } catch { /* gone */ } setTimeout(() => { try { p.kill('SIGKILL'); } catch { /* gone */ } }, 60_000); }, (agentTimeout + 1800) * 1000);
@@ -731,7 +837,7 @@ export async function runShard(l: LoadedSpec, plan: Plan, name: string, o: Shard
       const jobDir = join(out, 'jobs', job);
       const trialName = existsSync(jobDir) ? readdirSync(jobDir).find((d) => existsSync(join(jobDir, d, 'result.json')) || existsSync(join(jobDir, d, 'agent'))) ?? null : null;
       const trialDir = trialName ? join(jobDir, trialName) : null;
-      const meterKey = binds().filter((b) => b.job === job).pop()?.trial ?? null;
+      const meterKey = binds().slice(bindsBefore).filter((b) => b.job === job).pop()?.trial ?? null;
       let meter: Meter | null = null;
       if (meterKey) {
         await post(proxyUrl + '/__proxy/unbind', { slot: meterKey }, control).catch(() => null);
@@ -749,7 +855,8 @@ export async function runShard(l: LoadedSpec, plan: Plan, name: string, o: Shard
       const hostLog = trialDir && existsSync(join(trialDir, 'verifier/catalog-calls.jsonl')) ? relative(out, join(trialDir, 'verifier/catalog-calls.jsonl')) : null;
       const lastEnd = lastEnds.get(c.cell.id);
       const gapS = lastEnd ? Math.round((Date.parse(startedAt) - Date.parse(lastEnd)) / 10) / 100 : null;
-      const row = buildRow({ runId: s.run_id, shard: name, planned: t, cell: c, job, meterKey, result: readJson(trialDir && join(trialDir, 'result.json')), outcomes, meter, usage: meterKey ? usage.get(meterKey) : null, effort, hostLog, startedAt, endedAt, gapS, trialDirFound: !!trialDir });
+      const row = buildRow({ runId: s.run_id, shard: name, planned: t, cell: c, job, meterKey, result: readJson(trialDir && join(trialDir, 'result.json')), outcomes, meter, usage: meterKey ? usage.get(meterKey) : null, effort, hostLog, startedAt, endedAt, gapS, trialDirFound: !!trialDir,
+        housekeeping: housekeeping.get(c.cell.id), cliVersion: observedCliVersion(trialDir) });
       if ((stop as Stop | null)?.reason === 'signal' && !row.outcomes) { say(out, job + ' was cut by a signal; no row, so it runs again on resume'); return; }
       appendRow(trialsPath, row);
       done.add(t.trial_id);
@@ -761,7 +868,12 @@ export async function runShard(l: LoadedSpec, plan: Plan, name: string, o: Shard
   for (const phase of (o.phase ? [o.phase] : [1, 2])) {
     if (stop) break;
     const queue = cells.map((c) => ({ ...c, trials: c.trials.filter((t) => t.phase === phase && !done.has(t.trial_id)) })).filter((c) => c.trials.length);
-    await Promise.all(Array.from({ length: Math.min(s.concurrency, queue.length) }, async () => { for (let c = queue.shift(); c; c = queue.shift()) await runCell(c); }));
+    await Promise.all(Array.from({ length: Math.min(s.concurrency, queue.length) }, async () => {
+      try { for (let c = queue.shift(); c; c = queue.shift()) await runCell(c); } catch (e) {
+        say(out, 'shard ' + name + ' failed: ' + ((e as Error).stack ?? String(e)).slice(0, 2000));
+        stop ??= { reason: 'error', detail: String((e as Error).message ?? e).slice(0, 300) };
+      }
+    }));
   }
 
   // the drain, as vm-run.sh's finish(): unbind every slot, then finalize every bound key until nothing is in flight
@@ -791,7 +903,7 @@ export async function runShard(l: LoadedSpec, plan: Plan, name: string, o: Shard
   if (hits) return 5;
   const finalProblem = finalAccountingProblem(out, identity, leaseRun, leaseUsd);
   if (finalProblem) { say(out, finalProblem); return 6; }
-  if (stopped) return stopped.reason === 'lease' ? 4 : 130;
+  if (stopped) return stopped.reason === 'lease' ? 4 : stopped.reason === 'error' ? 7 : 130;
   return 0;
 }
 
@@ -804,8 +916,8 @@ if (import.meta.main) {
   const [cmd, ...argv] = process.argv.slice(2);
   const flag = (n: string) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : undefined);
   const specPath = flag('--spec');
-  if (!specPath || !['show', 'check', 'shard', 'bundle', 'keys', 'phase-ttl', 'phase-check', 'phase-complete', 'merge-phases'].includes(cmd ?? '')) {
-    console.error('usage: run.ts show|check|bundle|keys|shard|phase-ttl|phase-check|phase-complete|merge-phases --spec <spec.json> [--name <shard>] [--out <dir>] [--phase 1|2] [--prior-phase <dir>]');
+  if (!specPath || !['show', 'check', 'shard', 'bundle', 'keys', 'phase-ttl', 'phase-check', 'phase-complete', 'merge-phases', 'phase-1-index'].includes(cmd ?? '')) {
+    console.error('usage: run.ts show|check|bundle|keys|shard|phase-ttl|phase-check|phase-complete|merge-phases|phase-1-index --spec <spec.json> [--name <shard>] [--out <dir>] [--phase 1|2] [--prior-phase <dir>] [--interim-state <state.json>] [--finals <dir>...]');
     process.exit(2);
   }
   const l = loadSpec(specPath);
@@ -816,6 +928,15 @@ if (import.meta.main) {
   }
   if (cmd === 'check') { console.log('ok: ' + l.spec.run_id + ' (spec sha256 ' + l.sha256 + ')'); process.exit(0); }
   if (cmd === 'show') { console.log(showSpec(l, plan)); process.exit(0); }
+  if (cmd === 'phase-1-index') {
+    const out = flag('--out');
+    const finals = argv.includes('--finals') ? argv.slice(argv.indexOf('--finals') + 1) : [];
+    const end = finals.findIndex((x) => x.startsWith('--'));
+    if (!out || !finals.length || end === 0) { console.error('phase-1-index needs --out <dir> and --finals <phase 1 final dir>...'); process.exit(2); }
+    try { console.log('indexed ' + phase1Index(l, plan, end < 0 ? finals : finals.slice(0, end), resolve(out), git('rev-parse', 'HEAD'), argv.includes('--fake-upstream')) + ' phase 1 rows into ' + join(resolve(out), 'trials.jsonl')); }
+    catch (e) { console.error((e as Error).message); process.exit(2); }
+    process.exit(0);
+  }
   if (cmd === 'bundle') {
     const out = flag('--out');
     if (!out) { console.error('bundle needs --out'); process.exit(2); }
@@ -837,7 +958,7 @@ if (import.meta.main) {
   if ((cmd === 'phase-ttl' || cmd === 'shard') && !!phase !== !!shard.phases) { console.error('--phase is required only for shards with phase leases'); process.exit(2); }
   if (cmd === 'phase-ttl') {
     if (!fake && l.spec.egress === false) { console.error('a paid shard must run behind the egress blocklist'); process.exit(2); }
-    if (phase) console.log(phaseTtl(shard.phases![phase - 1]!));
+    if (phase) console.log(phaseTtl(shard.phases![phase - 1]!) + ' ' + leaseRunId(l.spec, name, phase));
     process.exit(0);
   }
   if (cmd === 'phase-check' || cmd === 'phase-complete' || cmd === 'merge-phases') {
@@ -849,6 +970,8 @@ if (import.meta.main) {
       if (cmd === 'merge-phases') console.log('merged ' + mergePhases(l, plan, shard, dir, commit, fake) + ' rows into ' + join(dir, 'trials.jsonl'));
       else {
         phaseRows(l, plan, shard, phase!, dir, commit, fake, cmd === 'phase-check');
+        const interim = cmd === 'phase-check' ? interimProblem(l, flag('--interim-state') && resolve(flag('--interim-state')!), name, dir) : null;
+        if (interim) throw new Error('shard ' + name + ' phase 2: ' + interim);
         if (cmd === 'phase-complete') writeFileSync(join(dir, 'cleanup.json'), JSON.stringify({ cleanup: 'done', at: new Date().toISOString() }) + '\n', { flag: 'wx' });
       }
     } catch (e) { console.error((e as Error).message); process.exit(2); }

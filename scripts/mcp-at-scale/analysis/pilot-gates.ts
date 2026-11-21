@@ -73,9 +73,11 @@ export function starterUsage(trials: Trial[], surfaces: Surfaces) {
 export function surfaceRan(arm: Arm, trials: Trial[], surfaces: Surfaces | null): Check {
   const reasons: string[] = [], bad: string[] = [];
   const isGbrain = arm.surface.startsWith('gbrain:');
+  const eligible = trials.filter((t) => !isInfra(t));
   for (const r of arm.rungs) {
-    const rows = trials.filter((t) => t.rung === r);
-    if (!rows.length) { bad.push('no pilot trial at rung ' + r); continue; }
+    const rows = eligible.filter((t) => t.rung === r);
+    const infra = trials.filter((t) => t.rung === r && isInfra(t)).length;
+    if (!rows.length) { bad.push('no eligible pilot trial at rung ' + r + ' (' + infra + ' INFRA)'); continue; }
     const listed = rows.filter((t) => {
       const log = hostLog(t).filter((l) => l.ok === true);
       const exp = t.outcomes?.servers_expected ?? [];
@@ -84,11 +86,11 @@ export function surfaceRan(arm: Arm, trials: Trial[], surfaces: Surfaces | null)
     const catalogRows = isGbrain ? rows.filter((t) => t.set === 'R') : rows;
     const called = catalogRows.filter((t) => hostLog(t).some((l) => l.method === 'tools/call' && l.server !== 'gbrain'));
     if (!listed.length) bad.push('rung ' + r + ': no trial listed every expected server');
-    if (catalogRows.length && !called.length) bad.push('rung ' + r + ': no catalog tool was called' + (isGbrain ? ' on set R' : ''));
-    reasons.push('rung ' + r + ': ' + listed.length + '/' + rows.length + ' trials listed every server, ' + (catalogRows.length ? called.length + '/' + catalogRows.length + (isGbrain ? ' set R' : '') + ' trials called a catalog tool' : 'no set R trials to check for catalog calls') + ', ' + rows.filter(isInfra).length + ' INFRA');
+    if ((!isGbrain || trials.some((t) => t.rung === r && t.set === 'R')) && !called.length) bad.push('rung ' + r + ': no catalog tool was called' + (isGbrain ? ' on set R' : ''));
+    reasons.push('rung ' + r + ': ' + listed.length + '/' + rows.length + ' trials listed every server, ' + (catalogRows.length ? called.length + '/' + catalogRows.length + (isGbrain ? ' set R' : '') + ' trials called a catalog tool' : 'no set R trials to check for catalog calls') + ', ' + infra + ' INFRA');
   }
   if (['search', 'qm_connectors', 'send_everything'].includes(arm.surface)) {
-    const evidence = trials.filter((t) => hasTranscript(t) && Number.isSafeInteger(t.effort!.search_calls) && t.effort!.search_calls >= 0);
+    const evidence = eligible.filter((t) => hasTranscript(t) && Number.isSafeInteger(t.effort!.search_calls) && t.effort!.search_calls >= 0);
     const searches = evidence.filter((t) => t.effort!.search_calls > 0).length;
     if (!evidence.length) bad.push('no parsed transcript with search-call evidence');
     else if (arm.surface === 'send_everything') {
@@ -99,7 +101,7 @@ export function surfaceRan(arm: Arm, trials: Trial[], surfaces: Surfaces | null)
   }
   if (isGbrain) {
     const s = arm.surface.slice(7);
-    const logs = trials.map(hostLog);
+    const logs = eligible.map(hostLog);
     const calls = logs.map(gbrainCalls);
     if (!logs.some((l) => l.some((x) => x.server === 'gbrain' && x.method === 'tools/list' && x.ok === true))) bad.push('gbrain was never listed (no successful tools/list on the gbrain relay)');
     if (!calls.some((c) => c.length)) bad.push('no gbrain tool call succeeded on the relay');
@@ -109,7 +111,7 @@ export function surfaceRan(arm: Arm, trials: Trial[], surfaces: Surfaces | null)
       const reachedFullOnly = calls.filter((c) => c.some((x) => fullOnly.has(x.tool ?? ''))).length;
       const requested = calls.filter((c) => { const k = c.findIndex((x) => x.tool === 'request_tools'); return k >= 0 && c.slice(k + 1).some((x) => fullOnly.has(x.tool ?? '')); }).length;
       if (s === 'starter') {
-        const { n, widened, direct, reached, wrongList } = starterUsage(trials, surfaces);
+        const { n, widened, direct, reached, wrongList } = starterUsage(eligible, surfaces);
         if (wrongList) bad.push(wrongList + ' trials did not show the frozen starter tools in their first gbrain tools/list');
         const share = (k: number) => k + '/' + n + ' (' + (n ? (100 * k / n).toFixed(1) : '0.0') + '%)';
         reasons.push('starter as shipped: widened through request_tools ' + share(widened) + ', called an unlisted tool directly ' + share(direct) + ', reached a full-only tool ' + share(reached));

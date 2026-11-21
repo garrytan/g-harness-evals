@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rungServers, syntheticCatalog, writeCatalog } from '../scripts/mcp-at-scale/catalog-load.ts';
+import { createHost } from '../scripts/mcp-at-scale/catalog-host.ts';
 import { compose, materialize, taskToml } from '../scripts/mcp-at-scale/materialize.ts';
 import { classify, declaredWithSchemas } from '../scripts/mcp-at-scale/listing-map.ts';
 
@@ -13,13 +14,13 @@ const cat = syntheticCatalog();
 const r30 = rungServers(cat, '30');
 const servers30 = r30.map((s) => s.server);
 
+/** Grades a host log; ready, when given, is the host's ready line, logged first. */
 function runGrade(expected: object, lines: object[] | null, ready: object | null = null): any {
   const d = mkdtempSync(join(dir, 'g-'));
   writeFileSync(join(d, 'expected.json'), JSON.stringify(expected));
   const log = join(d, 'calls.jsonl');
-  if (lines) writeFileSync(log, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
-  if (ready) writeFileSync(join(d, 'ready.json'), JSON.stringify(ready));
-  const p = Bun.spawnSync(['python3', GRADE, '--expected', join(d, 'expected.json'), '--log', log, '--ready', join(d, 'ready.json'), '--out', join(d, 'out')], { env: { PATH: '/usr/local/bin:/usr/bin:/bin' }, stdout: 'pipe', stderr: 'pipe' });
+  if (lines) writeFileSync(log, [...(ready ? [ready] : []), ...lines].map((l) => JSON.stringify(l)).join('\n') + '\n');
+  const p = Bun.spawnSync(['python3', GRADE, '--expected', join(d, 'expected.json'), '--log', log, '--out', join(d, 'out')], { env: { PATH: '/usr/local/bin:/usr/bin:/bin' }, stdout: 'pipe', stderr: 'pipe' });
   expect(p.exitCode).toBe(0);
   const out = JSON.parse(readFileSync(join(d, 'out', 'outcomes.json'), 'utf8'));
   expect(readFileSync(join(d, 'out', 'reward.txt'), 'utf8').trim()).toBe(String(out.reward));
@@ -64,7 +65,7 @@ describe('grade.py', () => {
 });
 
 describe('grade.py connection rule', () => {
-  const up = (connect: string) => ({ ok: true, url: 'http://catalog:8080/healthz', attempts: 1, error: null, connect, variant: 'v' });
+  const up = (connect: string) => ({ server: '', method: 'ready', ok: true, connect, variant: 'v' });
   const none = { ...toolReq, kind: 'none', acceptable: [] };
   const right = call('ash-tracker', 'create_issue', { workspace: 'acme', title: 'login' });
   test('a lazy cell that answers with no MCP traffic is scored, not INFRA', () => {
@@ -93,14 +94,31 @@ describe('grade.py connection rule', () => {
     expect(partial.infra.detail).toContain('1 tool calls');
     expect(runGrade(toolReq, [...connectAll(servers30), right], up('lazy'))).toMatchObject({ infra: null, right_tool: true, reward: 1 });
   });
-  test('a probe that could not reach the host is INFRA HE-MCP-003 on any cell, even with a right call logged', () => {
-    const down = { ...up('lazy'), ok: false, attempts: 10, error: 'URLError: connection refused' };
-    const out = runGrade(toolReq, [...connectAll(servers30), right], down);
-    expect(out).toMatchObject({ reward: 0, right_tool: true });
-    expect(out.infra.code).toBe('HE-MCP-003');
-    expect(runGrade(none, [], { ...down, connect: 'eager' }).infra.code).toBe('HE-MCP-003');
-    expect(runGrade(none, null, down).infra.code).toBe('HE-MCP-003');
-    expect(runGrade(none, null, up('eager')).infra.code).toBe('HE-MCP-002');
+  test('readiness comes only from the host: its ready line before any MCP request sets the mode; a later one or a probe file does not', async () => {
+    const host = createHost({ servers: r30, log: null });
+    expect((await host.fetch(new Request('http://catalog:8080/_he/ready?connect=lazy&variant=pi-deferred'))).status).toBe(200);
+    expect(host.lines).toMatchObject([{ method: 'ready', ok: true, connect: 'lazy', variant: 'pi-deferred' }]);
+    expect(runGrade(none, [...host.lines])).toMatchObject({ connect: 'lazy', ready: { ok: true, connect: 'lazy' }, infra: null, reward: 1 });
+    const late = runGrade(none, [...connectAll(servers30.slice(0, 1)), up('lazy')]);
+    expect(late).toMatchObject({ connect: 'eager', ready: null });
+    expect(late.infra.code).toBe('HE-MCP-001');
+    const d = mkdtempSync(join(dir, 'g-'));
+    writeFileSync(join(d, 'expected.json'), JSON.stringify({ ...none, require_ready: true }));
+    writeFileSync(join(d, 'mcp-ready.json'), JSON.stringify({ ok: true, connect: 'lazy', variant: 'v' }));
+    writeFileSync(join(d, 'none.jsonl'), '');
+    const forged = Bun.spawnSync(['python3', GRADE, '--expected', join(d, 'expected.json'), '--log', join(d, 'none.jsonl'), '--out', join(d, 'out')], { cwd: d, env: { PATH: '/usr/local/bin:/usr/bin:/bin' }, stdout: 'pipe', stderr: 'pipe' });
+    expect(forged.exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(join(d, 'out', 'outcomes.json'), 'utf8'))).toMatchObject({ ready: null, infra: { code: 'HE-MCP-001' } });
+  });
+  test('a probe that could not reach the host leaves no ready line, so the trial is graded as eager', () => {
+    expect(runGrade(toolReq, [...connectAll(servers30), right])).toMatchObject({ connect: 'eager', infra: null, right_tool: true, reward: 1 });
+    expect(runGrade(none, []).infra.code).toBe('HE-MCP-001');
+    expect(runGrade(none, null).infra.code).toBe('HE-MCP-002');
+  });
+  test('a trial with complete connections still fails closed if a required setup probe was missing', () => {
+    expect(runGrade({ ...toolReq, require_ready: true }, [...connectAll(servers30), right])).toMatchObject({
+      ready: null, infra: { code: 'HE-MCP-001' }, reward: 0,
+    });
   });
 });
 

@@ -96,7 +96,14 @@ let schemaCheck: ((x: unknown) => { valid: boolean; errorMessage?: string }) | n
 export function schemaProblems(items: unknown[]): string[] {
   schemaCheck ??= new AjvJsonSchemaValidator().getValidator(JSON.parse(readFileSync(SCHEMA_FILE, 'utf8'))) as never;
   const out: string[] = [];
-  items.forEach((it, i) => { const r = schemaCheck!(it); if (!r.valid) out.push('item ' + ((it as { id?: string })?.id ?? '#' + i) + ': schema: ' + r.errorMessage); });
+  items.forEach((it, i) => {
+    const r = schemaCheck!(it);
+    if (!r.valid) out.push('item ' + ((it as { id?: string })?.id ?? '#' + i) + ': schema: ' + r.errorMessage);
+    else {
+      const item = it as Item;
+      if (item.set === 'T' && item.fixtures.some((rule) => rule.id === 'default')) out.push('item ' + item.id + ': fixture id default is reserved for the neutral host response');
+    }
+  });
   return out;
 }
 
