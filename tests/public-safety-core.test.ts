@@ -242,6 +242,9 @@ test('classes refuse by default: unclassified and denied paths, formats a class 
   for (const p of ['tasks/repo/gstack-delivery-v1/dev/gd-dev-review-07/verifier/trees/base.tar', 'scripts/repo-tasks/delivery/upstream/peewee-1ad1e412b9ee.tar']) expect(classify(p)).toEqual({ kind: 'class', name: 'task-upstream-tarballs', content_class: 'third-party-MIT' });
   expect(classify('tasks/repo/gstack-delivery-v1/dev/gd-dev-review-07/verifier/verify.py')).toMatchObject({ content_class: 'task-dev' });
   expect(classify('scripts/repo-tasks/delivery/build.ts')).toMatchObject({ content_class: 'code' });
+  for (const p of ['tasks/repo/rules-fix-v1/dev/rf-28/verifier/tests.tar', 'scripts/repo-tasks/rules-fix/upstream/jinja-09907ef37891.tar.gz']) expect(classify(p)).toEqual({ kind: 'class', name: 'rules-fix-upstream-tarballs', content_class: 'third-party-MIT' });
+  expect(classify('tasks/repo/rules-fix-v1/dev/rf-28/verifier/verify.py')).toMatchObject({ content_class: 'task-dev' });
+  expect(classify('scripts/repo-tasks/rules-fix/build.ts')).toMatchObject({ content_class: 'code' });
   for (const [name, c] of Object.entries(classes.content_classes) as [string, { formats: string[]; max_bytes: number }][]) {
     expect(c.max_bytes).toBeGreaterThan(0);
     expect(c.max_bytes).toBeLessThanOrEqual(99614720);
@@ -253,7 +256,7 @@ test('classes refuse by default: unclassified and denied paths, formats a class 
   expect(text.includes('/home/')).toBe(false);
   const codes = JSON.parse(readFileSync(join(GATE, 'rules.json'), 'utf8')).codes;
   const allow = loadAllow();
-  expect(allow.map((e) => e.code + ' ' + e.path)).toEqual(['PS-GITLEAKS tests/dsh-adapter.test.ts', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check-first-run.json', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check.json']);
+  expect(allow.map((e) => e.code + ' ' + e.path)).toEqual(['PS-GITLEAKS tests/dsh-adapter.test.ts', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check-first-run.json', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check.json', 'PS-FORMAT scripts/repo-tasks/rules-fix/upstream/jinja-09907ef37891.tar.gz', 'PS-FORMAT tasks/repo/rules-fix-v1/dev/rf-28/environment/work.tar', 'PS-FORMAT tasks/repo/rules-fix-v1/dev/rf-28/environment/work.tar', 'PS-FORMAT tasks/repo/rules-fix-v1/dev/rf-28/verifier/tests.tar']);
   for (const e of allow) {
     expect(codes[e.code].allow).toBe(true);
     expect(blobId(readFileSync(join(ROOT, e.path)))).toBe(e.blob);
