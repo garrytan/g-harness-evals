@@ -41,6 +41,12 @@
       "tests/scripts-gbrain.test.ts",
       "tests/sealed-output.test.ts"
     ],
+    "scripts/leak-tags.ts": [
+      "tests/leak-tags.test.ts"
+    ],
+    "scripts/gbrain-leak-preflight.ts": [
+      "tests/gbrain-leak-preflight.test.ts"
+    ],
     "scripts/paired-mdd.ts": [
       "tests/scripts-gbrain.test.ts"
     ],
@@ -596,30 +602,9 @@
     {
       "finding": "aws.access_key",
       "paths": [
-        "tasks/community-claims/blocked/s3-presign/environment/app/tests/test_presign.py"
-      ],
-      "pattern": "AKIA(?:)W5WLXGFEUURFSSH2(?![A-Za-z0-9_])",
-      "reason": "community-claims P5/P7 fixture, exact value: lone AKIA key ID, no paired secret"
-    },
-    {
-      "finding": "aws.access_key",
-      "paths": [
-        "tasks/community-claims/blocked/s3-presign/fixtures/gaming.sh"
-      ],
-      "pattern": "AKIA(?:)W5WLXGFEUURFSSH2(?![A-Za-z0-9_])",
-      "reason": "community-claims P5/P7 fixture, exact value: lone AKIA key ID, no paired secret"
-    },
-    {
-      "finding": "aws.access_key",
-      "paths": [
-        "tasks/community-claims/blocked/s3-presign/tests/base/tests/test_presign.py"
-      ],
-      "pattern": "AKIA(?:)W5WLXGFEUURFSSH2(?![A-Za-z0-9_])",
-      "reason": "community-claims P5/P7 fixture, exact value: lone AKIA key ID, no paired secret"
-    },
-    {
-      "finding": "aws.access_key",
-      "paths": [
+        "tasks/community-claims/blocked/s3-presign/environment/app/tests/test_presign.py",
+        "tasks/community-claims/blocked/s3-presign/fixtures/gaming.sh",
+        "tasks/community-claims/blocked/s3-presign/tests/base/tests/test_presign.py",
         "tasks/community-claims/blocked/s3-presign/tests/hidden/test_hidden_presign.py"
       ],
       "pattern": "AKIA(?:)W5WLXGFEUURFSSH2(?![A-Za-z0-9_])",
@@ -628,14 +613,7 @@
     {
       "finding": "db.url_with_password",
       "paths": [
-        "tasks/community-claims/blocked/dev-config-decrypt/environment/app/tests/test_secrets.py"
-      ],
-      "pattern": "post(?:)gres://app:dev-password@localhost:5432/app(?![A-Za-z0-9_])",
-      "reason": "community-claims P5/P7 fixture, exact value: localhost database URL in a task fixture"
-    },
-    {
-      "finding": "db.url_with_password",
-      "paths": [
+        "tasks/community-claims/blocked/dev-config-decrypt/environment/app/tests/test_secrets.py",
         "tasks/community-claims/blocked/dev-config-decrypt/tests/base/tests/test_secrets.py"
       ],
       "pattern": "post(?:)gres://app:dev-password@localhost:5432/app(?![A-Za-z0-9_])",
@@ -716,22 +694,8 @@
     {
       "finding": "stripe.secret",
       "paths": [
-        "tasks/community-claims/frontend/_specs/settings-api-keys/brief.md"
-      ],
-      "pattern": "sk_l(?:)ive_4Hc9Tq2wXr8Lm1Vb6Np0Zs3Ke7f(?![A-Za-z0-9_])",
-      "reason": "community-claims P5/P7 fixture, exact value: malformed sk_live_ literal"
-    },
-    {
-      "finding": "stripe.secret",
-      "paths": [
-        "tasks/community-claims/frontend/settings-api-keys/instruction.md"
-      ],
-      "pattern": "sk_l(?:)ive_4Hc9Tq2wXr8Lm1Vb6Np0Zs3Ke7f(?![A-Za-z0-9_])",
-      "reason": "community-claims P5/P7 fixture, exact value: malformed sk_live_ literal"
-    },
-    {
-      "finding": "stripe.secret",
-      "paths": [
+        "tasks/community-claims/frontend/_specs/settings-api-keys/brief.md",
+        "tasks/community-claims/frontend/settings-api-keys/instruction.md",
         "tasks/community-claims/frontend/settings-api-keys/solution/site/index.html"
       ],
       "pattern": "sk_l(?:)ive_4Hc9Tq2wXr8Lm1Vb6Np0Zs3Ke7f(?![A-Za-z0-9_])",
@@ -907,6 +871,14 @@
       ],
       "pattern": "agent:main:channel:s[0-9]+(?=\")",
       "reason": "gbrain install run: OpenClaw's captured turn records carry \"sessionKey\": \"agent:main:channel:s<N>\", the harness's fixed session routing label (three values, s1 to s3), not a credential. The pattern starts at the value because gstack-pregate anchors it at the finding's column"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "docs/benchmarks/2026-11-09-gbrain-access-leaks/preflight/**/leak-preflight-*.json"
+      ],
+      "pattern": "(?:(?:he-)?member-[a-z]{2,16}(?:-[a-z]{2,16})?|trial-leak-preflight-(?:open|member-sources)-(?:dev|heldout)|public-only|PFS[0-9A-Z]{1,7}[0-9]{1,3}[ZN])(?=\")",
+      "reason": "gbrain access-leak preflight records (runner/trial/gbrain-leak-preflight.ts): each \"token\" and \"writer_token\" field holds the name of the gbrain token an asker used (he-member-<name>, member-<name> in the first record, trial-leak-preflight-<arm>-<split>, public-only), never a token value, which the writer refuses to record; each \"secret\" field is the scripted marker PFS<seed><n>Z (N for a corrected value) a reply must carry, a synthetic word. The pattern starts at the value because gstack-pregate anchors it at the finding's column"
     }
   ]
 }

@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
-const POLICY = JSON.parse(readFileSync(resolve(import.meta.dir, '..', '.gstack', 'ship-policy.json'), 'utf8')) as { review_exclude_paths: string[] };
+const POLICY = JSON.parse(readFileSync(resolve(import.meta.dir, '..', '.gstack', 'ship-policy.json'), 'utf8')) as { review_exclude_paths: string[]; review_content_patterns: string[] };
 
 /** The files a /ship reader still sees: gstack adds one `:(top,exclude,glob)` pathspec per review_exclude_paths entry. */
 function reviewed(paths: string[]): string[] {
@@ -177,6 +177,25 @@ test('nested results trials and shard manifests, and the skill-resolver run\'s g
     'docs/benchmarks/2026-11-08-skill-resolver/results/tools/openclaw-phase-b-stand-in.txt',
   ];
   expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+});
+
+// Value: protects=a preregistration's pins.sha256 (one hash line per pinned file) is declared content and left out of review,
+// so it no longer keeps every pinned task file in /ship's diff by naming its path, while the preregistration, its prereg.json
+// and shards.json and any other .sha256 file still reach the readers; fails_when=the pattern is dropped from either list,
+// widened past the top of a benchmark folder, or loosened to *.sha256; why_new=#538 pins 2,645 task files and its
+// pins.sha256 named them all, so gstack kept them as named by code; seam=a throwaway git repository and git's own glob
+// pathspecs; no_claim=gstack's consumer scan or its 2,000-file cap.
+test('a preregistration\'s pins.sha256 is declared content and left out of review, and the files beside it are still reviewed', () => {
+  const kept = [
+    'docs/benchmarks/2026-01-01-stand-in/PREREGISTRATION.md',
+    'docs/benchmarks/2026-01-01-stand-in/prereg.json',
+    'docs/benchmarks/2026-01-01-stand-in/shards.json',
+    'docs/benchmarks/2026-01-01-stand-in/MANIFEST.sha256',
+    'docs/benchmarks/2026-01-01-stand-in/preflight/pins.sha256',
+  ];
+  const dropped = ['docs/benchmarks/2026-01-01-stand-in/pins.sha256'];
+  expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+  expect(POLICY.review_content_patterns).toContain('docs/benchmarks/*/pins.sha256');
 });
 
 // Value: protects=gstack refuses a review_exclude_paths list longer than 64 patterns, and it reads the list from the base
