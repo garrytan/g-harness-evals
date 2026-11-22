@@ -150,26 +150,29 @@ describe('rules-fix-v1 helpers', () => {
 
   test('watch.py logs created, modified and deleted files and skips .git and caches', async () => {
     const d = mkdtempSync(join(tmpdir(), 'rf-watch-'));
+    let p: ReturnType<typeof spawn> | undefined;
     try {
       const repo = join(d, 'repo'), log = join(d, 'he', 'edits.log');
       mkdirSync(join(repo, '.git'), { recursive: true });
       writeFileSync(join(repo, 'a.py'), 'x = 1\n');
-      const p = spawn('/usr/bin/env', ['-i', 'PATH=' + ENV.PATH, 'LANG=C.UTF-8', 'python3', join(import.meta.dir, '..', 'scripts', 'repo-tasks', 'rules-fix', 'template', 'watch.py'), repo, log], { stdio: 'ignore' });
-      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-      await wait(1200);
+      p = spawn('/usr/bin/env', ['-i', 'PATH=' + ENV.PATH, 'LANG=C.UTF-8', 'python3', join(import.meta.dir, '..', 'scripts', 'repo-tasks', 'rules-fix', 'template', 'watch.py'), repo, log], { stdio: 'ignore' });
+      const lines = () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+      const seen = () => lines().map((l) => l.path + ':' + l.kind);
+      const end = Date.now() + 15_000;
+      const until = async (done: () => boolean) => { while (!done() && Date.now() < end) await Bun.sleep(50); expect(done()).toBe(true); };
+      let n = 0;
+      await until(() => { writeFileSync(join(repo, 'probe'), String(n++)); return seen().some((s) => s.startsWith('probe:')); });
       writeFileSync(join(repo, 'a.py'), 'x = 2\n');
       writeFileSync(join(repo, '.git', 'HEAD'), 'ref\n');
       mkdirSync(join(repo, '__pycache__'));
       writeFileSync(join(repo, '__pycache__', 'a.pyc'), 'c');
       writeFileSync(join(repo, 'b.txt'), 'b\n');
-      await wait(1200);
+      await until(() => seen().includes('a.py:modified') && seen().includes('b.txt:created'));
       rmSync(join(repo, 'b.txt'));
-      await wait(1200);
-      p.kill();
-      const lines = readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-      expect(lines.map((l) => l.path + ':' + l.kind).sort()).toEqual(['a.py:modified', 'b.txt:created', 'b.txt:deleted']);
-      for (const l of lines) expect(l.t).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
-    } finally { rmSync(d, { recursive: true, force: true }); }
+      await until(() => seen().includes('b.txt:deleted'));
+      expect(seen().filter((s) => !s.startsWith('probe:')).sort()).toEqual(['a.py:modified', 'b.txt:created', 'b.txt:deleted']);
+      for (const l of lines()) expect(l.t).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+    } finally { p?.kill(); rmSync(d, { recursive: true, force: true }); }
   }, 20_000);
 
   test('the precheck tree hash follows the contract: git-listed regular files, caches dropped, sha256sum-style lines', () => {

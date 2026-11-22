@@ -85,8 +85,12 @@ for loc in "${locations[@]}"; do
   echo "$vm" >> "$scratch/vms"
   log "VM $vm in $loc (TTL $ttl h) for $entry at $commit; keys: ${keys[*]+${keys[*]}}"
   jq --arg vm "$vm" --arg loc "$loc" '. + {vm: $vm, location: $loc}' "$out/remote.json" > "$out/remote.json.tmp" && mv "$out/remote.json.tmp" "$out/remote.json"
+  # A background subshell killed in the moment after its fork, before bash resets the traps it inherited, runs the EXIT
+  # trap itself and deleted $scratch while the try was still reading try.log, so the replica loop forks with no trap set.
+  trap - EXIT
   ( while sleep 600; do bash "$runner" pull "$vm" canary/out "$out/vm-replica" || true; done ) > /dev/null 2>&1 &
   rep_pid=$!
+  trap cleanup EXIT
   set +e
   bash "$runner" run -n "$vm" -l "$loc" --src "$scratch/harness-evals" --setup "$root/scripts/ubicloud/bootstrap.sh" ${pass[@]+"${pass[@]}"} --pull "canary/out:$out/vm" -- "$cmd" > "$scratch/try.log" 2>&1
   rc=$?

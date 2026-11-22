@@ -14,3 +14,7 @@ The [report](report.md) was published before reports had a Next time section, an
 
 - Use tasks that Opus 5.5 can fail, plus a second task that Hermes routes to a skill, because task success was 16 of 16 in every arm and no Hermes arm opened a skill on task 2 in 48 trials across both runs.
 - Score tool discipline from each harness's own transcript, because the committed world and gbrain logs can't see invented tools, malformed world calls or helper commands, and the per-arm classifier rates were not computed.
+
+## Checks after publication
+
+- 2026-11-21: checked for the 402/429 misclassification, no change. Before the change described in #526 (merged through #530), Hermes with gstack in chat mode could record a rate-limit (429) or out-of-credits (402) reply as a harness error instead of a model error. Both runs here used that mode; all 144 Hermes trials (72 in each run) finished with exit 0, so none was scored as a harness error, and the metering proxy logged no 402 or 429 reply in either run.

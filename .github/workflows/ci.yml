@@ -38,7 +38,8 @@ permissions:
 # as well.
 jobs:
   checks:
-    runs-on: ${{ github.repository == 'garrytan/harness-evals' && 'ubicloud-standard-4-ubuntu-2404' || 'ubuntu-latest' }}
+    # 8 vCPUs: scripts/run-tests.sh runs one test worker per core, and the tests are most of this job's time.
+    runs-on: ${{ github.repository == 'garrytan/harness-evals' && 'ubicloud-standard-8-ubuntu-2404' || 'ubuntu-latest' }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -173,7 +174,7 @@ jobs:
   # held-*.tsv files carry held codes and stay on the runner.
   public-export:
     if: github.repository == 'garrytan/harness-evals'
-    runs-on: ubicloud-standard-4-ubuntu-2404
+    runs-on: ubicloud-standard-8-ubuntu-2404
     # Over 41 runs on 2026-11-12 and 13 the export tree step took 12 to 23 minutes, the keyless step 19 to 25 and the rest
     # up to 9. A 50 minute limit cancelled 5 of them, 2 after every step had passed; 70 is 13 minutes above the slowest
     # steps added up.
@@ -187,6 +188,12 @@ jobs:
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
           df -h /
+      # The public main's clone (about 40 s) runs in the background while the checkout, the install and the tools step run;
+      # the export step waits for it and fails when it failed.
+      - name: Clone the public main in the background
+        run: |
+          ( rc=0; git clone -q --single-branch --branch main --no-tags https://github.com/garrytan/g-harness-evals.git "$RUNNER_TEMP/public" > "$RUNNER_TEMP/public-clone.log" 2>&1 || rc=$?
+            echo $rc > "$RUNNER_TEMP/public-clone.rc.tmp" && mv "$RUNNER_TEMP/public-clone.rc.tmp" "$RUNNER_TEMP/public-clone.rc" ) > /dev/null 2>&1 &
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
@@ -204,11 +211,13 @@ jobs:
       - name: Pinned export tools (checksum-verified)
         run: bun scripts/public-export/export.ts tools
       # The export reads the source's identities from refs/heads/main, which a pull request checkout does not create. The
-      # public main is cloned first: the reference-overlap gate drops only the common phrases its harness captures, world/,
-      # harnesses/ and tasks/ hold, never those of the tree being exported.
+      # public main is cloned first (the background step above): the reference-overlap gate drops only the common phrases its
+      # harness captures, world/, harnesses/ and tasks/ hold, never those of the tree being exported.
       - name: Export tree (keyless; exit 1 is a gate verdict the next step reads)
         run: |
-          git clone -q --single-branch --branch main --no-tags https://github.com/garrytan/g-harness-evals.git "$RUNNER_TEMP/public"
+          for _ in $(seq 900); do [ -e "$RUNNER_TEMP/public-clone.rc" ] && break; sleep 1; done
+          cat "$RUNNER_TEMP/public-clone.log"
+          [ "$(cat "$RUNNER_TEMP/public-clone.rc" 2>/dev/null)" = 0 ] || { echo "the public clone failed or did not finish within 15 minutes" >&2; exit 2; }
           git update-ref refs/heads/main HEAD
           rc=0
           bun scripts/public-export/export.ts tree --source . --rev HEAD --cutover "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --out "$RUNNER_TEMP/export" --no-trufflehog --common-from "$RUNNER_TEMP/public" || rc=$?
