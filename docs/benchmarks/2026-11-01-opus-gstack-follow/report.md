@@ -44,7 +44,7 @@ Terms used below:
 **Followed 0 of 16 on every arm. Decision: STOP.**
 
 - **One change from the stub run:** the agent passes `system_prompt={"type": "preset", "preset": "claude_code"}`, so Claude Code 2.1.312 uses its own system prompt.
-- **It reached the model.** In the $0 dry run, every captured request carried a 6,340-character system prompt with Claude Code's guidance block, against 137 characters with the unpatched agent ([preset](results/gn-follow-preset-2026-11/dry-run/preset-system-prompt.txt), [stub](results/gn-follow-preset-2026-11/dry-run/stub-system-prompt.txt)).
+- **It reached the model.** In the $0 dry run, every captured request carried a 6,340-character system prompt with Claude Code's guidance block, against 137 characters with the unpatched agent (preset, stub).
 - **The paid trials show it too.** The median first request grew by about 2,150 to 2,250 tokens on every arm: gstack 40,614 to 42,768, none 20,578 to 22,812, placebo 39,535 to 41,781 (`laneb.first_req_prompt_tokens`).
 - **Same tasks, arms and tries as the stub run:** 48 trials.
 
