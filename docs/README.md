@@ -99,7 +99,7 @@ Everything below is the full list, including one folder per run. Codes like inte
 - [repo-tasks.md](repo-tasks.md): the repository task format (fix, review, qa and ship tasks graded by hidden checks on the container), its acceptance rules, the gstack-native-v1 set's public dev split and sealed held-out split, and the gstack-delivery-v1 set's public review and ship dev split.
 - [scoreboard.md](scoreboard.md): "Which harness should I use?": grouped under three use cases (codegen, personal brain, company brain), with one generated section per task set inside each, a "can't run" line for harness and model pairs that can't run, and each harness and model's pass rate, cost per solved task, cost per trial and median time per trial, the run's preregistered calls, caveats, receipts and disclosures, plus a "Same tasks, other runs" table for later runs on the same task set. `scripts/scoreboard/build.ts` writes it (and the README's ranking tables, each between `<!-- ranking:... -->` markers, with a rank computed from the runs' paired cost ratios) from [scoreboard/entries/](scoreboard/entries/matrix-mu-2026-11.json); do not edit it by hand.
 - [shared-rig.md](shared-rig.md): where the canonical copy of each shared rig part lives (stats kit, price table, metering proxy, per-trial usage, trial bundle, fan-out), for the repositories that vendor them.
-- [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 and v0.4 sets, the company-v2 and personal-v2 sets, the QM probes) and how a cell selects one.
+- [tasks.md](tasks.md): the multi-user task format: families, the access model, the predicate library, oracles and the mutation contract, task sets (v0.1, v0.2, the generated v0.3 and v0.4 sets, the company-v2, personal-v2 and company-v2-l5 sets, the QM probes) and how a cell selects one.
 - [replicate.md](replicate.md): how to check a finding from its trial bundle with `scripts/replicate.ts`: the two free checks (`--reanalyze`, `--estimate-only`), a paid rerun of one cell under a hard `--max-usd` cap, the replication band and its coverage evidence under [replicate/](replicate/band-coverage-m3-heldout-openclaw.json), verdicts, exit codes and limits.
 - [trial-bundle.md](trial-bundle.md): the trial-bundle format: one reproducible archive per finding with the run's trial-level data and a digest, what goes in and what is left out by rule, and what `scripts/bundle.ts verify` checks.
 - [gstack-laneb.md](gstack-laneb.md): the Lane B bridge: runs the pinned gstack-evals Lane B agent on gstack-native and Terminal-Bench 2 tasks under our metering, leases and Ubicloud lane.
@@ -110,6 +110,10 @@ Everything below is the full list, including one folder per run. Codes like inte
 - [verify.md](verify.md): `bun run verify`, which rebuilds every published run's analysis files from its committed receipts and fails when a published value differs: what it checks and does not check, how to read its output, the per-run recipes under `scripts/verify/runs/`, and how it keeps keys and receipts safe.
 
 ## Changelog
+
+### 2026-11-21: tasks line names company-v2-l5 (internal-task)
+
+The tasks.md line now names the company-v2-l5 set. Why: docs/tasks.md gained it for the gbrain access-leak eval.
 
 ### 2026-11-21: gbrain-older-builds.md listed
 

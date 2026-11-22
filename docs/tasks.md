@@ -69,7 +69,9 @@ The levels turn five knobs: sessions between fact and ask (1 to 3), same-shaped 
 
 **The personal-v2 set: one member's own details.** Task set `personal-v2` holds 60 dev tasks from a published seed with expiry off: recall by purpose (the `expired_recall` template) and own corrections, 15 of each at L4 and at L5. Teammates' values for the same account are leak checks. The layout is in [tasks/multiuser/personal-v2/README.md](../tasks/multiuser/personal-v2/README.md).
 
-Each set carries `clusters.json`, every task id to its bootstrap cluster `<account id>:<attribute>`, written by the generator (`--clusters`). Both replace a first draw one level lower (`company-v1` at L3, `personal-v1` at L3 and L4), which failed the headroom gate and was never merged.
+**The company-v2-l5 set: for the gbrain access-leak eval.** Task set `company-v2-l5` is company-v2's four families one level up, at L5, from a copy of its seed, with expiry off: 60 dev tasks, 15 per family. It is documented in its own [README](../tasks/multiuser/company-v2-l5/README.md).
+
+Each set carries `clusters.json`, every task id to its bootstrap cluster `<account id>:<attribute>`, written by the generator (`--clusters`). company-v2 and personal-v2 replace a first draw one level lower (`company-v1` at L3, `personal-v1` at L3 and L4), which failed the headroom gate and was never merged.
 
 ## Access model in M1
 
@@ -269,6 +271,10 @@ Memory probes phrase the fact as the member's own preference, identifier or proj
 ### 2026-11-21: timers on the simulation clock
 
 The "Timers" section: a `[clock]` table turns on world-side timers the agent sets with `timer_set`, delivered by the runner as timer turns when the clock passes them. Why: no harness's own scheduler follows the frozen simulation clock (TODOS eng-r2-native-5, eng-r2-outside-4), so scheduled work could not be tested; the always-on agents eval needs follow-ups the agent sets for itself.
+
+### 2026-11-21: the company-v2-l5 set (internal-task)
+
+A new set for the gbrain access-leak eval, described under "Expiry off, L5 and the own-corrections template": `company-v2-l5` (company-v2's families at L5, expiry off). It regenerates from a copy of company-v2's seed and passes check-set.
 
 ### 2026-11-08: the company-v2 and personal-v2 sets; expiry off and L5 in the v0.4 generator
 

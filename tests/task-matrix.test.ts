@@ -30,6 +30,9 @@ const SET_FAMILIES: Record<string, string[]> = {
   /** company-v2 and personal-v2: v0.4 templates generated with expiry off, so every fact stays readable (docs/tasks.md). */
   'company-v2': ['corrections', 'approval_relay', 'memory_scope', 'session_synthesis'],
   'personal-v2': ['expired_recall', 'corrections'],
+  /** company-v2-l5: company-v2's families at L5; personal-v2x: personal-v2's twins with expiry on (internal-task). */
+  'company-v2-l5': ['corrections', 'approval_relay', 'memory_scope', 'session_synthesis'],
+  'personal-v2x': ['expired_recall', 'corrections'],
 };
 /** The public export leaves these sets out with the v0.4 generator they come from (publication/manifest.json). */
 const COMPANY_V2 = existsSync(join(ROOT, 'company-v2'));
