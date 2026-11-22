@@ -24,11 +24,12 @@ function trial(setup: string, arm: string, i: number, met: number, r: () => numb
   RULE_IDS.forEach((id, k) => { rules[id] = k < met ? 'met' : 'not_met'; if (r() < flip) rules[id] = rules[id] === 'met' ? 'not_met' : 'met'; });
   return { setup, arm, task: TASKS[i]!, rotation: (i % 3) as 0 | 1 | 2, rules, delivery: Object.fromEntries(RULE_IDS.map((id) => [id, 'whole'])) as Trial['delivery'], solved: 1, usd: 0.3 + (arm === 'b160k' ? 0.2 : 0), input_tokens: 1000, infra: null };
 }
-function world(): Trial[] {
+/** noise flips each rule of every arm but b80k with that chance, so paired differences vary and the look has an SE. */
+function world(noise = 0): Trial[] {
   const r = rng(11);
   const out: Trial[] = [];
   const metBy: Record<string, number> = { none: 0, short: 6, b8k: 6, b28k: 6, b80k: 3, b160k: 2, split: 2, hook: 6, cutlift: 6 };
-  for (const s of design.setups) for (const arm of s.arms) TASKS.forEach((_, i) => out.push(trial(s.id, arm, i, metBy[arm]!, r, arm === 'b80k' ? 0.15 : 0)));
+  for (const s of design.setups) for (const arm of s.arms) TASKS.forEach((_, i) => out.push(trial(s.id, arm, i, metBy[arm]!, r, arm === 'b80k' ? 0.15 : noise)));
   return out;
 }
 
@@ -80,7 +81,7 @@ describe('rules-at-scale analysis', () => {
   });
 
   test('the interim look uses half the tasks and stops only cells whose comparisons all stopped', () => {
-    const rec = interimLook(world(), design);
+    const rec = interimLook(world(0.05), design);
     expect(rec.tasks).toEqual(TASKS.slice(0, 18));
     const cc = rec.comparisons.filter((c) => c.setup === 'cc');
     expect(cc.find((c) => c.comparison === 'ladder:b160k')!.decision).toBe('stop_efficacy');
@@ -94,15 +95,30 @@ describe('rules-at-scale analysis', () => {
   });
 
   test('a ladder step that stops for loss ends the sequence at the look', () => {
-    const ts = world().map((t) => (t.setup === 'cc' && t.arm === 'b160k' ? { ...t, rules: all('met') } : t)).map((t) => (t.setup === 'cc' && t.arm === 'short' ? { ...t, rules: { ...all('met'), R6: 'not_met' as RuleState } } : t));
+    const ts = world().map((t) => (t.setup === 'cc' && t.arm === 'b160k' ? { ...t, rules: all('met') } : t)).map((t, i) => (t.setup === 'cc' && t.arm === 'short' ? { ...t, rules: { ...all('met'), R6: 'not_met' as RuleState, ...(i % 2 ? { R5: 'not_met' as RuleState } : {}) } } : t));
     const rec = interimLook(ts, design);
     const cc = rec.comparisons.filter((c) => c.setup === 'cc' && c.comparison.startsWith('ladder:'));
     expect(cc[0]!.decision).toBe('stop_loss');
     expect(cc.slice(1).every((c) => c.decision === 'stop_futility')).toBe(true);
   });
 
+  test('the interim look never stops a comparison with a zero SE or fewer than 6 usable pairs', () => {
+    const flat = interimLook(world(), design).comparisons.find((c) => c.setup === 'cc' && c.comparison === 'ladder:b160k')!;
+    expect(flat.n_pairs).toBe(18);
+    expect(flat.decision).toBe('continue');
+    const keep = new Set(TASKS.slice(0, 5));
+    const few = world(0.05).filter((t) => !(t.setup === 'cc' && t.arm === 'b160k') || keep.has(t.task));
+    const step = interimLook(few, design).comparisons.find((c) => c.setup === 'cc' && c.comparison === 'ladder:b160k')!;
+    expect(step.n_pairs).toBe(5);
+    expect(step.decision).toBe('continue');
+    const six = new Set(TASKS.slice(0, 6));
+    const enough = interimLook(world(0.05).filter((t) => !(t.setup === 'cc' && t.arm === 'b160k') || six.has(t.task)), design).comparisons.find((c) => c.setup === 'cc' && c.comparison === 'ladder:b160k')!;
+    expect(enough.n_pairs).toBe(6);
+    expect(enough.decision).toBe('stop_efficacy');
+  });
+
   test('the final analysis keeps interim decisions and flags early stops', () => {
-    const ts = world();
+    const ts = world(0.05);
     const rec = interimLook(ts, design);
     const a = analyze(ts, design, rec);
     expect(a.status).toBe('final');
@@ -111,6 +127,49 @@ describe('rules-at-scale analysis', () => {
     expect(top.decided_by).toBe('interim stop_efficacy');
     expect(top.possibly_overstated).toBe(true);
     expect(render(a)).toContain('possibly overstated');
+  });
+
+  test('timed-out trials count in every rate, and each arm reports its timeout share and the rates without them', () => {
+    const ts = world();
+    const hit = ts.filter((t) => t.setup === 'cc' && t.arm === 'b160k').slice(0, 9);
+    for (const t of hit) { t.infra = 'agent_timeout'; t.rules = all('met'); }
+    hit[0]!.infra = 'AgentTimeoutError';
+    const a = analyze(ts, design, null);
+    const cc = a.setups.find((s) => s.setup === 'cc')!;
+    expect(cc.counts.b160k!.timeouts).toBe(9);
+    expect(cc.counts.b160k!.timeout_share).toBeCloseTo(9 / 36, 4);
+    expect(cc.counts.short!.timeout_share).toBe(0);
+    const arm = cc.arms.b160k!;
+    expect(arm.rules_followed.n).toBe(36);
+    expect(arm.rules_followed_without_timeouts.n).toBe(27);
+    expect(arm.rules_followed.estimate!).toBeGreaterThan(arm.rules_followed_without_timeouts.estimate!);
+    const top = cc.ladder.steps[0]!;
+    expect(top.contrast!.n_pairs).toBe(36);
+    expect(top.contrast_without_timeouts!.n_pairs).toBe(27);
+    expect(top.contrast_without_timeouts!.delta).toBeLessThan(top.contrast!.delta);
+    expect(cc.repairs[0]!.contrast_without_timeouts!.n_pairs).toBe(27);
+    expect(a.pooled.ladder.find((r) => r.rung === 'top')!.contrast_without_timeouts!.n_pairs).toBe(36 + 27);
+    const md = render(a);
+    expect(md).toContain('Timeout share by arm:');
+    expect(md).toContain('b160k 25.0%');
+    expect(md).toContain('without timeouts');
+  });
+
+  test('timed-out trials with no capture are counted per arm, and housekeeping calls get their own row of calls and dollars', () => {
+    const ts = world();
+    const cc = (arm: string) => ts.filter((t) => t.setup === 'cc' && t.arm === arm);
+    for (const t of cc('b160k').slice(0, 2)) { t.infra = 'TIMEOUT_NO_CAPTURE'; t.rules = all('unscorable'); t.solved = null; }
+    cc('b8k')[0]!.housekeeping = [{ model: 'claude-haiku-5-5', requests: 3, usd: 0.012 }];
+    cc('b8k')[1]!.housekeeping = [{ model: 'claude-haiku-5-5', requests: 1, usd: null }];
+    const a = analyze(ts, design, null);
+    const s = a.setups.find((x) => x.setup === 'cc')!;
+    expect(s.counts.b160k!.timeout_no_capture).toBe(2);
+    expect(s.counts.b160k!.timeouts).toBe(0);
+    expect(s.housekeeping.b8k).toEqual({ models: ['claude-haiku-5-5'], requests: 4, usd: 0.012, unpriced_entries: 1 });
+    expect(s.housekeeping.short).toEqual({ models: [], requests: 0, usd: null, unpriced_entries: 0 });
+    const md = render(a);
+    expect(md).toContain('b160k 0.0% (2 with no capture, unscored)');
+    expect(md).toContain('Harness housekeeping (metered, never scored) by arm: none none; short none; b8k 4 calls on claude-haiku-5-5, $0.01');
   });
 
   test('validation refuses unknown arms and second trials', () => {
