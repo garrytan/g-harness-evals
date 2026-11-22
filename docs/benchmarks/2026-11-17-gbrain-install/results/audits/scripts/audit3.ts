@@ -1,13 +1,15 @@
 // Audit 3: recount the release-pin columns from the raw watcher records and the end-of-turn probe files, and compare with verdict.ts.
 import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { excludedReason } from '<controller-work>/run-wt/scripts/gbrain-install/verdict.ts';
-const RUN = '<controller-work>/run';
-const WT = '<controller-work>/run-wt';
+import { excludedReason } from '../../../../../../scripts/gbrain-install/verdict.ts';
+// Usage: bun audit3.ts <run dir> <audits dir>; writes <audits dir>/audit3.json. verdict.ts runs from this checkout.
+if (process.argv.length < 4) { console.error('usage: bun audit3.ts <run dir> <audits dir>'); process.exit(2); }
+const [RUN, OUT] = process.argv.slice(2, 4).map(p => resolve(p));
+const WT = join(import.meta.dir, '../../../../../..');
 const shard = new Map(readFileSync(join(RUN, 'readers/cell-shard.txt'), 'utf8').trim().split('\n').map(l => l.split(/\s+/) as [string, string]));
 const recs = readFileSync(join(RUN, 'merged/trials.jsonl'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
-const v = spawnSync('bun', ['scripts/gbrain-install/verdict.ts', join(RUN, 'merged'), '--json'], { cwd: WT, encoding: 'utf8', env: { PATH: '/usr/local/bin:/usr/bin:/bin:' + process.env.HOME + '/.bun/bin', HOME: process.env.HOME! } });
+const v = spawnSync(process.execPath, ['scripts/gbrain-install/verdict.ts', join(RUN, 'merged'), '--json'], { cwd: WT, encoding: 'utf8', env: { PATH: '/usr/bin:/bin', HOME: process.env.HOME! } });
 if (v.status !== 0) throw new Error('verdict.ts failed: ' + v.stderr);
 const verdict = JSON.parse(v.stdout);
 
@@ -71,5 +73,5 @@ const out = {
   excluded: trials.filter(t => !t.counted).map(t => ({ trial_id: t.trial_id, reason: t.excluded_reason, recount: t.recount })),
   trials,
 };
-writeFileSync('<controller-work>/audits/audit3.json', JSON.stringify(out, null, 1) + '\n');
+writeFileSync(join(OUT, 'audit3.json'), JSON.stringify(out, null, 1) + '\n');
 console.log(JSON.stringify({ counted: out.counted_runs, totals: out.totals, mismatches: out.per_trial_mismatches.length, cells_differing: out.cells_differing, edge: Object.fromEntries(Object.entries(out.edge_checks).map(([k, v]) => [k, (v as any[]).length])) }, null, 1));

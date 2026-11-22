@@ -1,10 +1,12 @@
 // Audit 3 side check: for each counted run with no gbrain version in any probe record, did any gbrain call succeed in its transcript?
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseTurn, isGbrainCall } from '<controller-work>/run-wt/scripts/gbrain-install/transcript.ts';
-import { succeeded } from '<controller-work>/run-wt/scripts/gbrain-install/steps.ts';
-const RUN = '<controller-work>/run';
-const A = '<controller-work>/audits/audit3.json';
+import { parseTurn, isGbrainCall } from '../../../../../../scripts/gbrain-install/transcript.ts';
+import { succeeded } from '../../../../../../scripts/gbrain-install/steps.ts';
+// Usage: bun audit3-noversion.ts <run dir> <audits dir> (after audit3.ts); adds its check to <audits dir>/audit3.json.
+const [RUN, OUT] = process.argv.slice(2);
+if (!OUT) { console.error('usage: bun audit3-noversion.ts <run dir> <audits dir>'); process.exit(2); }
+const A = join(OUT, 'audit3.json');
 const a = JSON.parse(readFileSync(A, 'utf8'));
 const shard = new Map(readFileSync(join(RUN, 'readers/cell-shard.txt'), 'utf8').trim().split('\n').map(l => l.split(/\s+/) as [string, string]));
 const recs = new Map(readFileSync(join(RUN, 'merged/trials.jsonl'), 'utf8').split('\n').filter(Boolean).map(l => { const r = JSON.parse(l); return [r.trial_id, r]; }));

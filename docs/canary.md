@@ -6,6 +6,8 @@
 
 **What it does not answer:** whether gstack or gbrain help at all. That is the job of the head-to-head evals. The canary only compares a release with the previous one.
 
+For every gbrain release, not just stable ones, the [install canary](install-canary.md) checks that each harness can follow gbrain's install guide with its own guard on.
+
 Status: preregistered ([PREREGISTRATION.md](benchmarks/2026-11-09-regression-canary/PREREGISTRATION.md), rule and leases in `prereg-canary.json`), with baseline results in [report.md](benchmarks/2026-11-09-regression-canary/report.md). Its `canary_rig` commit is set by a dated amendment once the preregistration merges, so `run.sh` refuses to run for real until then. The nightly automation is created disabled. It stays disabled until the results pull request carrying the canary_rig amendment has passed /ship and merged. Until then every run is supervised, and someone reconciles the lease file by hand after each one (see "When a run cannot publish" below).
 
 ## What it checks

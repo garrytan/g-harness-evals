@@ -294,9 +294,7 @@ function scanStateMode(sources: string[], records: Rec[], cScanOut: string, proo
     if (statSync(src).isDirectory()) { scanTrials(existsSync(join(src, 'trials')) ? join(src, 'trials') : src, wanted); continue; }
     for (const cell of [...new Set(wanted.map(r => r.cell))].sort()) {
       if (freeBytes(tmp) < MIN_FREE_BYTES) throw new Error(`less than 10 GB free under ${tmp}; not extracting ${cell}`);
-      const x = join(tmp, 'x-' + cell);
-      rmSync(x, { recursive: true, force: true });
-      mkdirSync(x, { recursive: true });
+      const x = mkdtempSync(join(tmp, `x-${cell}-`));
       try {
         const base = `trials/${cell}/gbrain-install/r*`;
         const tar = Bun.spawnSync(['tar', '-I', 'zstd', '-xf', src, '-C', x, '--wildcards', `${base}/state/openclaw/*`, `${base}/state/claude/settings.json`, `${base}/workspace/.claude/settings.json`, `${base}/workspace/.claude/settings.local.json`], { stdout: 'ignore', stderr: 'pipe' });

@@ -1,8 +1,10 @@
 // Audit 2: recalls credited through "gbrain ... | head N" or "| tail N" with a bare numeric argument (read by head/tail as a file name).
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseTurn, isGbrainServed, isGbrainCall, hasToken, unwrapShell } from '<controller-work>/run-wt/scripts/gbrain-install/transcript.ts';
-const RUN = '<controller-work>/run';
+import { parseTurn, isGbrainServed, isGbrainCall, hasToken, unwrapShell } from '../../../../../../scripts/gbrain-install/transcript.ts';
+// Usage: bun audit2.ts <run dir> <audits dir>; writes <audits dir>/audit2.json.
+const [RUN, OUT] = process.argv.slice(2);
+if (!OUT) { console.error('usage: bun audit2.ts <run dir> <audits dir>'); process.exit(2); }
 const shard = new Map(readFileSync(join(RUN, 'readers/cell-shard.txt'), 'utf8').trim().split('\n').map(l => l.split(/\s+/) as [string, string]));
 const recs = readFileSync(join(RUN, 'merged/trials.jsonl'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
 // A pipe stage "head N" / "tail N" whose operand is a bare number (optionally after flags), e.g. "head 20", "tail -n 5 20". "+N" and "-N" are options, not files.
@@ -50,5 +52,5 @@ const out = {
   shell_gbrain_calls_in_recall_or_hinted_turns: shellGbrain,
   head_or_tail_pipes_after_gbrain_in_recall_or_hinted_turns: anyHeadTail,
 };
-writeFileSync('<controller-work>/audits/audit2.json', JSON.stringify(out, null, 1) + '\n');
+writeFileSync(join(OUT, 'audit2.json'), JSON.stringify(out, null, 1) + '\n');
 console.log(JSON.stringify({ recalled, mcpCredits, shellCredits, bare: out.credited_through_bare_number_pipe.length, pipesSeen, shellGbrain, anyHeadTail }, null, 1));

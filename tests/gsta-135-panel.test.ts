@@ -3,8 +3,8 @@
 // order, termination classification (a charged upstream reservation, a
 // concurrent lease refusal), the ledger's lease-id acceptance and
 // killed-trial recovery, the merge-base refusal, the max-size admission smoke
-// through the real metering proxy against a fake upstream on 127.0.0.1 (ports
-// 8820-8839; the only "key" is a placeholder string the proxy needs to forward
+// through the real metering proxy against a fake upstream on 127.0.0.1 (the
+// proxy binds a port the kernel picks; the only "key" is a placeholder string the proxy needs to forward
 // at all, never a real one), the ceilings derivation, the panel dry run, and
 // the panel loop itself: keyless with a stubbed docker on PATH (ports
 // 8830-8835), and one real one-trial panel against fake-anthropic.ts when the
@@ -213,22 +213,33 @@ describe('ledger contracts', () => {
   });
 });
 
-/** Start the real proxy CLI on 127.0.0.1 in Lane B's port range against a fake Anthropic upstream. */
+/** Start the real proxy CLI on 127.0.0.1 against a fake Anthropic upstream. It binds port 0, so the kernel hands it a
+ *  free port, and the test reads that port from the line the proxy writes once it is listening; it waits for that line
+ *  or the proxy's exit, never for a number of polls. A proxy that has neither printed that line nor exited after 20 s is
+ *  killed, so the test fails with its stderr instead of hanging and leaving the proxy running. */
 async function startProxy(o: { ledger: string; leaseUsd: number; runId: string; upstream: number; usageLog: string; control: string }) {
-  let stderr = '';
-  for (let port = 8820; port <= 8829; port++) {
-    const proc = Bun.spawn([process.execPath, 'runner/proxy/metering-proxy.ts', '--listen', '127.0.0.1:' + port, '--budget-ledger', o.ledger, '--lease-usd', String(o.leaseUsd), '--run-id', o.runId, '--new-run',
-      '--max-output-tokens', String(PIN), '--allow-models', 'anthropic:' + PANEL_MODEL, '--upstream', 'anthropic=http://127.0.0.1:' + o.upstream, '--usage-log', o.usageLog, '--control-token', o.control],
-      { cwd: ROOT, env: { PATH: process.env.PATH, HOME: process.env.HOME, ANTHROPIC_API_KEY: 'placeholder-anthropic' }, stdout: 'pipe', stderr: 'pipe' });
-    for (let i = 0; i < 100; i++) {
-      if (proc.exitCode !== null) break;
-      try { await fetch('http://127.0.0.1:' + port + '/__proxy/status'); return { proc, port }; } catch { await Bun.sleep(50); }
+  const proc = Bun.spawn([process.execPath, 'runner/proxy/metering-proxy.ts', '--listen', '127.0.0.1:0', '--budget-ledger', o.ledger, '--lease-usd', String(o.leaseUsd), '--run-id', o.runId, '--new-run',
+    '--max-output-tokens', String(PIN), '--allow-models', 'anthropic:' + PANEL_MODEL, '--upstream', 'anthropic=http://127.0.0.1:' + o.upstream, '--usage-log', o.usageLog, '--control-token', o.control],
+    { cwd: ROOT, env: { PATH: process.env.PATH, HOME: process.env.HOME, ANTHROPIC_API_KEY: 'placeholder-anthropic' }, stdout: 'ignore', stderr: 'pipe' });
+  const reader = proc.stderr.getReader(), decoder = new TextDecoder();
+  let stderr = '', timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<'deadline'>(resolve => { timer = setTimeout(() => resolve('deadline'), 20_000); });
+  try {
+    for (;;) {
+      const r = await Promise.race([reader.read(), deadline]);
+      if (r === 'deadline') throw new Error('the proxy did not print its listening line within 20 s: ' + stderr);
+      if (r.done) break;
+      stderr += decoder.decode(r.value, { stream: true });
+      const listening = stderr.match(/^\[metering-proxy\] lease .* on 127\.0\.0\.1:(\d+);/m);
+      if (listening) { reader.releaseLock(); return { proc, port: Number(listening[1]) }; }
     }
-    proc.kill('SIGKILL'); await proc.exited;
-    stderr = await new Response(proc.stderr).text();
-    if (!/EADDRINUSE|address already in use|in use/i.test(stderr)) throw new Error('proxy did not start on ' + port + ': ' + stderr);
-  }
-  throw new Error('no free port in 8820-8829: ' + stderr);
+    await proc.exited;
+    throw new Error('the proxy exited with ' + proc.exitCode + ' before it listened: ' + stderr);
+  } catch (e) {
+    proc.kill('SIGKILL');
+    await proc.exited;
+    throw e;
+  } finally { clearTimeout(timer); }
 }
 /** The spend discovery.sh derives from the usage lines of one trial key (lease.ts spend). */
 const spendOf = (usageLog: string, key: string, ledger?: string, leaseId?: string): Spend => spendFromUsage(readUsage(usageLog), key, ledger ? readLedger(ledger).entries.filter(e => e.run_id === leaseId) : null);

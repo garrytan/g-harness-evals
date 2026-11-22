@@ -65,6 +65,22 @@ jobs:
           [ "$verdict" = docs_only=true ] || verdict=docs_only=false
           echo "$verdict" >> "$GITHUB_OUTPUT"
           if [ "$verdict" = docs_only=true ]; then echo "Docs-only change: typecheck and tests skipped; the docs checks ran." >> "$GITHUB_STEP_SUMMARY"; fi
+      # The merge lane's VM check (scripts/ubicloud/checks.sh) and the counted shards run on stock Ubuntu 24.04 Ubicloud VMs,
+      # whose git is the Ubuntu archive's 2.43. This runner image adds a newer git from a PPA, so the tests here could pass on
+      # a git the VMs don't have: a test using `git init --ref-format=reftable` (git 2.45 and later) did. Swap in the
+      # archive's git so this job runs the suite on the VMs' git.
+      - name: Ubuntu archive git, as on the Ubicloud VMs
+        if: github.repository == 'garrytan/harness-evals' && steps.docs.outputs.docs_only != 'true'
+        run: |
+          for f in $(grep -l git-core /etc/apt/sources.list.d/* 2>/dev/null); do sudo rm -f "$f"; done
+          if [ ! -f /etc/apt/sources.list.d/ubuntu.sources ]; then echo "No /etc/apt/sources.list.d/ubuntu.sources: cannot refresh only the Ubuntu archive" >&2; exit 1; fi
+          for i in 1 2 3; do sudo apt-get update -qq --error-on=any -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=- && break; [ "$i" = 3 ] && exit 1; sleep $((i * 10)); done
+          if apt-cache madison git | grep -q launchpad; then echo "A git PPA is still in the apt sources" >&2; exit 1; fi
+          v=$(apt-cache madison git | awk -F'|' 'NR == 1 { gsub(/ /, "", $2); print $2 }')
+          sudo apt-get install -y -qq -o Acquire::Retries=3 -o DPkg::Lock::Timeout=60 --allow-downgrades --no-install-recommends "git=$v" "git-man=$v" > /dev/null
+          u=${v#*:}
+          echo "git $(git --version | cut -d' ' -f3) (archive $v), node $(node --version), $(docker --version), $(python3 --version)"
+          [ "$(git --version)" = "git version ${u%%-*}" ]
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
       # scripts/ci/docs-only.ts DOC_TESTS: the tests that read the README and every Markdown page.

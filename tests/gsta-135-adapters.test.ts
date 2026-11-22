@@ -397,10 +397,13 @@ describe('hermes chat-mode adapter', () => {
     const typed = existsSync(join(dir, 'typed')) ? readFileSync(join(dir, 'typed'), 'utf8') : '';
     return { out: r.stdout, typed, status: r.status, stderr: r.stderr };
   }
+  /** A scripted clock for watch(): sleep advances a clock file and date reads it, so the scripted states alone decide what
+   *  the watcher does. On the real clock a runner whose wall clock stepped back between two reads made the watcher's
+   *  elapsed time negative. */
+  const clock = 'echo 10000 > "@DIR@/clock"\n'
+    + 'sleep() { local ms; ms=$(cat "@DIR@/clock"); awk -v t="$ms" -v s="$1" \'BEGIN { printf "%d\\n", t + s * 1000 }\' > "@DIR@/clock"; }\n'
+    + 'date() { local ms; ms=$(cat "@DIR@/clock"); case "$1" in +%s%3N) echo "$ms" ;; +%s) echo $((ms / 1000)) ;; *) command date "$@" ;; esac; }';
   test('the watcher types /exit only after grace consecutive completes, and a flip back to pending resets the grace', () => {
-    const clock = 'echo 10000 > "@DIR@/clock"\n'
-      + 'sleep() { local ms; ms=$(cat "@DIR@/clock"); awk -v t="$ms" -v s="$1" \'BEGIN { printf "%d\\n", t + s * 1000 }\' > "@DIR@/clock"; }\n'
-      + 'date() { local ms; ms=$(cat "@DIR@/clock"); case "$1" in +%s%3N) echo "$ms" ;; +%s) echo $((ms / 1000)) ;; *) command date "$@" ;; esac; }';
     const r = watch(['complete', 'complete', 'pending', 'complete', 'complete', 'complete', 'complete'], {}, 'command sleep 1000 > /dev/null 2>&1 &', clock);
     expect(r.out).toContain('LOG watcher: transcript complete, grace 2s\nLOG watcher: transcript back to pending, grace reset\nLOG watcher: transcript complete, grace 2s\nLOG watcher: typing /exit\n');
     expect(r.typed).toBe('/exit\r');
@@ -426,7 +429,7 @@ describe('hermes chat-mode adapter', () => {
     expect(r.out).toContain('alive=yes');
   }, 30000);
   test('a transcript that flips after /exit is not credited: the forced termination clears the verdict', () => {
-    const r = watch(['complete', 'pending'], { HE_GSTACK_CHAT_GRACE_S: '0' });
+    const r = watch(['complete', 'pending'], { HE_GSTACK_CHAT_GRACE_S: '0' }, 'command sleep 1000 > /dev/null 2>&1 &', clock);
     expect(r.typed).toBe('/exit\r');
     expect(r.out).toContain('LOG watcher: hermes did not leave after /exit (1s) and the transcript is pending again; terminating the session');
     expect(r.out).toContain('verdict= forced=1');

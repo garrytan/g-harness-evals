@@ -2,7 +2,7 @@
 // status check), the smoke's check-sections step, and the readers of usage logs that must ignore the new fields
 // (reconcile-provider, publish-audit, merge-shards, receipts-manifest, host-pilot-tables). Keyless: every proxy process
 // gets PATH and HOME only.
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, spyOn, test } from 'bun:test';
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -63,7 +63,23 @@ describe('the log_sections cell field', () => {
 });
 
 describe('RunProxy and --log-sections', () => {
-  const start = (d: string, logSections?: boolean) => RunProxy.start({ runId: `sections-proxy-${n}`, runDir: d, ledgerPath: join(d, 'ledger.sqlite'), leaseUsd: 1, allowModels: [], reachableFromContainers: false, env: ENV, newRun: true, ...(logSections === undefined ? {} : { logSections }) });
+  // RunProxy.start picks the proxy's port by binding port 0 in this process and releasing it, then the proxy process binds
+  // that port when it has loaded. In between, a test file running in parallel can be handed the same port by the kernel,
+  // and the proxy fails with "Failed to start server. Is port N in use?". So the probe here binds a port of this file's own
+  // range, 8850-8859, below the kernel's ephemeral range and used by no other test file, one per start, skipping a port
+  // another process still holds.
+  let nextPort = 8850;
+  const start = async (d: string, logSections?: boolean) => {
+    const serve = Bun.serve;
+    const probe = spyOn(Bun, 'serve').mockImplementationOnce(((o: object) => {
+      for (;;) {
+        try { return serve({ ...o, port: nextPort++ } as Parameters<typeof Bun.serve>[0]); } catch (e) { if (nextPort > 8859 || (e as { code?: string }).code !== 'EADDRINUSE') throw e; }
+      }
+    }) as unknown as typeof Bun.serve);
+    try {
+      return await RunProxy.start({ runId: `sections-proxy-${n}`, runDir: d, ledgerPath: join(d, 'ledger.sqlite'), leaseUsd: 1, allowModels: [], reachableFromContainers: false, env: ENV, newRun: true, ...(logSections === undefined ? {} : { logSections }) });
+    } finally { probe.mockRestore(); }
+  };
   test('the proxy argv carries --log-sections when the cells ask for it, and /__proxy/status says so; without it the status says false', async () => {
     for (const want of [true, false, undefined]) {
       const proxy = await start(dir(), want);

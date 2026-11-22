@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Writes AUDITS.md from audit1.json, audit2.json and audit3.json only."""
-import json
-A = '<controller-work>/audits'
+import json, sys
+if len(sys.argv) != 2:
+    sys.exit('usage: python3 make-md.py <audits dir>')
+A = sys.argv[1]
 a1, a2, a3 = (json.load(open(f'{A}/audit{i}.json')) for i in (1, 2, 3))
 short = lambda t: t.replace('gbrain-install-2026-11/', '').replace('-gbrain-install/gbrain-install/', ' ')
 cell = lambda c: c.replace('-gbrain-install', '')
 T1, T3 = a1['totals'], a3['totals']
 L = []
 L += ['# Post-run audits 1-3, gbrain-install-2026-11', '',
-      '**Takeaways.** Every recall in this run was served by a saved fact (gbrain\'s `remember` store), never by a page from the conversation archive, so Audit 1 moves nothing. No recall was credited through a `head N` or `tail N` pipe, so Audit 2 withdraws nothing. The release-pin recount from the raw watcher and probe records matches the verdict exactly. One input claim was wrong: 5 recalled Claude Code trials have no brain database in their copied state, so where their brain holds the nonce is read from the save transcript, not the brain.', '']
+      '**Takeaways.** Every recall the pinned scorer counted (94, including the excluded INFRA run) was served by a saved fact (gbrain\'s `remember` store), never by a page from the conversation archive, so Audit 1 moves nothing. Audit 1 didn\'t check the 59 recalls that rules a, b and c add to the headline a+b+c column (45 OpenClaw, 14 Claude Code), so this result covers the pinned scorer\'s recalls only. No recall was credited through a `head N` or `tail N` pipe, so Audit 2 withdraws nothing. The release-pin recount from the raw watcher and probe records matches the verdict exactly. One input claim was wrong: 5 recalled Claude Code trials have no brain database in their copied state, so where their brain holds the nonce is read from the save transcript, not the brain.', '']
 L += ['## Audit 1: recall from the conversation archive', '',
       'Method: the recall turn of each recalled trial was re-parsed with the pinned `transcript.ts`, and each credited gbrain call output was classified by the result item that holds the nonce (a `facts` item or a `results` page slug). Each trial\'s `state/.gbrain/brain.pglite` was copied to scratch and opened with pglite 0.4.3 (the version gbrain v0.60.734.0 ships). Every table was searched for the nonce, and pages were split into `conversations/` (archive) and other slugs.', '',
       '| Cell | Recalled | Recalled from archive | Nonce only in archive pages | Served by a saved fact | Brain not in the copy |', '|---|---:|---:|---:|---:|---:|']
@@ -55,6 +57,6 @@ L += ['', f"Result: no difference. {len(a3['per_trial_mismatches'])} runs differ
       f"- Excluded runs, listed apart: {', '.join(short(x['trial_id']) + ' (' + x['reason'] + ', saw ' + str(x['recount']['first']) + ')' for x in a3['excluded'])}.", '',
       '## Notes', '',
       '- Read-only: trial data was only read. Brains were copied to scratch before pglite opened them, and the `.gbrain-ipc-secret` file and `secret/` paths were left out of every copy and extraction. No network, no model or harness runs and no spend. One slip: early on I ran a read-only `git log -3` in run-wt, against the brief\'s no-git rule.',
-      '- Scripts: recall-events.ts, save-events.ts, audit1.py, audit2.ts, audit3.ts, audit3-noversion.ts, run-brains.sh, tools/brain-dump.ts (pglite 0.4.3 copied from a trial\'s gbrain clone into tools/node_modules), make-md.py. Scratch was deleted after the run, so audit1.py needs recall-events.ts, save-events.ts and run-brains.sh run again before it can be rerun.']
+      '- Scripts, in scripts/: recall-events.ts, save-events.ts, run-brains.sh with brain-dump.ts (it needs pglite 0.4.3, the version gbrain v0.60.734.0 ships), audit1.py, audit2.ts, audit3.ts, audit3-noversion.ts and make-md.py. Each takes the run/ folder of the raw archive raw-2026-11-17-gbrain-install--run and an output folder as arguments; scripts/README.md gives the order. Scratch was deleted after the run, so audit1.py needs recall-events.ts, save-events.ts and run-brains.sh run again before it can be rerun.']
 open(f'{A}/AUDITS.md', 'w').write('\n'.join(L) + '\n')
 print('\n'.join(L))

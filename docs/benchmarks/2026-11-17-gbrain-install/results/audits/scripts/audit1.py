@@ -2,9 +2,10 @@
 """Audit 1: for every recalled trial, the brain item that served the recall (from the recall turn's credited gbrain call output)
 and where the brain holds the nonce (from a read-only copy of state/.gbrain/brain.pglite). Inputs are written by recall-events.ts,
 save-events.ts and tools/brain-dump.ts (run-brains.sh)."""
-import json, re, collections
-A = '<controller-work>/audits'
-RUN = '<controller-work>/run'
+import json, re, collections, sys
+if len(sys.argv) != 3:
+    sys.exit('usage: python3 audit1.py <run dir> <audits dir>  (reads <audits dir>/scratch from recall-events.ts, save-events.ts and run-brains.sh)')
+RUN, A = sys.argv[1], sys.argv[2]
 recs = [json.loads(l) for l in open(RUN + '/merged/trials.jsonl') if l.strip()]
 ev = {t['trial_id']: t for t in json.load(open(A + '/scratch/recall-events.json'))}
 sv = {t['trial_id']: t for t in json.load(open(A + '/scratch/save-events.json'))}
