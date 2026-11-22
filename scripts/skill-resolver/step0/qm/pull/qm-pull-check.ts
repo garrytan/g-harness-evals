@@ -34,6 +34,12 @@ import { startFakeResponses, type FakeResponses } from '../../../../../tests/fix
 import { DUMMY_KEY_PREFIX, imageInfo, qmClient, upStack } from '../../../../../harnesses/qm/gstack/qm-stack.ts';
 
 const HERE = import.meta.dir;
+/** The QM commit an image was built from: the harness-eval.commit label harnesses/qm/Dockerfile sets, which images built FROM it
+ *  inherit. Read from the image, not written here, because harness-eval/qm:dev moves with harnesses/qm/pin.json. */
+const qmRevision = (image: string) => {
+  const c = spawnSync('docker', ['image', 'inspect', '--format', '{{index .Config.Labels "harness-eval.commit"}}', image], { encoding: 'utf8' }).stdout.trim();
+  return c && c !== '<no value>' ? `main@${c.slice(0, 8)} (${c}, harness-eval.commit of ${image})` : `unknown (${image} has no harness-eval.commit label)`;
+};
 const CORE_IMAGE = 'harness-eval/qm:harn52-pull', SANDBOX_IMAGE = 'harness-eval/qm-sandbox:harn52-pull';
 const SANDBOX_RELEASE = 'harness-eval/qm-sandbox:harn52-pull-release', SANDBOX_RELEASE_MISSING = 'harness-eval/qm-sandbox:harn52-pull-release-missing';
 const MODELS = {
@@ -234,7 +240,7 @@ async function main(): Promise<number> {
     fakeA?.stop(); fakeR?.stop(); frontA.stop(true); frontR.stop(true);
   }
   const all = cells.every((c) => Object.entries(c).filter(([k]) => /^\d_/.test(k)).every(([, v]) => (v as { pass: boolean }).pass));
-  writeFileSync(join(out, 'summary.json'), JSON.stringify({ label: 'pull via sandbox tool (QM refuses private-address MCP)', qm: 'main@90e4ced7', images, resolver, all_pass: all, cells: cells.map((c) => ({ cell: c.cell, ...Object.fromEntries(Object.entries(c).filter(([k]) => /^\d_/.test(k)).map(([k, v]) => [k, (v as { pass: boolean }).pass])), usd: c.usd, error: c.error })) }, null, 1) + '\n');
+  writeFileSync(join(out, 'summary.json'), JSON.stringify({ label: 'pull via sandbox tool (QM refuses private-address MCP)', qm: qmRevision(CORE_IMAGE), images, resolver, all_pass: all, cells: cells.map((c) => ({ cell: c.cell, ...Object.fromEntries(Object.entries(c).filter(([k]) => /^\d_/.test(k)).map(([k, v]) => [k, (v as { pass: boolean }).pass])), usd: c.usd, error: c.error })) }, null, 1) + '\n');
   return all ? 0 : 1;
 }
 

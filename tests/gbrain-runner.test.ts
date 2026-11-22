@@ -173,6 +173,16 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         expect(c.preamble).toBe(c.config!.endsWith('route-told') ? 'tasks/multiuser/_shared/preamble.route-told.md' : undefined); expect(c.tasks).toHaveLength(10);
         expect(p.cells).toHaveLength(30); expect(buildManifest(p, sha256, '2026-11-07T00:00:00Z').trials).toHaveLength(300); expect(c.ceiling).toEqual({ input_tokens: 80000, output_tokens: 6000 });
       }
+      else if (p.run_id.startsWith('h10-rule-placement-rerun-')) {
+        // The rule-placement re-run on gbrain 6a507316: the original's 30 route cells on Opus 5.5 and GPT-6.2 Sol, a no-gbrain cell per harness and model, and two QM cells (no rule route: QM has no carrier for one),
+        // 10 v0.3.1 dev tasks, one repetition.
+        expect(c.task_set).toBe('v0.3.1'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(1); expect(p.gbrain_commit).toBe('6a507316104fd23e0f1c9fb7e2ebabd8fdc5488c');
+        expect(['claude-code', 'codex', 'hermes', 'openclaw', 'qm']).toContain(c.harness); expect(c.model).toBe(c.harness === 'claude-code' ? 'anthropic:claude-opus-5-5' : 'openai:gpt-6.2-sol');
+        if (c.gbrain) expect(c.gbrain).toEqual({ surface: 'starter' }); else expect(c.id).toMatch(/-none-mu-v031-dev$/);
+        expect(c.preamble).toBe(c.config?.endsWith('route-told') ? 'tasks/multiuser/_shared/preamble.route-told.md' : undefined);
+        expect(p.cells).toHaveLength(36); expect(c.tasks).toHaveLength(10);
+        expect(buildManifest(p, sha256, '2026-11-21T00:00:00Z').trials).toHaveLength(360);
+      }
       else if (p.run_id.startsWith('v03-pilot-')) {
         // internal-task: the v0.3 dev pilot copies its source cells (told, told-company, told-scoped, verbs-told; none and gbrain-told-live) onto the v0.3 dev split, Haiku, five repetitions; no installer cell (gbrain#7489 is not in the pin).
         expect(c.task_set).toBe('v0.3'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(5); expect(c.model).toBe('anthropic:claude-haiku-5-5');

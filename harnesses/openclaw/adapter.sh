@@ -316,7 +316,7 @@ PY
 fi
 
 # internal-task, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
-# (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction.md, checked here against the sha256 the
+# (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction-openclaw.md, checked here against the sha256 the
 # preregistration cites), goes to OpenClaw through the route HE_HARNESS_CONFIG names. route-tool writes nothing: the gbrain MCP
 # tool descriptions stay the only carrier. route-startup writes the instruction as /workspace/AGENTS.md, the workspace
 # bootstrap file OpenClaw injects into the system prompt's Project Context. route-skill writes
@@ -340,8 +340,8 @@ if [ "$instruction_route" != default ]; then
   route_line=$(python3 - "$route_name" "$harness_dir/routes" "$HE_WORKSPACE_DIR" "$HE_LOG_DIR/instruction-route.json" "$HE_SESSION_STATE_DIR/he-route/emit" "$route_slot" <<'PY'
 import hashlib, json, os, sys
 route, routes, workspace, out, emit_flag, slot = sys.argv[1:7]
-EXPECTED_SHA256 = "4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f"
-PLACEBO_SHA256 = "b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34"
+EXPECTED_SHA256 = "9506febdfc3b5ff8903cd8c9dcfdf41c20754a10c5f609523d29eacb758908c9"
+PLACEBO_SHA256 = "fb87101de6092d14957cde48fbd25132474873450ec0c7fde4da77f0f0a58334"
 HOOK_EMITS = {"route-hook": "every member turn", "route-once": "the first member turn of each session", "route-placebo": "every member turn, the placebo bytes"}
 SKILL_NAME, SKILL_DESCRIPTION = "brain-first", "Check GBrain first, before answering any turn."
 sha = lambda data: hashlib.sha256(data).hexdigest()

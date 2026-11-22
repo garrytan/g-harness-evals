@@ -69,7 +69,7 @@ Keyless proof (2026-11-08, `tests/openrouter-branch.test.ts`): with the stand-in
 
 ## Instruction routes (internal-task)
 
-`HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction.md](../routes/instruction.md), gbrain's per-turn brain-first rule). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
+`HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction-openclaw.md](../routes/instruction-openclaw.md), gbrain 6a507316's per-turn brain-first rule for OpenClaw, 569 bytes; runs before 2026-11-21 carried the shared 289-byte [instruction.md](../routes/instruction.md)). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
 
 - `route-tool`: nothing written; the gbrain MCP tool descriptions are the only carrier.
 - `route-system`: not supported: OpenClaw 2026.10.6 has no config key that adds text to the system prompt, so the adapter exits 2 (HE-ADAPTER-007).
@@ -84,7 +84,7 @@ Each route writes `$HE_LOG_DIR/instruction-route.json` and adds `instruction_rou
 **The H10 route set runs on OpenClaw, except `route-system`.** The contract is in [harnesses/routes/README.md](../routes/README.md), "Routes on four harnesses".
 
 - **`route-once`:** the `route-hook` plugin, emitting only on the first member turn of each session.
-- **`route-placebo`:** the same plugin carrying `routes/placebo.md` (289 bytes, a byte copy of [harnesses/routes/placebo.md](../routes/placebo.md), sha256 checked) on every member turn.
+- **`route-placebo`:** the same plugin carrying `routes/placebo.md` (569 bytes, a byte copy of [harnesses/routes/placebo-openclaw.md](../routes/placebo-openclaw.md), sha256 checked) on every member turn.
 - **`route-told`:** the `route-skill` skill. The told sentence is in the cell's preamble, which the runner carries.
 - **`route-slot-told@<id>`, `route-slot-skill@<id>`:** the bundle byte-copied under `routes/slots/<id>/` goes to `/workspace/skills/<skill_name>/` after the adapter re-checks its `bundle_sha256`. The full shape check runs on the host (`scripts/routes/slot-check.ts`). No bundle is in the image yet.
 - **Refused (HE-ADAPTER-007, exit 2):** `route-system` as before, a driver prefix (Claude Code only), every H10 route on the `run` entry, a malformed slot id, a missing slot bundle or one whose files do not match `bundle_sha256`, and a placebo file off its sha256.
@@ -132,6 +132,10 @@ Findings:
 - A fifth of each turn's input is OpenClaw's own tool catalog and system prompt (about 24,000 to 32,000 tokens per call before the conversation), mostly served from the prompt cache after the first call.
 
 ## Changelog
+
+### 2026-11-21: gbrain's own rule for OpenClaw
+
+"Instruction routes" and "H10 routes" say the image's `routes/instruction.md` and `routes/placebo.md` are now byte copies of `harnesses/routes/instruction-openclaw.md` and `placebo-openclaw.md` (569 bytes each: gbrain 6a507316's rule for OpenClaw and a placebo of the same length), and the adapter pins their sha256. Runs before 2026-11-21 carried the shared 289-byte rule and placebo. Why: the rule-placement re-run on gbrain's newest release tests the rule gbrain installs on OpenClaw.
 
 ### 2026-11-08: OpenRouter cells (internal-task)
 

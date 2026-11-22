@@ -55,7 +55,7 @@ Keyless proof (2026-11-08, `tests/openrouter-branch.test.ts`): with the stand-in
 
 ## Instruction routes (internal-task)
 
-`HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction.md](../routes/instruction.md), gbrain's per-turn brain-first rule). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
+`HE_HARNESS_CONFIG` (the cell's `config`) names the route that carries `/opt/harness/routes/instruction.md` (a byte copy of [harnesses/routes/instruction-hermes.md](../routes/instruction-hermes.md), gbrain 6a507316's per-turn brain-first rule for Hermes, 491 bytes; runs before 2026-11-21 carried the shared 289-byte [instruction.md](../routes/instruction.md)). Unset, empty or `default` leaves the adapter byte-identical to before; any other value exits 2 (HE-ADAPTER-007).
 
 - `route-tool`: nothing written; the gbrain MCP tool descriptions are the only carrier.
 - `route-system`: `agent.system_prompt` in `$HERMES_HOME/config.yaml`.
@@ -70,7 +70,7 @@ Each route writes `$HE_LOG_DIR/instruction-route.json` and adds `instruction_rou
 **The H10 route set runs on Hermes.** The contract is in [harnesses/routes/README.md](../routes/README.md), "Routes on four harnesses".
 
 - **`route-once`:** the `route-hook` hook, emitting only on the first member turn of each session.
-- **`route-placebo`:** the same hook carrying `routes/placebo.md` (289 bytes, a byte copy of [harnesses/routes/placebo.md](../routes/placebo.md), sha256 checked) on every member turn.
+- **`route-placebo`:** the same hook carrying `routes/placebo.md` (491 bytes, a byte copy of [harnesses/routes/placebo-hermes.md](../routes/placebo-hermes.md), sha256 checked) on every member turn.
 - **`route-told`:** the `route-skill` skill. The told sentence is in the cell's preamble, which the runner carries.
 - **`route-slot-told@<id>`, `route-slot-skill@<id>`:** the bundle byte-copied under `routes/slots/<id>/` goes to `$HERMES_HOME/skills/<skill_name>/` after the adapter re-checks its `bundle_sha256` with python3. The full shape check runs on the host (`scripts/routes/slot-check.ts`). No bundle is in the image yet.
 - **Refused (HE-ADAPTER-007, exit 2):** a driver prefix (Claude Code only), a malformed slot id, a missing slot bundle or one whose files do not match `bundle_sha256`, and a placebo file off its sha256.
@@ -138,6 +138,10 @@ Findings:
 - The 36 refused requests per trial in the proxy's usage log are Hermes's model-discovery probes, 12 per turn, refused 403 at $0 (the M0 finding).
 
 ## Changelog
+
+### 2026-11-21: gbrain's own rule for Hermes
+
+"Instruction routes" and "H10 routes" say the image's `routes/instruction.md` and `routes/placebo.md` are now byte copies of `harnesses/routes/instruction-hermes.md` and `placebo-hermes.md` (491 bytes each: gbrain 6a507316's rule for Hermes and a placebo of the same length), and the adapter pins their sha256. Runs before 2026-11-21 carried the shared 289-byte rule and placebo. Why: the rule-placement re-run on gbrain's newest release tests the rule gbrain installs on Hermes.
 
 ### 2026-11-08: OpenRouter cells (internal-task)
 

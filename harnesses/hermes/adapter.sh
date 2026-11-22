@@ -344,7 +344,7 @@ PY
 fi
 
 # internal-task, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
-# (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction.md, checked here against the sha256 the
+# (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction-hermes.md, checked here against the sha256 the
 # preregistration cites), goes to Hermes through the route HE_HARNESS_CONFIG names. route-tool writes nothing: the gbrain MCP
 # tool descriptions stay the only carrier. route-system sets agent.system_prompt in the config.yaml this adapter wrote (Hermes's
 # own manual system prompt, which hermes chat sends as the ephemeral system prompt after its built prompt), as a JSON-quoted
@@ -370,8 +370,8 @@ if [ "$instruction_route" != default ]; then
 import datetime, hashlib, json, os, shlex, sys
 route, routes, pin, out, emit_flag, slot = sys.argv[1:7]
 home = os.environ["HERMES_HOME"]
-EXPECTED_SHA256 = "4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f"
-PLACEBO_SHA256 = "b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34"
+EXPECTED_SHA256 = "10421cbcc8133b3df8bee5cd08ffa33ef5df36222d8c286a9bd3b55d05edfa4d"
+PLACEBO_SHA256 = "bf74528914bb4428ebe124efe4e4a756c6080ad4cca52867aa23f3b1f9883ac2"
 HOOK_EMITS = {"route-hook": "every member turn", "route-once": "the first member turn of each session", "route-placebo": "every member turn, the placebo bytes"}
 SKILL_NAME, SKILL_DESCRIPTION = "brain-first", "Check GBrain first, before answering any turn."
 BEGIN, END = "# he:instruction-route:begin", "# he:instruction-route:end"

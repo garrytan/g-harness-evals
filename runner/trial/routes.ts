@@ -24,7 +24,12 @@ export function cellRoute(cell: { harness: string; config?: string }): RouteConf
   } catch { return null; }
 }
 
-/** The proxy's route texts for a run, or undefined when no cell is a route cell: the rule and the placebo bytes as copies, and
+/** The rule and placebo files a route cell can carry: the shared rule (Claude Code and Codex) and gbrain's own OpenClaw and
+ *  Hermes renderings, each with its placebo of the same length (harnesses/routes/README.md). No file holds another whole, so
+ *  the proxy counts one copy once. */
+export const ROUTE_TEXT_FILES = ['instruction.md', 'placebo.md', 'instruction-openclaw.md', 'placebo-openclaw.md', 'instruction-hermes.md', 'placebo-hermes.md'] as const;
+
+/** The proxy's route texts for a run, or undefined when no cell is a route cell: every rule and placebo file as copies, and
  *  as listings the brain-first description plus the description in slot.json of each slot a cell names. */
 export function routeTextsFor(cells: Array<{ harness: string; config?: string }>, repoRoot = '.'): RouteTexts | undefined {
   const routes = cells.map(cellRoute).filter((r): r is RouteConfig => r !== null);
@@ -34,7 +39,7 @@ export function routeTextsFor(cells: Array<{ harness: string; config?: string }>
   const slotDescriptions = slots.map((s) => join('harnesses', 'routes', 'slots', s, 'slot.json')).filter((p) => existsSync(join(repoRoot, p)))
     .map((p) => (JSON.parse(read(p)) as { description?: unknown }).description).filter((d): d is string => typeof d === 'string' && d.length > 0);
   return {
-    copies: [read(join('harnesses', 'routes', 'instruction.md')), read(join('harnesses', 'routes', 'placebo.md'))],
+    copies: ROUTE_TEXT_FILES.map((f) => read(join('harnesses', 'routes', f))),
     listing: [...new Set([BRAIN_FIRST_DESCRIPTION, ...slotDescriptions])],
   };
 }

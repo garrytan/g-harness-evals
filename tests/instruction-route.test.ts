@@ -46,11 +46,17 @@ type Harness = 'openclaw' | 'hermes';
 type Entry = 'run' | 'serve';
 const HARNESSES: Harness[] = ['openclaw', 'hermes'];
 const ROUTES = { openclaw: ['route-tool', 'route-startup', 'route-hook', 'route-skill'], hermes: ['route-tool', 'route-system', 'route-startup', 'route-hook', 'route-skill'] } as const;
-const INSTRUCTION_FILES = ['harnesses/routes/instruction.md', 'harnesses/openclaw/routes/instruction.md', 'harnesses/hermes/routes/instruction.md'];
 const PLUGIN_FILES = ['harnesses/openclaw/routes/he-instruction-route/index.js', 'harnesses/openclaw/routes/he-instruction-route/openclaw.plugin.json', 'harnesses/openclaw/routes/he-instruction-route/package.json'];
 const INSTRUCTION = readFileSync(join(ROOT, 'harnesses', 'routes', 'instruction.md'));
-const INSTRUCTION_SHA256 = '4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f';
-const SKILL_MD = Buffer.concat([Buffer.from('---\nname: brain-first\ndescription: Check GBrain first, before answering any turn.\n---\n\n'), INSTRUCTION, Buffer.from('\n')]);
+const INSTRUCTION_SHA256 = '4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f'; // pregate-literal: EXPECTED_SHA256=4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f the shared rule, still the 32366ac2 bytes; OpenClaw and Hermes use RULE_SHA256
+/** gbrain's own rendering of the per-turn rule for each harness at 6a507316 (v0.60.754.0), and a placebo of the same length:
+ *  the bytes each build context's routes/ carries (harnesses/routes/README.md, "Per-harness rule bytes"). */
+const routeFile = (name: string) => readFileSync(join(ROOT, 'harnesses', 'routes', name));
+const RULE = { openclaw: routeFile('instruction-openclaw.md'), hermes: routeFile('instruction-hermes.md') };
+const RULE_SHA256: Record<Harness, string> = { openclaw: '9506febdfc3b5ff8903cd8c9dcfdf41c20754a10c5f609523d29eacb758908c9', hermes: '10421cbcc8133b3df8bee5cd08ffa33ef5df36222d8c286a9bd3b55d05edfa4d' };
+const HARNESS_PLACEBO = { openclaw: routeFile('placebo-openclaw.md'), hermes: routeFile('placebo-hermes.md') };
+const HARNESS_PLACEBO_SHA256: Record<Harness, string> = { openclaw: 'fb87101de6092d14957cde48fbd25132474873450ec0c7fde4da77f0f0a58334', hermes: 'bf74528914bb4428ebe124efe4e4a756c6080ad4cca52867aa23f3b1f9883ac2' };
+const skillMd = (h: Harness) => Buffer.concat([Buffer.from('---\nname: brain-first\ndescription: Check GBrain first, before answering any turn.\n---\n\n'), RULE[h], Buffer.from('\n')]);
 const SOUL_SEED = readFileSync(join(INSTALLER_RESULTS, 'he-inst.gbrain-install', 'hermes-installer', 'heldout', 'home', 'SOUL.md')).subarray(0, 667);
 const NODE = Bun.which('node');
 const HAVE_PY = Bun.which('python3') !== null;
@@ -182,8 +188,8 @@ function docsView(h: Harness): string {
 const installerView = (h: Harness) => join(INSTALLER_RESULTS, h === 'openclaw' ? 'oc-inst.gbrain-install/openclaw-installer/heldout' : 'he-inst.gbrain-install/hermes-installer/heldout');
 
 describe('the instruction file and the image layout', () => {
-  test('harnesses/routes/instruction.md and its two image copies are byte-identical, carry the cited sha256 and are gbrain\'s per-turn rule byte for byte (rendered at 32366ac2, the same bytes in the committed 10949a15 installer views)', () => {
-    for (const p of INSTRUCTION_FILES) expect(sha(readFileSync(join(ROOT, p)))).toBe(INSTRUCTION_SHA256);
+  test('harnesses/routes/instruction.md carries the cited sha256 and is gbrain\'s per-turn rule byte for byte (rendered at 32366ac2, the same bytes in the committed 10949a15 installer views)', () => {
+    expect(sha(INSTRUCTION)).toBe(INSTRUCTION_SHA256);
     for (const h of HARNESSES) {
       const manifest = JSON.parse(readFileSync(join(installerView(h), 'manifest.json'), 'utf8'));
       expect(manifest.gbrain_commit).toBe('10949a15110fcd42eb0fed447d7f22e57c7206d5');
@@ -195,9 +201,21 @@ describe('the instruction file and the image layout', () => {
     for (const s of [INSTRUCTION_SHA256, '32366ac26a2b8874b67702249f9274b06e8756c1', '10949a15110fcd42eb0fed447d7f22e57c7206d5', 'src/core/setup/brain-first.ts']) expect(readme).toContain(s);
   });
 
-  test('both adapters check the instruction against the same sha256, and both Dockerfiles copy routes/ to /opt/harness/routes', () => {
+  test('each build context carries gbrain 6a507316\'s rendering for its harness, the same length as its placebo and holding neither the shared rule nor another file whole', () => {
+    const readme = readFileSync(join(ROOT, 'harnesses', 'routes', 'README.md'), 'utf8');
+    expect(readme).toContain('6a507316104fd23e0f1c9fb7e2ebabd8fdc5488c');
     for (const h of HARNESSES) {
-      expect(readFileSync(join(ROOT, 'harnesses', h, 'adapter.sh'), 'utf8')).toContain('EXPECTED_SHA256 = "' + INSTRUCTION_SHA256 + '"');
+      expect(sha(RULE[h])).toBe(RULE_SHA256[h]);
+      expect(readFileSync(join(ROOT, 'harnesses', h, 'routes', 'instruction.md'))).toEqual(RULE[h]);
+      expect(HARNESS_PLACEBO[h].length).toBe(RULE[h].length);
+      expect(RULE[h].includes(INSTRUCTION)).toBe(false);
+      for (const s of [RULE_SHA256[h], HARNESS_PLACEBO_SHA256[h]]) expect(readme).toContain(s);
+    }
+  });
+
+  test('each adapter checks the instruction against its harness\'s sha256, and both Dockerfiles copy routes/ to /opt/harness/routes', () => {
+    for (const h of HARNESSES) {
+      expect(readFileSync(join(ROOT, 'harnesses', h, 'adapter.sh'), 'utf8')).toContain('EXPECTED_SHA256 = "' + RULE_SHA256[h] + '"');
       expect(readFileSync(join(ROOT, 'harnesses', h, 'Dockerfile'), 'utf8')).toContain('\nCOPY routes/ /opt/harness/routes/\n');
     }
   });
@@ -278,8 +296,8 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
   const routed = async (h: Harness, route: string, baseUrl = ANTHROPIC_URL) => {
     const r = await runAdapter({ harness: h, entry: 'serve', config: route, baseUrl, seed: h === 'hermes' ? seedSoul : undefined });
     expect(r.exit, r.log).toBe(0);
-    expect(r.ready!.instruction_route).toMatchObject({ route, instruction_sha256: INSTRUCTION_SHA256 });
-    expect(r.route).toMatchObject({ status: 'ok', code: null, harness: h, route, instruction: { sha256: INSTRUCTION_SHA256, bytes: INSTRUCTION.length } });
+    expect(r.ready!.instruction_route).toMatchObject({ route, instruction_sha256: RULE_SHA256[h] });
+    expect(r.route).toMatchObject({ status: 'ok', code: null, harness: h, route, instruction: { sha256: RULE_SHA256[h], bytes: RULE[h].length } });
     // config.yaml is recorded as the route left it; serve appends the world-MCP block to it afterwards.
     for (const f of r.route!.files) if (!f.path.endsWith('/config.yaml')) expect(sha(readFileSync(f.path))).toBe(f.sha256);
     expect(r.ready!.instruction_route.files).toBe(r.route!.files.length);
@@ -309,21 +327,21 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
       const { diff } = await routed(h, 'route-skill');
       const path = h === 'openclaw' ? 'workspace/skills/brain-first/SKILL.md' : 'state/hermes/skills/brain-first/SKILL.md';
       expect(Object.keys(diff)).toEqual([path]);
-      expect(diff[path]).toEqual(SKILL_MD);
+      expect(diff[path]).toEqual(skillMd(h));
     }, 60_000);
   }
 
   test('openclaw route-startup: /workspace/AGENTS.md is the instruction bytes alone', async () => {
     const { diff } = await routed('openclaw', 'route-startup');
     expect(Object.keys(diff)).toEqual(['workspace/AGENTS.md']);
-    expect(diff['workspace/AGENTS.md']).toEqual(INSTRUCTION);
+    expect(diff['workspace/AGENTS.md']).toEqual(RULE.openclaw);
   }, 60_000);
 
   test('openclaw route-hook: the three plugin files, RULE equal to the instruction, the three documented commands and the runtime inspect', async () => {
     const { r, diff } = await routed('openclaw', 'route-hook');
     const dir = 'state/openclaw/he-instruction-route/';
     expect(Object.keys(diff).sort()).toEqual([dir + 'index.js', dir + 'openclaw.plugin.json', dir + 'package.json']);
-    expect(JSON.parse(/const TEXT = (".*");/.exec(diff[dir + 'index.js']!.toString())![1]!)).toBe(INSTRUCTION.toString());
+    expect(JSON.parse(/const TEXT = (".*");/.exec(diff[dir + 'index.js']!.toString())![1]!)).toBe(RULE.openclaw.toString());
     expect(JSON.parse(/const FLAG = (".*");/.exec(diff[dir + 'index.js']!.toString())![1]!)).toBe(join(r.root, 'state', 'he-route', 'emit'));
     expect(diff[dir + 'package.json']).toEqual(readFileSync(join(ROOT, PLUGIN_FILES[2]!)));
     const plugin = join(r.root, dir.slice(0, -1));
@@ -341,7 +359,7 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
       const template = withCellModelDefaults('hermes', readFileSync(join(ROOT, 'harnesses', 'hermes', 'config', label === 'openai' ? 'config.openai.yaml' : 'config.yaml'), 'utf8'), MODEL);
       const def = (await defaultRun('hermes', url)).files.get('state/hermes/config.yaml')!.toString();
       expect(def.startsWith(template)).toBe(true);
-      const line = '  system_prompt: ' + JSON.stringify(INSTRUCTION.toString()) + '\n';
+      const line = '  system_prompt: ' + JSON.stringify(RULE.hermes.toString()) + '\n';
       const hasAgent = template.includes('\nagent:\n');
       const want = hasAgent
         ? def.replace('\nagent:\n', '\nagent:\n' + line)
@@ -354,7 +372,7 @@ describe.skipIf(!NODE || !HAVE_PY)('each route writes exactly its bytes', () => 
   test('hermes route-startup: SOUL.md is the seed, a blank line, the instruction and a newline', async () => {
     const { r, diff } = await routed('hermes', 'route-startup');
     expect(Object.keys(diff)).toEqual(['state/hermes/SOUL.md']);
-    expect(diff['state/hermes/SOUL.md']).toEqual(Buffer.concat([SOUL_SEED, Buffer.from('\n\n'), INSTRUCTION, Buffer.from('\n')]));
+    expect(diff['state/hermes/SOUL.md']).toEqual(Buffer.concat([SOUL_SEED, Buffer.from('\n\n'), RULE.hermes, Buffer.from('\n')]));
     expect(r.route!.replaced_seed.sha256).toBe(sha(SOUL_SEED));
   }, 60_000);
 
@@ -397,9 +415,9 @@ describe.skipIf(!NODE || !HAVE_PY)('refusals: HE-ADAPTER-007, exit 2, no ready',
     test(h + ': a tampered instruction file is refused', async () => {
       const dir = join(tmp, 'tampered-' + h);
       cpSync(join(ROOT, 'harnesses', h), dir, { recursive: true });
-      writeFileSync(join(dir, 'routes', 'instruction.md'), Buffer.concat([INSTRUCTION, Buffer.from(' ')]));
+      writeFileSync(join(dir, 'routes', 'instruction.md'), Buffer.concat([RULE[h], Buffer.from(' ')]));
       const r = await runAdapter({ harness: h, entry: 'serve', harnessDir: dir, config: 'route-skill' });
-      refused(r, 'not the committed ' + INSTRUCTION_SHA256);
+      refused(r, 'not the committed ' + RULE_SHA256[h]);
       expect(r.route).toMatchObject({ status: 'error', code: 'HE-ADAPTER-007', files: [] });
     }, 60_000);
     test(h + ': an existing destination is refused and left untouched', async () => {
@@ -462,8 +480,6 @@ describe.skipIf(!NODE || !HAVE_PY)('hermes model.default (internal-task)', () =>
 });
 
 describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-placebo, route-told and the slot routes on the host', () => {
-  const PLACEBO_SHA256 = 'b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34';
-  const placebo = readFileSync(join(ROOT, 'harnesses', 'routes', 'placebo.md'));
   const seed = (h: Harness) => (h === 'hermes' ? seedSoul : undefined);
   const refused = (r: Run, text: string) => {
     expect(r.exit, r.log).toBe(2);
@@ -472,11 +488,11 @@ describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-place
     expect(r.log).toContain(text);
   };
 
-  test('the placebo copies in both build contexts are byte copies of harnesses/routes/placebo.md, and both adapters pin its sha256', () => {
-    expect(sha(placebo)).toBe(PLACEBO_SHA256);
+  test('the placebo copy in each build context is a byte copy of harnesses/routes/placebo-<harness>.md, and each adapter pins its sha256', () => {
     for (const h of HARNESSES) {
-      expect(readFileSync(join(ROOT, 'harnesses', h, 'routes', 'placebo.md'))).toEqual(placebo);
-      expect(readFileSync(join(ROOT, 'harnesses', h, 'adapter.sh'), 'utf8')).toContain('PLACEBO_SHA256 = "' + PLACEBO_SHA256 + '"');
+      expect(sha(HARNESS_PLACEBO[h])).toBe(HARNESS_PLACEBO_SHA256[h]);
+      expect(readFileSync(join(ROOT, 'harnesses', h, 'routes', 'placebo.md'))).toEqual(HARNESS_PLACEBO[h]);
+      expect(readFileSync(join(ROOT, 'harnesses', h, 'adapter.sh'), 'utf8')).toContain('PLACEBO_SHA256 = "' + HARNESS_PLACEBO_SHA256[h] + '"');
     }
   });
 
@@ -487,7 +503,7 @@ describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-place
       { input: '{"hook_event_name":"pre_llm_call"}', encoding: 'utf8', env: { PATH: '/usr/local/bin:/usr/bin:/bin' } });
     expect(run().stdout).toBe('');
     writeFileSync(flag, 'emit=1');
-    expect(JSON.parse(run().stdout)).toEqual({ context: placebo.toString('utf8') });
+    expect(JSON.parse(run().stdout)).toEqual({ context: HARNESS_PLACEBO.hermes.toString('utf8') });
     writeFileSync(flag, 'emit=0');
     const r = run();
     expect([r.status, r.stdout]).toEqual([0, '']);
@@ -497,7 +513,7 @@ describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-place
     for (const config of ['route-hook', 'route-once', 'route-placebo']) {
       const r = await runAdapter({ harness: 'hermes', entry: 'run', config, seed: seed('hermes') });
       expect(r.exit, r.log).toBe(0);
-      const bytes = config === 'route-placebo' ? placebo : INSTRUCTION;
+      const bytes = config === 'route-placebo' ? HARNESS_PLACEBO.hermes : RULE.hermes;
       expect(JSON.parse(r.files.get('logs/stub-emit.jsonl')?.toString() ?? 'null')).toEqual({ emit: 'emit=1', context_sha256: [sha(bytes)] });
     }
   }, 120_000);
@@ -507,11 +523,11 @@ describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-place
       for (const config of ['route-once', 'route-placebo']) {
         const r = await runAdapter({ harness: h, entry: 'serve', config, seed: seed(h) });
         expect(r.exit, r.log).toBe(0);
-        expect(r.ready!.instruction_route).toMatchObject({ route: config, instruction_sha256: INSTRUCTION_SHA256, hook: h === 'openclaw' ? 'loaded' : 'healthy' });
+        expect(r.ready!.instruction_route).toMatchObject({ route: config, instruction_sha256: RULE_SHA256[h], hook: h === 'openclaw' ? 'loaded' : 'healthy' });
         expect(r.route!.hook).toMatchObject({ emit_flag: join(r.root, 'state', 'he-route', 'emit'), emits: config === 'route-once' ? 'the first member turn of each session' : 'every member turn, the placebo bytes' });
         expect(JSON.parse(r.files.get('logs/turns/turn-0001.route.json')!.toString())).toEqual({ config, driver: 'cli', route: config, session_key: 'D0ALICE', session_turn: 1, emitted: true });
-        const bytes = config === 'route-placebo' ? placebo : INSTRUCTION;
-        if (config === 'route-placebo') expect(r.route!.placebo).toMatchObject({ sha256: PLACEBO_SHA256, bytes: 289 });
+        const bytes = config === 'route-placebo' ? HARNESS_PLACEBO[h] : RULE[h];
+        if (config === 'route-placebo') expect(r.route!.placebo).toMatchObject({ sha256: HARNESS_PLACEBO_SHA256[h], bytes: RULE[h].length });
         if (h === 'openclaw') {
           const index = r.files.get('state/openclaw/he-instruction-route/index.js')!.toString();
           expect(JSON.parse(/const TEXT = (".*");/.exec(index)![1]!)).toBe(bytes.toString());
@@ -528,7 +544,7 @@ describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-place
       const r = await runAdapter({ harness: h, entry: 'serve', config: 'route-told', seed: seed(h) });
       expect(r.exit, r.log).toBe(0);
       const path = h === 'openclaw' ? 'workspace/skills/brain-first/SKILL.md' : 'state/hermes/skills/brain-first/SKILL.md';
-      expect(r.files.get(path)).toEqual(SKILL_MD);
+      expect(r.files.get(path)).toEqual(skillMd(h));
       expect(r.route!.files.map((f: any) => f.path)).toEqual([join(r.root, path)]);
       expect(r.route!.told).toContain("the cell's preamble file");
       expect(JSON.parse(r.files.get('logs/turns/turn-0001.route.json')!.toString())).toMatchObject({ route: 'route-told', emitted: null });
@@ -546,7 +562,7 @@ describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-place
           const want = n.map((k) => config === 'route-hook' || k === 1);
           expect(status.map((s) => s.emitted)).toEqual(want);
           const fired = r.files.get('logs/stub-emit.jsonl')!.toString().trim().split('\n').map((l) => JSON.parse(l));
-          expect(fired).toEqual(want.map((e) => ({ emit: e ? 'emit=1' : 'emit=0', context_sha256: [e ? INSTRUCTION_SHA256 : null] })));
+          expect(fired).toEqual(want.map((e) => ({ emit: e ? 'emit=1' : 'emit=0', context_sha256: [e ? RULE_SHA256[h] : null] })));
         }
       }
     }, 300_000);
@@ -555,9 +571,9 @@ describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-place
       refused(await runAdapter({ harness: h, entry: 'serve', config: 'sdk-preset+route-hook' }), 'only claude-code takes a driver prefix');
       const dir = join(tmp, 'tampered-placebo-' + h);
       cpSync(join(ROOT, 'harnesses', h), dir, { recursive: true });
-      writeFileSync(join(dir, 'routes', 'placebo.md'), Buffer.concat([placebo, Buffer.from(' ')]));
+      writeFileSync(join(dir, 'routes', 'placebo.md'), Buffer.concat([HARNESS_PLACEBO[h], Buffer.from(' ')]));
       const r = await runAdapter({ harness: h, entry: 'serve', harnessDir: dir, config: 'route-placebo', seed: seed(h) });
-      refused(r, 'not the committed ' + PLACEBO_SHA256);
+      refused(r, 'not the committed ' + HARNESS_PLACEBO_SHA256[h]);
       expect(r.route).toMatchObject({ status: 'error', code: 'HE-ADAPTER-007', files: [] });
     }, 60_000);
   }
@@ -578,7 +594,7 @@ describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-place
       cpSync(join(ROOT, 'harnesses', h), dir, { recursive: true });
       const bundle = join(dir, 'routes', 'slots', 'geva-fixture');
       mkdirSync(join(bundle, 'skill', 'brain-first', 'references'), { recursive: true });
-      writeFileSync(join(bundle, 'skill', 'brain-first', 'SKILL.md'), SKILL_MD);
+      writeFileSync(join(bundle, 'skill', 'brain-first', 'SKILL.md'), skillMd(h));
       writeFileSync(join(bundle, 'skill', 'brain-first', 'references', 'notes.md'), 'Reference notes.\n');
       writeFileSync(join(bundle, 'slot.json'), JSON.stringify({ slot_id: 'geva-fixture', owner: 'internal-task', skill_name: 'brain-first', description: 'Check GBrain first, before answering any turn.', told_sentence: 'Use the brain-first skill.', bundle_sha256: bundleSha256(bundle), source: 'garrytan/gstack-evals@0000000', notes: '' }));
       edit?.(bundle);
@@ -589,7 +605,7 @@ describe.skipIf(!NODE || !HAVE_PY)('H10 (internal-task): route-once, route-place
         const dir = withSlot();
         const r = await runAdapter({ harness: h, entry: 'serve', harnessDir: dir, config, seed: seed(h) });
         expect(r.exit, r.log).toBe(0);
-        expect(r.files.get(skills + 'brain-first/SKILL.md')).toEqual(SKILL_MD);
+        expect(r.files.get(skills + 'brain-first/SKILL.md')).toEqual(skillMd(h));
         expect(r.files.get(skills + 'brain-first/references/notes.md')!.toString()).toBe('Reference notes.\n');
         expect(r.route!.slot).toMatchObject({ slot_id: 'geva-fixture', skill_name: 'brain-first', bundle_sha256: bundleSha256(join(dir, 'routes', 'slots', 'geva-fixture')) });
         expect(r.ready!.instruction_route.route).toBe(config);
@@ -690,21 +706,21 @@ describe('where each route puts the instruction, over two turns and a tool-call 
     return requests.filter(r => Array.isArray(r.body.tools) && r.body.tools.length > 0);
   };
   const texts = (c: unknown): string[] => (typeof c === 'string' ? [c] : Array.isArray(c) ? c.map(b => (b && typeof b === 'object' && typeof (b as any).text === 'string' ? (b as any).text : '')) : []);
-  const ins = INSTRUCTION.toString('utf8');
-  const copies = (v: unknown) => JSON.stringify(v ?? '').split(JSON.stringify(ins).slice(1, -1)).length - 1;
-  const seen = (r: { turn: number; body: Record<string, any> }): Seen => ({ turn: r.turn, system: copies(r.body.system), messages: (r.body.messages as any[]).map(m => copies(m.content)),
+  const ins = (h: Harness) => RULE[h].toString('utf8');
+  const copies = (h: Harness, v: unknown) => JSON.stringify(v ?? '').split(JSON.stringify(ins(h)).slice(1, -1)).length - 1;
+  const seen = (h: Harness) => (r: { turn: number; body: Record<string, any> }): Seen => ({ turn: r.turn, system: copies(h, r.body.system), messages: (r.body.messages as any[]).map(m => copies(h, m.content)),
     tool_result: (r.body.messages as any[]).some(m => Array.isArray(m.content) && m.content.some((b: any) => b?.type === 'tool_result')) });
   const prompt = REQUEST.prompt;
   const where: Record<Harness, Record<string, (b: Record<string, any>) => void>> = {
     openclaw: {
-      'route-startup': b => { expect(texts(b.system)[0]).toContain('# Project Context\n'); expect(texts(b.system)[0]).toContain('\n## /workspace/AGENTS.md\n' + ins + '\n## '); },
-      'route-hook': b => expect(texts(b.messages[0].content)[0]).toMatch(new RegExp('^\\[[^\\]]+\\] ' + escapeRe(ins) + '\n\n' + escapeRe(prompt))),
+      'route-startup': b => { expect(texts(b.system)[0]).toContain('# Project Context\n'); expect(texts(b.system)[0]).toContain('\n## /workspace/AGENTS.md\n' + ins('openclaw') + '\n## '); },
+      'route-hook': b => expect(texts(b.messages[0].content)[0]).toMatch(new RegExp('^\\[[^\\]]+\\] ' + escapeRe(ins('openclaw')) + '\n\n' + escapeRe(prompt))),
       'route-skill': b => expect(texts(b.system)[0]).toContain('<name>brain-first</name>\n    <description>Check GBrain first, before answering any turn.</description>\n    <location>/workspace/skills/brain-first/SKILL.md</location>'),
     },
     hermes: {
-      'route-system': b => expect(texts(b.system).at(-1)!.endsWith('\n\n' + ins)).toBe(true),
-      'route-startup': b => expect(texts(b.system)[0]!.startsWith(SOUL_SEED.toString('utf8') + '\n\n' + ins + '\n\n')).toBe(true),
-      'route-hook': b => expect(texts(b.messages[0].content).at(-1)!.endsWith(prompt + '\n\n' + ins)).toBe(true),
+      'route-system': b => expect(texts(b.system).at(-1)!.endsWith('\n\n' + ins('hermes'))).toBe(true),
+      'route-startup': b => expect(texts(b.system)[0]!.startsWith(SOUL_SEED.toString('utf8') + '\n\n' + ins('hermes') + '\n\n')).toBe(true),
+      'route-hook': b => expect(texts(b.messages[0].content).at(-1)!.endsWith(prompt + '\n\n' + ins('hermes'))).toBe(true),
       'route-skill': b => expect(texts(b.system).join('\n')).toContain('\n    - brain-first: Check GBrain first, before answering any turn.\n'),
     },
   };
@@ -715,7 +731,7 @@ describe('where each route puts the instruction, over two turns and a tool-call 
         expect(reqs.length).toBeGreaterThanOrEqual(3);
         const first = reqs.find(r => r.turn === 1)!;
         where[h][config ?? '']?.(first.body);
-        const counts = reqs.map(seen);
+        const counts = reqs.map(seen(h));
         SURFACE_COUNTS[h][config ?? 'default'] = counts;
         const total = (s: Seen) => s.system + s.messages.reduce((a, b) => a + b, 0);
         expect(counts.some(s => s.turn === 1 && s.tool_result)).toBe(true);
@@ -737,7 +753,6 @@ describe('where each route puts the instruction, over two turns and a tool-call 
  *  turn's own ts. The prompt is the turn's text alone (the preamble does not move where the route's bytes land). */
 const GOLDEN_TASKS = ['cn-02-tansleigh-packaging-deadline', 'cr-01-marrow-agrisupply-site-retraction', 'cn-03-marrow-agrisupply-site'] as const;
 const GOLDEN_MODEL = 'gpt-6.1-sol';
-const PLACEBO = readFileSync(join(ROOT, 'harnesses', 'routes', 'placebo.md'));
 function goldenRequests(task: string): Array<Record<string, any>> {
   const t = parseTask(readFileSync(join(ROOT, 'tasks', 'multiuser', 'v0.3', 'dev', task, 'task.toml'), 'utf8'), task);
   return t.turns.map((turn, i) => {
@@ -869,18 +884,18 @@ describe('H10 golden captures on ' + GOLDEN_MODEL + ': cn-02, cr-01 and cn-03 wi
     for (const config of GOLDEN_ARMS[h]) {
       test.skipIf(!haveImage(h))(h + ' ' + config + ': emitted per turn, copies by location on every request, history carry, the follow-up adds none', async () => {
         const hook = HOOK_ROUTES.includes(config);
-        const needle = (config === 'route-placebo' ? PLACEBO : INSTRUCTION).toString('utf8');
+        const needle = (config === 'route-placebo' ? HARNESS_PLACEBO[h] : RULE[h]).toString('utf8');
         const seen: Record<string, unknown> = {};
         for (const task of GOLDEN_TASKS) {
           const t = await trial(h, config, task);
           const n = sessionTurns(t.reqs);
-          expect(t.ready.instruction_route).toMatchObject({ route: config, instruction_sha256: INSTRUCTION_SHA256 });
+          expect(t.ready.instruction_route).toMatchObject({ route: config, instruction_sha256: RULE_SHA256[h] });
           // The adapter's per-turn status agrees with the task's own session structure.
           expect(t.status.map((s) => [s.session_key, s.session_turn])).toEqual(t.reqs.map((r, i) => [r.channel.id + (r.thread_ts ? ':' + r.thread_ts : ''), n[i]]));
           expect(t.status.map((s) => s.emitted)).toEqual(n.map((k) => (!hook ? null : config === 'route-once' ? k === 1 : true)));
           // The agent requests (the ones that offer tools); housekeeping calls are listed apart.
           const agent = t.requests.filter((r) => toolNames(r.body).length > 0 && r.turn > 0);
-          const rows = agent.map((r) => { const prompt = t.reqs[r.turn - 1]!.prompt as string; return { turn: r.turn, session_turn: n[r.turn - 1]!, rule: where(r.body, INSTRUCTION.toString('utf8'), prompt), placebo: where(r.body, PLACEBO.toString('utf8'), prompt), follow_up: where(r.body, 'No pages matched.', prompt).tool_result > 0 }; });
+          const rows = agent.map((r) => { const prompt = t.reqs[r.turn - 1]!.prompt as string; return { turn: r.turn, session_turn: n[r.turn - 1]!, rule: where(r.body, RULE[h].toString('utf8'), prompt), placebo: where(r.body, HARNESS_PLACEBO[h].toString('utf8'), prompt), follow_up: where(r.body, 'No pages matched.', prompt).tool_result > 0 }; });
           expect(new Set(rows.map((r) => r.turn))).toEqual(new Set(t.reqs.map((r) => r.turn)));
           expect(rows.some((r) => r.turn === 1 && r.follow_up), 'turn 1 has a tool-call follow-up carrying the gbrain result').toBe(true);
           expect(t.gbrainCalls).toBeGreaterThanOrEqual(1);

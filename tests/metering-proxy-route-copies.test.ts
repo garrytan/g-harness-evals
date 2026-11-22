@@ -105,7 +105,9 @@ describe('the route texts a run hands the proxy', () => {
     expect(routeTextsFor([{ harness: 'qm', config: 'pi' }, { harness: 'openclaw' }, { harness: 'hermes', config: 'default' }, { harness: 'codex', config: 'sdk-preset+route-hook' }], ROOT)).toBeUndefined();
     expect(cellRoute({ harness: 'claude-code', config: 'sdk-preset+route-told' })).toEqual({ driver: 'sdk-preset', route: 'route-told' });
     const t = routeTextsFor([{ harness: 'openclaw', config: 'route-tool' }], ROOT)!;
-    expect(t.copies).toEqual([readFileSync(join(ROOT, 'harnesses/routes/instruction.md'), 'utf8'), readFileSync(join(ROOT, 'harnesses/routes/placebo.md'), 'utf8')]);
+    const files = ['instruction.md', 'placebo.md', 'instruction-openclaw.md', 'placebo-openclaw.md', 'instruction-hermes.md', 'placebo-hermes.md'];
+    expect(t.copies).toEqual(files.map((f) => readFileSync(join(ROOT, 'harnesses/routes', f), 'utf8')));
+    for (const a of t.copies) for (const b of t.copies) if (a !== b) expect(b.includes(a)).toBe(false);
     expect(t.listing).toEqual([BRAIN_FIRST_DESCRIPTION]);
   });
   test('the brain-first description is the one the adapters write', () => {

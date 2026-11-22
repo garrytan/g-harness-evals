@@ -1,6 +1,6 @@
 # Instruction routes (internal-task-a, internal-task-b)
 
-**One instruction text, five ways in.** The OpenClaw and Hermes adapters read the cell's `config` (`HE_HARNESS_CONFIG`) and deliver the same bytes through the route it names. Unset, empty or `default` changes nothing: every file the adapter writes and every CLI command it runs stay byte-identical to the adapter before this change (`tests/instruction-route.test.ts`).
+**One instruction text per harness, five ways in.** The OpenClaw and Hermes adapters read the cell's `config` (`HE_HARNESS_CONFIG`) and deliver their harness's instruction bytes through the route it names (since 2026-11-21 each carries gbrain's own rendering for it; see "Per-harness rule bytes"). Unset, empty or `default` changes nothing: every file the adapter writes and every CLI command it runs stay byte-identical to the adapter before this change (`tests/instruction-route.test.ts`).
 
 - **Supported:** OpenClaw 4 of 5 routes, Hermes 5 of 5.
 - **Not supported:** `route-system` on OpenClaw. OpenClaw 2026.10.6 has no config key that adds text to the system prompt, so the adapter refuses that cell (exit 2, HE-ADAPTER-007) and the preregistration drops it.
@@ -13,7 +13,7 @@
 - **Source:** gbrain's own per-turn brain-first rule, the text its per-turn hook injects (the OpenClaw `gbrain-turn-rule` plugin's `prependContext`, the Hermes `pre_llm_call` hook's `{"context": ...}`). Repository `garrytan/gbrain`, commit `32366ac26a2b8874b67702249f9274b06e8756c1` (the merge of gbrain#7898, 2026-10-29, the commit the staged preregistrations pin), file `src/core/setup/brain-first.ts`, `renderBrainFirstTurnRule` (lines 87 to 92), rendered for MCP access on the starter surface with server `gbrain` (the server name both adapters register). Rendering that function at 32366ac2 gives these 289 bytes exactly.
 - **Not 5fd43d5a:** gbrain#7989 (merged as `5fd43d5a`, v0.60.505.0) rewrites the rule to name the tools; this file keeps the 32366ac2 text until the preregistrations move.
 - **Byte-for-byte check in this repository:** the same function and output are unchanged since `10949a15110fcd42eb0fed447d7f22e57c7206d5` (gbrain#7489's per-turn-hook head, the pin of run `gbrain-installer-hook-2026-10`), and the rule as gbrain wrote it at that image build is committed in the installer views of that run: `installer.turn_hook.rule` of [openclaw-installer manifest.json](../../docs/benchmarks/2026-10-25-gbrain-installer-hook/results/oc-inst.gbrain-install/openclaw-installer/heldout/manifest.json) and of the Hermes view, and `RULE` in that view's `state/gbrain/gbrain-turn-rule/index.js`. The test compares all three with `instruction.md`.
-- **One file in the images:** each image's build context is its own harness directory, so `harnesses/openclaw/routes/instruction.md` and `harnesses/hermes/routes/instruction.md` are byte copies, copied to `/opt/harness/routes/instruction.md` by each Dockerfile. The test requires all three to carry the sha256 above, and each adapter refuses an instruction file with any other sha256 (HE-ADAPTER-007), so a stale image cannot run a route.
+- **Claude Code and Codex still carry these bytes.** OpenClaw and Hermes now carry gbrain's own rendering for each of them; see "Per-harness rule bytes" below. Every published H10 number was measured on the 289 bytes above, on all four harnesses.
 
 ## The placebo
 
@@ -21,7 +21,24 @@
 
 - **What it says:** what kind of conversation this is (a team workspace, several people, DMs and channels, local times). It names no tool, no GBrain and no way to answer.
 - **Where it goes:** only `route-placebo`, through the per-turn hook, on every member turn. So a placebo cell gets the same number of bytes in the same place as a `route-hook` cell, without the rule.
-- **Copies:** the adapter pull requests add byte copies under `harnesses/<name>/routes/placebo.md` (each image's build context is its own harness directory). `tests/route-schema.test.ts` pins the length and the sha256.
+- **Copies:** `harnesses/claude-code/routes/placebo.md` and `harnesses/codex/routes/placebo.md` are byte copies of this file (each image's build context is its own harness directory). Since 2026-11-21, `routes/placebo.md` in the OpenClaw and Hermes build contexts copies that harness's own placebo instead ("Per-harness rule bytes" below). `tests/route-schema.test.ts` pins this file's length and sha256.
+
+## Per-harness rule bytes (gbrain 6a507316)
+
+From gbrain v0.60.711.0 (gbrain#8068), `renderBrainFirstTurnRule` writes a different rule for OpenClaw and Hermes, because both harnesses hide MCP tools behind `tool_search` (OpenClaw 2026.10.6 and Hermes v2026.9.24 do this in this rig too: see each harness README's "Network" line). Claude Code, Codex and the generic rendering are still the 289 bytes above. The OpenClaw and Hermes images now carry gbrain's rendering for their harness, so a route cell tests the rule gbrain would install there.
+
+| File | Harness | Bytes | sha256 |
+|---|---|---|---|
+| `instruction-openclaw.md` | OpenClaw | 569 | `9506febdfc3b5ff8903cd8c9dcfdf41c20754a10c5f609523d29eacb758908c9` |
+| `instruction-hermes.md` | Hermes | 491 | `10421cbcc8133b3df8bee5cd08ffa33ef5df36222d8c286a9bd3b55d05edfa4d` |
+| `placebo-openclaw.md` | OpenClaw | 569 | `fb87101de6092d14957cde48fbd25132474873450ec0c7fde4da77f0f0a58334` |
+| `placebo-hermes.md` | Hermes | 491 | `bf74528914bb4428ebe124efe4e4a756c6080ad4cca52867aa23f3b1f9883ac2` |
+
+- **Source:** `garrytan/gbrain` commit `6a507316104fd23e0f1c9fb7e2ebabd8fdc5488c` (v0.60.754.0, 2026-11-21), `src/core/setup/brain-first.ts`, `renderBrainFirstTurnRule({ kind: 'mcp', server: 'gbrain', surface: 'starter' }, harness)`, run inside the gbrain image built from that commit. No trailing newline. The OpenClaw text adds where the tools are (`tool_search` and `tool_call`) and that `tool_search` results show as external data. The Hermes text names the four tools as Hermes registers them (`mcp__gbrain__recall`, `mcp__gbrain__entity`, `mcp__gbrain__search`, `mcp__gbrain__query`).
+- **In the images:** `harnesses/openclaw/routes/instruction.md` and `harnesses/hermes/routes/instruction.md` are byte copies of the harness's file, and `routes/placebo.md` in each build context is a byte copy of its placebo. Each adapter refuses any other sha256 (HE-ADAPTER-007), so a stale image cannot run a route.
+- **The placebos:** the 289-byte placebo with neutral sentences added in the middle (how messages quote, link and thread; channel names) until it is exactly as long as the harness's rule. Like the shared placebo, they name no tool, no GBrain and no way to answer.
+- **Counting:** `runner/trial/routes.ts` gives the proxy all six rule and placebo files as copies. No file holds another whole, so one copy is counted once (`tests/metering-proxy-route-copies.test.ts`).
+- **What this changes for old numbers:** nothing. A published run reproduces from its own preregistration commit, where the images still carry the 289 bytes.
 
 ## The routes
 
@@ -34,7 +51,7 @@
 | `route-hook` (d) | plugin `he-instruction-route` (`routes/he-instruction-route/` in the image) copied to `$OPENCLAW_STATE_DIR/he-instruction-route`; `before_prompt_build` returns the instruction as `prependContext`; installed with `plugins install --link`, `plugins enable`, `hooks.allowConversationAccess true`; `plugins inspect --runtime --json` must say loaded, enabled, `before_prompt_build`; serve entry only | marked `hooks.pre_llm_call` block, command `/bin/echo '{"context":"<instruction>"}'`, plus `shell-hooks-allowlist.json` approving that command; `hermes hooks doctor` must report it healthy |
 | `route-skill` (e) | `/workspace/skills/brain-first/SKILL.md` | `$HERMES_HOME/skills/brain-first/SKILL.md` |
 
-**What a route-skill cell actually carries:** the 46-character paraphrase in the skills list, plus the instruction's 289 bytes only if the model chooses to read the skill. It does not carry the instruction text itself in the request; read its results as "the skill is listed", not as "the instruction was delivered".
+**What a route-skill cell actually carries:** the 46-character paraphrase in the skills list, plus the instruction's bytes (569 on OpenClaw and 491 on Hermes since 2026-11-21, 289 before) only if the model chooses to read the skill. It does not carry the instruction text itself in the request; read its results as "the skill is listed", not as "the instruction was delivered".
 
 **Skill file, both harnesses:** frontmatter `name: brain-first` and the fixed description `Check GBrain first, before answering any turn.` (46 characters, under the 57 Hermes shows, `agent/skill_utils.py` `SKILL_PROMPT_DESC_LIMIT` 60 minus the ellipsis), then a blank line, the instruction and `\n`.
 
@@ -71,7 +88,7 @@ On the first request of a session each route places the instruction once or not 
 
 - The system routes stay at one copy. The hook routes add one copy per member turn, because each turn's user message keeps its prepended (OpenClaw) or appended (Hermes) copy in the history.
 - So a hook cell's request on turn N carries N copies. The tool-call follow-up adds none.
-- The route-skill counts are for a model that never reads the skill; a model that reads it adds the 289 bytes once, as a tool result.
+- The route-skill counts are for a model that never reads the skill; a model that reads it adds the instruction's bytes once, as a tool result (289 in this 2026-10-30 smoke; 569 on OpenClaw and 491 on Hermes since 2026-11-21).
 
 `tests/instruction-route.test.ts` (the docker block, skipped without the images) asserts each first-request placement and these counts on every run.
 
@@ -84,7 +101,7 @@ On the first request of a session each route places the instruction once or not 
 - **No silent runs:** until then, an adapter refuses any route it does not run (exit 2, HE-ADAPTER-007).
 - **Grammar:** a cell's config is `[<driver>+]<route>[@<slot_id>]`, parsed by `parseRouteConfig` in [runner/contracts.ts](../../runner/contracts.ts). The grammar and the per-turn status are in [docs/adapters.md](../../docs/adapters.md), "Route config".
 
-Every rule route delivers the same 289 bytes of `instruction.md` (sha256 `4a81cb9b...` above).
+Every rule route on a harness delivers that harness's rule bytes: the 289 bytes of `instruction.md` (sha256 `4a81cb9b...` above) on Claude Code and Codex, and since 2026-11-21 gbrain's 569-byte OpenClaw and 491-byte Hermes renderings ("Per-harness rule bytes" above).
 
 | Route (`config`) | OpenClaw | Hermes | Claude Code | Codex |
 |---|---|---|---|---|
@@ -227,6 +244,10 @@ env -i PATH=$PATH HOME=$HOME bun test tests/instruction-route-cc-codex.test.ts
 ```
 
 ## Changelog
+
+### 2026-11-21: OpenClaw and Hermes carry gbrain's own rule for each harness
+
+"Per-harness rule bytes" is new: the OpenClaw and Hermes images carry gbrain 6a507316's rendering for their harness (569 and 491 bytes) with placebos of the same length, and the proxy counts all six files. The intro, "The placebo" copies, the route-skill notes and the line above the four-harness route table now say which bytes each harness carries. Why: the rule-placement re-run on gbrain's newest release tests the rule gbrain installs on each harness.
 
 ### 2026-11-01: the Claude Code Agent SDK drivers (internal-task, H10 PR 4)
 

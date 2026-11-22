@@ -28,7 +28,7 @@ import { bundleSha256, checkSlot } from '../scripts/routes/slot-check.ts';
 const ROOT = join(import.meta.dir, '..');
 const ROUTES = join(ROOT, 'harnesses', 'routes');
 const INSTRUCTION_SHA256 = '4a81cb9b35d6ad6f205723618f15e6c3dc66586cbb41f0ebc72141b74669230f';
-const PLACEBO_SHA256 = 'b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34';
+const PLACEBO_SHA256 = 'b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34'; // pregate-literal: PLACEBO_SHA256=b66810fe132a2a9988100dcd01a9c8a03665265ff01555f17cd9b1955047dd34 the shared placebo; OpenClaw and Hermes have their own
 const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 const scratch = mkdtempSync(join(tmpdir(), 'route-schema-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));

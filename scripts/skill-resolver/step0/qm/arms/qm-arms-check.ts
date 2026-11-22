@@ -68,6 +68,12 @@ import { normalizeReceipt, receiptPathIn } from '../../../result-fields.ts';
 
 const HERE = import.meta.dir;
 const STEP0 = resolve(HERE, '..');
+/** The QM commit an image was built from: the harness-eval.commit label harnesses/qm/Dockerfile sets, which images built FROM it
+ *  inherit. Read from the image, not written here, because harness-eval/qm:dev moves with harnesses/qm/pin.json. */
+const qmRevision = (image: string) => {
+  const c = spawnSync('docker', ['image', 'inspect', '--format', '{{index .Config.Labels "harness-eval.commit"}}', image], { encoding: 'utf8' }).stdout.trim();
+  return c && c !== '<no value>' ? `main@${c.slice(0, 8)} (${c}, harness-eval.commit of ${image})` : `unknown (${image} has no harness-eval.commit label)`;
+};
 export const IMAGES = {
   catalog: 'harness-eval/qm:harn52-arm-catalog',
   pull: 'harness-eval/qm:harn52-arm-pull',
@@ -383,7 +389,7 @@ async function main(): Promise<number> {
   for (const n of left) { spawnSync('docker', ['rm', '-f', n], { stdio: 'ignore' }); spawnSync('docker', ['volume', 'rm', '-f', 'qm-home-' + n.replace(/^qm-sbx-/, '')], { stdio: 'ignore' }); spawnSync('docker', ['network', 'rm', 'qm-net-' + n.replace(/^qm-sbx-/, '')], { stdio: 'ignore' }); }
   const passOf = (c: Record<string, unknown>) => Object.entries(c).filter(([, v]) => v && typeof v === 'object' && 'pass' in (v as object)).map(([k, v]) => [k, (v as { pass: boolean }).pass] as const);
   const all = prepareRefuses.pass && indexMatches.pass && shadowReplay.pass && results.every((c) => passOf(c).every(([, p]) => p));
-  writeFileSync(join(out, 'summary.json'), JSON.stringify({ qm: 'main@90e4ced7', resolver: release ? { release: true, glibc: release.glibc, musl: release.musl, sha256: { glibc: sha256File(release.glibc), musl: sha256File(release.musl) } } : { release: false, stand_in: 'scripts/skill-resolver/gbrain-stub.ts' }, labels: { native: 'native (resolver in shadow)', push: 'emulated hook', pull: 'pull via sandbox tool (QM refuses private-address MCP)', none: 'no-catalog' }, receipt: RECEIPT, images, index_matches: indexMatches, prepare_refuses_wrong_image: prepareRefuses, shadow_replay: shadowReplay, all_pass: all, sandboxes_left_and_removed: left, usd_total: results.reduce((a, c) => a + Number(c.usd ?? 0), 0), cells: results.map((c) => ({ cell: c.cell, ...Object.fromEntries(passOf(c)), usd: c.usd })) }, null, 1) + '\n');
+  writeFileSync(join(out, 'summary.json'), JSON.stringify({ qm: qmRevision(IMAGES.catalog), resolver: release ? { release: true, glibc: release.glibc, musl: release.musl, sha256: { glibc: sha256File(release.glibc), musl: sha256File(release.musl) } } : { release: false, stand_in: 'scripts/skill-resolver/gbrain-stub.ts' }, labels: { native: 'native (resolver in shadow)', push: 'emulated hook', pull: 'pull via sandbox tool (QM refuses private-address MCP)', none: 'no-catalog' }, receipt: RECEIPT, images, index_matches: indexMatches, prepare_refuses_wrong_image: prepareRefuses, shadow_replay: shadowReplay, all_pass: all, sandboxes_left_and_removed: left, usd_total: results.reduce((a, c) => a + Number(c.usd ?? 0), 0), cells: results.map((c) => ({ cell: c.cell, ...Object.fromEntries(passOf(c)), usd: c.usd })) }, null, 1) + '\n');
   console.log('all_pass=' + all + ' summary=' + join(out, 'summary.json'));
   return all ? 0 : 1;
 }
