@@ -62,6 +62,8 @@ After publishing, add the archive to [archive/index.json](archive/index.json) un
 - `raw`: a list of private archives, each with its manifest URL and sha256, size, file and part counts, what it covers and why it is private.
 - `bundle`: the public trial bundle's URL, sha256 and size, or nothing until the run reaches the public repository.
 
+A top-level `other` map lists private archives of working files that belong to no run folder (drive clean-ups such as pilot mirrors, planning checkpoints and check budgets), keyed by archive id, with the same fields as a `raw` entry. Each needs a `covers` note.
+
 ## The rule for new runs
 
 **A results pull request archives its run's raw data before it is ready.** [tests/raw-archive.test.ts](../tests/raw-archive.test.ts) fails when a run folder holds results but has no index entry, or when its reproduce.md "Data archive" section doesn't match the index. A run whose raw data can't be archived gets a `not-archived` entry saying why.

@@ -78,6 +78,12 @@ describe('free modes', () => {
     expect(await main(['--bundle', bundle, '--sha256', digest, '--reanalyze'], d)).toBe(0);
     expect(lines.join('\n')).toMatch(/REANALYZE: MATCH: summarize-run/);
   }, 60_000);
+  test.skipIf(!existsSync(join(ROOT, 'docs/benchmarks/2026-11-07-frontier-harness/results/merged/trials.jsonl')))('--reanalyze reads an adapter bundle\'s trial records from their own folder', async () => {
+    const b = build({ root: ROOT, run: 'docs/benchmarks/2026-11-07-frontier-harness', finding: 'frontier-test', analyses: ['summarize-run'], out: join(tmp, 'frontier.bundle.tar.gz') });
+    const { d, lines } = noPaid();
+    expect(await main(['--bundle', b.path, '--sha256', b.sha256, '--reanalyze'], d)).toBe(0);
+    expect(lines.join('\n')).toMatch(/REANALYZE: MATCH: summarize-run/);
+  }, 120_000);
   test('--estimate-only prices every cell with no key, no Docker and no proxy', async () => {
     const { d, lines } = noPaid();
     expect(await main(['--bundle', bundle, '--sha256', digest, '--estimate-only', '--json'], d)).toBe(0);

@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { packBundleArchive, readBundleArchive } from '../runner/archive.ts';
+import { DEFAULT_CAPS, packBundleArchive, readBundleArchive } from '../runner/archive.ts';
 import { packTar } from '../runner/heldout/sealed.ts';
 import { gunzipSync } from 'node:zlib';
 import { build, collect, verify } from '../scripts/bundle.ts';
+import { ADAPTERS, NOT_BUNDLED, SPEND_GLOBS, type RunAdapter } from '../scripts/bundle-adapters.ts';
 
 const j = (...parts: string[]) => parts.join('');
 const RUN = 'docs/benchmarks/2026-01-01-fixture';
@@ -67,6 +68,7 @@ describe('bundle build', () => {
     expect(a.manifest.run_commit).toBe(preregCommit);
     expect(a.manifest.receipts_commit).toBe(resultsCommit);
     expect(a.manifest.generator.commit).not.toBe(resultsCommit);
+    expect('layout' in a.manifest).toBe(false);
   });
 
   test('resolves --run-commit and refuses one that is not a commit or not an ancestor of the receipts commit', () => {
@@ -333,6 +335,14 @@ describe('bundle verify', () => {
     expect(code(() => verify(p))).toBe('HE-BUNDLE-006 bundle.json lists a path twice; fix: it is not a trial bundle');
   });
 
+  test('refuses a layout whose trial records are not files the bundle lists', () => {
+    const b = fresh();
+    for (const layout of [null, 'x', { trials: 'results/trials.jsonl' }, { trials: [] }, { trials: ['../escape/trials.jsonl'] }, { trials: ['/etc/trials.jsonl'] }, { trials: [7] }, { trials: ['results/absent/trials.jsonl'] }]) {
+      const p = repack(b.path, (es) => es.map((e) => (e.path === 'bundle.json' ? { ...e, data: new TextEncoder().encode(JSON.stringify({ ...JSON.parse(Buffer.from(e.data).toString()), layout })) } : e)));
+      expect(code(() => verify(p))).toBe('HE-BUNDLE-006 bundle.json layout is not an object whose trials are files the bundle lists; fix: it is not a trial bundle');
+    }
+  });
+
   test('refuses an unknown schema major', () => {
     const b = fresh();
     const p = repack(b.path, (es) => es.map((e) => (e.path === 'bundle.json' ? { ...e, data: new TextEncoder().encode(JSON.stringify({ ...JSON.parse(Buffer.from(e.data).toString()), schema: 'eval-trial-bundle/2' })) } : e)));
@@ -419,5 +429,111 @@ describe('bundle CLI', () => {
     expect(run('--max-bytes', '9000000000').stderr).toContain('must be a positive integer below');
     expect(run(`--sha256=${b.sha256}`).stderr.trim()).toBe('HE-BUNDLE-001 --sha256 is not a verify flag (write --flag value, not --flag=value)');
     expect(run('--sha265', b.sha256).stderr.trim()).toBe('HE-BUNDLE-001 --sha265 is not a verify flag');
+  });
+});
+
+describe('bundle adapters (scripts/bundle-adapters.ts)', () => {
+  const SPENDY = ['ledger.sqlite', 'shard/proxy-usage.ndjson', 'shard/proxy.log', 'shard/shard-vm.json', 'shard/leases.jsonl', 'fanout-main.json', 'analysis/s1-spend.json', 'meter-summary.txt', 'shard/run-summary.json', 'judges/band-judge-shard.json', 'charged-reservations.json'];
+  const plant = (key: string, a: RunAdapter, trialsText = (t: string) => JSON.stringify({ trial_id: `${key}/${t}` }) + '\n') => {
+    const R = `docs/benchmarks/${key}`;
+    a.prereg.forEach((p, i) => put(`${R}/${p}`, JSON.stringify({ run_id: `${key}-run`, cells: [{ id: `${key}-cell-${i}` }] })));
+    for (const r of a.roots) put(r.endsWith('.json') ? `${R}/${r}` : `${R}/${r}/kept.json`, '{"kept":true}');
+    for (const t of a.trials) put(`${R}/${t}`, trialsText(t));
+    const dir = a.roots.find((r) => !r.endsWith('.json'))!;
+    for (const s of [...SPENDY, 'trials/cell/task/r1/trial.json']) put(`${R}/${dir}/${s}`, '{}');
+    for (const g of a.leaveOut?.globs ?? []) put(`${R}/${g}`, '{"usd":1}');
+    put(`${R}/spend-internal.md`, 'spend');
+    put(`${R}/report.md`, 'report');
+    commit(`plant ${key}`);
+    return R;
+  };
+  const unplant = (R: string) => { rmSync(join(root, R), { recursive: true, force: true }); commit(`unplant ${R}`); };
+
+  for (const [key, a] of Object.entries(ADAPTERS)) {
+    test(`${key}: bundles only the files its adapter names, records the layout and rebuilds`, () => {
+      const R = plant(key, a);
+      try {
+        const b = build({ root, run: R, finding: key, out: join(out, 'adapter', key) });
+        const expected = [...a.prereg, ...a.trials, ...a.roots.map((r) => (r.endsWith('.json') ? r : `${r}/kept.json`)), 'README.md'].sort();
+        expect(b.manifest.files.map((f) => f.path)).toEqual([...new Set(expected)]);
+        expect(b.manifest.layout).toMatchObject({ adapter: key, roots: a.roots, trials: a.trials, why: a.why });
+        expect(b.manifest.layout!.prereg.map((p) => p.path)).toEqual(a.prereg);
+        expect(b.manifest.prereg?.path).toBe(`${R}/${a.prereg[0]}`);
+        expect(b.manifest.cells.map((c) => c.id)).toEqual(a.prereg.map((_, i) => `${key}-cell-${i}`));
+        expect(b.manifest).toMatchObject({ profile: 'harness-evals/results-1', run_id: `${key}-run`, rerun: { available: false, cells: [], default_reps: 1 } });
+        const entries = readBundleArchive(new Uint8Array(readFileSync(b.path)));
+        for (const t of a.trials) expect(Buffer.from(entries.find((e) => e.path === t)!.data).equals(readFileSync(join(root, R, t)))).toBe(true);
+        expect(Buffer.from(entries.find((e) => e.path === 'README.md')!.data).toString()).toContain(`The run's trial records: ${a.trials.join(' and ')}.`);
+        expect(verify(b.path, { sha256: b.sha256, rebuild: true, root }).manifest.layout?.adapter).toBe(key);
+      } finally { unplant(R); }
+    });
+  }
+
+  test('refuses the runs left out on purpose, with the reason', () => {
+    for (const [key, why] of Object.entries(NOT_BUNDLED)) expect(code(() => collect({ root, run: `docs/benchmarks/${key}`, finding: key }))).toBe(`HE-BUNDLE-001 docs/benchmarks/${key} has no bundle layout: ${why}; fix: nothing to build (docs/trial-bundle.md)`);
+  });
+
+  test('refuses an adapter run whose named trial records are not committed', () => {
+    const folder = '2026-11-14-fable-diagnosis';
+    const R = plant(folder, ADAPTERS[folder]!);
+    try {
+      rmSync(join(root, R, 'results/merged/trials.jsonl'));
+      commit('drop merged');
+      expect(code(() => collect({ root, run: R, finding: folder }))).toStartWith(`HE-BUNDLE-001 ${R} has no results/merged/trials.jsonl at `);
+    } finally { unplant(R); }
+  });
+
+  test('runs the analyzers on an adapter run with one canonical trials.jsonl, and refuses them on any other', () => {
+    const folder = '2026-11-07-frontier-harness';
+    const R = plant(folder, ADAPTERS[folder]!, () => readFileSync(join(root, RUN, 'results/trials.jsonl'), 'utf8'));
+    try {
+      put(`${R}/results/merged/manifest.json`, JSON.stringify({ schema_version: 1, run_id: 'fixture-2026-01' }));
+      commit('merged manifest');
+      const b = build({ root, run: R, finding: folder, out: join(out, 'adapter-an'), analyses: ['summarize-run'] });
+      expect(b.manifest.run_id).toBe('fixture-2026-01');
+      expect(verify(b.path, { sha256: b.sha256, rebuild: true, root }).manifest.finding).toBe(folder);
+      rmSync(join(root, R, 'results/merged/manifest.json'));
+      commit('drop merged manifest');
+      expect(code(() => build({ root, run: R, finding: folder, out: join(out, 'adapter-cr'), analyses: ['compare-run'] }))).toBe('HE-BUNDLE-001 --analysis compare-run reads the manifest.json beside the trial records, and this run has no results/merged/manifest.json; fix: build it with --analysis summarize-run');
+    } finally { unplant(R); }
+    for (const other of ['2026-11-10-gstack-skill-ablation', '2026-11-09-fable-5-2-coding', '2026-11-03-qm-s1-gstack-probe']) {
+      const O = plant(other, ADAPTERS[other]!);
+      try { expect(code(() => build({ root, run: O, finding: other, out: join(out, 'adapter-no'), analyses: ['summarize-run'] }))).toBe(`HE-BUNDLE-001 --analysis reads one trials.jsonl, and this run's trial records are ${ADAPTERS[other]!.trials.join(' and ')}; fix: build it without --analysis`); } finally { unplant(O); }
+    }
+  });
+
+  test('keeps the custody refusals on adapter runs', () => {
+    const folder = '2026-11-08-skill-resolver';
+    const R = plant(folder, ADAPTERS[folder]!);
+    try {
+      put(`${R}/results/merged/notes.txt`, 'note ' + j('AGE-SECRET-KEY-1', 'Q'.repeat(58)));
+      commit('identity');
+      expect(code(() => collect({ root, run: R, finding: folder }))).toMatch(/^HE-BUNDLE-002 .*results\/merged\/notes\.txt.*an age identity/);
+      rmSync(join(root, R, 'results/merged/notes.txt'));
+      put(`${R}/results/merged/shards/s1/manifest.json`, JSON.stringify({ run_id: 'x', sealed: { set: 'v9' } }));
+      commit('sealed shard');
+      expect(code(() => collect({ root, run: R, finding: folder }))).toStartWith(`HE-BUNDLE-002 ${R}/results/merged/shards/s1/manifest.json was planned with a sealed root`);
+    } finally { unplant(R); }
+  });
+});
+
+describe('bundle adapters against this checkout', () => {
+  const repo = join(import.meta.dir, '..');
+  for (const [key, a] of Object.entries(ADAPTERS)) {
+    test(`${key}: its named files are committed and everything under its folders fits the archive caps`, () => {
+      const R = `docs/benchmarks/${key}`;
+      const r = spawnSync('git', ['ls-tree', '-r', '-l', '-z', 'HEAD', '--', ...[...a.prereg, ...a.roots].map((p) => `${R}/${p}`)], { cwd: repo, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+      const listed = r.stdout.split('\0').filter(Boolean).map((l) => { const tab = l.indexOf('\t'); return { path: l.slice(tab + 1), bytes: Number(l.slice(0, tab).trim().split(/\s+/)[3]) }; });
+      const paths = new Set(listed.map((f) => f.path));
+      for (const p of [...a.prereg, ...a.trials]) expect(paths.has(`${R}/${p}`)).toBe(true);
+      expect(listed.length).toBeLessThan(DEFAULT_CAPS.maxEntries);
+      expect(listed.reduce((n, f) => n + f.bytes, 0)).toBeLessThan(DEFAULT_CAPS.maxBytes);
+    });
+  }
+
+  test.skipIf(!existsSync(join(repo, 'publication/manifest.json')))('the spend rule covers every spend glob the public export leaves out', () => {
+    const m = JSON.parse(readFileSync(join(repo, 'publication/manifest.json'), 'utf8')) as { exclude: Array<{ globs: string[] }> };
+    const rule = m.exclude.find((e) => e.globs.includes('docs/benchmarks/**/*ledger*.sqlite'))!;
+    for (const g of [...rule.globs, 'docs/benchmarks/**/spend-internal.md'].map((x) => x.replace(/^docs\/benchmarks\//, ''))) expect(SPEND_GLOBS.includes(g) || new Bun.Glob('*spend*').match(g.split('/').pop()!)).toBe(true);
   });
 });

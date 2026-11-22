@@ -38,6 +38,7 @@ import { harnessOwned, scanText, type Hit } from './publish-audit.ts';
 import { EXPORT_FILES, publicationFindings } from './check-sealed-publication.ts';
 import { heldoutSets, liveSharers, readManifest } from './seal-heldout.ts';
 import { IDENTITY_MARKER } from './sealed/custody.ts';
+import { ADAPTERS, NOT_BUNDLED, SPEND_GLOBS } from './bundle-adapters.ts';
 
 export const SCHEMA = 'eval-trial-bundle/1';
 export const PROFILE_RESULTS = 'harness-evals/results-1';
@@ -71,8 +72,19 @@ export interface BundleManifest {
   cells: Array<{ id: string }>;
   held_out: { sealed: boolean; note: string };
   rerun: { available: boolean; cells: string[]; default_reps: number };
+  layout?: BundleLayout;
   generator: { script: string; commit: string | null; dirty: boolean };
   files: BundleFile[];
+}
+/** Only for a run with its own layout (scripts/bundle-adapters.ts). Paths are relative to the run folder, as in the archive. */
+export interface BundleLayout { adapter: string; prereg: Array<{ path: string; sha256: string; commit: string | null }>; roots: string[]; trials: string[]; why: string; left_out: string }
+
+/** The folder, relative to the archive root, whose trials.jsonl the analyzers read: results/ for the standard layout, the
+ *  canonical trials.jsonl's folder for an adapter run, or null when an adapter run's records are not one trials.jsonl. */
+export function trialsDir(m: Pick<BundleManifest, 'layout'>): string | null {
+  if (!m.layout) return 'results';
+  const [only, ...rest] = m.layout.trials;
+  return only && !rest.length && basename(only) === 'trials.jsonl' ? dirname(only) : null;
 }
 
 function git(root: string, args: string[]): string {
@@ -139,14 +151,18 @@ export function collect(opts: BuildOptions): { entries: TarEntry[]; manifest: Bu
   const run = relative(root, resolve(root, opts.run)).replace(/\/+$/, '');
   if (!/^[a-z0-9][a-z0-9._-]*$/.test(opts.finding)) throw new RunnerError('HE-BUNDLE-001', `--finding ${JSON.stringify(opts.finding)} is not a finding id (lowercase letters, digits, dots, dashes, underscores)`);
   if (!run || run.startsWith('..')) throw new RunnerError('HE-BUNDLE-001', `--run ${opts.run} is not inside the repository at ${root}`);
-  const inRun = (p: string) => p === `${run}/prereg.json` || p.startsWith(`${run}/results/`) || p.startsWith(`${run}/sealed-results/`);
+  const folder = dirname(run) === 'docs/benchmarks' ? basename(run) : '';
+  if (Object.hasOwn(NOT_BUNDLED, folder)) throw new RunnerError('HE-BUNDLE-001', `${run} has no bundle layout: ${NOT_BUNDLED[folder]}; fix: nothing to build (docs/trial-bundle.md)`);
+  const adapter = Object.hasOwn(ADAPTERS, folder) ? ADAPTERS[folder]! : undefined;
+  const sources = adapter ? [...adapter.prereg, ...adapter.roots].map((p) => `${run}/${p}`) : [`${run}/prereg.json`, `${run}/results`, `${run}/sealed-results`];
+  const inRun = adapter ? (p: string) => sources.some((s) => p === s || p.startsWith(`${s}/`)) : (p: string) => p === `${run}/prereg.json` || p.startsWith(`${run}/results/`) || p.startsWith(`${run}/sealed-results/`);
   let files: string[];
   let read: (p: string) => Uint8Array | undefined;
   let receiptsCommit: string | null = null;
   if (opts.local) {
     const abs = join(root, run);
     if (!existsSync(abs)) throw new RunnerError('HE-BUNDLE-001', `${run} does not exist`);
-    files = git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', `${run}/prereg.json`, `${run}/results`, `${run}/sealed-results`]).split('\0').filter((p) => p && inRun(p) && lstatSync(join(root, p), { throwIfNoEntry: false }));
+    files = git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...sources]).split('\0').filter((p) => p && inRun(p) && lstatSync(join(root, p), { throwIfNoEntry: false }));
     files = [...new Set(files)].sort();
     const realRoot = realpathSync(root);
     const link = files.find((p) => !lstatSync(join(root, p)).isFile() || realpathSync(join(root, p)) !== join(realRoot, p));
@@ -155,9 +171,9 @@ export function collect(opts: BuildOptions): { entries: TarEntry[]; manifest: Bu
     read = (p) => (listed.has(p) ? new Uint8Array(readFileSync(join(root, p))) : undefined);
   } else {
     const ref = git(root, ['rev-parse', '--verify', `${opts.receiptsCommit ?? 'HEAD'}^{commit}`]).trim();
-    const commit = git(root, ['log', '-1', '--format=%H', ref, '--', `${run}/prereg.json`, `${run}/results`, `${run}/sealed-results`]).trim() || ref;
+    const commit = git(root, ['log', '-1', '--format=%H', ref, '--', ...sources]).trim() || ref;
     receiptsCommit = commit;
-    const tree = git(root, ['ls-tree', '-r', '-z', commit, '--', `${run}/prereg.json`, `${run}/results`, `${run}/sealed-results`]).split('\0').filter(Boolean).map((l) => { const tab = l.indexOf('\t'); return { mode: l.slice(0, 6), path: l.slice(tab + 1) }; });
+    const tree = git(root, ['ls-tree', '-r', '-z', commit, '--', ...sources]).split('\0').filter(Boolean).map((l) => { const tab = l.indexOf('\t'); return { mode: l.slice(0, 6), path: l.slice(tab + 1) }; });
     const odd = tree.find((t) => t.mode !== '100644' && t.mode !== '100755');
     if (odd) throw new RunnerError('HE-BUNDLE-001', `${odd.path} is committed as mode ${odd.mode} (a symbolic link or submodule); fix: a bundle holds regular files only`);
     files = tree.map((t) => t.path).sort();
@@ -173,7 +189,9 @@ export function collect(opts: BuildOptions): { entries: TarEntry[]; manifest: Bu
   const runCommit = resolveCommit('run-commit', opts.runCommit);
   const rerunCommit = resolveCommit('rerun-commit', opts.rerunCommit);
   if (runCommit && receiptsCommit && !isAncestor(root, runCommit, receiptsCommit)) throw new RunnerError('HE-BUNDLE-001', `--run-commit ${runCommit.slice(0, 12)} is not an ancestor of receipts_commit ${receiptsCommit.slice(0, 12)}; fix: pass the commit the run executed from`);
-  const hasTrials = files.includes(`${run}/results/trials.jsonl`);
+  const missing = adapter ? [...adapter.prereg, ...adapter.trials].find((p) => !files.includes(`${run}/${p}`)) : undefined;
+  if (missing) throw new RunnerError('HE-BUNDLE-001', `${run} has no ${missing}${receiptsCommit ? ` at ${receiptsCommit.slice(0, 12)}` : ''}, which scripts/bundle-adapters.ts names for it; fix: pass --receipts-commit the commit that added its results, or correct the run's adapter`);
+  const hasTrials = !!adapter || files.includes(`${run}/results/trials.jsonl`);
   const exportFiles = files.filter((p) => EXPORT_FILES.some((f) => p === `${run}/sealed-results/${f}`));
   if (!hasTrials && !exportFiles.length) throw new RunnerError('HE-BUNDLE-001', `${run} has no results/trials.jsonl and no sealed-results export${receiptsCommit ? ` at ${receiptsCommit.slice(0, 12)}` : ''}; fix: point --run at a run directory, or pass --receipts-commit the commit that added its results`);
   const profile = hasTrials ? PROFILE_RESULTS : PROFILE_SEALED_EXPORT;
@@ -185,14 +203,19 @@ export function collect(opts: BuildOptions): { entries: TarEntry[]; manifest: Bu
 
   let keep: string[];
   if (profile === PROFILE_RESULTS) {
-    const manBytes = read(`${run}/results/manifest.json`);
-    const man = manBytes ? parseJson<{ sealed?: unknown }>(manBytes, `${run}/results/manifest.json`) : {};
-    const preregBytes = read(`${run}/prereg.json`);
-    const set = preregBytes ? parseJson<{ heldout?: { set?: string } }>(preregBytes, `${run}/prereg.json`).heldout?.set : undefined;
-    if (set && setIsSealed(root, set)) throw new RunnerError('HE-BUNDLE-002', `${run}/prereg.json opens set ${set}, which is in sealed custody or shares its world slice or corpus with a set that is; fix: a run on a sealed set is bundled from its sealed-results export only, after release`);
-    if (man.sealed && (opts.local || !exportFiles.length)) throw new RunnerError('HE-BUNDLE-002', `${run}/results/manifest.json was planned with a sealed root and the run is not a released one on main; fix: bundle a sealed opening from its sealed-results export`);
+    for (const pr of adapter ? adapter.prereg.map((p) => `${run}/${p}`) : [`${run}/prereg.json`]) {
+      const preregBytes = read(pr);
+      const set = preregBytes ? parseJson<{ heldout?: { set?: string } }>(preregBytes, pr).heldout?.set : undefined;
+      if (set && setIsSealed(root, set)) throw new RunnerError('HE-BUNDLE-002', `${pr} opens set ${set}, which is in sealed custody or shares its world slice or corpus with a set that is; fix: a run on a sealed set is bundled from its sealed-results export only, after release`);
+    }
+    for (const m of adapter ? files.filter((p) => basename(p) === 'manifest.json') : [`${run}/results/manifest.json`]) {
+      const manBytes = read(m);
+      const man = manBytes ? parseJson<{ sealed?: unknown }>(manBytes, m) : {};
+      if (man.sealed && (opts.local || !exportFiles.length)) throw new RunnerError('HE-BUNDLE-002', `${m} was planned with a sealed root and the run is not a released one on main; fix: bundle a sealed opening from its sealed-results export`);
+    }
     const owned = new Set(harnessOwned(files));
-    keep = files.filter((p) => !owned.has(p) && (!p.startsWith(`${run}/sealed-results/`) || exportFiles.includes(p)));
+    const spend = adapter ? [...SPEND_GLOBS, ...(adapter.leaveOut?.globs ?? [])].map((g) => new Bun.Glob(g)) : [];
+    keep = files.filter((p) => !owned.has(p) && !spend.some((g) => g.match(p.slice(run.length + 1))) && (!p.startsWith(`${run}/sealed-results/`) || exportFiles.includes(p)));
   } else {
     keep = [...exportFiles, ...(files.includes(`${run}/prereg.json`) ? [`${run}/prereg.json`] : [])];
   }
@@ -216,16 +239,29 @@ export function collect(opts: BuildOptions): { entries: TarEntry[]; manifest: Bu
     throw new RunnerError('HE-BUNDLE-003', `${hits.length} token-shaped string(s) in the bundle's files, first in ${first.where} (pattern ${first.pattern}); fix: stop, do not publish, do not strip and retry; report the path and pattern to internal-task`);
   }
 
-  const preregEntry = entries.find((e) => e.path === 'prereg.json');
-  const prereg = preregEntry ? parseJson<{ run_id?: string; cells?: Array<{ id: string }> }>(preregEntry.data, 'prereg.json') : null;
-  const runManifest = entries.find((e) => e.path === 'results/manifest.json');
-  const runId = (runManifest ? parseJson<{ run_id?: string }>(runManifest.data, 'results/manifest.json').run_id : undefined) ?? prereg?.run_id ?? null;
+  type Prereg = { run_id?: string; cells?: Array<{ id: string }> };
+  const preregPaths = adapter ? adapter.prereg : ['prereg.json'];
+  const preregs = preregPaths.flatMap((path) => { const e = entries.find((x) => x.path === path); return e ? [{ entry: e, json: parseJson<Prereg>(e.data, path) }] : []; });
+  const preregEntry = preregs[0]?.entry;
+  const prereg = preregs[0]?.json ?? null;
+  const manifestPath = adapter ? `${dirname(adapter.trials[0]!)}/manifest.json` : 'results/manifest.json';
+  const runManifest = entries.find((e) => e.path === manifestPath);
+  const runId = (runManifest ? parseJson<{ run_id?: string }>(runManifest.data, manifestPath).run_id : undefined) ?? prereg?.run_id ?? null;
   const lastLine = (args: string[]) => { const s = spawnSync('git', args, { cwd: root, encoding: 'utf8' }); return s.status === 0 && s.stdout.trim() ? s.stdout.trim().split('\n').pop()! : null; };
-  const preregCommit = preregEntry ? lastLine(['log', '--diff-filter=A', '--format=%H', ...(receiptsCommit ? [receiptsCommit] : []), '--', `${run}/prereg.json`]) : null;
+  const addedAt = (path: string) => lastLine(['log', '--diff-filter=A', '--format=%H', ...(receiptsCommit ? [receiptsCommit] : []), '--', `${run}/${path}`]);
+  const preregCommit = preregEntry ? addedAt(preregEntry.path) : null;
   const head = lastLine(['rev-parse', 'HEAD']);
   const dirty = spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: root, encoding: 'utf8' }).stdout.trim() !== '';
-  const cells = prereg?.cells ?? [];
+  const cells = adapter ? preregs.flatMap((p) => (Array.isArray(p.json.cells) ? p.json.cells : [])) : prereg?.cells ?? [];
   const results = profile === PROFILE_RESULTS;
+  const layout: BundleLayout | undefined = adapter && {
+    adapter: folder,
+    prereg: preregs.map((p) => ({ path: p.entry.path, sha256: sha256(p.entry.data), commit: p.entry === preregEntry ? preregCommit : addedAt(p.entry.path) })),
+    roots: adapter.roots,
+    trials: adapter.trials,
+    why: adapter.why,
+    left_out: `harnessOwned() and the spend rule (${SPEND_GLOBS.join(', ')})${adapter.leaveOut ? `; also ${adapter.leaveOut.globs.join(', ')}: ${adapter.leaveOut.reason}` : ''}`,
+  };
   const manifest: BundleManifest = {
     schema: SCHEMA,
     profile,
@@ -236,20 +272,21 @@ export function collect(opts: BuildOptions): { entries: TarEntry[]; manifest: Bu
     run_commit: runCommit ?? preregCommit,
     receipts_commit: receiptsCommit,
     rerun_commit: rerunCommit ?? null,
-    source: { mode: opts.local ? 'local' : 'committed', rule: `${run}/prereg.json, results/ and sealed-results/ ${opts.local ? 'in the work tree, git-ignored files left out' : 'at receipts_commit'}, minus scripts/publish-audit.ts harnessOwned(); a sealed-export bundle keeps only the public export files` },
-    prereg: preregEntry ? { path: `${run}/prereg.json`, sha256: sha256(preregEntry.data), commit: preregCommit } : null,
+    source: { mode: opts.local ? 'local' : 'committed', rule: adapter ? `the files under ${run} that scripts/bundle-adapters.ts names for this run (${sources.map((s) => s.slice(run.length + 1)).join(', ')}) ${opts.local ? 'in the work tree, git-ignored files left out' : 'at receipts_commit'}, minus what layout.left_out names` : `${run}/prereg.json, results/ and sealed-results/ ${opts.local ? 'in the work tree, git-ignored files left out' : 'at receipts_commit'}, minus scripts/publish-audit.ts harnessOwned(); a sealed-export bundle keeps only the public export files` },
+    prereg: preregEntry ? { path: `${run}/${preregEntry.path}`, sha256: sha256(preregEntry.data), commit: preregCommit } : null,
     cells,
     held_out: results
       ? { sealed: false, note: exportFiles.length ? 'released sealed run: its raw receipts, published at release, and its public export' : 'plaintext run: every task it used is in the repository with its seal digests' }
       : { sealed: true, note: 'sealed opening: the public export only (counts, digests, decision bits); outsiders can verify digests but cannot rerun until the set retires' },
-    rerun: { available: results, cells: results ? cells.map((c) => c.id) : [], default_reps: 1 },
+    rerun: { available: results && !adapter, cells: results && !adapter ? cells.map((c) => c.id) : [], default_reps: 1 },
+    ...(layout ? { layout } : {}),
     generator: { script: 'scripts/bundle.ts', commit: head, dirty },
     files: entries.map((e) => ({ path: e.path, sha256: sha256(e.data), bytes: e.data.length })).sort((a, b) => (a.path < b.path ? -1 : 1)),
   };
   return { entries, manifest };
 }
 
-export function runAnalyses(toolRoot: string, entries: TarEntry[], ids: string[]): string {
+export function runAnalyses(toolRoot: string, entries: TarEntry[], ids: string[], results = 'results'): string {
   for (const id of ids) if (!Object.hasOwn(ANALYSES, id)) throw new RunnerError('HE-BUNDLE-001', `--analysis ${id} is not one of ${Object.keys(ANALYSES).join(', ')}`);
   const dir = mkdtempSync(join(tmpdir(), 'trial-bundle-'));
   try {
@@ -257,7 +294,7 @@ export function runAnalyses(toolRoot: string, entries: TarEntry[], ids: string[]
     let out = '';
     for (const id of ids) {
       const a = ANALYSES[id]!;
-      const r = spawnSync(process.execPath, [join(toolRoot, a.script), '--results', join(dir, 'results'), ...a.args], { cwd: toolRoot, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp' }, maxBuffer: 256 * 1024 * 1024 });
+      const r = spawnSync(process.execPath, [join(toolRoot, a.script), '--results', join(dir, results), ...a.args], { cwd: toolRoot, encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp' }, maxBuffer: 256 * 1024 * 1024 });
       if (r.status !== 0) throw new RunnerError('HE-BUNDLE-001', `analysis ${id} exited ${r.status}: ${(r.stderr || '').trim().split('\n')[0]}`);
       out += `## ${id}\n\n${r.stdout.split(dir).join('<bundle>')}\n`;
     }
@@ -274,10 +311,18 @@ function readme(m: BundleManifest): string {
     `Format ${m.schema}, profile ${m.profile}, run ${m.run_id ?? 'unknown'} from ${m.repo} ${m.run_dir}.`,
     '',
     '- bundle.json: the manifest (every file with its sha256), the commits, the cells and what was left out.',
-    "- prereg.json: the run's preregistration, verbatim.",
-    m.profile === PROFILE_RESULTS
-      ? "- results/: the run's results directory as committed (trials.jsonl byte for byte), minus harness-owned files (trial.json, harness state and workspace, sidecar tokens, logs other than adapter.log)."
-      : "- sealed-results/: the sealed opening's public export only.",
+    ...(m.layout
+      ? [
+        `- ${m.layout.prereg.map((p) => p.path).join(', ')}: the run's preregistration files, verbatim.`,
+        `- ${m.layout.roots.join(', ')}: the run's files as committed, minus harness-owned files and spend files (ledgers, proxy usage and logs, lease, VM and fan-out records, spend notes).`,
+        `- The run's trial records: ${m.layout.trials.join(' and ')}. bundle.json layout.why says why those are the record.`,
+      ]
+      : [
+        "- prereg.json: the run's preregistration, verbatim.",
+        m.profile === PROFILE_RESULTS
+          ? "- results/: the run's results directory as committed (trials.jsonl byte for byte), minus harness-owned files (trial.json, harness state and workspace, sidecar tokens, logs other than adapter.log)."
+          : "- sealed-results/: the sealed opening's public export only.",
+      ]),
     "- analysis.json and expected-output.txt (when present): the checked-in analyzers that reproduce the finding's tables, and their output.",
     '',
     'Check it with `bun scripts/bundle.ts verify <archive> --sha256 <digest>` from a harness-evals checkout (docs/trial-bundle.md).',
@@ -289,7 +334,10 @@ export function build(opts: BuildOptions & { out: string }): { path: string; sha
   const { entries, manifest } = collect(opts);
   const extra: TarEntry[] = [];
   if (opts.analyses?.length) {
-    const output = runAnalyses(TOOL_ROOT, entries, opts.analyses);
+    const dir = trialsDir(manifest);
+    if (dir === null) throw new RunnerError('HE-BUNDLE-001', `--analysis reads one trials.jsonl, and this run's trial records are ${manifest.layout!.trials.join(' and ')}; fix: build it without --analysis`);
+    if (manifest.layout && opts.analyses.includes('compare-run') && !entries.some((e) => e.path === join(dir, 'manifest.json'))) throw new RunnerError('HE-BUNDLE-001', `--analysis compare-run reads the manifest.json beside the trial records, and this run has no ${join(dir, 'manifest.json')}; fix: build it with --analysis summarize-run`);
+    const output = runAnalyses(TOOL_ROOT, entries, opts.analyses, dir);
     extra.push({ path: 'analysis.json', data: enc.encode(JSON.stringify({ steps: opts.analyses.map((id) => ({ id, ...ANALYSES[id]! })), expected_output_sha256: sha256(output) }, null, 2) + '\n') });
     extra.push({ path: 'expected-output.txt', data: enc.encode(output) });
   }
@@ -335,6 +383,8 @@ export function verify(archivePath: string, opts: VerifyOptions = {}): { sha256:
   const listed = new Map(manifest.files.map((f) => [f.path, f] as const));
   if (listed.size !== manifest.files.length) throw new RunnerError('HE-BUNDLE-006', 'bundle.json lists a path twice; fix: it is not a trial bundle');
   for (const k of ['run_dir', 'receipts_commit'] as const) if (manifest[k] !== null && typeof manifest[k] !== 'string') throw new RunnerError('HE-BUNDLE-006', `bundle.json ${k} is not a string; fix: it is not a trial bundle`);
+  const inside = (p: unknown) => typeof p === 'string' && p !== '' && !p.startsWith('/') && !p.split('/').includes('..');
+  if (manifest.layout !== undefined && !(manifest.layout && typeof manifest.layout === 'object' && Array.isArray(manifest.layout.trials) && manifest.layout.trials.length && manifest.layout.trials.every((t: unknown) => inside(t) && listed.has(t as string)))) throw new RunnerError('HE-BUNDLE-006', 'bundle.json layout is not an object whose trials are files the bundle lists; fix: it is not a trial bundle');
   const problems: string[] = [];
   for (const e of entries) {
     if (e.path === 'bundle.json') continue;
@@ -352,7 +402,7 @@ export function verify(archivePath: string, opts: VerifyOptions = {}): { sha256:
     const diffs: string[] = [];
     for (const f of manifest.files) if (!RESERVED.has(f.path) && want.get(f.path) !== f.sha256) diffs.push(want.has(f.path) ? `changed ${f.path}` : `not in the repository ${f.path}`);
     for (const p of want.keys()) if (!listed.has(p)) diffs.push(`missing from the bundle ${p}`);
-    for (const k of ['profile', 'run_id', 'run_dir', 'prereg', 'cells', 'held_out', 'rerun'] as const) if (JSON.stringify(manifest[k]) !== JSON.stringify(again.manifest[k])) diffs.push(`bundle.json ${k} differs`);
+    for (const k of ['profile', 'run_id', 'run_dir', 'prereg', 'cells', 'held_out', 'rerun', 'layout'] as const) if (JSON.stringify(manifest[k]) !== JSON.stringify(again.manifest[k])) diffs.push(`bundle.json ${k} differs`);
     const rebuildRoot = opts.root ?? process.cwd();
     for (const k of ['run_commit', 'rerun_commit'] as const) { const v: unknown = manifest[k]; if (v !== null && (typeof v !== 'string' || commitSha(rebuildRoot, v) !== v)) diffs.push(`bundle.json ${k} is not a commit in this repository`); }
     if (typeof manifest.run_commit === 'string' && commitSha(rebuildRoot, manifest.run_commit) === manifest.run_commit && !isAncestor(rebuildRoot, manifest.run_commit, manifest.receipts_commit)) diffs.push('bundle.json run_commit is not an ancestor of receipts_commit');
@@ -369,7 +419,8 @@ export function verify(archivePath: string, opts: VerifyOptions = {}): { sha256:
       if (odd) diffs.push(`analysis.json names ${odd}`);
       else if (!ids.length) diffs.push('analysis.json lists no steps');
       else if (repeated) diffs.push(`analysis.json repeats step ${repeated}`);
-      else if (runAnalyses(TOOL_ROOT, again.entries, ids) !== utf8(entries.find((e) => e.path === 'expected-output.txt')?.data ?? new Uint8Array())) diffs.push(`expected-output.txt is not what the checked-in analyzers print (if summarize-run or compare-run changed since the generator commit ${String(manifest.generator?.commit ?? 'unknown').slice(0, 12)}, run verify --rebuild from that commit)`);
+      else if (trialsDir(again.manifest) === null) diffs.push('analysis.json on a run whose trial records are not one trials.jsonl');
+      else if (runAnalyses(TOOL_ROOT, again.entries, ids, trialsDir(again.manifest)!) !== utf8(entries.find((e) => e.path === 'expected-output.txt')?.data ?? new Uint8Array())) diffs.push(`expected-output.txt is not what the checked-in analyzers print (if summarize-run or compare-run changed since the generator commit ${String(manifest.generator?.commit ?? 'unknown').slice(0, 12)}, run verify --rebuild from that commit)`);
     }
     if (diffs.length) throw new RunnerError('HE-BUNDLE-008', `the repository at ${manifest.receipts_commit.slice(0, 12)} gives ${diffs.length} file difference(s), first: ${diffs[0]}`);
   }

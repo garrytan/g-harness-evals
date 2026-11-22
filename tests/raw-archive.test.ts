@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, symli
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { applyBlock, block, checkIndex, dropReason, END, entryHead, pack, scan, START, strip, verifyDir } from '../scripts/archive/raw.ts';
+import { applyBlock, block, checkIndex, dropReason, END, entryHead, INDEX_SCHEMA, pack, scan, START, strip, verifyDir } from '../scripts/archive/raw.ts';
 
 const p = (...s: string[]) => s.join('');
 const fakeAnthropic = p('sk-', 'ant-', 'api03-', 'A'.repeat(40));
@@ -151,5 +151,20 @@ describe('report block', () => {
 describe('docs/archive/index.json', () => {
   test('every run folder with results has an archive entry and an up-to-date report link', () => {
     expect(checkIndex()).toEqual([]);
+  });
+
+  test('refuses an other entry with a foreign URL, a bad sha256 or a short covers note', () => {
+    const t = mkdtempSync(join(tmpdir(), 'raw-index-'));
+    mkdirSync(join(t, 'docs/benchmarks'), { recursive: true });
+    mkdirSync(join(t, 'docs/archive'), { recursive: true });
+    const good = { visibility: 'private', manifest_url: 'https://github.com/garrytan/g-harness-evals/releases/download/raw-a/a.manifest.json', manifest_sha256: 'a'.repeat(64), bytes: 1, files: 1, parts: 1, covers: 'a drive folder of checkpoint files' };
+    const other = { a: good, b: good, c: { ...good, manifest_url: 'https://example.com/releases/download/raw-c/c.manifest.json' }, d: { ...good, manifest_url: good.manifest_url.replace(/a\.manifest/, 'd.manifest'), manifest_sha256: 'abc' }, e: { ...good, manifest_url: good.manifest_url.replace(/a\.manifest/, 'e.manifest'), covers: 'short' } };
+    writeFileSync(join(t, 'docs/archive/index.json'), JSON.stringify({ schema: INDEX_SCHEMA, runs: {}, other }));
+    expect(checkIndex(t)).toEqual([
+      "other b: manifest URL is not this archive's manifest in a release of this repository",
+      "other c: manifest URL is not this archive's manifest in a release of this repository",
+      'other d: sha256 must be 64 hex characters',
+      'other e: needs a covers note of at least 20 characters',
+    ]);
   });
 });

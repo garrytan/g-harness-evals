@@ -413,7 +413,8 @@ export interface IndexEntry {
   raw?: RawRef[];
   bundle?: { url: string; sha256: string; bytes: number } | null;
 }
-export interface ArchiveIndex { schema: string; runs: Record<string, IndexEntry> }
+/** other: private archives of working files that belong to no run folder (drive clean-ups), keyed by archive id. */
+export interface ArchiveIndex { schema: string; runs: Record<string, IndexEntry>; other?: Record<string, RawRef> }
 export const START = '<!-- data-archive:start (generated from docs/archive/index.json by scripts/archive/raw.ts link) -->';
 export const END = '<!-- data-archive:end -->';
 const gb = (n: number) => (n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : (n / 1e6).toFixed(1) + ' MB');
@@ -455,13 +456,19 @@ export function checkIndex(root = ROOT): string[] {
     if (!hasResults(join(bench, run, 'results'))) continue;
     if (!idx.runs[run]) problems.push(run + ': has results but no entry in docs/archive/index.json; archive its raw data (docs/raw-archive.md) or add a not-archived entry with the reason');
   }
+  const releaseUrl = /^https:\/\/github\.com\/garrytan\/g?-?harness-evals\/releases\/download\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+  for (const [id, r] of Object.entries(idx.other ?? {})) {
+    if (!releaseUrl.test(r.manifest_url) || basename(r.manifest_url) !== id + '.manifest.json') problems.push('other ' + id + ': manifest URL is not this archive\'s manifest in a release of this repository');
+    if (!/^[0-9a-f]{64}$/.test(r.manifest_sha256 ?? '')) problems.push('other ' + id + ': sha256 must be 64 hex characters');
+    if (!(r.covers && r.covers.length >= 20)) problems.push('other ' + id + ': needs a covers note of at least 20 characters');
+  }
   for (const [run, e] of Object.entries(idx.runs)) {
     if (!['archived', 'partial', 'not-archived'].includes(e.status)) problems.push(run + ': unknown status ' + e.status);
     if (e.status !== 'archived' && !(e.reason && e.reason.length >= 20)) problems.push(run + ': a ' + e.status + ' entry needs a reason of at least 20 characters');
     if (e.status !== 'not-archived' && !e.raw?.length && !e.bundle) problems.push(run + ': ' + e.status + ' entry names no archive');
     for (const [what, url, digest] of [...(e.raw ?? []).map((r) => ['raw', r.manifest_url, r.manifest_sha256] as const), ['bundle', e.bundle?.url, e.bundle?.sha256] as const]) {
       if (url === undefined) continue;
-      if (!/^https:\/\/github\.com\/garrytan\/g?-?harness-evals\/releases\/download\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(url)) problems.push(run + ': ' + what + ' URL is not a release asset of this repository');
+      if (!releaseUrl.test(url)) problems.push(run + ': ' + what + ' URL is not a release asset of this repository');
       if (!/^[0-9a-f]{64}$/.test(digest ?? '')) problems.push(run + ': ' + what + ' sha256 must be 64 hex characters');
     }
     if (!existsSync(join(bench, run))) continue;

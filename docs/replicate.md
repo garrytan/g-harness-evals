@@ -121,5 +121,6 @@ H1 OpenClaw (`docs/replicate/band-coverage-m3-heldout-openclaw.json`, 4,000 roun
 - **gbrain cells are not rerun yet.** Their corpus, sidecar image and paid preflight probe are outside the equivalence check.
 - **QM cells are not rerun yet.** QM needs its pinned `qm-sandbox` image and its sandbox teardown, which this tool does not build or clean.
 - **Only registered runs with a `prereg.json` are rerun.** The rerun plans through `run.ts plan --replication-of`, which takes any registered experiment with a `prereg.json` beside its preregistration: held-out runs on a spent, plaintext set, and dev-only runs such as matrix-mu (Opus 5.5 and GPT-6.1 Sol). A run with no `prereg.json` gets `--reanalyze` and `--estimate-only` only.
+- **Runs with their own layout are not rerun.** Their bundles ([trial-bundle.md](trial-bundle.md#runs-with-their-own-layout)) set `rerun.available` to false, so a paid rerun is refused. `--reanalyze` works when the bundle was built with `--analysis`, which needs the run's records in one `trials.jsonl`.
 - **Sealed sets are never rerun.** A sealed opening's bundle carries only its public export; `--replication-of` refuses any set in sealed custody.
 - **The estimate is approximate** when the run's request lines lack cache-write counts; it is then rounded up.

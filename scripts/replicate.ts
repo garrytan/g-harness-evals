@@ -38,7 +38,7 @@ import { defaultPreambleFor } from '../runner/trial/task.ts';
 import { registeredRuns } from '../runner/heldout/openings.ts';
 import { seededRandom } from '../runner/stats/paired.ts';
 import { EXCLUDED_TERMINATIONS, bandCoverage, cellCounts, pairedDifference, passRate, replicationBand, type TaskCount } from '../runner/replicate/band.ts';
-import { ANALYSES, PROFILE_RESULTS, TOOL_ROOT, build as buildBundle, runAnalyses, verify, type BundleManifest } from './bundle.ts';
+import { ANALYSES, PROFILE_RESULTS, TOOL_ROOT, build as buildBundle, runAnalyses, trialsDir, verify, type BundleManifest } from './bundle.ts';
 import { regradeResults } from './regrade.ts';
 import { TOKEN_PATTERNS } from './publish-audit.ts';
 
@@ -199,7 +199,7 @@ async function loadBundle(a: Args, d: Deps): Promise<Loaded> {
   const text = (p: string) => (existsSync(join(dir, p)) ? readFileSync(join(dir, p), 'utf8') : undefined);
   const prereg = text('prereg.json');
   if (!digest) d.err(`WARN: no --sha256 given; the archive's sha256 is ${v.sha256}. Compare it with the finding's data: line before trusting it.`);
-  return { path, sha256: v.sha256, manifest: v.manifest, dir, results: join(dir, 'results'), prereg: prereg ? JSON.parse(prereg) : null, preregSha256: prereg === undefined ? null : createHash('sha256').update(prereg).digest('hex'), analysis: text('analysis.json'), expected: text('expected-output.txt'), finding };
+  return { path, sha256: v.sha256, manifest: v.manifest, dir, results: join(dir, trialsDir(v.manifest) ?? 'results'), prereg: prereg ? JSON.parse(prereg) : null, preregSha256: prereg === undefined ? null : createHash('sha256').update(prereg).digest('hex'), analysis: text('analysis.json'), expected: text('expected-output.txt'), finding };
 }
 
 // ---------- --reanalyze ----------
@@ -228,7 +228,7 @@ function reanalyze(b: Loaded, d: Deps): { exit: number; report: Record<string, u
     }
   }
   let output: string;
-  try { output = runAnalyses(toolRoot, readdirEntries(b.dir), steps.map((s) => s.id)); }
+  try { output = runAnalyses(toolRoot, readdirEntries(b.dir), steps.map((s) => s.id), trialsDir(b.manifest) ?? 'results'); }
   finally { if (worktree) { git(['worktree', 'remove', '--force', worktree]); rmSync(worktree, { recursive: true, force: true }); } }
   const match = output === b.expected;
   const report = { schema_version: REPORT_SCHEMA, mode: 'reanalyze', bundle: bundleInfo(b), analyzers, steps: steps.map((s) => s.id), generator_dirty: b.manifest.generator?.dirty ?? null, match };
