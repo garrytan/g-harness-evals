@@ -17,6 +17,8 @@ All under [scripts/ubicloud/](../scripts/ubicloud/), beside the check lane ([scr
 
 ## One shard
 
+Set `UBI_OWNER` before any other step: `ubi-runner.sh` refuses to create or verify a VM without it, and `ubi-runner.sh list --mine` shows only the VMs named with your owner tag.
+
 ```sh
 export UBI_OWNER=<your thread code>          # every VM is named ubirun-<owner>-<epoch>-<hex>-t<hours>
 scripts/ubicloud/run-shard.sh \
