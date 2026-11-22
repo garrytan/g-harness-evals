@@ -524,11 +524,14 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.serves === 'several') {
         const g = c.gbrain;
         const refused = g.brain === 'company' && g.scope === undefined && (g.install ?? 'mcp') === 'mcp';
-        const memberKeys = (g.brain ?? 'bot-visible') === 'bot-visible' && g.install === 'gbrain-installer' && g.scope === 'member';
+        // internal-task: the member-key shape also runs with the plain MCP install (the told arm), the installer left out.
+        const memberKeys = (g.brain ?? 'bot-visible') === 'bot-visible' && (g.install === 'gbrain-installer' || (g.install ?? 'mcp') === 'mcp') && g.scope === 'member';
+        // internal-task: the member-key shape on the company brain, for bots several people talk to; the labels are its read gate.
+        const companyMemberKeys = g.brain === 'company' && g.scope === 'member' && (g.install ?? 'mcp') === 'mcp' && g.labels === 'readers';
         if (g.ingest === 'live' || g.access !== undefined || g.channel_remember !== undefined || (g.embeddings ?? 'off') !== 'off') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.serves "several" runs without live ingestion, access rules, channel_remember or embeddings; the labelling adds gbrain's own people/<member>/ rules and member keys, and nothing else may change what a read returns`);
         if (g.labels !== undefined && g.labels !== 'readers') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.labels must be "readers" or absent; got ${JSON.stringify(g.labels)}`);
-        if (g.labels === 'readers' && (!memberKeys || c.split !== 'dev')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.labels "readers" needs the member-key shape (bot-visible brain, install "gbrain-installer", scope "member") on the dev split; only the dev bot-visible brain is built with reader labels, and only member keys read through them (got brain ${JSON.stringify(g.brain ?? 'bot-visible')}, scope ${JSON.stringify(g.scope ?? 'none')}, split ${c.split})`);
-        if (!refused && !memberKeys) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.serves "several" takes two shapes: {"surface": "starter", "brain": "company", "serves": "several"} (no scope or install: the unbound token, refused) or {"surface": "starter", "install": "gbrain-installer", "brain": "bot-visible", "scope": "member", "serves": "several"} (each member's own key); got brain ${JSON.stringify(g.brain ?? 'bot-visible')}, install ${JSON.stringify(g.install ?? 'mcp')}, scope ${JSON.stringify(g.scope ?? 'none')}`);
+        if (g.labels === 'readers' && (!(memberKeys || companyMemberKeys) || c.split !== 'dev')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.labels "readers" needs a member-key shape (bot-visible brain, install "gbrain-installer" or "mcp", scope "member"; or company brain, scope "member") on the dev split; only the dev bot-visible and company brains are built with reader labels, and only member keys read through them (got brain ${JSON.stringify(g.brain ?? 'bot-visible')}, scope ${JSON.stringify(g.scope ?? 'none')}, split ${c.split})`);
+        if (!refused && !memberKeys && !companyMemberKeys) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.serves "several" takes three shapes: {"surface": "starter", "brain": "company", "serves": "several"} (no scope or install: the unbound token, refused), {"surface": "starter", "install": "gbrain-installer", "brain": "bot-visible", "scope": "member", "serves": "several"} (each member's own key) or {"surface": "starter", "brain": "company", "scope": "member", "serves": "several", "labels": "readers"} (each member's own key on the reader-labelled company brain); got brain ${JSON.stringify(g.brain ?? 'bot-visible')}, install ${JSON.stringify(g.install ?? 'mcp')}, scope ${JSON.stringify(g.scope ?? 'none')}`);
       }
     }
     // internal-task-a (internal-task-b plan v3, M1): QM's memory-provider config reaches gbrain only through MEMORY_PROVIDER_CONFIG, so it needs a
@@ -1080,18 +1083,19 @@ async function main(argv: string[]): Promise<number> {
       }
       // internal-task: each serves-several configuration is checked per split, keyless, before any trial: the refused arm's unbound token
       // is refused with no page, and each member key reads as its member (on the labelled brain, exactly its member's pages).
-      const servesRuns = [...new Set(gbrainCells.filter((c) => c.gbrain!.serves === 'several').map((c) => `${c.gbrain!.brain === 'company' ? 'refused' : 'member-keys'}|${c.gbrain!.labels ?? 'none'}|${c.split}`))];
+      const servesRuns = [...new Set(gbrainCells.filter((c) => c.gbrain!.serves === 'several').map((c) => `${c.gbrain!.brain === 'company' && c.gbrain!.scope !== 'member' ? 'refused' : 'member-keys'}|${c.gbrain!.labels ?? 'none'}|${c.split}|${c.gbrain!.brain ?? 'bot-visible'}`))];
       if (servesRuns.length) {
         const { probeServesSeveral, writeAccessPreflight } = await import('./trial/gbrain.ts');
-        const { tokenMembers, labelledPageList } = await import('../gbrain/build-brain.ts');
+        const { tokenMembers, labelledPageList, companyLabelledReaders } = await import('../gbrain/build-brain.ts');
         const { worldAt, DEFAULT_WORLD_PATH } = await import('./trial/world.ts');
         const world = worldAt(setWorld?.path ?? (sealed ? sealed.worldPath : DEFAULT_WORLD_PATH));
         for (const run of servesRuns) {
-          const [arm, labels, split] = run.split('|') as ['refused' | 'member-keys', 'none' | 'readers', 'dev' | 'heldout'];
-          const name = `${arm}${labels === 'none' ? '' : `-${labels}`}-${split}`;
+          const [arm, labels, split, brain] = run.split('|') as ['refused' | 'member-keys', 'none' | 'readers', 'dev' | 'heldout', 'bot-visible' | 'company'];
+          const name = `${arm}${arm === 'member-keys' && brain === 'company' ? '-company' : ''}${labels === 'none' ? '' : `-${labels}`}-${split}`;
           const members = tokenMembers(world, split).map((mm) => mm.id);
           const dir = join(runDir, `preflight-gbrain-serves-${name}`);
-          const { evidence, problems } = await probeServesSeveral(image, split, dir, { arm, members, ...(labels === 'readers' ? { readers: Object.fromEntries(labelledPageList(world, split).map((p) => [p.page_slug, p.readers])) } : {}) });
+          const readers = labels !== 'readers' ? null : brain === 'company' ? companyLabelledReaders(world, split) : Object.fromEntries(labelledPageList(world, split).map((p) => [p.page_slug, p.readers]));
+          const { evidence, problems } = await probeServesSeveral(image, split, dir, { arm, members, brain, ...(readers ? { readers } : {}) });
           const record = join(runDir, `serves-preflight-${name}.json`);
           writeAccessPreflight(record, { split, image, ok: !problems.length, problems, evidence }, dir);
           if (problems.length) throw new RunnerError('HE-GBRAIN-002', `serves=several ${name}: ${image} fails ${problems.length} check(s): ${problems.slice(0, 4).join('; ')}${problems.length > 4 ? `; ${problems.length - 4} more in ${record}` : ''}`);

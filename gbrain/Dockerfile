@@ -203,6 +203,15 @@ RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split
       --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
+# internal-task: the dev company brain with each page's world readers (token members only) in its frontmatter as readable_by
+# (build-brain.ts --brain company --labels readers), for the serves-several member-key arm on the company brain. Dev only.
+FROM builder AS brain-dev-company-labelled
+ARG GBRAIN_COMMIT
+ARG CORPUS_COMMIT
+RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --brain company --labels readers \
+      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
+
 # internal-task-a: the install bundle, built from the gbrain checkout and the two bot-visible brains, keyless. internal-task-b: the installer
 # section runs gbrain setup <harness> --instructions-only; for Hermes the build HERMES_HOME is seeded first with Hermes's own
 # SOUL.md at the pinned Hermes commit (harnesses/hermes/pin.json soul_md: what Hermes's first run writes into HERMES_HOME, which
@@ -240,6 +249,7 @@ COPY --from=brain-dev-member /brain /brains/dev-member
 COPY --from=brain-heldout-member /brain /brains/heldout-member
 COPY --from=brain-dev-member-acl /brain /brains/dev-member-acl
 COPY --from=brain-dev-labelled /brain /brains/dev-labelled
+COPY --from=brain-dev-company-labelled /brain /brains/dev-company-labelled
 COPY --from=install /install /install
 # /brain is the per-trial working copy; the container runs as the calling user, so it must be writable by anyone.
 RUN chmod -R a+rX /brains /install && mkdir -m 0777 /brain && chmod 0555 /opt/sidecar/gbrain/entrypoint.sh /opt/sidecar/gbrain/export-install.sh

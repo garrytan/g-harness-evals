@@ -123,9 +123,11 @@ export interface CompanyPage {
   readers: string[];
   /** The gbrain source the page is imported into. */
   source: string;
+  /** internal-task: present only in a company brain built with --labels readers: the readable_by written into its frontmatter. */
+  labelled_readers?: string[];
 }
 
-export type ListedCompanyPage = Omit<CompanyPage, 'sha256' | 'bytes' | 'source_path'>;
+export type ListedCompanyPage = Omit<CompanyPage, 'sha256' | 'bytes' | 'source_path' | 'labelled_readers'>;
 
 export interface CompanySource { id: string; readers: string[]; pages: number }
 export interface CompanyGrant { member: string; token_name: string; write: string; sources: string[] }
@@ -167,6 +169,8 @@ export interface CompanyBrainManifest {
   access?: 'rules';
   rules?: AccessRule[];
   bindings?: AccessBinding[];
+  /** internal-task: present only on a company brain built with --labels readers (each page's labelled_readers). */
+  labels?: 'readers';
 }
 
 /** internal-task: one gbrain folder rule as the build added it: the source, the prefix, the rule id gbrain answered with and the
@@ -372,6 +376,17 @@ export function labelledPageList(world: World, split: 'dev' | 'heldout'): Array<
   return pageList(world, split).map((p) => ({ ...p, readers: p.kind === 'channel' ? sortedUnique(world.channels.find((c) => c.id === p.world_id)!.members.filter((id) => members.includes(id))) : sortedUnique(members) }));
 }
 
+/** internal-task: the company brain's page readers among the token members (employees and the agent), by gbrain page slug: what
+ *  --labels readers writes into each page's frontmatter as readable_by. A page no token member may read gets [nobody-listed], a
+ *  member id gbrain has no member for, so no key reads it. */
+export function companyLabelledReaders(world: World, split: 'dev' | 'heldout'): Record<string, string[]> {
+  const members = new Set(tokenMembers(world, split).map((m) => m.id));
+  return Object.fromEntries(companyPageList(world, split).map((p) => {
+    const readers = p.readers.filter((id) => members.has(id));
+    return [p.page_slug, readers.length ? readers : ['nobody-listed']];
+  }));
+}
+
 /** Find a page in the corpus: under its own split first, then the other split for a "both" record. */
 function locate(corpus: string, split: 'dev' | 'heldout', slug: string): string | null {
   for (const s of [split, split === 'dev' ? 'heldout' : 'dev']) {
@@ -428,7 +443,8 @@ export interface BuildOptions {
   embeddings?: string;
   /** internal-task: "rules" gates reads with folder rules and member-bound tokens instead of per-token source grants; member or company only. */
   access?: 'rules';
-  /** internal-task: "readers" writes each page's readers (labelledPageList) into its frontmatter as readable_by; bot-visible only. */
+  /** internal-task: "readers" writes each page's readers (labelledPageList) into its frontmatter as readable_by; bot-visible, or
+   *  (internal-task) the company brain (companyLabelledReaders). */
   labels?: 'readers';
   log?: (line: string) => void;
 }
@@ -439,7 +455,7 @@ export const EMBEDDING_MODELS = ['openai:text-embedding-3-small'] as const;
 export function buildBrain(o: BuildOptions): BrainManifest | CompanyBrainManifest {
   if (o.access !== undefined && o.access !== 'rules') throw new Error(`--access must be "rules" (got ${String(o.access)})`);
   if (o.access && o.brain !== 'member' && o.brain !== 'company') throw new Error(`--access rules needs --brain member or company; the ${o.brain ?? 'bot-visible'} brain has no reader sets to gate`);
-  if (o.labels !== undefined && (o.labels !== 'readers' || (o.brain ?? 'bot-visible') !== 'bot-visible' || o.embeddings)) throw new Error(`--labels must be "readers" on the keyword bot-visible brain (got --labels ${String(o.labels)} --brain ${o.brain ?? 'bot-visible'}${o.embeddings ? ` --embeddings ${o.embeddings}` : ''})`);
+  if (o.labels !== undefined && (o.labels !== 'readers' || !['bot-visible', 'company'].includes(o.brain ?? 'bot-visible') || o.embeddings || o.access)) throw new Error(`--labels must be "readers" on the keyword bot-visible or company brain, without --access (got --labels ${String(o.labels)} --brain ${o.brain ?? 'bot-visible'}${o.embeddings ? ` --embeddings ${o.embeddings}` : ''}${o.access ? ` --access ${o.access}` : ''})`);
   if ((o.brain === 'company' || o.brain === 'member') && o.embeddings) throw new Error(`--embeddings is for bot-visible brains only; the ${o.brain} brains are keyword-only`);
   if (o.brain === 'company' || o.brain === 'member') return buildScopedBrain(o, o.brain);
   if (o.embeddings && !(EMBEDDING_MODELS as readonly string[]).includes(o.embeddings)) throw new Error(`--embeddings must be one of ${EMBEDDING_MODELS.join(', ')} (got ${o.embeddings})`);
@@ -553,14 +569,21 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
   const staging = join(resolve(o.out), 'sources');
   const missing: string[] = [];
   const pages: CompanyPage[] = [];
+  const labelled = o.labels ? companyLabelledReaders(world, o.split) : null;
   for (const p of listed) {
     const src = locate(o.corpus, o.split, p.slug);
     if (!src) { missing.push(p.slug); continue; }
     const body = readFileSync(src);
     const dest = join(staging, p.source, o.split, `${p.slug}.md`);
     mkdirSync(dirname(dest), { recursive: true });
-    copyFileSync(src, dest);
-    pages.push({ ...p, source_path: `${o.split}/${p.slug}.md`, sha256: createHash('sha256').update(body).digest('hex'), bytes: body.length });
+    const readers = labelled?.[p.page_slug];
+    if (readers) {
+      const text = body.toString('utf8');
+      const end = text.indexOf('\n---', 3);
+      if (!text.startsWith('---\n') || end < 0 || /^readable_by:/m.test(text.slice(0, end))) throw new Error(`${p.slug}: --labels readers needs frontmatter without readable_by`);
+      writeFileSync(dest, `---\nreadable_by: [${readers.join(', ')}]\n${text.slice(4)}`);
+    } else copyFileSync(src, dest);
+    pages.push({ ...p, ...(readers ? { labelled_readers: readers } : {}), source_path: `${o.split}/${p.slug}.md`, sha256: createHash('sha256').update(body).digest('hex'), bytes: body.length });
   }
   if (missing.length) throw new Error(`${missing.length} listed page(s) missing from ${o.corpus}: ${missing.join(', ')}`);
   for (const s of sources) mkdirSync(join(staging, s.id), { recursive: true });
@@ -670,6 +693,7 @@ export function buildScopedBrain(o: BuildOptions, kind: ScopedBrainKind): Compan
     imports,
     ...(kind === 'member' ? { ingest: { channels: conversationSources(world, o.split), dm_source_prefix: 'private-' as const, token_names: ingestGrants.map((g) => g.token_name) } } : {}),
     ...(o.access === 'rules' ? { access: 'rules' as const, rules, bindings } : {}),
+    ...(o.labels ? { labels: o.labels } : {}),
   };
   writeFileSync(join(o.out, 'manifest.json'), JSON.stringify(manifest, null, 1) + '\n');
   return manifest;
@@ -694,7 +718,7 @@ if (import.meta.main) {
   const access = arg('access');
   const labels = arg('labels');
   if ((split !== 'dev' && split !== 'heldout') || (brain !== 'bot-visible' && brain !== 'company' && brain !== 'member') || (access !== undefined && access !== 'rules') || (labels !== undefined && labels !== 'readers')) { console.error('usage: bun gbrain/build-brain.ts --split dev|heldout [--brain bot-visible|company|member] [--access rules] [--labels readers] [--embeddings openai:text-embedding-3-small] --corpus <dir> --world <world.json> --out <brain home> [--staging <dir>] [--gbrain "<cmd>"] [--commit <sha>] [--corpus-commit <sha>]'); process.exit(2); }
-  const home = brain === 'bot-visible' ? `${split}${labels ? '-labelled' : ''}` : `${split}-${brain}${access ? '-acl' : ''}`;
+  const home = brain === 'bot-visible' ? `${split}${labels ? '-labelled' : ''}` : `${split}-${brain}${access ? '-acl' : ''}${labels ? '-labelled' : ''}`;
   const pin = JSON.parse(readFileSync(join(import.meta.dir, 'pin.json'), 'utf8')) as { gbrain: { commit: string }; corpus: { repo: string; commit: string } };
   try {
     const m = buildBrain({

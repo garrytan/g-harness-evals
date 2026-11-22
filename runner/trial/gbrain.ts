@@ -754,6 +754,8 @@ export function writeAccessPreflight(path: string, record: unknown, tokenDir: st
 /** internal-task: what the serves-several preflight saw for one split and arm, keyless; counts, codes and slugs, never a token. */
 export interface ServesEvidence {
   arm: 'refused' | 'member-keys';
+  /** internal-task: the brain the member-key arm reads (absent in records written before the company shape existed: bot-visible). */
+  brain?: 'bot-visible' | 'company';
   split: 'dev' | 'heldout';
   image_id: string;
   ready_ms: number;
@@ -771,17 +773,17 @@ export interface ServesEvidence {
  *  a search must answer requester_scope_required with no row. Member-key arm (bot-visible brain): the unbound token is refused the
  *  same way, every member's key reads as that member, and with readers (slug -> readers, the labelled brain) each key's
  *  list_pages, paged to the end, holds every page the member may read and nothing else. Problems are returned, not thrown. */
-export async function probeServesSeveral(image: string, split: 'dev' | 'heldout', scratchDir: string, o: { arm: 'refused' | 'member-keys'; members: readonly string[]; readers?: Record<string, readonly string[]> }): Promise<{ evidence: ServesEvidence; problems: string[] }> {
+export async function probeServesSeveral(image: string, split: 'dev' | 'heldout', scratchDir: string, o: { arm: 'refused' | 'member-keys'; members: readonly string[]; brain?: 'bot-visible' | 'company'; readers?: Record<string, readonly string[]> }): Promise<{ evidence: ServesEvidence; problems: string[] }> {
   const query = SOURCE_PROBE_QUERIES[0]!;
   const fail = (what: string) => new RunnerError('HE-GBRAIN-002', `the serves-several ${o.arm} brain for ${split} in ${image} ${what}`);
   const rowsOf = (p: unknown): Array<Record<string, unknown>> => Array.isArray(p) ? p : p && typeof p === 'object' ? ['results', 'pages'].flatMap((k) => { const v = (p as Record<string, unknown>)[k]; return Array.isArray(v) ? v : []; }) : [];
   const codeOf = (p: unknown): string | null => p && typeof p === 'object' && !Array.isArray(p) && typeof (p as { code?: unknown }).code === 'string' ? (p as { code: string }).code : null;
   const sidecar = await startGbrainSidecar({ trialId: 'preflight', trialSlug: `preflight-serves-${o.arm}-${split}-${process.pid}`, split, outDir: scratchDir, image, serves: 'several', servesMembers: o.members,
-    ...(o.arm === 'refused' ? { brain: 'company' as const, scope: 'none' as const } : { brain: 'bot-visible' as const, scope: 'member' as const }), ...(o.readers ? { labels: 'readers' as const } : {}) });
+    ...(o.arm === 'refused' ? { brain: 'company' as const, scope: 'none' as const } : { brain: o.brain ?? 'bot-visible', scope: 'member' as const }), ...(o.readers ? { labels: 'readers' as const } : {}) });
   try {
     const receipt = JSON.parse(readFileSync(join(scratchDir, 'serves.json'), 'utf8')) as { members?: unknown[]; rules?: unknown[]; keys?: unknown[] };
     const unbound = await callGbrain(sidecar.url, sidecar.token, 'search', { query, limit: 10 });
-    const evidence: ServesEvidence = { arm: o.arm, split, image_id: sidecar.image_id, ready_ms: sidecar.ready_ms, labels: o.readers ? 'readers' : 'none', labelled: { members: receipt.members?.length ?? 0, rules: receipt.rules?.length ?? 0, keys: receipt.keys?.length ?? 0 }, unbound: { code: codeOf(unbound), rows: rowsOf(unbound).length }, members: [] };
+    const evidence: ServesEvidence = { arm: o.arm, ...(o.arm === 'member-keys' ? { brain: o.brain ?? 'bot-visible' } : {}), split, image_id: sidecar.image_id, ready_ms: sidecar.ready_ms, labels: o.readers ? 'readers' : 'none', labelled: { members: receipt.members?.length ?? 0, rules: receipt.rules?.length ?? 0, keys: receipt.keys?.length ?? 0 }, unbound: { code: codeOf(unbound), rows: rowsOf(unbound).length }, members: [] };
     const problems: string[] = [];
     if (evidence.unbound.code !== 'requester_scope_required' || evidence.unbound.rows) problems.push(`a search under the unbound trial token answered ${evidence.unbound.code ?? 'no code'} with ${evidence.unbound.rows} row(s), not requester_scope_required with none`);
     if (o.arm === 'refused') return { evidence, problems };

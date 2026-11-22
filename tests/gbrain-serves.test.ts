@@ -1,4 +1,4 @@
-// internal-task (gbrain v0.60.717.0, the shared-bot fixes): the serves-several gbrain cell. The cell validation takes exactly two shapes
+// internal-task (gbrain v0.60.717.0, the shared-bot fixes): the serves-several gbrain cell. The cell validation takes exactly three shapes
 // (the refused company arm and the installer's member-key arm on the bot-visible brain, optionally on the reader-labelled brain)
 // and refuses the rest under HE-GBRAIN-003; the sidecar gets the labelling through its environment; the record and the plan carry
 // serves and labels; build-brain --labels readers writes each page's token-member readers into its frontmatter. With the image
@@ -58,11 +58,11 @@ test('the refused arm, the member-key arm and its labelled brain load; the plan 
 
 test('every other serves or labels combination is HE-GBRAIN-003', () => {
   refuses({ ...REFUSED, serves: 'many' as 'several' }, /HE-GBRAIN-003 .*serves must be "several" or absent/);
-  refuses({ surface: 'starter', serves: 'several' }, /HE-GBRAIN-003 .*serves "several" takes two shapes.*brain "bot-visible", install "mcp", scope "none"/);
-  refuses({ ...REFUSED, scope: 'member' }, /HE-GBRAIN-003 .*two shapes.*brain "company", install "mcp", scope "member"/);
-  refuses({ ...REFUSED, install: 'gbrain-installer' }, /HE-GBRAIN-003 .*two shapes/);
-  refuses({ ...MEMBER_KEYS, install: undefined }, /HE-GBRAIN-003 .*two shapes.*install "mcp"/);
-  refuses({ ...MEMBER_KEYS, brain: 'member' }, /HE-GBRAIN-003 .*two shapes/);
+  refuses({ surface: 'starter', serves: 'several' }, /HE-GBRAIN-003 .*serves "several" takes three shapes.*brain "bot-visible", install "mcp", scope "none"/);
+  refuses({ ...REFUSED, scope: 'member' }, /HE-GBRAIN-003 .*three shapes.*brain "company", install "mcp", scope "member"/);
+  refuses({ ...REFUSED, install: 'gbrain-installer' }, /HE-GBRAIN-003 .*three shapes/);
+  expect(() => loadPrereg(writePrereg([cell({ ...MEMBER_KEYS, install: undefined })], 'serves-told-member'))).not.toThrow();
+  refuses({ ...MEMBER_KEYS, brain: 'member' }, /HE-GBRAIN-003 .*three shapes/);
   refuses({ ...MEMBER_KEYS, scope: 'sources' }, /HE-GBRAIN-003 .*scope "sources" needs gbrain.brain "company" or "member"/);
   refuses({ ...MEMBER_KEYS, serves: undefined }, /HE-GBRAIN-003 .*scope "member" needs gbrain.brain "company" or "member"/);
   refuses({ ...MEMBER_KEYS, embeddings: 'openai:text-embedding-3-small' }, /HE-GBRAIN-003 .*serves "several" runs without live ingestion, access rules, channel_remember or embeddings/);
@@ -71,8 +71,8 @@ test('every other serves or labels combination is HE-GBRAIN-003', () => {
   refuses({ ...REFUSED, access: 'rules' }, /HE-GBRAIN-003 .*access "rules" needs gbrain.brain "member"/);
   refuses({ ...MEMBER_KEYS, labels: 'all' as 'readers' }, /HE-GBRAIN-003 .*labels must be "readers" or absent/);
   refuses({ surface: 'starter', labels: 'readers' }, /HE-GBRAIN-003 .*labels needs gbrain.serves "several"/);
-  refuses({ ...REFUSED, labels: 'readers' }, /HE-GBRAIN-003 .*labels "readers" needs the member-key shape/);
-  refuses(LABELLED, /HE-GBRAIN-003 .*labels "readers" needs the member-key shape .*split heldout/, { split: 'heldout' });
+  refuses({ ...REFUSED, labels: 'readers' }, /HE-GBRAIN-003 .*labels "readers" needs a member-key shape/);
+  refuses(LABELLED, /HE-GBRAIN-003 .*labels "readers" needs a member-key shape .*split heldout/, { split: 'heldout' });
 });
 
 test('servesEnv: nothing without serves; serves several names the members and, with labels, the labelled brain; bad input is HE-GBRAIN-002', () => {
@@ -133,7 +133,7 @@ test('build-brain --labels readers writes readable_by into each staged page\'s f
   expect(m.pages.map((p) => [p.page_slug, p.readers])).toEqual(expected.map((p) => [p.page_slug, p.readers]));
   for (const p of expected) expect(readFileSync(join(dir, 'staging', 'dev', `${p.slug}.md`), 'utf8')).toBe(`---\nreadable_by: [${p.readers.join(', ')}]\ntitle: "${p.slug}"\n---\n# ${p.slug}\n`);
   expect((buildBrain(opts) as BrainManifest).labels).toBeUndefined();
-  expect(() => buildBrain({ ...opts, brain: 'company', labels: 'readers' })).toThrow(/--labels must be "readers" on the keyword bot-visible brain/);
+  expect(() => buildBrain({ ...opts, brain: 'member', labels: 'readers' })).toThrow(/--labels must be "readers" on the keyword bot-visible or company brain/);
 });
 
 const IMAGE = 'harness-eval/gbrain:check-5dc712b93742';

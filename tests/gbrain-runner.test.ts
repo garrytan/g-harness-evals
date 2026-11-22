@@ -118,7 +118,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, the host-harness pilot, the Claude Code and Codex installer run and the shared-bot scope run carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, the host-harness pilot, the Claude Code and Codex installer run, the shared-bot scope run and the shared-brain access run carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -294,6 +294,25 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
           expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.md');
         } else {
           expect([{ surface: 'starter', brain: 'company' }, { surface: 'starter', brain: 'company', serves: 'several' }] as GbrainCellConfig[]).toContainEqual(c.gbrain);
+          expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md');
+        }
+      }
+      else if (p.run_id === 'shared-brain-access-2026-11') {
+        // internal-task-a (internal-task-b): the shared-bot run again at gbrain v0.60.754.0 (6a507316), cap $521. Bots: OpenClaw and Hermes on Opus 5.5 and GPT-6.2 Sol,
+        // the company brain open, refused and labelled (each asker's key on the reader-labelled company brain). Installer: Claude Code and Codex on 17 tasks,
+        // installer open, member and labelled, told open and told labelled (the ladder preamble), and none.
+        expect(c.task_set).toBe('v0.3.1'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(3); expect(p.spend_cap_usd).toBe(521); expect(p.gbrain_commit).toBe('6a507316104fd23e0f1c9fb7e2ebabd8fdc5488c');
+        expect(p.cells).toHaveLength(28); expect(buildManifest(p, sha256, '2026-11-21T00:00:00Z').trials).toHaveLength(1572);
+        expect(['anthropic:claude-opus-5-5', 'openai:gpt-6.2-sol']).toContain(c.model);
+        const installer = c.harness === 'claude-code' || c.harness === 'codex';
+        if (installer) expect(c.tasks).toHaveLength(17); else expect(c.tasks).toBeUndefined();
+        if (!c.gbrain) { expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.md'); continue; }
+        if (installer) {
+          const told = c.gbrain.install === undefined;
+          expect((told ? [{ surface: 'starter' }, { surface: 'starter', scope: 'member', serves: 'several', labels: 'readers' }] : [{ surface: 'starter', install: 'gbrain-installer' }, { surface: 'starter', install: 'gbrain-installer', scope: 'member', serves: 'several' }, { surface: 'starter', install: 'gbrain-installer', scope: 'member', serves: 'several', labels: 'readers' }]) as GbrainCellConfig[]).toContainEqual(c.gbrain);
+          expect(c.preamble).toBe(told ? 'tasks/multiuser/_shared/preamble.gbrain-ladder.md' : 'tasks/multiuser/_shared/preamble.md');
+        } else {
+          expect([{ surface: 'starter', brain: 'company' }, { surface: 'starter', brain: 'company', serves: 'several' }, { surface: 'starter', brain: 'company', scope: 'member', serves: 'several', labels: 'readers' }] as GbrainCellConfig[]).toContainEqual(c.gbrain);
           expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md');
         }
       }
