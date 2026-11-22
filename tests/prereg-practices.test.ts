@@ -14,7 +14,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ATTESTATION_MAP_PATH, ATTESTED, LEDGER_PATH, MAPPED, type ManifestEntry } from '../runner/prereg/prereg.ts';
-import { checkPractices, freezeDate, GRANDFATHERED_PATH, JUDGE_100_FROM, minLabelled, planProblems as planProblemsOn, readGrandfathered } from '../runner/prereg/practices.ts';
+import { checkPractices, freezeDate, GRANDFATHERED_PATH, COST_PROJECTION_FROM, JUDGE_100_FROM, minLabelled, planProblems as planProblemsOn, readGrandfathered, receiptProblems } from '../runner/prereg/practices.ts';
 
 const ROOT = join(import.meta.dir, 'fixtures/prereg-practices');
 const plan = (name: string) => readFileSync(join(ROOT, name, 'PREREGISTRATION.md'), 'utf8');
@@ -218,7 +218,9 @@ describe('prereg.ts runs the practices check', () => {
         expect([mode, bad.status, bad.stderr]).toEqual([mode, 1, expect.stringContaining(`prereg-practices: new-plan: ${prereg}: no "## Eval loop" section`)]);
       }
       writeFileSync(join(dir, prereg), plan('pass').replace('| plain | 20 | 0.6 |', '| plain | 50 | 0.6 |').replace('| card | 20 | 0.6 |', '| card | 50 | 0.6 |'));
-      git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qam', 'State the practices');
+      copyFileSync(join(ROOT, 'pass', 'plan-cost-receipt.json'), join(dir, 'docs/benchmarks/new-plan/plan-cost-receipt.json'));
+      git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'add', '-A');
+      git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'State the practices');
       for (const mode of [[], ['--public']]) {
         const ok = run(...mode);
         expect([mode, ok.status, ok.stdout]).toEqual([mode, 0, expect.stringContaining('prereg-practices: 1 new experiments checked, 0 grandfathered, 0 problems')]);
@@ -236,5 +238,60 @@ describe('a new run\'s results carry the call it settled and its spend', () => {
     expect(check([entry('missing-spend')]).problems).toEqual([{ id: 'missing-spend', file: 'missing-spend/spend-internal.md', problem: 'no "- **Meter spend:** $<n>" line' }]);
     expect(check([entry('missing-spend')], { spend: false }).problems).toEqual([]);
     expect(check([entry('missing-decision')]).problems.map(p => p.file)).toEqual(['missing-decision/PREREGISTRATION.md']);
+  });
+});
+
+describe('a counted plan above $500 states its pilot-priced projection before it freezes', () => {
+  const NO_SECTION = 'the plan is above $500 paid but has no "## Cost projection" section with its spend stop and its pilot-priced projection from scripts/plan-cost.ts';
+  // The rule starts at COST_PROJECTION_FROM, after R78's 100-output floor, so these plans plan 50 labelled outputs per arm.
+  const judged = (text: string) => text.replace('| plain | 20 | 0.6 |', '| plain | 50 | 0.6 |').replace('| card | 20 | 0.6 |', '| card | 50 | 0.6 |');
+  const planProblems = (text: string, frozen = COST_PROJECTION_FROM) => planProblemsOn(judged(text), frozen);
+  const checkAt = (frozen: string, name: string) => checkPractices([entry(name)], ROOT, { spend: true, grandfathered: new Set(), frozen: () => frozen }).problems.filter(p => !/R78 needs/.test(p.problem));
+
+  test('a plan frozen before COST_PROJECTION_FROM is not asked for one', () => {
+    expect(COST_PROJECTION_FROM).toBe('2026-11-23');
+    expect(planProblems(plan('missing-cost-projection'), '2026-11-22')).toEqual([]);
+    expect(checkAt('2026-11-22', 'missing-cost-projection')).toEqual([]);
+  });
+
+  test('missing the section fails above $500 and is not needed at $500', () => {
+    expect(planProblems(plan('missing-cost-projection'))).toEqual([NO_SECTION]);
+    expect(planProblems(plan('missing-cost-projection').replace('$1,200', '$500').replaceAll('$600 | $60', '$250 | $25').replace(/## Interim look[\s\S]*$/, ''))).toEqual([]);
+  });
+
+  test('each field is required, and a projection past the stop fails', () => {
+    expect(planProblems(plan('pass').replace(/- Spend stop:.*\n/, ''))).toEqual(['"## Cost projection" has no "Spend stop: $<n>" field']);
+    expect(planProblems(plan('pass').replace(/- Pilot-priced projection:.*\n/, ''))).toEqual(['"## Cost projection" has no "Pilot-priced projection: $<n>" field (the TOTAL scripts/plan-cost.ts printed from the pilot)']);
+    expect(planProblems(plan('pass').replace(/- Projection receipt:.*\n/, ''))).toEqual(['"## Cost projection" has no "Projection receipt:" field naming the plan-cost receipt committed in the plan folder']);
+    expect(planProblems(plan('pass').replace('- Pilot-priced projection: $980.40', '- Pilot-priced projection: $1,350'))).toEqual(['"## Cost projection": the pilot-priced projection $1350 passes the spend stop $1200; shrink the plan or raise the stop before it freezes']);
+  });
+
+  test('the committed receipt must exist, be priced in full and match the plan', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-practices-receipt-'));
+    try {
+      const folder = 'plan';
+      mkdirSync(join(dir, folder));
+      const receipt = JSON.parse(readFileSync(join(ROOT, 'pass', 'plan-cost-receipt.json'), 'utf8'));
+      const write = (r: unknown) => writeFileSync(join(dir, folder, 'plan-cost-receipt.json'), JSON.stringify(r));
+      const problems = (text = plan('pass')) => receiptProblems(text, folder, dir);
+      expect(problems()).toEqual(['"## Cost projection" names the receipt plan-cost-receipt.json, which is not in the repository; commit scripts/plan-cost.ts\'s --out receipt in the plan folder']);
+      write(receipt);
+      expect(problems()).toEqual([]);
+      expect(problems(plan('pass').replace('- Projection receipt: plan-cost-receipt.json', '- Projection receipt: plan/plan-cost-receipt.json'))).toEqual([]);
+      write({ ...receipt, projection: { ...receipt.projection, total_usd: 1010 } });
+      expect(problems()).toEqual(['"## Cost projection" says $980.4 but its receipt\'s total is $1010.00']);
+      write({ ...receipt, stop_usd: 1500 });
+      expect(problems()).toEqual(['"## Cost projection" says the spend stop is $1200 but its receipt priced against $1500']);
+      write({ ...receipt, projection: { ...receipt.projection, unpriced: ['card'] } });
+      expect(problems()).toEqual(['the projection receipt plan-cost-receipt.json leaves cells unpriced (card): every arm is priced from its own pilot before the plan freezes']);
+      write({ schema: 'something-else' });
+      expect(problems()).toEqual(['the projection receipt plan-cost-receipt.json is not a plan-cost/1 receipt']);
+      expect(receiptProblems(plan('quick-look'), folder, dir)).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('checkPractices reads the receipt beside each new plan', () => {
+    expect(checkAt(COST_PROJECTION_FROM, 'missing-cost-projection')).toEqual([{ id: 'missing-cost-projection', file: 'missing-cost-projection/PREREGISTRATION.md', problem: NO_SECTION }]);
+    expect(checkAt(COST_PROJECTION_FROM, 'pass')).toEqual([]);
   });
 });

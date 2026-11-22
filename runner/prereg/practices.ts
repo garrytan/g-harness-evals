@@ -16,7 +16,10 @@
  *   `Labelled outputs` and `Kappa bar` that has one row for each pilot arm and no other, at least 40 labelled outputs in all (100 for a
  *   plan frozen on or after 2026-11-22, the UTC date the commit adding it reached main; see freezeDate) and a
  *   bar of at least 0.6 (R78); and above $500 paid, `## Interim look` with `- Look at: <n> of <N> units` at half the
- *   units and `- Stop bounds:` (R113).
+ *   units and `- Stop bounds:` (R113); and, for a plan frozen on or after 2026-11-23 (COST_PROJECTION_FROM) above $500 paid, `## Cost projection` with `- Spend stop: $<n>`,
+ *   `- Pilot-priced projection: $<n>` (no more than the stop) and `- Projection receipt:` naming the scripts/plan-cost.ts
+ *   receipt committed in the plan folder, whose total and stop match and which leaves no cell unpriced
+ *   (docs/cost-projection.md).
  *
  * A Markdown field reads `- Name: value` or `- **Name:** value`. An empty value, or one that still holds a template
  * placeholder such as `<n>`, counts as missing. HTML comments and fenced code blocks are ignored.
@@ -44,6 +47,9 @@ export const GRANDFATHERED_SHA256 = 'd796f85b3340a685e3ef68dcb3f96236f6abd2f6c6e
 
 const QUICK_LOOK_MAX_USD = 100;
 const INTERIM_LOOK_ABOVE_USD = 500;
+const COST_PROJECTION_ABOVE_USD = 500;
+/** The first UTC freeze date that needs a "## Cost projection" (see freezeDate); plans frozen earlier, rules-at-scale-2026-11 among them, are exempt. */
+export const COST_PROJECTION_FROM = '2026-11-23';
 const MIN_KAPPA = 0.6;
 /** R78's labelled-output floor: 40 for a plan frozen before JUDGE_100_FROM, 100 from that UTC date on (internal-task, 2026-11-21). */
 export const JUDGE_100_FROM = '2026-11-22';
@@ -65,7 +71,7 @@ export interface PracticesResult {
 const clean = (text: string) => text.replace(/<!--[\s\S]*?-->/g, '').replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, '');
 
 /** Level-2 sections by lowercased heading, each holding its lines up to the next level-2 heading. */
-function sections(text: string): Map<string, string[]> {
+export function sections(text: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
   let current: string[] | null = null;
   for (const line of clean(text).split('\n')) {
@@ -81,7 +87,7 @@ function sections(text: string): Map<string, string[]> {
 const present = (value: string | undefined): value is string => value !== undefined && value.trim() !== '' && !/<[^>]*>/.test(value);
 
 /** `- Name: value` and `- **Name:** value` list items, by lowercased name; the first of a name wins. */
-function fields(lines: string[]): Map<string, string> {
+export function fields(lines: string[]): Map<string, string> {
   const out = new Map<string, string>();
   for (const line of lines) {
     const m = /^\s*[-*] +(?:\*\*([^*]+?):\*\*|\*\*([^*]+?)\*\*:|([^:*|]+?):)\s*(.*)$/.exec(line);
@@ -93,7 +99,7 @@ function fields(lines: string[]): Map<string, string> {
 
 const bullets = (lines: string[]) => lines.filter(line => /^[-*] +\S/.test(line) && present(line.replace(/^[-*] +/, '')));
 
-function dollars(value: string | undefined): number | null {
+export function dollars(value: string | undefined): number | null {
   const m = present(value) ? /\$\s*(\d[\d,]*(?:\.\d+)?)\s*([a-z]*)/i.exec(value) : null;
   if (!m || /^(k|m|b|bn|thousand|million|billion)$/i.test(m[2]!)) return null;
   return Number(m[1]!.replace(/,/g, ''));
@@ -218,6 +224,47 @@ export function planProblems(text: string, frozen = todayUtc()): string[] {
       if (!present(lf.get('stop bounds'))) problems.push('"## Interim look" has no "Stop bounds:" field (R113)');
     }
   }
+  if (frozen >= COST_PROJECTION_FROM && budget !== null && budget > COST_PROJECTION_ABOVE_USD) problems.push(...costProjectionProblems(s));
+  return problems;
+}
+
+/** The pilot-priced projection a counted plan above $500 paid states before it freezes (docs/cost-projection.md): its spend
+ *  stop, the projection from scripts/plan-cost.ts and the receipt that projection came from, with the projection inside the stop. */
+function costProjectionProblems(s: Map<string, string[]>): string[] {
+  const section = s.get('cost projection');
+  const where = `the plan is above $${COST_PROJECTION_ABOVE_USD} paid`;
+  if (!section) return [`${where} but has no "## Cost projection" section with its spend stop and its pilot-priced projection from scripts/plan-cost.ts`];
+  const f = fields(section);
+  const stop = dollars(f.get('spend stop'));
+  const projection = dollars(f.get('pilot-priced projection'));
+  const problems: string[] = [];
+  if (stop === null) problems.push('"## Cost projection" has no "Spend stop: $<n>" field');
+  if (projection === null) problems.push('"## Cost projection" has no "Pilot-priced projection: $<n>" field (the TOTAL scripts/plan-cost.ts printed from the pilot)');
+  if (!present(f.get('projection receipt'))) problems.push('"## Cost projection" has no "Projection receipt:" field naming the plan-cost receipt committed in the plan folder');
+  if (stop !== null && projection !== null && projection > stop + 0.005) problems.push(`"## Cost projection": the pilot-priced projection $${projection} passes the spend stop $${stop}; shrink the plan or raise the stop before it freezes`);
+  return problems;
+}
+
+/** The committed plan-cost receipt behind a plan's "## Cost projection": present, priced in full, and saying what the plan says. */
+export function receiptProblems(text: string, folder: string, cwd: string): string[] {
+  const s = sections(text);
+  const budget = dollars(fields(s.get('eval loop') ?? []).get('paid budget'));
+  const section = s.get('cost projection');
+  if (budget === null || budget <= COST_PROJECTION_ABOVE_USD || !section) return [];
+  const f = fields(section);
+  const path = f.get('projection receipt')?.replace(/^`|`$/g, '').trim();
+  if (!present(path)) return [];
+  const file = join(cwd, path.startsWith(folder + '/') ? path : join(folder, path));
+  if (!existsSync(file)) return [`"## Cost projection" names the receipt ${path}, which is not in the repository; commit scripts/plan-cost.ts's --out receipt in the plan folder`];
+  let receipt: { schema?: string; stop_usd?: number; projection?: { total_usd?: number; unpriced?: string[] } };
+  try { receipt = JSON.parse(readFileSync(file, 'utf8')); } catch { return [`the projection receipt ${path} is not JSON`]; }
+  if (receipt.schema !== 'plan-cost/1' || typeof receipt.projection?.total_usd !== 'number' || typeof receipt.stop_usd !== 'number') return [`the projection receipt ${path} is not a plan-cost/1 receipt`];
+  const problems: string[] = [];
+  if (receipt.projection.unpriced?.length) problems.push(`the projection receipt ${path} leaves cells unpriced (${receipt.projection.unpriced.join(', ')}): every arm is priced from its own pilot before the plan freezes`);
+  const projection = dollars(f.get('pilot-priced projection'));
+  const stop = dollars(f.get('spend stop'));
+  if (projection !== null && Math.abs(projection - receipt.projection.total_usd) > 0.01) problems.push(`"## Cost projection" says $${projection} but its receipt's total is $${receipt.projection.total_usd.toFixed(2)}`);
+  if (stop !== null && Math.abs(stop - receipt.stop_usd) > 0.01) problems.push(`"## Cost projection" says the spend stop is $${stop} but its receipt priced against $${receipt.stop_usd}`);
   return problems;
 }
 
@@ -278,7 +325,8 @@ export function checkPractices(entries: ManifestEntry[], cwd = process.cwd(), op
       continue;
     }
     const frozen = (opts.frozen ?? ((path: string) => freezeDate(path, cwd)))(e.preregistration);
-    for (const problem of planProblems(readFileSync(join(cwd, e.preregistration), 'utf8'), frozen)) problems.push({ id: e.id, file: e.preregistration, problem });
+    const text = readFileSync(join(cwd, e.preregistration), 'utf8');
+    for (const problem of [...planProblems(text, frozen), ...(frozen >= COST_PROJECTION_FROM ? receiptProblems(text, folderOf(e), cwd) : [])]) problems.push({ id: e.id, file: e.preregistration, problem });
   }
   const folders = [...new Set(fresh.filter(isMd).map(folderOf))].filter(f => !oldFolders.has(f)).sort();
   for (const folder of folders) problems.push(...resultsProblems(folder, cwd, opts.spend));

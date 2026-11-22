@@ -45,6 +45,7 @@ Terms: a **trial** is one harness attempt at one task from a frozen image; a **c
     - **A pilot per arm (R111):** `## Pilot`, with a table of `Arm`, `Arm budget` and `Pilot cap`. Each cap is above $0 and at most a tenth of its arm's budget, and the arm budgets add up to no more than the paid budget. Fields say how the pilot shows, on each arm's own outputs, `- Part under test ran:`, `- Tasks can be supplied:` and, with a model judge, `- Judge passes R78:`.
     - **The judge check, read per arm (R78):** with a model judge, `## Judge check`, with a table of `Arm`, `Labelled outputs` and `Kappa bar`: one row for each pilot arm and no other rows, at least 100 labelled outputs in all (40 for a plan frozen before 2026-11-22), and a bar of at least 0.6. A plan's freeze date is the UTC date its commit reached main; a plan still on a pull request is checked as frozen today.
     - **One look at half the units (R113):** above $500 paid, `## Interim look`, with `- Look at: <n> of <N> units` (n is half of N) and `- Stop bounds:`.
+    - **A price from the pilot:** for a plan frozen on or after 2026-11-23, above $500 paid, `## Cost projection`, with `- Spend stop: $<n>`, `- Pilot-priced projection: $<n>` (the total `scripts/plan-cost.ts` printed from the pilot) and `- Projection receipt:` naming its `--out` receipt, committed in the plan folder. The check refuses a projection past the stop, a receipt that is missing, leaves a cell unpriced, or gives another total or stop. See [cost-projection.md](cost-projection.md).
     - **A quick look (R112) is exempt.** It declares `- Size: quick look`, at most $100 paid, and its three-line plan as `- Question:`, `- Decision:` and `- Stop rule:` in `## Eval loop`. It publishes no number.
     - A field reads `- Name: value` or `- **Name:** value`. An empty value or a leftover placeholder such as `<n>` counts as missing. A shard's JSON preregistration is covered by the Markdown preregistration registered from the same folder.
     - **Results:** once a new run's `report.md` exists it carries `- **Settled:**` (the ship-or-kill call the result settled, or `none`), and in the private repository its `spend-internal.md` carries `- **Paid spend:** $<n>` and `- **Meter spend:** $<n>` (Capy's meter for our own model use). See [report-standard.md](report-standard.md).
@@ -84,9 +85,19 @@ Terms: a **trial** is one harness attempt at one task from a frozen image; a **c
 
     - Look at: <n> of <N> units
     - Stop bounds: <the bounds that stop the run at the look>
+
+    ## Cost projection
+
+    - Spend stop: $<n>
+    - Pilot-priced projection: $<the TOTAL scripts/plan-cost.ts printed from the pilot>
+    - Projection receipt: plan-cost-receipt.json
     ```
 
 ## Changelog
+
+### 2026-11-22: Item 16 adds the price from the pilot
+
+From 2026-11-23, a counted plan above $500 paid freezes with its spend stop and the total `scripts/plan-cost.ts` measured from its pilot, backed by a committed receipt. Why: a November 2026 counted run priced its cells from guesses, came in at about twice them for several models, and had to raise its stop mid-run.
 
 ### 2026-11-19: Item 16 added: new preregistrations state the eval-loop practices
 
