@@ -212,7 +212,7 @@ export function decision2and3(c: Ctx) {
       : slip.slip_point !== null ? { kind: 'none', text: 'slips at ' + slip.slip_point + ' by less than ' + ADVICE_BAR * 100 + ' points; below the advice bar' }
       : { kind: 'none', text: 'pruning is not needed for accuracy on this harness' };
     return {
-      harness: h, models, label: opus ? 'Opus harness' : h === 'codex' ? 'different model (GPT-6.1 Sol), reported beside the Opus harnesses, not compared head to head' : 'not an Opus harness',
+      harness: h, models, label: opus ? 'Opus harness' : h === 'codex' ? 'different model (GPT-6.2 Sol), reported beside the Opus harnesses, not compared head to head' : 'not an Opus harness',
       slip_point: slip.slip_point, sequence: slip.sequence, holds_through_300: slip.holds_through_300, result: stopped ?? (slip.holds_through_300 ? 'holds through 300' : slip.slip_point ? 'slips at ' + slip.slip_point : 'not shown'),
       per_model: Object.fromEntries(models.map((m) => [m, Object.fromEntries(TEST_ORDER.map((r) => [r, rungContrast(c, h, r, VALUES.right_tool, m)]))])),
       wrong_tool: Object.fromEntries(TEST_ORDER.map((r) => [r, rungContrast(c, h, r, VALUES.wrong_tool)])),
@@ -290,6 +290,7 @@ export function decision1(c: Ctx, margin: number, provisional: boolean) {
   const passed = surfaces.filter((s) => s.pass).map((s) => s.surface);
   const decision = passed.includes('verbs') ? { pick: 'verbs', text: 'gbrain setup keeps or moves to verbs; ask gbrain to make bare gbrain serve advertise verbs too' }
     : surfaces.some((s) => s.pass === null) ? { pick: null, text: 'no final recommendation: a surface comparison stopped at the interim look' }
+    : passed.includes('starter') ? { pick: 'starter', text: 'starter stays the setup default as shipped; report how often the model widened it' }
     : passed.length === 1 && passed[0] === 'full' ? { pick: 'full', text: 'gbrain setup pins full' }
     : !passed.length ? { pick: 'current default', text: 'no surface passes: the current default stays; report gbrain\'s measured cost to other tools' }
     : { pick: null, text: 'surfaces passing (' + passed.join(', ') + ') match no preregistered rule; goes to internal-task' };

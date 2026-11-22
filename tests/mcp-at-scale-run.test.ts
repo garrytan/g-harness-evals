@@ -460,6 +460,13 @@ describe('row writer', () => {
       meter: { usd: 0.03, requests: 3, unpriced: 0, byModel: { 'anthropic:claude-opus-5-5': { usd: 0.03, requests: 2 }, 'anthropic:claude-haiku-5-5': { usd: 0, requests: 1 } } } });
     expect(clean.infra).toBeNull();
     expect(clean.observed).toEqual({ models: ['anthropic:claude-opus-5-5'], version: '2.1.312' });
+    const silent = buildRow({ ...base, outcomes, usage: null, meter: { usd: 0, requests: 0, unpriced: 0, byModel: {} } });
+    expect(silent.infra).toMatchObject({ code: 'HE-MCP-047', source: 'runner' });
+    expect(silent.infra?.detail).toContain('metered no call to the cell model anthropic:claude-opus-5-5');
+    expect(silent.reward).toBeNull();
+    const housekeepingOnly = buildRow({ ...base, outcomes, usage: null, housekeeping: ['anthropic:claude-haiku-5-5'],
+      meter: { usd: 0, requests: 1, unpriced: 0, byModel: { 'anthropic:claude-haiku-5-5': { usd: 0, requests: 1 } } } });
+    expect(housekeepingOnly.infra?.code).toBe('HE-MCP-047');
   });
 
   test('the grader INFRA stands and the trial is not scored', () => {

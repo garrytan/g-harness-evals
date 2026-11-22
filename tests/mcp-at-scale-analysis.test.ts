@@ -144,6 +144,16 @@ describe('analysis and decisions', () => {
     expect(d.request_tools.pooled!.ci95![1]).toBeLessThan(FIX_METHOD_CEILING);
     expect(d.decision.pick).not.toBe('verbs');
   });
+  test('decision 1: starter passing while verbs fails keeps starter as the setup default', () => {
+    const full = new Map(main.trials.filter((t) => t.arm === 'gbrain-full' && t.set === 'G' && t.outcomes).map((t) => [setupItemRep(t), t.outcomes!]));
+    const trials: Trial[] = main.trials.map((t) => (t.set !== 'G' || !t.outcomes ? t
+      : t.arm === 'gbrain-verbs' ? { ...t, outcomes: { ...t.outcomes, right_tool: false, reward: 0 } }
+      : t.arm === 'gbrain-starter' && full.has(setupItemRep(t)) ? { ...t, outcomes: { ...t.outcomes, right_tool: full.get(setupItemRep(t))!.right_tool, reward: full.get(setupItemRep(t))!.reward } } : t));
+    const d = analyze({ trials, items, places: null, margin: 0.1 }).decision1!;
+    expect(d.surfaces.find((s) => s.surface === 'verbs')!.pass).toBe(false);
+    expect(d.surfaces.find((s) => s.surface === 'starter')!.pass).toBe(true);
+    expect(d.decision).toMatchObject({ pick: 'starter', text: expect.stringContaining('starter stays the setup default') });
+  });
 });
 
 describe('interim look (R113)', () => {

@@ -381,6 +381,7 @@ export function observedRun(i: Pick<RowInput, 'cell' | 'meter' | 'housekeeping' 
   const version = i.cliVersion ?? null;
   const problems = [
     ...models.filter((m) => m !== want).map((m) => 'the proxy metered ' + m + ', not the cell model ' + want),
+    ...(i.meter && !models.length ? ['the proxy metered no call to the cell model ' + want] : []),
     ...(i.cliVersion !== undefined && (i.cell.harness === 'codex' || i.cell.harness === 'claude-code') && version !== i.cell.version
       ? ['the ' + i.cell.harness + ' setup observed version ' + (version ?? 'none') + ', not the pinned ' + i.cell.version] : []),
   ];
