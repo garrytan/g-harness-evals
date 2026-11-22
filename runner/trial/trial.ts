@@ -28,6 +28,7 @@ import type { WorldEvent } from '../../world/services/events.ts';
 import type { World } from '../../world/types.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
 import { type InternalNetwork, startComposeHarness, startDockerHarness } from './docker.ts';
+import { snapshotHarnessMemory } from './harness-memory.ts';
 import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, checkCompanyTokens, checkIngestTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
 import { GBRAIN_WRITE_TOOLS, type GbrainUpstream } from '../../world/services/gbrain-tap.ts';
 import { tokenMembers } from '../../gbrain/build-brain.ts';
@@ -360,9 +361,12 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     }
 
     if (!readyFailure) {
+      // internal-task: Hermes's and OpenClaw's own memory files, before the first turn and after each (runner/trial/harness-memory.ts).
+      const memory = (n: number) => { if (mode !== 'scripted') snapshotHarnessMemory(cell.harness, dirs, n); };
+      memory(0);
       const loop = await runTurns({ task, preamble: opts.preamble, world, harness: harness!, turnsDir: dirs.turns, trialId: trial.id, graceS: opts.turnGraceS, log,
         ...(task.clock?.timers ? { restart: { graceMs: opts.stopGraceS * 1000, readyTimeoutMs: opts.readyTimeoutS * 1000 } } : {}),
-        onAnswered: (turn, exit) => { if (readyTurnHook === 'ran') noteAnsweredTurn(answeredHook, dirs.logs, turn, exit); } });
+        onAnswered: (turn, exit) => { if (readyTurnHook === 'ran') noteAnsweredTurn(answeredHook, dirs.logs, turn, exit); }, afterTurn: memory });
       windows = loop.windows;
       timerWindows = loop.timer_windows;
       week = { redelivery_windows: loop.redelivery_windows, restarts: loop.restarts, burst_messages: loop.burst_messages };

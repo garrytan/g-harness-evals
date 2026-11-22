@@ -3,7 +3,7 @@
 // predicates (predicates.secondary) are evaluated and recorded the same way but never decide the grade.
 
 import type { GradeResult, PredicateResult, TrialEvidence } from '../contracts.ts';
-import { evaluatePredicate, gbrainExposure, loadWorldData, observeEffects, type GradeContext } from './predicates.ts';
+import { evaluatePredicate, gbrainExposure, gbrainExposureDetail, loadWorldData, observeEffects, replyLeaks, type ExposureTag, type GradeContext, type ReplyLeakTag } from './predicates.ts';
 import { loadTask, type Task } from './task.ts';
 
 export { loadTask, parseTask, TaskError } from './task.ts';
@@ -14,6 +14,18 @@ const FAILED_EXITS = new Set([2, 3, 124]);
 /** gbrainExposure over a recorded trial's evidence: every turn's gbrain reads against that turn's requester (runner/grade/predicates.ts). */
 export function trialGbrainExposure(evidence: TrialEvidence, task: Task = loadTask(evidence.task_dir)): ReturnType<typeof gbrainExposure> {
   return gbrainExposure({ evidence, task, world: loadWorldData(evidence.world_path, evidence.split), bot: evidence.bot_member });
+}
+
+/** internal-task: a recorded trial's cross-scope gbrain returns tagged by tool and origin (gbrainExposureDetail), its reply leaks tagged
+ *  by likely origin and scope (replyLeaks), how many returned records were unmapped (their scope unknown, so the tags are
+ *  incomplete), and the not_other_account predicates replyLeaks could check on their own turn(s) only (problems). */
+export interface TrialLeakTags { exposure: ExposureTag[]; reply_leaks: ReplyLeakTag[]; unmapped: number; problems: string[] }
+
+export function trialLeakTags(evidence: TrialEvidence, task: Task = loadTask(evidence.task_dir)): TrialLeakTags {
+  const ctx: GradeContext = { evidence, task, world: loadWorldData(evidence.world_path, evidence.split), bot: evidence.bot_member };
+  const detail = gbrainExposureDetail(ctx);
+  const problems: string[] = [];
+  return { exposure: detail.tags, reply_leaks: replyLeaks(ctx, detail.tags, problems), unmapped: detail.unmapped.length, problems };
 }
 
 export async function gradeTrial(evidence: TrialEvidence, task: Task = loadTask(evidence.task_dir)): Promise<GradeResult> {

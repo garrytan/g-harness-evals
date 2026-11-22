@@ -69,7 +69,7 @@ The levels turn five knobs: sessions between fact and ask (1 to 3), same-shaped 
 
 **The personal-v2 set: one member's own details.** Task set `personal-v2` holds 60 dev tasks from a published seed with expiry off: recall by purpose (the `expired_recall` template) and own corrections, 15 of each at L4 and at L5. Teammates' values for the same account are leak checks. The layout is in [tasks/multiuser/personal-v2/README.md](../tasks/multiuser/personal-v2/README.md).
 
-**The company-v2-l5 set: for the gbrain access-leak eval.** Task set `company-v2-l5` is company-v2's four families one level up, at L5, from a copy of its seed, with expiry off: 60 dev tasks, 15 per family. It is documented in its own [README](../tasks/multiuser/company-v2-l5/README.md).
+**The company-v2-l5 and personal-v2x sets: for the gbrain access-leak eval.** Task set `company-v2-l5` is company-v2's four families one level up, at L5, from a copy of its seed, with expiry off. Task set `personal-v2x` is personal-v2's 60 tasks with expiry on: each task is its personal-v2 twin with the member's messages expired before the ask, so only a brain or the harness's own memory can carry the detail. Both are documented in their own READMEs ([company-v2-l5](../tasks/multiuser/company-v2-l5/README.md), [personal-v2x](../tasks/multiuser/personal-v2x/README.md)).
 
 Each set carries `clusters.json`, every task id to its bootstrap cluster `<account id>:<attribute>`, written by the generator (`--clusters`). company-v2 and personal-v2 replace a first draw one level lower (`company-v1` at L3, `personal-v1` at L3 and L4), which failed the headroom gate and was never merged.
 
@@ -292,6 +292,10 @@ A dev-split cell without a `tasks` list now runs these eleven tasks beside the t
 Memory probes phrase the fact as the member's own preference, identifier or project, which is what QM's extractor keeps, and their fact turn carries `wait_s = 20` so a capture quiet time of 5 s (QM probe configs, `harnesses/qm/pin.json`) has passed before the next turn. The sandbox probes ask for "your own workspace, with your shell" in the member's words, because the preamble never offers one. The sentinels are hidden facts, so the matrix test proves none occurs in the world seed.
 
 ## Changelog
+
+### 2026-11-22: the personal-v2x set (internal-task)
+
+The company-v2-l5 paragraph also describes `personal-v2x` (personal-v2's 60 tasks with expiry on), the second set for the gbrain access-leak eval. It regenerates from a copy of personal-v2's seed and passes check-set.
 
 ### 2026-11-22: relay privacy
 

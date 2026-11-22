@@ -73,6 +73,8 @@ results/<run-id>/
     got-skill.json, skill-flags.json   skill-requests cells only: the skills the model got, and the tool calls flagged for a hand read (scripts/skills-at-scale/flags.ts); kept .json files are redacted value by value, so they still parse
     grade.json               GradeResult
     workspace/, state/, logs/    the harness's mounts; logs/ready, adapter.log, docker.log or harness.std*.log
+    harness-memory/          Hermes and OpenClaw only: their own memory files (*.md) copied before turn 1 and after each turn,
+                             after-turn-<n>/<state|workspace>/<path>, with snapshots.jsonl (path, bytes, sha256 per file); committed
     gbrain/                  gbrain cells only: token (the sidecar's bearer token, mode 0600), sidecar.log, serve.log, docker.log; under member scope or member-sources also tokens.json, under scope sources,
                              member-sources or live ingestion manifest.json, and under live ingestion ingest-tokens.json (mode 0600); never committed
 ```
@@ -219,6 +221,10 @@ The "Price table" section now names `runner/pricing/prices-2026-11-10.json`: `pr
 ### 2026-11-08: OpenRouter route for DeepSeek V4.1 Flash 1017 (internal-task)
 
 The OpenRouter bullet under "Vendored pieces": the proxy's `openrouter` provider, its pin to DeepSeek's endpoint, the refusals (HE-PROXY-008), the served-elsewhere mark (HE-PROXY-009), the price row in `prices-2026-11-08.json` (and the Price table section's file name and its `fetched` source basis) and the checks in `preflight` and `run` (HE-PROXY-001, HE-PIN-005). Why: a cheap DeepSeek row that the metering proxy can lease, price and keep on one endpoint.
+
+### 2026-11-08: harness memory snapshots (internal-task)
+
+The results tree lists `harness-memory/`. Hermes and OpenClaw each keep one memory every member's conversation shares, so the leak eval needs to know what that memory held before each reply. The runner copies their Markdown memory files (`state/hermes/memories/`, and `workspace/MEMORY.md` and `workspace/memory/`) on the host from the trial's own bind mounts, before the first turn and after each turn, with no adapter change ([runner/trial/harness-memory.ts](trial/harness-memory.ts)). Scripted trials and every other harness get none.
 
 ### 2026-11-09: the price table section names prices-2026-11-09.json (internal-task)
 

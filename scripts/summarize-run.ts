@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Tables for a run's report from results/<run>/trials.jsonl (and trials.regraded.jsonl when present).
 //
-//   bun scripts/summarize-run.ts --results <results/<run-id>> [--regraded] [--seed 7] [--sealed-root <dir>] [--allow-missing-tasks]
+//   bun scripts/summarize-run.ts --results <results/<run-id>> [--regraded] [--seed 7] [--sealed-root <dir>] [--allow-missing-tasks] [--leak-tags]
 //
 // Sealed custody (docs/sealed-custody.md): a run planned with a sealed root (its manifest.json has a
 // "sealed" block) reads the sealed cells' task families from <sealed-root>/tasks and the world from
@@ -65,6 +65,10 @@
 // `gbrain.ingest` events' `effect.latency_ms` (median, p90 by nearest rank, max; a skipped message made no write and is left out),
 // facts returned per `search`, `query` or `recall` call (`effect.facts` length: median, max, and the share of calls returning at
 // least one), and the queries those calls sent (distinct `args.query` strings with counts, the top ten per cell).
+// Leak tags (internal-task, only with --leak-tags): a top-level `leak_tags` key with a block per cell and a "Leak tags" table, from
+// scripts/leak-tags.ts over the scored trials: cross-scope gbrain returns by tool and origin, reply leaks by likely origin
+// (harness memory, gbrain, a world read), and the trials leaking with and without the harness-memory leaks, on every turn and on
+// each predicate's own turn only. Without the flag the output is unchanged.
 // Headroom (runner/stats/headroom.ts, scripts/headroom.ts): last, a plain-English section with the per-task, per-cell pass
 // table, each task tagged as passed in every cell on every try, failed in every cell on every try, or able to tell cells
 // apart, and how many are left that can. Probe cells are left out. summary.json gains a `headroom` key (only its counts
@@ -86,6 +90,7 @@ import { isSealedCell, setWorldPath, setWorldPinProblem } from '../runner/run.ts
 import { sealedGuard } from '../runner/heldout/guard.ts';
 import { readJsonFile, readJsonLines, sealedPaths } from '../runner/heldout/sealed.ts';
 import { RunnerError } from '../runner/errors.ts';
+import { leakTagCounts, leakTagLines } from './leak-tags.ts';
 import { describeProblems, validateRecords, type PlannedTrials } from './validate-records.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
@@ -355,6 +360,12 @@ if (Object.keys(ingest).length) {
     out.push(`| ${cell} | ${v.trials} (${v.events_read}) | ${c('ok')} | ${c('skipped')} | ${c('failed')} | ${v.write_latency_ms.median} / ${v.write_latency_ms.p90} / ${v.write_latency_ms.max}; ${v.write_latency_ms.writes} | ${v.facts_per_call.median} / ${v.facts_per_call.max}; ${v.facts_per_call.calls} | ${share} | ${v.queries.calls}; ${v.queries.distinct} | ${v.queries.top.map((q) => `"${cellText(q.query)}" ${q.count}`).join(', ') || 'none'} |`);
   }
   out.push('');
+}
+// internal-task: --leak-tags adds the leak tags per cell (scripts/leak-tags.ts), graded live from each scored trial's stored evidence.
+if (process.argv.includes('--leak-tags')) {
+  const leakTags = leakTagCounts(rows, { results, manifest: runManifest ?? { cells: [] }, repoRoot, sealedRoot });
+  summary.leak_tags = leakTags;
+  out.push(...leakTagLines(leakTags), '');
 }
 const tasks = [...new Set(rows.map((t) => t.task))].sort();
 out.push(`| Task | ${cells.join(' | ')} |`);

@@ -1,0 +1,26 @@
+# gbrain scope layers on the member brain (dev)
+
+Image sha256:23a3436069e4d33225963e19287886754481f4ed1766f21f70312ee2aa5861f5. 15 members, 9 queries per search, query and recall, list_pages paged to the end. Seeded DM facts: 15 of 15. A row is outside when its source_id is not in the requesting member's grant.
+
+| Layers on | Tool | Calls | Rows | Rows outside the grant | Of those, seeded DM facts | Rows without source_id |
+|---|---|---:|---:|---:|---:|---:|
+| member token + source_ids | search | 135 | 264 | 0 | 0 | 0 |
+| member token + source_ids | query | 135 | 279 | 0 | 0 | 0 |
+| member token + source_ids | recall | 135 | 399 | 0 | 0 | 0 |
+| member token + source_ids | list_pages | 15 | 202 | 0 | 0 | 0 |
+| member token + source_ids | recall (question) | 135 | 15 | 0 | 0 | 0 |
+| member token only | search | 135 | 264 | 0 | 0 | 0 |
+| member token only | query | 135 | 279 | 0 | 0 | 0 |
+| member token only | recall | 135 | 399 | 0 | 0 | 0 |
+| member token only | list_pages | 15 | 202 | 0 | 0 | 0 |
+| member token only | recall (question) | 135 | 15 | 0 | 0 | 0 |
+| unscoped token + source_ids | search | 135 | 264 | 0 | 0 | 0 |
+| unscoped token + source_ids | query | 135 | 279 | 0 | 0 | 0 |
+| unscoped token + source_ids | recall | 135 | 399 | 0 | 0 | 0 |
+| unscoped token + source_ids | list_pages | 15 | 202 | 0 | 0 | 0 |
+| unscoped token + source_ids | recall (question) | 135 | 15 | 0 | 0 | 0 |
+| unscoped token only | search | 135 | 450 | 193 | 14 | 0 |
+| unscoped token only | query | 135 | 495 | 235 | 56 | 0 |
+| unscoped token only | recall | 135 | 2685 | 2279 | 2100 | 0 |
+| unscoped token only | list_pages | 15 | 495 | 293 | 0 | 0 |
+| unscoped token only | recall (question) | 135 | 225 | 210 | 210 | 0 |

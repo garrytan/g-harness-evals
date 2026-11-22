@@ -297,6 +297,16 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
           expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md');
         }
       }
+      else if (p.run_id === 'gbrain-access-leaks-2026-11') {
+        // internal-task: gbrain's value and access rules on gbrain 88610870 (v0.60.758.0). Six rows, network internal; none, open (one bot token, scope open) and rules
+        // (member-bound tokens under whole-source rules, channel remembers to the member) on company-v2-l5 and personal-v2 L5, none and rules on the personal-v2x twins.
+        expect(p.gbrain_commit).toBe('886108700bba0fcd3e597320e23a17a8c1d27319'); expect(p.spend_cap_usd).toBe(2400); expect(p.cells).toHaveLength(48);
+        expect(p.cells.reduce((n, x) => n + x.tasks!.length * x.repetitions, 0)).toBe(2880);
+        expect(['company-v2-l5', 'personal-v2', 'personal-v2x']).toContain(c.task_set!); expect(c.network).toBe('internal');
+        if (!c.gbrain) { expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.md'); continue; }
+        expect([{ surface: 'starter', brain: 'member', scope: 'open', ingest: 'live' }, { surface: 'starter', brain: 'member', scope: 'member-sources', ingest: 'live', channel_remember: 'member' }] as GbrainCellConfig[]).toContainEqual(c.gbrain);
+        expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-memory.md');
+      }
       else if (p.run_id === 'shared-brain-access-2026-11') {
         // internal-task-a (internal-task-b): the shared-bot run again at gbrain v0.60.754.0 (6a507316), cap $521. Bots: OpenClaw and Hermes on Opus 5.5 and GPT-6.2 Sol,
         // the company brain open, refused and labelled (each asker's key on the reader-labelled company brain). Installer: Claude Code and Codex on 17 tasks,
@@ -343,7 +353,7 @@ test('gbrain.brain and gbrain.scope: the plan shows them and warns about a compa
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'member', ingest: 'stream' as 'live' } })], 'gb-bad-ingest'))).toThrow(/HE-GBRAIN-003 .*ingest must be "off", "live" or absent/);
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'member', ingest: 'live' } })], 'gb-ingest-no-scope'))).toThrow(/HE-GBRAIN-003 .*ingest "live" needs gbrain.scope "member"/);
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'member', scope: 'sources', ingest: 'live' } })], 'gb-ingest-sources'))).toThrow(/HE-GBRAIN-003 .*ingest "live" needs gbrain.scope "member"/);
-  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'company', scope: 'team' as 'member' } })], 'gb-bad-scope'))).toThrow(/HE-GBRAIN-003 .*scope must be "member", "sources", "member-sources" or absent/);
+  expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', brain: 'company', scope: 'team' as 'member' } })], 'gb-bad-scope'))).toThrow(/HE-GBRAIN-003 .*scope must be "member", "sources", "member-sources", "open" or absent/);
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', scope: 'sources' } })], 'gb-sources-no-company'))).toThrow(/HE-GBRAIN-003 .*scope "sources" needs gbrain.brain "company" or "member"/);
   expect(line('fake-sources').endsWith('gbrain=starter/mcp/off brain=company scope=sources preamble=tasks/multiuser/_shared/preamble.gbrain-company.md')).toBe(true);
   expect(() => loadPrereg(writePrereg([cell({ gbrain: { surface: 'starter', scope: 'member' } })], 'gb-scope-no-company'))).toThrow(/HE-GBRAIN-003 .*scope "member" needs gbrain.brain "company" or "member"/);

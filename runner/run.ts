@@ -104,7 +104,7 @@ export interface ResolvedGbrain {
   install: (typeof GBRAIN_INSTALLS)[number];
   embeddings: (typeof GBRAIN_EMBEDDINGS)[number];
   brain: 'bot-visible' | 'company' | 'member';
-  scope: 'none' | 'member' | 'sources' | 'member-sources';
+  scope: 'none' | 'member' | 'sources' | 'member-sources' | 'open';
   /** Live ingestion of the scenario's messages into the member brain. */
   ingest: 'off' | 'live';
   /** internal-task: present only on a cell of the access-ruled member brain. */
@@ -120,6 +120,31 @@ export interface ResolvedGbrain {
 /** The cell's gbrain configuration with every default filled in; the cell itself is not changed. */
 export function resolveGbrain(c: GbrainCellConfig): ResolvedGbrain {
   return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}), ...(c.channel_remember === 'conversation' ? { channel_remember: 'conversation' as const } : {}), ...(c.serves ? { serves: c.serves } : {}), ...(c.labels ? { labels: c.labels } : {}) };
+}
+
+/** internal-task: every live-ingestion open or rules cell (scope "member-sources") must start the sidecar the leak preflight checked
+ *  (runner/trial/gbrain-leak-preflight.ts LEAK_PREFLIGHT_SIDECAR), with channel remembers under the member token, or the
+ *  preflight record would not describe it. The open and rules arms of one split must also start the same sidecar apart from the
+ *  scope, with the same harness install route: the same brain, ingestion, access, surface, embeddings, channel remember and install,
+ *  so the only difference between the arms is the token the tap presents. The HE-GBRAIN-021 message body when a cell breaks either
+ *  rule, else null. */
+export async function leakCellLayoutProblem(cells: Cell[]): Promise<string | null> {
+  const { sidecarLayout } = await import('./trial/gbrain.ts');
+  const { LEAK_PREFLIGHT_SIDECAR } = await import('./trial/gbrain-leak-preflight.ts');
+  const live = cells.filter((c) => c.gbrain?.brain === 'member' && c.gbrain.ingest === 'live' && (c.gbrain.scope === 'open' || c.gbrain.scope === 'member-sources'));
+  const shape = (c: Cell) => { const g = resolveGbrain(c.gbrain!); return { ...sidecarLayout({ split: c.split, ...g }), channel_remember: g.channel_remember ?? 'member', install: g.install }; };
+  for (const split of [...new Set(live.map((c) => c.split))]) {
+    const here = live.filter((c) => c.split === split);
+    if (!here.some((c) => c.gbrain!.scope === 'open') || !here.some((c) => c.gbrain!.scope === 'member-sources')) continue;
+    const layouts = here.map((c) => ({ c, layout: JSON.stringify(shape(c)) }));
+    if (new Set(layouts.map((l) => l.layout)).size > 1) return `the open and member-sources cells of split ${split} would start different gbrain sidecars (${layouts.map((l) => `${l.c.id} (scope ${l.c.gbrain!.scope}): ${l.layout}`).join('; ')}); the arms may differ only in the token the tap presents; fix: give the cells the same gbrain brain, ingest, surface, install and embeddings; no trial ran, no side effects, rerun the preflight`;
+  }
+  for (const c of live) {
+    const { install: _install, ...cell } = shape(c);
+    const checked = { ...sidecarLayout({ split: c.split, ...LEAK_PREFLIGHT_SIDECAR }), channel_remember: 'member' };
+    if (JSON.stringify(cell) !== JSON.stringify(checked)) return `cell ${c.id} (scope ${c.gbrain!.scope}) would start gbrain sidecar ${JSON.stringify(cell)}, but the leak preflight checks only ${JSON.stringify(checked)}, so its record would not describe this cell; fix: give the cell the starter surface, embeddings off, no access mode and the member channel remember, or extend the leak preflight to that layout first; no trial ran, no side effects, rerun the preflight`;
+  }
+  return null;
 }
 
 /** What plan prints for a gbrain cell: <surface>/<install>/<embeddings>. */
@@ -501,13 +526,16 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       // Company brain: brain and scope are additive; a cell without them is the gbrain arm's cell.
       // Member brain: brain "member" carries member tokens and ingest tokens; ingest "live" needs it.
       if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible", "company" or "member"; got ${JSON.stringify(c.gbrain.brain)}`);
-      if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'sources' && c.gbrain.scope !== 'member-sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member", "sources", "member-sources" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
+      if (c.gbrain.scope !== undefined && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'sources' && c.gbrain.scope !== 'member-sources' && c.gbrain.scope !== 'open') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope must be "member", "sources", "member-sources", "open" or absent; got ${JSON.stringify(c.gbrain.scope)}`);
+      // internal-task: "open" is the opt-in for live ingestion under the unscoped bot token (the leak eval's open arm), and nothing else.
+      if (c.gbrain.scope === 'open' && (c.gbrain.brain !== 'member' || c.gbrain.ingest !== 'live')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "open" is the opt-in for live ingestion under the trial's unscoped token and needs gbrain.brain "member" and gbrain.ingest "live" (got brain ${JSON.stringify(c.gbrain.brain ?? 'bot-visible')}, ingest ${JSON.stringify(c.gbrain.ingest ?? 'off')}); a cell without live ingestion and without member scope already reads under the unscoped token, so it needs no opt-in. fix: set gbrain: {surface: "starter", brain: "member", scope: "open", ingest: "live"}, or drop scope`);
       if (c.gbrain.scope !== undefined && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member' && !(c.gbrain.serves === 'several' && c.gbrain.scope === 'member')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.scope "${c.gbrain.scope}" needs gbrain.brain "company" or "member"; only those brains carry member tokens and per-member source grants`);
       if (c.gbrain.ingest !== undefined && c.gbrain.ingest !== 'off' && c.gbrain.ingest !== 'live') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest must be "off", "live" or absent; got ${JSON.stringify(c.gbrain.ingest)}`);
       if (c.gbrain.ingest === 'live' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.brain "member"; only the member brain carries the per-source ingest tokens (gbrain/README.md, "The member brain")`);
       if (c.gbrain.ingest === 'live' && c.harness_mode === 'process') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.ingest "live" runs in docker mode only; in process mode the harness runs as the runner's user and could read the ingest tokens under the trial directory. fix: drop harness_mode "process" from the cell`);
       // internal-task: "member-sources" keeps the member-token layer of "member" and adds the member's source_ids, so it satisfies the rule too.
-      if (c.gbrain.ingest === 'live' && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'member-sources') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.scope "member" or "member-sources"; without the member's own token the tap reads under the trial's unscoped token and every member's ingested DM facts come back to every requester, a leak built into the arm`);
+      // internal-task: "open" says so on purpose; a cell that leaves scope out (or names "sources") is still refused.
+      if (c.gbrain.ingest === 'live' && c.gbrain.scope !== 'member' && c.gbrain.scope !== 'member-sources' && c.gbrain.scope !== 'open') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.ingest "live" needs gbrain.scope "member" or "member-sources"; without the member's own token the tap reads under the trial's unscoped token and every member's ingested DM facts come back to every requester, a leak built into the arm. A cell that measures that leak on purpose opts in with gbrain.scope "open"`);
       // internal-task (the access-rules rerun): access "rules" is the member brain's read gate; only member tokens read through it.
       if (c.gbrain.access !== undefined && c.gbrain.access !== 'rules') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access must be "rules" or absent; got ${JSON.stringify(c.gbrain.access)}`);
       if (c.gbrain.access === 'rules' && (c.gbrain.brain !== 'member' || c.gbrain.scope !== 'member')) throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.access "rules" needs gbrain.brain "member" and gbrain.scope "member" (got brain ${JSON.stringify(c.gbrain.brain ?? 'bot-visible')}, scope ${JSON.stringify(c.gbrain.scope ?? 'none')}); only the member brain is built with folder rules, and only the members' own bound tokens read through them`);
@@ -1074,6 +1102,35 @@ async function main(argv: string[]): Promise<number> {
           console.log(`GBRAIN: image ${image} id=${probe.image_id} brain=member scope=member ingest=live split=${split} pages=${probe.listed} (${Object.entries(probe.by_kind).map(([k, v]) => `${k} ${v}`).join(', ')}) under the unscoped token, tokens=${probe.member_tokens} plus public-only: ${probe.member_check}, channel ingest tokens present (no write is tried), ready in ${probe.ready_ms} ms`);
           await probeScoped('member', split);
         }
+        // internal-task: the leak preflight of every live-ingestion member-brain cell, per arm and split, before any trial (keyless,
+        // fail-closed). Both arms on a split must also serve the same brain layout.
+        const leakArms = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'member' && c.gbrain!.ingest === 'live' && (c.gbrain!.scope === 'open' || c.gbrain!.scope === 'member-sources')).map((c) => `${c.gbrain!.scope}|${c.split}`))].sort();
+        if (leakArms.length) {
+          const { runLeakPreflight, writeLeakRecord, leakMessage, leakFix, layoutProblem, LEAK_CODES } = await import('./trial/gbrain-leak-preflight.ts');
+          const cellLayout = await leakCellLayoutProblem(gbrainCells);
+          if (cellLayout) throw new RunnerError('HE-GBRAIN-021', cellLayout);
+          const done = new Map<string, import('./trial/gbrain-leak-preflight.ts').LeakPreflightRecord>();
+          for (const key of leakArms) {
+            const [arm, split] = key.split('|') as ['open' | 'member-sources', 'dev' | 'heldout'];
+            const path = join(runDir, `leak-preflight-${arm}-${split}.json`);
+            const { record, secrets } = await runLeakPreflight({ image, split, arm, worldPath: setWorld?.path ?? (sealed ? sealed.worldPath : DEFAULT_WORLD_PATH), record: path, log: (l) => console.log(`GBRAIN: ${l}`) });
+            writeLeakRecord(path, record, secrets);
+            if (!record.ok) {
+              const carry = record.problems.filter((p) => p.check === 'write-carry');
+              const code = carry.length === record.problems.length ? LEAK_CODES.write_carry : LEAK_CODES[arm];
+              const msg = leakMessage(code, { arm, split, image, image_id: record.image_id, commit: record.gbrain_commit, record: path, fix: leakFix(carry.length === record.problems.length ? 'write_carry' : arm, { image, split, commit: record.gbrain_commit }) }, record.problems);
+              throw new RunnerError(code, msg.slice(code.length + 1));
+            }
+            done.set(key, record);
+            const probes = Object.entries(record.informational).filter(([k]) => k.startsWith('write_carry_')).map(([k, v]) => `${k} ${(v as { error?: string }).error ? 'error' : Object.values((v as { crossed?: Record<string, string[]> }).crossed ?? {}).some((x) => x.length) ? 'crosses' : 'holds'}`).join(', ');
+            console.log(`GBRAIN: leak preflight scope=${arm} split=${split} image id=${record.image_id}: ${record.summary.facts} scripted facts ingested into their own sources (${record.summary.database_only} database-only), ${record.summary.askers} askers over search, query, recall, get_page, list_pages and hot memory, ${arm === 'open' ? 'every asker served every fact (the leak path exists)' : 'own returned and nothing outside the grant; write carry (T8) holds'}; informational: ${probes || 'none'}; record ${path}`);
+          }
+          for (const split of [...new Set(leakArms.map((k) => k.split('|')[1]!))]) {
+            const open = done.get(`open|${split}`), rules = done.get(`member-sources|${split}`);
+            const problem = open && rules ? layoutProblem(open, rules) : null;
+            if (problem) throw new RunnerError(LEAK_CODES.layout, problem);
+          }
+        }
         for (const split of companySplits) {
           const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && (c.gbrain!.scope === 'member' || c.gbrain!.scope === 'member-sources')) ? 'member' : 'none';
           const probe = await probeCompanyBrain(image, split, companyPageList(world, split), join(runDir, `preflight-gbrain-company-${split}`), scope);
@@ -1162,6 +1219,18 @@ async function main(argv: string[]): Promise<number> {
           if (problem) throw new RunnerError('HE-GBRAIN-002', problem);
         }
         console.log(`GBRAIN: access=rules ${aclSplits.join(', ')}: the access preflight passed on image id ${imageId}, the image this run uses`);
+      }
+      // internal-task: a live-ingestion member-brain cell (scope open or member-sources) runs only on the image its leak preflight passed on.
+      const leakArms = [...new Set(manifest.cells.filter((c) => c.gbrain?.brain === 'member' && c.gbrain.ingest === 'live' && (c.gbrain.scope === 'open' || c.gbrain.scope === 'member-sources') && (cells ? cells.includes(c.id) : true)).map((c) => `${c.gbrain!.scope}|${c.split}`))];
+      if (leakArms.length) {
+        const { leakRecordProblem } = await import('./trial/gbrain-leak-preflight.ts');
+        const imageId = spawnSync('docker', ['image', 'inspect', '-f', '{{.Id}}', image], { encoding: 'utf8' }).stdout?.trim() ?? '';
+        for (const key of leakArms) {
+          const [arm, split] = key.split('|') as ['open' | 'member-sources', string];
+          const problem = leakRecordProblem(join(dirname(path), `leak-preflight-${arm}-${split}.json`), arm, split, image, imageId);
+          if (problem) throw new RunnerError('HE-GBRAIN-020', problem);
+        }
+        console.log(`GBRAIN: leak preflight passed for ${leakArms.map((k) => k.replace('|', ' on ')).join(', ')} on image id ${imageId}, the image this run uses`);
       }
     }
     const { executeRun } = await import('./trial/run.ts');

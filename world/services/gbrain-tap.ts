@@ -312,7 +312,8 @@ export function collectSlugs(value: unknown, into: string[] = [], seen = new Set
 }
 
 /** The JSON a gbrain tool result carries: each content[].text that parses, plus structuredContent. _meta
- *  (notices, hot memory) is left out so a notice's suggested call never counts as a page the call touched. Saved facts
+ *  (notices, hot memory) is left out so a notice's suggested call never counts as a page the call touched (hotMemoryOf reads
+ *  hot memory on its own). Saved facts
  *  are not here either: search answers them in a prose block and in _meta.retrieval.saved_facts, never as rows (internal-task),
  *  so savedFactsOf reads them on their own. */
 function resultPayloads(result: Record<string, unknown>): unknown[] {
@@ -385,6 +386,23 @@ export function savedFactsOf(result: Record<string, unknown>, payloads: unknown[
   return block.text!.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('- ')).map((l) => ({ fact: l.slice(2).trim() })).filter((f) => f.fact);
 }
 
+/** internal-task: the facts gbrain injected into a tool result's _meta.brain_hot_memory block (src/core/facts/meta-hook.ts at
+ *  98dda48f): each fact's id and text, and the block's source_id as the fact's source (the block is one source's facts, the
+ *  calling token's write source). gbrain adds the block to any successful tool call but recall, extract_facts, forget_fact and
+ *  QM's memory pair, so it can carry another conversation's facts beside a reply that returned no row. */
+export function hotMemoryOf(result: Record<string, unknown>): GbrainFact[] {
+  const meta = result._meta && typeof result._meta === 'object' ? result._meta as { brain_hot_memory?: { source_id?: unknown; facts?: unknown } } : null;
+  const block = meta?.brain_hot_memory;
+  if (!block || !Array.isArray(block.facts)) return [];
+  const source = typeof block.source_id === 'string' ? block.source_id : undefined;
+  return block.facts.flatMap((f): GbrainFact[] => {
+    if (!f || typeof f !== 'object' || Array.isArray(f)) return [];
+    const o = f as { id?: unknown; fact?: unknown };
+    if (typeof o.fact !== 'string' || !o.fact) return [];
+    return [{ fact: o.fact, ...(typeof o.id === 'number' || typeof o.id === 'string' ? { id: o.id } : {}), ...(source ? { source_id: source } : {}) }];
+  });
+}
+
 export interface GbrainEffect {
   pages: string[]; count: number; latency_ms: number;
   /** internal-task (gbrain#7481): the distinct source_id values of the rows a search, query or recall returned, in order of first appearance. */
@@ -393,6 +411,9 @@ export interface GbrainEffect {
   degraded?: string;
   /** internal-task-a correction (internal-task-b): the saved facts the reply carried beside its rows, when any; never counted in pages or count. */
   facts?: GbrainFact[];
+  /** internal-task: the facts the reply's _meta.brain_hot_memory block carried (hotMemoryOf), on any tool call, when any; never
+   *  counted in pages, count or facts. */
+  hot_memory?: GbrainFact[];
 }
 
 /** internal-task: recall's search_degraded or facts_degraded.reason from a result payload; null when the reply carries neither. */
@@ -445,6 +466,7 @@ export function describeCall(request: RpcMessage, reply: RpcMessage | undefined,
       const d = degradedStampOf(payloads); if (d) effect.degraded = d;
       if (result) { const facts = savedFactsOf(result, payloads); if (facts.length) effect.facts = facts; }
     }
+    if (result) { const hot = hotMemoryOf(result); if (hot.length) effect.hot_memory = hot; }
   }
   return { tool: `gbrain.${name}`, kind, args, outcome, ...(error ? { error } : {}), effect };
 }

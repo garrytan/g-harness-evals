@@ -184,7 +184,9 @@ latency_ms}` where `pages` are the gbrain page slugs the call returned or target
 `search` and `query` (`count` is the row count), the requested slug for `get_page`, `put_page` and `edit_page`, every
 slug listed by `list_pages`, and for `recall`, `entity`, `context_pack` and the rest whatever `slug` values appear in
 the result's JSON content (`_meta` notices are skipped, so a suggested call never counts as a page touched); for
-`tools/list` `pages` is empty and `count` the number of tools. `seq`, `sim_ts` and `args_digest` come from the log
+`tools/list` `pages` is empty and `count` the number of tools. When a reply carries gbrain's `_meta.brain_hot_memory`
+block (gbrain adds it to most successful calls, writes included), `effect.hot_memory` lists its facts with `id`, `fact` and
+the block's `source_id`; the key is absent otherwise, and the facts are never pages, rows or `effect.facts`. `seq`, `sim_ts` and `args_digest` come from the log
 as for every event, so a gbrain call inside a turn window is attributed to that turn's requester like a world
 call, and a search whose rows come from a channel the requester is not in is a cross-scope read for the grader
 (lane E). `tests/gbrain-tap.test.ts` proves this against a fake upstream.

@@ -148,11 +148,17 @@ export interface TrialEvidence {
   snapshot: WorldSnapshot;
   events: WorldEvent[];
   turns: TurnWindow[];
+  /** internal-task: the harness's own memory files (Hermes, OpenClaw) as the runner copied them before the first turn (after_turn 0)
+   *  and after each turn (runner/trial/harness-memory.ts), read back from <trial dir>/harness-memory/; absent for every other
+   *  harness and for a trial recorded before the runner took them. Only the reply-leak tagging reads it. */
+  harness_memory?: HarnessMemorySnapshot[];
   /** [clock] timers tasks only (TimerTurnWindow). */
   timer_turns?: TimerTurnWindow[];
   /** [clock] timers tasks only (RedeliveryTurnWindow). */
   redelivery_turns?: RedeliveryTurnWindow[];
 }
+
+export interface HarnessMemorySnapshot { after_turn: number; files: Array<{ path: string; text: string }> }
 
 export interface PredicateResult {
   id: string;
@@ -398,8 +404,12 @@ export interface GbrainCellConfig {
    *  source before the first turn), so one bot token narrows per request; company brain only. Member-sources addition
    *  (gbrain#8074): "member-sources" does both, the requesting member's token (granted server-side with gbrain auth rescope at
    *  image build) and that member's source_ids on every narrowed call; company brain, and the member brain, where it
-   *  also satisfies live ingestion's need for the member's own token. */
-  scope?: 'member' | 'sources' | 'member-sources';
+   *  also satisfies live ingestion's need for the member's own token. internal-task addition: "open" is the explicit opt-in for live
+   *  ingestion with no member scope: the tap sends every call under the trial's one unscoped token with no source_ids, so every
+   *  asker reads every source, the ingested DM facts of every member included (gbrain's default, the open arm of the leak
+   *  eval). Accepted only with brain "member" and ingest "live"; the source layout and ingest path are those of a
+   *  "member-sources" cell on the same brain, and only the token and its grants differ. */
+  scope?: 'member' | 'sources' | 'member-sources' | 'open';
   /** internal-task addition (the access-rules rerun, gbrain#8134): "rules" serves the member brain built with gbrain's folder rules (one
    *  per source with a reader set, prefix <split>/, the source's readers) and member-bound tokens with no source grant, so the
    *  rules are the only read gate (docs/gbrain-arm.md, "Access-ruled member brain"). Needs brain "member" and scope "member", and
@@ -510,7 +520,7 @@ export interface TrialGbrain {
   /** Company brain additions, absent in records written before them: the brain and scope the sidecar ran with and the docker
    *  image id behind the tag, so a record names the exact brain it was served from. */
   brain?: 'bot-visible' | 'company' | 'member';
-  scope?: 'none' | 'member' | 'sources' | 'member-sources';
+  scope?: 'none' | 'member' | 'sources' | 'member-sources' | 'open';
   /** Present when the sidecar served the access-ruled member brain. */
   access?: 'rules';
   /** Whether the world ingested the scenario's messages into the brain, and how many it wrote (gbrain.ingest events): ok

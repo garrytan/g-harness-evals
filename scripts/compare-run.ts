@@ -38,8 +38,9 @@
 // --pair gbrain pairs trial by trial (same task, same repetition id; a repetition missing on one side is excluded by its id) over two scopes:
 // the primary endpoint (the capable families, scope_isolation, shared_channel, org_security and handoff, or
 // --families) and all tasks as a secondary. A cell is the gbrain arm when its manifest entry has a truthy
-// `gbrain` field or its id has a "gbrain" segment; every gbrain cell of a (harness, config, model) is paired against
-// its one cell without gbrain, so an arm that differs in configuration (another preamble) is its own pair. A pair whose trial ended as model_error or infra_error on
+// `gbrain` field or its id has a "gbrain" segment; every gbrain cell of a (harness, config, model, task set) is paired against
+// its one cell without gbrain, so an arm that differs in configuration (another preamble) or task set is its own pair, and a
+// pair with no task in a scope's families is listed under that scope's no_tasks_in_scope instead of compared. A pair whose trial ended as model_error or infra_error on
 // either side is excluded with its count published (methodology item 9). Holm runs across the harness pairs of
 // one model as one family, each model its own family. The output, comparisons.gbrain.json, carries per pair the
 // passed counts, the difference gbrain minus none with its interval, the per-task passes table, the discordant
@@ -90,13 +91,18 @@
 // line and the parser's error class, never the parser's message (which quotes the line). With --against both manifests are
 // read before any trial row: a sealed run against an unsealed one, either way round, is HE-SEALED-001, and two sealed runs
 // of different openings are HE-SEALED-003, so a sealed --against never reaches the public task lookup.
+//
+// Leak tags (internal-task): --leak-tags, accepted only with --pair gbrain (either design), adds a leak_tags key to
+// comparisons.gbrain.json and a "Leak tags" table (scripts/leak-tags.ts) over the trials not excluded: cross-scope gbrain
+// returns by tool and origin, reply leaks by likely origin, and the trials leaking with and without harness-memory leaks, on
+// every turn and on each predicate's own turn only, graded with this checkout's grader. Without the flag the output is unchanged.
+//
 // Before anything is compared, scripts/validate-records.ts checks each run's trials.jsonl against its own manifest.json
 // (methodology item 12): a malformed record, a trial id recorded twice, a trial the manifest does not plan or one in another
 // cell or task than planned exits 2 naming the trial ids, and nothing is written.
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import { installerNotApplied, type GbrainCellConfig, type TrialRecord } from '../runner/contracts.ts';
 import type { Observation, PairedDelta } from '../runner/stats/paired.ts';
@@ -108,9 +114,9 @@ import { RunnerError } from '../runner/errors.ts';
 import { describeProblems, validateRecords, type PlannedTrials } from './validate-records.ts';
 import { taskFamily } from '../runner/grade/task.ts';
 import { trialGbrainExposure } from '../runner/grade/index.ts';
-import type { TrialEvidence, TurnWindow, WorldSnapshot } from '../runner/contracts.ts';
-import type { WorldEvent } from '../world/services/events.ts';
-import { isSealedCell, resolveGbrain, setWorldPath, setWorldPinProblem, taskDirFor } from '../runner/run.ts';
+import { storedEvidence } from './stored-evidence.ts';
+import { leakTagLines, leakTags as gradeLeakTags } from './leak-tags.ts';
+import { isSealedCell, resolveGbrain, setWorldPinProblem, taskDirFor } from '../runner/run.ts';
 import { COMPARE_ENDPOINTS, ENDPOINT_LABEL, endpointValue, ladderPairs, readShards, shardsLabel, type Endpoint } from './gbrain-ladder.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
@@ -123,6 +129,7 @@ if (!results || !existsSync(join(results, 'trials.jsonl'))) {
   process.exit(2);
 }
 const pairMode = arg('pair');
+if (pairMode !== 'gbrain' && process.argv.includes('--leak-tags')) { console.error('--leak-tags tags the gbrain pairing\'s leaks; add --pair gbrain'); process.exit(2); }
 if (pairMode !== 'gbrain' && process.argv.includes('--require-exposure')) { console.error('--require-exposure reads the gbrain ladder\'s exposure endpoint; add --pair gbrain'); process.exit(2); }
 if (pairMode !== undefined && pairMode !== 'gbrain') {
   console.error(`--pair takes "gbrain", not "${pairMode}"`);
@@ -203,6 +210,9 @@ if (pairMode === 'gbrain') {
   const EXCLUDED = new Set(['model_error', 'infra_error', 'exam_fault']);
   const isGbrainCell = (c: (typeof manifest.cells)[number]) => Boolean(c.gbrain) || /(^|-)gbrain(-|$)/.test(c.id);
   const present = manifest.cells.filter((c) => rows.some((t) => t.cell === c.id));
+  // internal-task: --leak-tags adds the leak tags per cell (scripts/leak-tags.ts) over the trials outside EXCLUDED, in either design.
+  const leakGraded = process.argv.includes('--leak-tags') ? gradeLeakTags(rows.filter((t) => !EXCLUDED.has(t.termination)), { results, manifest, repoRoot, sealedRoot }) : null;
+  const leakTags = leakGraded?.cells ?? null;
   const med = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2; };
   const byTask = (cell: string, scopeRows: TrialRecord[]) => {
     const m = new Map<string, Map<string, TrialRecord>>();
@@ -240,33 +250,18 @@ if (pairMode === 'gbrain') {
      *  snapshot.json.gz); null, and so out of the pairs, when a trial has no events, turns or snapshot recorded. It is graded
      *  with this checkout's grader, tasks and world, whose commit the output records. A sealed run reads its tasks and merged
      *  world from --sealed-root. */
-    const stored = (d: string, f: string): string | null => (existsSync(join(d, f)) ? readFileSync(join(d, f), 'utf8') : existsSync(join(d, f + '.gz')) ? gunzipSync(readFileSync(join(d, f + '.gz'))).toString('utf8') : null);
-    const jsonl = <T>(text: string) => text.split('\n').filter(Boolean).map((l) => JSON.parse(l) as T);
+    const evidenceOptions = { results, manifest, repoRoot, sealedRoot };
     const exposureOf = (t: TrialRecord): { value: ReturnType<typeof trialGbrainExposure> | null; problem?: string } => {
-      const dir = join(results, 'trials', t.cell, t.task, rep(t));
-      if (!['events.jsonl', 'turns.jsonl', 'snapshot.json'].every((f) => existsSync(join(dir, f)) || existsSync(join(dir, f + '.gz')))) return { value: null, problem: `${t.trial_id}: no stored events, turns or snapshot` };
+      const stored = storedEvidence(t, evidenceOptions);
+      if ('problem' in stored) return { value: null, problem: stored.problem };
       try {
-        const cell = manifest.cells.find((c) => c.id === t.cell) ?? { split: 'dev' as const };
-        const sealed = isSealedCell(cell, manifest.sealed?.set);
-        const turns = jsonl<TurnWindow>(stored(dir, 'turns.jsonl')!);
-        const run = t.turns?.run ?? 0;
-        if (turns.length !== run || new Set(turns.map((w) => w.turn)).size !== run) return { value: null, problem: `${t.trial_id}: turns.jsonl holds ${turns.length} turn(s), the record says ${run} ran` };
-        const snapshot = JSON.parse(stored(dir, 'snapshot.json')!) as WorldSnapshot;
-        const events = jsonl<WorldEvent>(stored(dir, 'events.jsonl')!);
-        const counted = (snapshot as { events?: unknown }).events;
-        if (counted !== events.length || events.some((e, i) => e.seq !== i + 1)) return { value: null, problem: `${t.trial_id}: events.jsonl holds ${events.length} event(s) in seq order 1..n ${events.every((e, i) => e.seq === i + 1) ? 'yes' : 'no'}, the snapshot counts ${typeof counted === 'number' ? counted : 'none'}` };
-        const evidence: TrialEvidence = {
-          trial_id: t.trial_id, task_dir: taskDirFor(cell, t.task, sealed ? join(sealedRoot!, 'tasks') : join(repoRoot, 'tasks')), split: cell.split,
-          world_path: manifest.sealed && sealedRoot ? join(sealedRoot, 'world', 'world.json') : setWorldPath(cell, join(repoRoot, 'tasks')) ?? join(repoRoot, 'world', 'seed', 'world.json'), bot_member: 'assistant',
-          snapshot, events, turns,
-        };
-        return { value: trialGbrainExposure(evidence) };
+        return { value: trialGbrainExposure(stored.evidence) };
       } catch (err) {
         return { value: null, problem: `${t.trial_id}: stored evidence did not read (${(err as Error).name}: ${(err as Error).message})` };
       }
     };
     const graderCommit = (() => { try { return execSync('git rev-parse HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim(); } catch { return null; } })();
-    const graderDirty = (() => { try { return execSync('git status --porcelain -- runner tasks world scripts/compare-run.ts scripts/gbrain-ladder.ts', { cwd: repoRoot, encoding: 'utf8' }).trim() !== ''; } catch { return null; } })();
+    const graderDirty = (() => { try { return execSync('git status --porcelain -- runner tasks world scripts/compare-run.ts scripts/gbrain-ladder.ts scripts/stored-evidence.ts', { cwd: repoRoot, encoding: 'utf8' }).trim() !== ''; } catch { return null; } })();
     const exposure = new Map<string, ReturnType<typeof exposureOf>>();
     const viewOf = (t: TrialRecord) => { const r = regraded.get(t.trial_id); return { grade: r?.grade ?? t.grade, consent_violation: r?.consent_violation ?? t.consent_violation, predicates: r?.predicates ?? t.predicates, exposure: exposure.get(t.trial_id)?.value?.returned.length ?? null }; };
     /** gbrain-installer-hook-2026-10's preregistration: a trial of an installer cell whose installer did not take (no install
@@ -407,8 +402,9 @@ if (pairMode === 'gbrain') {
       ...(graderDirty !== false ? ['runner, tasks, world or the comparison scripts hold uncommitted changes (or git could not tell), so the grader commit is not what graded'] : []),
       ...(!shards ? ['no shards.json, so the commit the run executed at is unknown'] : Object.entries(runCommits).filter(([, c]) => c !== graderCommit).map(([cell, c]) => `cell ${cell} ran at ${c ?? 'a commit shards.json does not record'}, not the grader commit`)),
     ];
+    if (leakTags) lines.push('', ...leakTagLines(leakTags));
     console.log(lines.join('\n'));
-    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', grading: useRegraded ? 'regraded' : 'as recorded', exposure: { grader_commit: graderCommit, grader_dirty: graderDirty, run_commits: runCommits, graded: 'live, with this checkout\'s grader, tasks and world', ready: exposureProblems.length === 0, problems: exposureProblems, counts: exposureCounts }, seed, draws, stats_kit: statsKit, shards, exclusions: [...EXCLUDED, ...(installerCells.size ? ['installer_not_applied'] : [])], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
+    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', ...(leakTags ? { leak_tags: leakTags } : {}), grading: useRegraded ? 'regraded' : 'as recorded', exposure: { grader_commit: graderCommit, grader_dirty: graderDirty, run_commits: runCommits, graded: 'live, with this checkout\'s grader, tasks and world', ready: exposureProblems.length === 0, problems: exposureProblems, counts: exposureCounts }, seed, draws, stats_kit: statsKit, shards, exclusions: [...EXCLUDED, ...(installerCells.size ? ['installer_not_applied'] : [])], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
     if (process.argv.includes('--require-exposure') && exposureProblems.length) {
       console.error(`--require-exposure: ${exposureProblems.join('; ')}; the exposure endpoint cannot decide until these are fixed`);
       process.exit(2);
@@ -417,14 +413,14 @@ if (pairMode === 'gbrain') {
   }
 
   const groups = new Map<string, typeof present>();
-  for (const c of present) { const k = `${c.harness}|${c.config ?? ''}|${c.model}`; groups.set(k, [...(groups.get(k) ?? []), c]); }
+  for (const c of present) { const k = `${c.harness}|${c.config ?? ''}|${c.model}|${c.task_set ?? ''}`; groups.set(k, [...(groups.get(k) ?? []), c]); }
   const skipped: string[] = [];
-  const cellPairs: Array<{ harness: string; config: string | null; model: string; none: string; gbrain: string }> = [];
+  const cellPairs: Array<{ harness: string; config: string | null; model: string; task_set: string | null; none: string; gbrain: string }> = [];
   for (const [, cs] of groups) {
     const withG = cs.filter(isGbrainCell), without = cs.filter((c) => !isGbrainCell(c));
     const c = cs[0]!;
     if (withG.length < 1 || without.length !== 1) { skipped.push(`${c.harness}${c.config ? ' ' + c.config : ''} on ${c.model}: ${withG.length} gbrain cell(s), ${without.length} without`); continue; }
-    for (const g of withG) cellPairs.push({ harness: c.harness, config: c.config ?? null, model: c.model, none: without[0]!.id, gbrain: g.id });
+    for (const g of withG) cellPairs.push({ harness: c.harness, config: c.config ?? null, model: c.model, task_set: c.task_set ?? null, none: without[0]!.id, gbrain: g.id });
   }
   if (!cellPairs.length) {
     console.error(`--pair gbrain found no (harness, model) with a gbrain cell and exactly one without${skipped.length ? ': ' + skipped.join('; ') : ''}`);
@@ -478,7 +474,9 @@ if (pairMode === 'gbrain') {
   const lines: string[] = [`Scope: within-run gbrain arm; grading ${useRegraded ? 'regraded' : 'as recorded'}; seed ${seed}, ${draws} draws.${skipped.length ? ' Not paired: ' + skipped.join('; ') + '.' : ''}`];
   for (const { scope, families: fams } of scopes) {
     const scopeRows = rows.filter((t) => !fams || fams.includes(familyOf.get(t.task)!));
-    const stats = cellPairs.map((cp) => {
+    const scopePairs = cellPairs.filter((cp) => scopeRows.some((t) => t.cell === cp.gbrain));
+    const noTasks = cellPairs.filter((cp) => !scopePairs.includes(cp)).map((cp) => cp.gbrain);
+    const stats = scopePairs.map((cp) => {
       const { faulted: _main, ...main } = estimate(cp, scopeRows, false);
       const usageOf = (cell: string) => scopeRows.filter((t) => t.cell === cell);
       const ua = usageOf(cp.none), ub = usageOf(cp.gbrain);
@@ -512,7 +510,7 @@ if (pairMode === 'gbrain') {
       const sensAdj = holmAdjusted(idx.map((i) => stats[i]!.sensitivity?.faults_as_failures.p ?? 1));
       idx.forEach((i, k) => { const s = stats[i]!.sensitivity; if (s) s.faults_as_failures.holm_p = sensAdj[k]!; });
     }
-    out.push({ scope, families: fams, holm_family: 'the harness pairs of one model', comparisons: stats.map((s, i) => ({ ...s, holm_p: holm[i] })) });
+    out.push({ scope, families: fams, holm_family: 'the harness pairs of one model', ...(noTasks.length ? { no_tasks_in_scope: noTasks } : {}), comparisons: stats.map((s, i) => ({ ...s, holm_p: holm[i] })) });
     const ci = (c: [number, number] | null) => (c ? `[${pts(c[0])}, ${pts(c[1])}]` : '[n/a]');
     const sensRow = (s: (typeof stats)[number]) => {
       const f = s.sensitivity?.faults_as_failures;
@@ -520,7 +518,7 @@ if (pairMode === 'gbrain') {
       return [`| ${s.harness}${s.config ? ' ' + s.config : ''} (sensitivity, preregistered: HE-GBRAIN-011 faults as live failures; ${f.faulted_pairs} pair(s) re-included${f.equals_main ? ', equals the main estimate' : ''}) | ${s.model} | \`${s.cell_gbrain}\` | ${f.passed.none} / ${s.n_trials.none} | ${f.passed.gbrain} / ${s.n_trials.gbrain} | ${pts(f.delta)} ${ci(f.ci95)} | ${f.p.toFixed(3)} (${f.p_method}) | ${f.holm_p === null ? 'n/a' : f.holm_p.toFixed(3)} | ${f.n_clusters} | ${f.n_pairs} | ${f.excluded} | as above | as above | as above |`];
     };
     const excludedRows = stats.flatMap((s) => s.excluded.map((x) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | ${s.model} | \`${s.cell_gbrain}\` | ${x.id} | \`${x.task}\` | ${x.side} | ${x.reason} | ${x.gbrain_calls === null ? 'no gbrain block' : x.gbrain_calls} |`));
-    lines.push('', `${scope === 'primary' ? `Primary endpoint, families ${fams!.join(', ')}` : 'All tasks (secondary)'}:`, '',
+    lines.push('', `${scope === 'primary' ? `Primary endpoint, families ${fams!.join(', ')}` : 'All tasks (secondary)'}:${noTasks.length ? ` (no task in this scope for ${noTasks.map((c) => `\`${c}\``).join(', ')})` : ''}`, '',
       '| Harness | Model | gbrain cell | Passed none | Passed gbrain | gbrain minus none (points) [95% CI, task-clustered] | p (two-sided, sign-flip) | Holm-adjusted p | Tasks | Pairs | Excluded | USD median / trial (none, gbrain) | Wall median s (none, gbrain) | Input tokens total (none, gbrain) |',
       '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|',
       ...stats.flatMap((s, i) => [`| ${s.harness}${s.config ? ' ' + s.config : ''} | ${s.model} | \`${s.cell_gbrain}\` | ${s.passed.none} / ${s.n_trials.none} | ${s.passed.gbrain} / ${s.n_trials.gbrain} | ${pts(s.delta)} ${ci(s.ci95)} | ${s.p.toFixed(3)} (${s.p_method}) | ${holm[i]!.toFixed(3)} | ${s.n_clusters} | ${s.n_pairs} | ${s.excluded.length} | ${s.cost.usd_median.none?.toFixed(3) ?? 'n/a'}, ${s.cost.usd_median.gbrain?.toFixed(3) ?? 'n/a'} | ${s.cost.wall_s_median.none?.toFixed(0) ?? 'n/a'}, ${s.cost.wall_s_median.gbrain?.toFixed(0) ?? 'n/a'} | ${s.cost.input_tokens_total.none.toLocaleString()}, ${s.cost.input_tokens_total.gbrain.toLocaleString()} |`, ...sensRow(s)]),
@@ -529,8 +527,9 @@ if (pairMode === 'gbrain') {
       '', ...(excludedRows.length ? ['Excluded pairs (task, the side that dropped the pair, the reason, and the gbrain cell\'s call count for the pair):', '',
         '| Harness | Model | gbrain cell | Pair | Task | Side | Reason | gbrain calls (gbrain cell) |', '|---|---|---|---|---|---|---|---|', ...excludedRows] : ['Excluded pairs: none.']));
   }
+  if (leakTags) lines.push('', ...leakTagLines(leakTags));
   console.log(lines.join('\n'));
-  writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, stats_kit: statsKit, not_paired: skipped, scopes: out }, null, 1) + '\n');
+  writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', grading: useRegraded ? 'regraded' : 'as recorded', seed, draws, stats_kit: statsKit, not_paired: skipped, scopes: out, ...(leakGraded ? { leak_tags: leakGraded.cells, leak_trials: leakGraded.trials } : {}) }, null, 1) + '\n');
   process.exit(0);
 }
 

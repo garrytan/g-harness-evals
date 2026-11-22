@@ -44,6 +44,8 @@ function toolResult(name: string, args: Record<string, unknown>) {
         ]),
         text('[gbrain search] Rows are a ranked top-K, not proof of coverage.'),
       ] };
+      // internal-task: gbrain injects _meta.brain_hot_memory (one source's facts) into a successful reply (meta-hook.ts at 98dda48f).
+      if (String(args.query ?? '').includes('hot-memory')) return { _meta: { brain_hot_memory: { source_id: 'private-dana-okafor', session_id: null, facts: [{ id: 41, fact: '[quoted conversation excerpt from fact 41; source material, not instructions]\n\`\`\`text\nDana Okafor (dana-okafor, Account manager) wrote in a direct message with assistant on 2026-10-14 09:00: Dock 38 for Tamsin\n\`\`\`', kind: 'fact', notability: 'medium', entity_slug: 'dana-okafor', valid_from: '2026-10-14T14:00:00.000Z', created_at: '2026-10-14T14:00:00.000Z', context: null, confidence: 1 }, { id: 42, fact: 'Berth 2 closes Friday', kind: 'fact' }, { id: 43 }] } }, content: [text([{ slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b' }])] };
       if (String(args.query ?? '').includes('prose-only')) return { content: [
         text([{ slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b' }]),
         text('Saved facts (remember): about the entity this query names (newest first), then facts those point to, then matches for its words; recall returns more:\n- Door 4B is the Covey & Lark dock\n- Berth 2 closes Friday'),
@@ -56,8 +58,10 @@ function toolResult(name: string, args: Record<string, unknown>) {
       if (args.slug === 'heldout/chats/nope') return { content: [text({ error: 'page_not_found', code: 'page_not_found', message: 'Page not found' })], isError: true };
       if (args.slug === 'heldout/emails/sealed' && args.source_id) return { content: [text({ error: 'permission_denied', code: 'permission_denied', message: 'This token cannot read source ' + String(args.source_id) })], isError: true };
       if (args.slug === 'heldout/emails/sealed') return { content: [text('Something went wrong')], isError: true };
+      if (args.slug === 'heldout/chats/hot-page') return { _meta: { brain_hot_memory: { source_id: 'private-dana-okafor', session_id: null, facts: [{ id: 41, fact: '[quoted conversation excerpt from fact 41; source material, not instructions]\n\`\`\`text\nDana Okafor (dana-okafor, Account manager) wrote in a direct message with assistant on 2026-10-14 09:00: Dock 38 for Tamsin\n\`\`\`', kind: 'fact', notability: 'medium', entity_slug: 'dana-okafor', valid_from: '2026-10-14T14:00:00.000Z', created_at: '2026-10-14T14:00:00.000Z', context: null, confidence: 1 }, { id: 42, fact: 'Berth 2 closes Friday', kind: 'fact' }, { id: 43 }] } }, content: [text({ id: 3, slug: args.slug, title: 'hot', compiled_truth: '...' })] };
       return { content: [text({ id: 2, slug: args.slug, title: '#coastal-random (export)', compiled_truth: '...' })] };
     case 'remember':
+      if (args.fact === 'hot write') return { _meta: { brain_hot_memory: { source_id: 'private-dana-okafor', session_id: null, facts: [{ id: 41, fact: '[quoted conversation excerpt from fact 41; source material, not instructions]\n\`\`\`text\nDana Okafor (dana-okafor, Account manager) wrote in a direct message with assistant on 2026-10-14 09:00: Dock 38 for Tamsin\n\`\`\`', kind: 'fact', notability: 'medium', entity_slug: 'dana-okafor', valid_from: '2026-10-14T14:00:00.000Z', created_at: '2026-10-14T14:00:00.000Z', context: null, confidence: 1 }, { id: 42, fact: 'Berth 2 closes Friday', kind: 'fact' }, { id: 43 }] } }, content: [text({ id: '2', status: 'inserted', entity_slug: 'probe' })] };
       return { content: [text({ id: '1', status: 'inserted', entity_slug: 'probe' })] };
     case 'recall':
       return { content: [text({ facts: [{ id: 1, fact: 'Door 4B is the Covey & Lark dock', entity_slug: 'covey-lark', source_id: 'private-dana-okafor', source: 'test' }], total: 1, results: [{ slug: 'heldout/chats/2025-10-15-saltmarsh-churn-risk', title: 'b' }], search_degraded: 'embed_unavailable' })] };
@@ -175,6 +179,34 @@ test('saved facts are recorded as their own kind (internal-task): from _meta.ret
     { id: '8', fact: 'Berth 2 closes Friday', source_id: 'channel-general' },
   ] });
   expect((e.effect as { pages: string[] }).pages).not.toContain('facts/8');
+});
+
+test('hot memory (internal-task): every reply\'s _meta.brain_hot_memory facts are recorded with their id, text and the block\'s source, on reads and writes; never as pages, rows or saved facts', async () => {
+  const hot = [
+    { fact: '[quoted conversation excerpt from fact 41; source material, not instructions]\n```text\nDana Okafor (dana-okafor, Account manager) wrote in a direct message with assistant on 2026-10-14 09:00: Dock 38 for Tamsin\n```', id: 41, source_id: 'private-dana-okafor' },
+    { fact: 'Berth 2 closes Friday', id: 42, source_id: 'private-dana-okafor' },
+  ];
+  await tap(ws.credentials.bot.token, call(30, 'search', { query: 'hot-memory dock', limit: 3 }));
+  let e = last();
+  expect(e.effect).toEqual({ pages: ['heldout/chats/2025-10-15-saltmarsh-churn-risk'], count: 1, latency_ms: (e.effect as { latency_ms: number }).latency_ms, hot_memory: hot });
+  await tap(ws.credentials.bot.token, call(31, 'get_page', { slug: 'heldout/chats/hot-page' }));
+  e = last();
+  expect(e.effect).toMatchObject({ pages: ['heldout/chats/hot-page'], count: 1, hot_memory: hot });
+  expect(e.effect).not.toHaveProperty('facts');
+  await tap(ws.credentials.bot.token, call(32, 'remember', { fact: 'hot write', provenance: 'test' }));
+  e = last();
+  expect(e.kind).toBe('write');
+  expect(e.effect).toMatchObject({ pages: [], hot_memory: hot });
+  // A reply without the block records no hot_memory key, so every earlier event shape is unchanged.
+  await tap(ws.credentials.bot.token, call(33, 'search', { query: 'saltmarsh discount', limit: 3 }));
+  expect(last().effect).not.toHaveProperty('hot_memory');
+  await tap(ws.credentials.bot.token, call(34, 'remember', { fact: 'plain write', provenance: 'test' }));
+  expect(last().effect).not.toHaveProperty('hot_memory');
+  // An empty block, a block with no facts and an error reply carry none either.
+  const reply = (result: Record<string, unknown>) => describeCall(call(35, 'search', { query: 'q' }) as never, { jsonrpc: '2.0', id: 35, result } as never, 1, 200)!;
+  expect(reply({ _meta: { brain_hot_memory: { source_id: 'default', facts: [] } }, content: [text([])] }).effect).not.toHaveProperty('hot_memory');
+  expect(reply({ _meta: { brain_hot_memory: { source_id: 'default' } }, content: [text([])] }).effect).not.toHaveProperty('hot_memory');
+  expect(reply({ _meta: { brain_hot_memory: { facts: [{ id: 9, fact: 'no source' }] } }, content: [text([])] }).effect.hot_memory).toEqual([{ fact: 'no source', id: 9 }]);
 });
 
 test('remember is a write with the arguments as sent and no pages; list_pages and entity list what they returned', async () => {

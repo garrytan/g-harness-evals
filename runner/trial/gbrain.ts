@@ -64,7 +64,9 @@ export interface GbrainSidecarOptions {
   image?: string;
   /** The brain to serve and whether tokens.json is wanted; defaults bot-visible and none. */
   brain?: NonNullable<GbrainCellConfig['brain']>;
-  scope?: 'none' | 'member' | 'sources' | 'member-sources';
+  /** internal-task: "open" starts the container exactly as "none" does (no member tokens, no grants for the tap), so the world's tap
+   *  reads under the unscoped token; the record keeps "open". */
+  scope?: 'none' | 'member' | 'sources' | 'member-sources' | 'open';
   /** Live ingestion (member brain only): the entrypoint copies ingest-tokens.json beside the token. */
   ingest?: 'off' | 'live';
   /** "rules" serves the access-ruled member brain (member brain, member scope only); default none. */
@@ -102,7 +104,7 @@ export interface GbrainSidecar {
   /** sha256 image id behind the tag, from docker image inspect. */
   image_id: string;
   brain: NonNullable<GbrainCellConfig['brain']>;
-  scope: 'none' | 'member' | 'sources' | 'member-sources';
+  scope: 'none' | 'member' | 'sources' | 'member-sources' | 'open';
   /** Whether the brain gates reads with folder rules and member-bound tokens. */
   access: 'none' | 'rules';
   /** The surface and embedding model the sidecar was started with. */
@@ -250,6 +252,18 @@ export function checkIngestTokens(tokensValue: unknown, manifestValue: unknown, 
   return { tokens: t as IngestTokens, map: m.ingest };
 }
 
+/** internal-task: the HE_GBRAIN_SCOPE the container gets. "open" is a runner-side opt-in: the sidecar serves the same brain, copies the
+ *  same manifest and ingest tokens as any live-ingestion cell and hands the tap no member token or grant, which is what "none" does. */
+export const containerScope = (scope: NonNullable<GbrainSidecarOptions['scope']>): 'none' | 'member' | 'sources' | 'member-sources' => (scope === 'open' ? 'none' : scope);
+
+/** internal-task: the sidecar settings that decide what it serves and how the world ingests into it, as the HE_GBRAIN_* values
+ *  startGbrainSidecar passes (access "none" is passed as no HE_GBRAIN_ACCESS): the brain, the ingestion, the access mode, the
+ *  surface and the embeddings. The scope is left out on purpose; it only decides which tokens the tap presents. Two cells whose layouts match here serve the same brain directory, the same manifest and the same
+ *  ingest-tokens.json (gbrain/entrypoint.sh) from one image. */
+export function sidecarLayout(o: Pick<GbrainSidecarOptions, 'split' | 'brain' | 'ingest' | 'access' | 'surface' | 'embeddings'>): Record<string, string> {
+  return { HE_GBRAIN_SPLIT: o.split, HE_GBRAIN_BRAIN: o.brain ?? 'bot-visible', HE_GBRAIN_INGEST: o.ingest ?? 'off', HE_GBRAIN_ACCESS: o.access ?? 'none', HE_GBRAIN_SURFACE: o.surface ?? 'starter', HE_GBRAIN_EMBEDDINGS: o.embeddings ?? 'off' };
+}
+
 /** internal-task: the sidecar environment of a serves-several brain: the labelling, the members it labels and the reader-labelled
  *  brain when asked for; none without serves. */
 export function servesEnv(o: Pick<GbrainSidecarOptions, 'serves' | 'servesMembers' | 'labels'>): string[] {
@@ -292,7 +306,7 @@ export async function startGbrainSidecar(o: GbrainSidecarOptions): Promise<Gbrai
   const run = await sh(['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', network, ...route,
     '-v', `${out}:/he-gbrain`,
     '-e', `HE_GBRAIN_SPLIT=${o.split}`, '-e', 'HE_GBRAIN_OUT=/he-gbrain', '-e', `HE_TRIAL_ID=${o.trialId}`,
-    '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${scope}`, '-e', `HE_GBRAIN_INGEST=${ingest}`, ...(access === 'rules' ? ['-e', 'HE_GBRAIN_ACCESS=rules'] : []),
+    '-e', `HE_GBRAIN_BRAIN=${brain}`, '-e', `HE_GBRAIN_SCOPE=${containerScope(scope)}`, '-e', `HE_GBRAIN_INGEST=${ingest}`, ...(access === 'rules' ? ['-e', 'HE_GBRAIN_ACCESS=rules'] : []),
     '-e', `HE_GBRAIN_SURFACE=${surface}`, '-e', `HE_GBRAIN_EMBEDDINGS=${embeddings}`,
     ...(embeddings !== 'off' ? ['-e', `OPENAI_BASE_URL=${o.openaiBaseUrl}`, '-e', `HE_GBRAIN_PROXY_TOKEN=${o.proxyToken}`] : []),
     ...(o.channelRemember === 'conversation' ? ['-e', 'HE_GBRAIN_CHANNEL_REMEMBER=conversation'] : []), ...serves,

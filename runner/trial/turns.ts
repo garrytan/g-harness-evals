@@ -35,6 +35,8 @@ export interface TurnLoopOptions {
   log: (line: string) => void;
   /** Called with the turn number and its exit as soon as the adapter's response for it arrives, before the next turn's request is written. */
   onAnswered?: (turn: number, exit: TurnWindow['exit']) => void;
+  /** internal-task: called with the turn number once its window is recorded, on every path that records one. */
+  afterTurn?: (turn: number) => void;
   /** Week events: how long a restart_before restart gives the old harness to stop and the new one to be ready. */
   restart?: { graceMs: number; readyTimeoutMs: number };
 }
@@ -69,7 +71,7 @@ async function turnLoop(o: TurnLoopOptions, week: WeekCounts): Promise<LoopEnd> 
   const windows: TurnWindow[] = [];
   const timerWindows: TimerTurnWindow[] = [];
   const turnsLog = join(o.turnsDir, '..', 'turns.jsonl');
-  const record = (w: TurnWindow) => { windows.push(w); appendFileSync(turnsLog, JSON.stringify(w) + '\n'); };
+  const record = (w: TurnWindow) => { windows.push(w); appendFileSync(turnsLog, JSON.stringify(w) + '\n'); o.afterTurn?.(w.turn); };
   const bot = o.world.botMember;
   const timers = !!o.task.clock?.timers;
   const timerPrompt = timers ? readFileSync(TIMER_PROMPT_PATH, 'utf8') : '';
