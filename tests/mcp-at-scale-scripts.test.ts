@@ -33,6 +33,34 @@ describe('MCP at scale: scripts the other tests do not load still parse', () => 
     expect(r.exitCode).toBe(0);
   });
 
+  test('agents.py resolves the codex model GPT-6.2 Sol from versions.json, keeps pin.json rows, and refuses a model in neither', () => {
+    const r = run(['python3', '-c', [
+      'import json, sys, tempfile',
+      'from pathlib import Path',
+      'sys.path[:0] = ["tests/fixtures/frontier-delivery/stub", "scripts/mcp-at-scale"]',
+      'import agents as mcp',
+      'fs = mcp.fs',
+      'out = {"variant": mcp.VARIANTS["codex"][2], "in_pin": "openai:gpt-6.2-sol" in fs.PIN["models"], "spec": fs.model_spec("openai:gpt-6.2-sol"),',
+      '       "codex_model": fs.codex_config("openai:gpt-6.2-sol", "http://gw/s/openai")["model"], "pin_row": fs.model_spec("openai:gpt-6.1-sol") == {**fs.PIN["models"]["openai:gpt-6.1-sol"], "id": "openai:gpt-6.1-sol", "name": "gpt-6.1-sol", "provider": "openai"},',
+      '       "agent_model": mcp.McpCodex(logs_dir=Path(tempfile.mkdtemp()), model_name=mcp.VARIANTS["codex"][2])._frontier_model}',
+      'try:',
+      '    fs.check_cell("codex", "openai:gpt-nonesuch")',
+      'except ValueError as e:',
+      '    out["neither"] = str(e)',
+      'print(json.dumps(out))',
+    ].join('\n')]);
+    expect(r.stderr.toString()).toBe('');
+    const out = JSON.parse(r.stdout.toString());
+    const versions = JSON.parse(read('scripts/mcp-at-scale/versions.json'));
+    expect(out.variant).toBe('openai/gpt-6.2-sol');
+    expect(out.in_pin).toBe(false);
+    expect(out.spec).toEqual({ ...versions.models['openai:gpt-6.2-sol'], id: 'openai:gpt-6.2-sol', name: 'gpt-6.2-sol', provider: 'openai' });
+    expect(out.codex_model).toBe('gpt-6.2-sol');
+    expect(out.pin_row).toBe(true);
+    expect(out.agent_model).toBe('openai:gpt-6.2-sol');
+    expect(out.neither).toBe('HE-MCP-048 model openai:gpt-nonesuch is in neither scripts/frontier-harbor/pin.json models nor scripts/mcp-at-scale/versions.json models');
+  });
+
   test('scripts/mcp-at-scale/requests/schema.json is the schema sets.ts validates against', () => {
     expect(SCHEMA_FILE).toBe(join(ROOT, 'scripts/mcp-at-scale/requests/schema.json'));
     expect(typeof JSON.parse(read('scripts/mcp-at-scale/requests/schema.json'))).toBe('object');

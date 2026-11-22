@@ -32,6 +32,10 @@ newest on 2026-11-19); pin.json stays internal-task's. At a frozen version McpCl
 versions.json instead of pin.json, every other class checks the harness's own --version, and harness_settings.json records the
 installed version as harness_version with the pin.json one under "mcp_version" (HE-MCP-050 on a mismatch or any other version).
 
+Models: frontier_settings.model_spec reads only pin.json's models, and pin.json does not list GPT-6.2 Sol, the codex cells'
+model under R116 (2026-11-21). This file replaces fs.model_spec with model_spec below, which keeps pin.json's row for every model
+pin.json lists and otherwise reads versions.json's "models" (same entry shape); a model in neither is refused (HE-MCP-048).
+
 Every class records its MCP set-up under "mcp_cell" in harness_settings.json. After agent setup and before the agent
 starts, every class probes the catalog host's /_he/ready from inside the trial container with the cell's connect mode
 (CONNECT: "lazy" for Pi codemode and deferred, which connect MCP servers on first use, else "eager"). The host logs it, and
@@ -78,6 +82,21 @@ FrontierPi = _fa.FrontierPi
 
 PI_AGENT_DIR = "/tmp/harbor-pi-agent"
 VERSIONS = json.loads((Path(__file__).resolve().parent / "versions.json").read_text())
+_pin_model_spec = fs.model_spec
+
+
+def model_spec(model: str) -> dict[str, Any]:
+    """pin.json's row of a provider:model id when pin.json lists it, else versions.json's "models" row, with its provider and
+    bare name; a model in neither file is refused."""
+    if model in fs.PIN["models"]:
+        return _pin_model_spec(model)
+    if model not in VERSIONS["models"]:
+        raise ValueError(f"HE-MCP-048 model {model} is in neither scripts/frontier-harbor/pin.json models nor scripts/mcp-at-scale/versions.json models")
+    provider, name = model.split(":", 1)
+    return {**VERSIONS["models"][model], "id": model, "name": name, "provider": provider}
+
+
+fs.model_spec = model_spec
 
 
 def frozen_version(harness: str, version: str | None) -> dict[str, Any] | None:
@@ -346,11 +365,12 @@ class McpPiDirect(McpPi):
     CONNECT = "eager"
 
 
-# Variant name -> (class, harness in scripts/frontier-harbor/pin.json, default cell model). QM is not here yet (see above).
+# Variant name -> (class, harness in scripts/frontier-harbor/pin.json, default cell model from pin.json or versions.json's
+# "models"). QM is not here yet (see above).
 VARIANTS: dict[str, tuple[type, str, str]] = {
     "claude-code": (McpClaudeCode, "claude-code", "anthropic/claude-opus-5-5"),
     "claude-code-no-tool-search": (McpClaudeCodeNoToolSearch, "claude-code", "anthropic/claude-opus-5-5"),
-    "codex": (McpCodex, "codex", "openai/gpt-6.1-sol"),
+    "codex": (McpCodex, "codex", "openai/gpt-6.2-sol"),
     "hermes": (McpHermes, "hermes", "anthropic/claude-opus-5-5"),
     "openclaw": (McpOpenClaw, "openclaw", "anthropic/claude-opus-5-5"),
     "pi-codemode": (McpPi, "pi", "anthropic/claude-opus-5-5"),

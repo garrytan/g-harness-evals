@@ -44,7 +44,7 @@ export interface AuditStatus { items: Record<string, string>; audited_item_sha25
 export interface ModelSpec { name: string; provider: Provider; model: string; price_id: string; max_output: number }
 export const JUDGES: ModelSpec[] = [
   { name: 'opus', provider: 'anthropic', model: 'claude-opus-5-5', price_id: 'anthropic:claude-opus-5-5', max_output: 4096 },
-  { name: 'astra', provider: 'openai', model: 'gpt-6-astra', price_id: 'openai:gpt-6-astra', max_output: 8000 },
+  { name: 'astra', provider: 'openai', model: 'gpt-6.2-astra', price_id: 'openai:gpt-6.2-astra', max_output: 8000 },
 ];
 export const ADJUDICATOR: ModelSpec = { name: 'carbon', provider: 'gemini', model: 'gemini-4-carbon', price_id: 'google:gemini-4-carbon', max_output: 16384 };
 export const BATCH_FACTOR = 0.5;

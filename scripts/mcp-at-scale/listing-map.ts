@@ -44,7 +44,7 @@ const REPO = resolve(HERE, '../..');
 export const VARIANTS: Record<string, { cls: string; harness: string; model: string }> = {
   'claude-code': { cls: 'McpClaudeCode', harness: 'claude-code', model: 'anthropic/claude-opus-5-5' },
   'claude-code-no-tool-search': { cls: 'McpClaudeCodeNoToolSearch', harness: 'claude-code', model: 'anthropic/claude-opus-5-5' },
-  codex: { cls: 'McpCodex', harness: 'codex', model: 'openai/gpt-6.1-sol' },
+  codex: { cls: 'McpCodex', harness: 'codex', model: 'openai/gpt-6.2-sol' },
   hermes: { cls: 'McpHermes', harness: 'hermes', model: 'anthropic/claude-opus-5-5' },
   openclaw: { cls: 'McpOpenClaw', harness: 'openclaw', model: 'anthropic/claude-opus-5-5' },
   'pi-codemode': { cls: 'McpPi', harness: 'pi', model: 'anthropic/claude-opus-5-5' },

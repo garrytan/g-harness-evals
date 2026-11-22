@@ -10,7 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { createHost } from '../scripts/mcp-at-scale/catalog-host.ts';
 import { loadCatalog, rungServers, syntheticCatalog } from '../scripts/mcp-at-scale/catalog-load.ts';
 import { taskSuccess, type Outcomes, type Trial } from '../scripts/mcp-at-scale/analysis/stats.ts';
-import { adjudicateInteractive, applyAudit, auditQueue, gbrainListing, collectStage, customId, NO_TOOL, planStage, submitStage, writeStage, type Lease } from '../scripts/mcp-at-scale/requests/audit.ts';
+import { adjudicateInteractive, applyAudit, auditQueue, gbrainListing, collectStage, customId, JUDGES, NO_TOOL, planStage, submitStage, writeStage, type Lease } from '../scripts/mcp-at-scale/requests/audit.ts';
 import { authorPrompts, catalogListing, render } from '../scripts/mcp-at-scale/requests/prompts.ts';
 import { halves, sealSet } from '../scripts/mcp-at-scale/requests/seal.ts';
 import { loadLadder, schemaProblems, twinsOf, validateSet, validateT, type Item, type RItem, type TItem } from '../scripts/mcp-at-scale/requests/sets.ts';
@@ -187,6 +187,9 @@ describe('author prompts', () => {
 
 describe('ambiguity audit submitter', () => {
   const items: Item[] = [...sets.R.slice(0, 3), sets.R.find((i) => i.kind === 'none')!, sets.T[0]!];
+  test('the second labeller is GPT-6.2 Astra (R116), priced at its own row', () => {
+    expect(JUDGES.find((j) => j.name === 'astra')).toEqual({ name: 'astra', provider: 'openai', model: 'gpt-6.2-astra', price_id: 'openai:gpt-6.2-astra', max_output: 8000 });
+  });
   test('the dry run writes the batch files with prompt caching and makes no network call', () => {
     const real = globalThis.fetch;
     let calls = 0;
@@ -195,7 +198,7 @@ describe('ambiguity audit submitter', () => {
       const out = join(tmp, 'audit-dry');
       const m = writeStage(out, 'label', planStage({ stage: 'label', items, catalogText: catalogListing(loadCatalog(CATALOG)) }));
       expect(calls).toBe(0);
-      expect(m.batches.map((b) => [b.provider, b.model, b.requests])).toEqual([['anthropic', 'claude-opus-5-5', 5], ['openai', 'gpt-6-astra', 5]]);
+      expect(m.batches.map((b) => [b.provider, b.model, b.requests])).toEqual([['anthropic', 'claude-opus-5-5', 5], ['openai', 'gpt-6.2-astra', 5]]);
       const ant = readFileSync(join(out, 'label', m.batches[0]!.file), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
       expect(ant[0].params.system[0].cache_control).toEqual({ type: 'ephemeral' });
       expect(ant[0].custom_id).toBe(customId('label', items[0]!.id));

@@ -333,13 +333,23 @@ describe('spec checker', () => {
     expect(problemsOf(load()).join('\n')).toContain('acceptable tool postgres/does_not_exist is not in the catalog');
   });
 
+  test('the codex cell runs GPT-6.2 Sol from versions.json models, which pin.json does not list (R116)', () => {
+    const pin = JSON.parse(readFileSync(join(REPO, 'scripts/frontier-harbor/pin.json'), 'utf8'));
+    expect(pin.models['openai:gpt-6.2-sol']).toBeUndefined();
+    expect(VERSIONS.models['openai:gpt-6.2-sol']).toEqual({ ...pin.models['openai:gpt-6.1-sol'], source: expect.stringContaining('developers.openai.com/api/docs/models/gpt-6.2-sol') });
+    const { plan, problems } = checkSpec(loadSpec(EXAMPLE));
+    expect(problems).toEqual([]);
+    expect(plan.cells.get('codex-sol-r30')!.cell.model).toBe('openai/gpt-6.2-sol');
+    expect(checkSpec(loadSpec(EXAMPLE), { versions: { ...VERSIONS, models: {} } }).problems.join('\n')).toContain('model openai/gpt-6.2-sol is not in pin.json models or scripts/mcp-at-scale/versions.json models');
+  });
+
   test('arms, variants, models, versions and rungs are checked', () => {
     expect(problemsOf(variant((s) => { s.cells[0].arm = 'mechanism'; })).join('\n')).toContain('needs a mechanism variant');
     expect(problemsOf(variant((s) => { s.cells[0].variant = 'claude-code-no-tool-search'; })).join('\n')).toContain('its arm is mechanism');
     expect(problemsOf(variant((s) => { s.cells[0].arm = 'gbrain'; })).join('\n')).toContain('names gbrain_cell');
     expect(problemsOf(variant((s) => { s.cells[0].variant = 'qm'; })).join('\n')).toContain('QM has no Harbor class');
     expect(problemsOf(variant((s) => { s.cells[1].model = 'anthropic/claude-opus-5-5'; })).join('\n')).toContain('codex cannot call anthropic models');
-    expect(problemsOf(variant((s) => { s.cells[0].model = 'anthropic/claude-nonesuch'; })).join('\n')).toContain('not in pin.json models');
+    expect(problemsOf(variant((s) => { s.cells[0].model = 'anthropic/claude-nonesuch'; })).join('\n')).toContain('not in pin.json models or scripts/mcp-at-scale/versions.json models');
     expect(problemsOf(variant((s) => { s.harness_versions['claude-code'] = '0.0.1'; })).join('\n')).toContain('is neither pinned');
     expect(problemsOf(variant((s) => { s.harness_versions['claude-code'] = VERSIONS.harnesses['claude-code']!.version; s.harness_versions.codex = VERSIONS.harnesses.codex!.version; }))).toEqual([]);
     expect(problemsOf(variant((s) => { delete s.harness_versions.codex; })).join('\n')).toContain('no version for codex');
@@ -428,19 +438,23 @@ describe('row writer', () => {
     const rollout = join(trial, 'agent/sessions/2026/11/20/rollout-2026-11-20T00-00-00-s1.jsonl');
     mkdirSync(join(rollout, '..'), { recursive: true });
     writeFileSync(rollout, JSON.stringify({ type: 'session_meta', payload: { id: 's1', cli_version: '0.171.0' } }) + '\n' + JSON.stringify({ type: 'event_msg', payload: {} }) + '\n');
-    const codex: CellPlan = { ...cell, cell: { ...cell.cell, id: 'cx', variant: 'codex', model: 'openai/gpt-6.1-sol' }, harness: 'codex', cls: 'McpCodex', version: '0.170.0' };
+    const codex: CellPlan = { ...cell, cell: { ...cell.cell, id: 'cx', variant: 'codex', model: 'openai/gpt-6.2-sol' }, harness: 'codex', cls: 'McpCodex', version: '0.170.0' };
     expect(observedCliVersion(trial)).toBeNull();
     const evidence = join(trial, 'observed-cli-version.json');
     writeFileSync(evidence, JSON.stringify('0.171.0'));
-    const sol = { usd: 0.02, requests: 2, unpriced: 0, byModel: { 'openai:gpt-6.2-sol': { usd: 0.02, requests: 2 } } };
+    const sol = { usd: 0.02, requests: 2, unpriced: 0, byModel: { 'openai:gpt-6.1-sol': { usd: 0.02, requests: 2 } } };
     const row = buildRow({ ...base, cell: codex, outcomes, usage: null, meter: sol, cliVersion: observedCliVersion(trial) });
     expect(row.infra).toMatchObject({ code: 'HE-MCP-047', source: 'runner' });
-    expect(row.infra?.detail).toContain('metered openai:gpt-6.2-sol, not the cell model openai:gpt-6.1-sol');
+    expect(row.infra?.detail).toContain('metered openai:gpt-6.1-sol, not the cell model openai:gpt-6.2-sol');
     expect(row.infra?.detail).toContain('observed version 0.171.0, not the pinned 0.170.0');
     expect(row.reward).toBeNull();
-    expect(row.observed).toEqual({ models: ['openai:gpt-6.2-sol'], version: '0.171.0' });
-    const versionOnly = buildRow({ ...base, cell: codex, outcomes, usage: null, meter: { ...sol, byModel: { 'openai:gpt-6.1-sol': { usd: 0.02, requests: 2 } } }, cliVersion: '0.171.0' });
+    expect(row.observed).toEqual({ models: ['openai:gpt-6.1-sol'], version: '0.171.0' });
+    const versionOnly = buildRow({ ...base, cell: codex, outcomes, usage: null, meter: { ...sol, byModel: { 'openai:gpt-6.2-sol': { usd: 0.02, requests: 2 } } }, cliVersion: '0.171.0' });
     expect(versionOnly.infra?.code).toBe('HE-MCP-047');
+    expect(versionOnly.infra?.detail).not.toContain('metered');
+    const solClean = buildRow({ ...base, cell: codex, outcomes, usage: null, meter: { ...sol, byModel: { 'openai:gpt-6.2-sol': { usd: 0.02, requests: 2 } } }, cliVersion: '0.170.0' });
+    expect(solClean.infra).toBeNull();
+    expect(solClean.observed).toEqual({ models: ['openai:gpt-6.2-sol'], version: '0.170.0' });
     writeFileSync(evidence, JSON.stringify('2.1.312'));
     const clean = buildRow({ ...base, outcomes, usage: null, housekeeping: ['anthropic:claude-haiku-5-5'], cliVersion: observedCliVersion(trial),
       meter: { usd: 0.03, requests: 3, unpriced: 0, byModel: { 'anthropic:claude-opus-5-5': { usd: 0.03, requests: 2 }, 'anthropic:claude-haiku-5-5': { usd: 0, requests: 1 } } } });

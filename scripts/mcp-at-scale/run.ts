@@ -76,7 +76,7 @@ export const DEFAULT_CATALOG = 'tasks/mcp-at-scale/catalog';
 /** The frozen harness and gbrain releases (versions.json): a spec may name these besides pin.json's versions. */
 const interimDesignBytes = readFileSync(DESIGN_FILE);
 export const INTERIM_DESIGN = JSON.parse(interimDesignBytes.toString('utf8')) as Design;
-export const VERSIONS = JSON.parse(readFileSync(join(import.meta.dir, 'versions.json'), 'utf8')) as { harnesses: Record<string, { version: string }>; gbrain: { tag: string; commit: string } };
+export const VERSIONS = JSON.parse(readFileSync(join(import.meta.dir, 'versions.json'), 'utf8')) as { harnesses: Record<string, { version: string }>; gbrain: { tag: string; commit: string }; models: Record<string, object> };
 const SLOT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** The row arm (analysis/stats.ts) of each mechanism variant; every other variant is a native arm. */
 export const MECHANISM_ARMS: Record<string, string> = { 'claude-code-no-tool-search': 'tool-search-off', 'pi-deferred': 'pi-deferred', 'pi-direct': 'pi-direct' };
@@ -235,7 +235,7 @@ export function checkSpec(l: LoadedSpec, o: { catalog?: Catalog; pin?: any; vers
     const m = /^([a-z]+)\/([A-Za-z0-9._-]+)$/.exec(c.model ?? '');
     if (!m) bad(where + ': model must be <provider>/<model>');
     else {
-      if (!pin.models?.[m[1] + ':' + m[2]]) bad(where + ': model ' + c.model + ' is not in pin.json models');
+      if (!pin.models?.[m[1] + ':' + m[2]] && !(o.versions ?? VERSIONS).models[m[1] + ':' + m[2]]) bad(where + ': model ' + c.model + ' is not in pin.json models or scripts/mcp-at-scale/versions.json models');
       if (HARNESS_PROVIDERS[v.harness] && !HARNESS_PROVIDERS[v.harness]!.includes(m[1]!)) bad(where + ': ' + v.harness + ' cannot call ' + m[1] + ' models');
     }
     if (!['native', 'mechanism', 'gbrain'].includes(c.arm)) bad(where + ': arm must be native, mechanism or gbrain');
