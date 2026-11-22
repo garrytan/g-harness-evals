@@ -1,0 +1,145 @@
+{
+ "schema_version": 1,
+ "run_id": "gbrain-install-hermes-757-2026-11",
+ "question": "Regression check of gbrain's Hermes install fix (GST-3368), not a new experiment: the Hermes rows of gbrain-install-2026-11 rerun on gbrain v0.60.757.0 (915e3b30b285ac175d8808b7e9ba0f6e82ff21c3, a pre-release; releases/latest still serves v0.60.753.0), with the task, the Hermes pin, the scorer and both arms unchanged. Arm bare: \"install gbrain\". Arm paste: gbrain's README agent paste prompt at that tag, byte-identical to v0.60.734.0's, which points at master's INSTALL_FOR_AGENTS.md. Both arms end with the task's version line naming the tag. Hermes with Opus 5.5 and GPT-6.1 Sol as before, plus GPT-6.2 Sol (R54), 10 runs per arm: 60 runs. particle-1 already finished 18 of 18 and is not rerun. Scored mechanically with the same scorer (a+b+c strict; rules a, b and c touch only OpenClaw and Claude Code, so a Hermes run scores the same under all three). One declared deviation (2026-11-21): the Hermes image now links the hermes command at /usr/local/bin/hermes, where Hermes's own install.sh puts it. Hermes's terminal tool starts login shells, Debian's /etc/profile resets PATH there, and in #494's image an agent's `hermes` command (for example `hermes mcp add`, the registration 757's fix uses) was not found.",
+ "tasks": {},
+ "wall_clock_s": {
+  "gbrain-install": 900
+ },
+ "spend_cap_usd": 101,
+ "drop_order": [],
+ "minimum_v01": [
+  "hermes-opus-bare-gbrain-install",
+  "hermes-opus-paste-gbrain-install",
+  "hermes-sol-bare-gbrain-install",
+  "hermes-sol-paste-gbrain-install",
+  "hermes-sol62-bare-gbrain-install",
+  "hermes-sol62-paste-gbrain-install"
+ ],
+ "order": {
+  "kind": "interleave-task",
+  "seed": 3368
+ },
+ "cells": [
+  {
+   "id": "hermes-opus-bare-gbrain-install",
+   "harness": "hermes",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "bare",
+    "tag": "v0.60.757.0",
+    "commit": "915e3b30b285ac175d8808b7e9ba0f6e82ff21c3",
+    "seed": "gst3368"
+   }
+  },
+  {
+   "id": "hermes-opus-paste-gbrain-install",
+   "harness": "hermes",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "paste",
+    "tag": "v0.60.757.0",
+    "commit": "915e3b30b285ac175d8808b7e9ba0f6e82ff21c3",
+    "seed": "gst3368",
+    "paste_file": "tasks/gbrain-install/arms/paste-0.60.757.0.md",
+    "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+   }
+  },
+  {
+   "id": "hermes-sol-bare-gbrain-install",
+   "harness": "hermes",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "bare",
+    "tag": "v0.60.757.0",
+    "commit": "915e3b30b285ac175d8808b7e9ba0f6e82ff21c3",
+    "seed": "gst3368"
+   }
+  },
+  {
+   "id": "hermes-sol-paste-gbrain-install",
+   "harness": "hermes",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "paste",
+    "tag": "v0.60.757.0",
+    "commit": "915e3b30b285ac175d8808b7e9ba0f6e82ff21c3",
+    "seed": "gst3368",
+    "paste_file": "tasks/gbrain-install/arms/paste-0.60.757.0.md",
+    "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+   }
+  },
+  {
+   "id": "hermes-sol62-bare-gbrain-install",
+   "harness": "hermes",
+   "model": "openai:gpt-6.2-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "bare",
+    "tag": "v0.60.757.0",
+    "commit": "915e3b30b285ac175d8808b7e9ba0f6e82ff21c3",
+    "seed": "gst3368"
+   }
+  },
+  {
+   "id": "hermes-sol62-paste-gbrain-install",
+   "harness": "hermes",
+   "model": "openai:gpt-6.2-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "paste",
+    "tag": "v0.60.757.0",
+    "commit": "915e3b30b285ac175d8808b7e9ba0f6e82ff21c3",
+    "seed": "gst3368",
+    "paste_file": "tasks/gbrain-install/arms/paste-0.60.757.0.md",
+    "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+   }
+  }
+ ]
+}

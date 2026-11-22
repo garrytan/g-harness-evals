@@ -1,0 +1,52 @@
+**GBrain v0.60.760.0 is installed keylessly, and real remember/recall tests passed. Native OpenClaw activation is still blocked.**
+
+Your identity and existing instructions were preserved. I added memory instructions and a working CLI fallback.
+
+### Verified with real GBrain calls
+- CLI `remember` → recall in a separate process: **passed**.
+- Real stdio MCP `remember` → MCP `recall`: **passed**.
+- Reopened-process recall of the MCP-written fact: **passed**.
+- Exact keyword retrieval: **passed**.
+- Temporary MCP test fact withdrawn from active memory afterward.
+
+One clearly labeled synthetic marker remains for a future new-conversation test. No facts about you were invented.
+
+### What remains blocked
+OpenClaw saved the MCP registration, but its Gateway is unreachable and GBrain tools are not discoverable in this session. The host’s plugin packer also rejected GBrain’s upstream per-turn hook plugin.
+
+So **local CLI and standalone MCP operation are proven; native tool/hook activation and new-conversation recall are not**. Finishing those requires host-side Gateway recovery and supported hook activation.
+
+Details: `/workspace/GBRAIN-INSTALL.md`.
+
+### Search-mode choice
+**Current: conservative**, automatically selected because no provider keys are configured.
+
+1. **Conservative:** 4K-token budget, up to 10 chunks, no reranker.
+2. **Balanced:** 12K-token budget, up to 25 chunks, reranking when configured.
+3. **Tokenmax:** no retrieval budget cap, up to 50 chunks, reranking when configured.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are the guide’s model-input estimates—not your subscription price or a GBrain bill. You can choose another mode anytime; changing modes does not supply API keys or authorize paid providers.
+
+### Settings in effect
+- **Keyword-only retrieval:** no API keys added; embeddings and expansion off.
+- **Automatic fact saving/capture:** off; explicit remember requests only.
+- **Paid enrichment, services, connectors, scheduled jobs:** not enabled.
+- **Free session-idle upkeep:** on by default.
+- **Conversation archive:** on by default—redacted daily conversation pages; actual ingestion is unverified. Disable with `gbrain transcripts archive off`.
+- **Backup:** not configured or verified.
+
+Stored memory stays local in this setup, but recalled text enters the agent model’s context. This is personal-agent memory, not per-person-isolated shared-channel memory.

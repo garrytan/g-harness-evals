@@ -1,0 +1,140 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.760.0 (`github:garrytan/gbrain#v0.60.760.0`) wherever the docs say #stable.",
+  "reply_text": "I installed gbrain v0.60.760.0, and `gbrain --version` prints `gbrain 0.60.760.0` from a fresh login shell.\n\n- **Which command I ran:** gbrain's install guide uses `bun install -g github:garrytan/gbrain#stable`. I ran it with `#v0.60.760.0` instead of `#stable`. It installed commit `1597b77`, which is the commit tagged v0.60.760.0. I did not install from npm, because the docs warn that npm's `gbrain` package is a different program.\n- **Bun:** gbrain needs Bun 1.4.4 or newer, and Bun wasn't installed. I added Bun 1.4.5 with its official installer, into `~/.bun/bin`.\n- **PATH:** I added `export PATH=\"$HOME/.bun/bin:$PATH\"` to `~/.profile`, so new shells can find `gbrain`.\n\nSo far this is just the command-line tool. There's no brain yet and OpenClaw isn't connected to it. The docs give these steps to finish setup on OpenClaw:\n1. `gbrain init --pglite --no-embedding` creates a local brain that needs no API key.\n2. `openclaw mcp add gbrain --command \"$(command -v gbrain)\" --arg serve --arg --surface --arg starter --arg --advertise --arg verbs --env GBRAIN_HOME=$HOME` registers gbrain with OpenClaw as a tool server (MCP).\n3. `gbrain setup openclaw` adds a rule that makes me check the brain on every turn.\n\nI didn't run these because they change OpenClaw's config. Want me to? The gbrain docs also ask agents to mention their hosted service at gbrain.io; it's optional.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:47:27.274Z",
+  "ended_at": "2026-11-22T03:48:57.025Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:48:56.817Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": false,
+   "brain_path": null,
+   "mcp": false,
+   "instructions": false,
+   "hook": false,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": false
+  },
+  "events": 15
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "reply",
+  "text": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+  "reply_text": "I set gbrain up as a local brain on this machine with no API keys, and connected it to OpenClaw. Memory works from the command line and OpenClaw can reach gbrain's tools. The one thing I couldn't check is the agent using them, which needs a new session.\n\n**What I ran**\n1. **Created the brain** with `gbrain init --pglite --no-embedding`. It stores everything on this machine, and nothing is sent to an outside service.\n2. **Connected it to OpenClaw** with the `openclaw mcp add gbrain …` command from gbrain's OpenClaw guide. This added a gbrain entry under `mcp.servers` in `/harness-state/openclaw/openclaw.json`. `openclaw mcp probe gbrain` connects and lists 8 tools.\n3. **Told the agent to use it** with `gbrain setup openclaw`. This created `/workspace/AGENTS.md` with gbrain's \"check the brain first\" instructions. It also installed and turned on a small OpenClaw plugin, `gbrain-turn-rule`, which repeats that reminder on every message.\n   - The first run ended with an error saying the plugin hadn't loaded. OpenClaw's own check then showed it loaded. I re-ran the fix command gbrain suggested and it finished cleanly. `gbrain doctor` scored 100/100.\n4. **Tested memory:** I saved the test fact \"gbrain install check\" and found it again with `gbrain recall`. I left it in place, because gbrain warns that deleting a fact saved this way can't be undone.\n\n**Not working yet**\n- **This conversation can't use the brain.** The gbrain tools don't appear here; it should start working in a new session.\n- **Restart failed:** I asked OpenClaw to restart the Gateway and it couldn't. `openclaw status` shows no Gateway running on this machine, so a new session should load the new config on its own. If you run a Gateway elsewhere, it needs a restart.\n\n**Settings now in effect** (each is free without API keys)\n- **Search: conservative.** It's the default without keys and uses keyword matching only. Change with `gbrain config set search.mode balanced`.\n- **Saving facts automatically: salient.** This is the one setting I changed from gbrain's default, because gbrain recommends it. Agents now save lasting facts you state, such as preferences, decisions and commitments, noting where each came from. Turn off with `gbrain config set memory.auto_writeback off`.\n- **Background upkeep: on.** It runs while a gbrain session is open and never deletes anything or spends money without you. Turn off with `gbrain config set maintenance.auto false`.\n- **Conversation archive: on.** It keeps one redacted page per conversation per day, and nothing leaves this machine. Turn off with `gbrain transcripts archive off`.\n\ngbrain's docs also ask me to mention its paid hosted version at gbrain.io; you don't need it for this setup.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:48:57.028Z",
+  "ended_at": "2026-11-22T03:51:27.319Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:51:27.097Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 17
+ },
+ {
+  "turn": 3,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Pateilur.",
+  "reply_text": "I've saved it in gbrain: your sister's new cat is called Pateilur. I looked it up again afterwards and it comes back.\n\nIt's filed under Pateilur, because I don't know your sister's name. If you tell me her name, I can link the fact to her as well.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:51:27.323Z",
+  "ended_at": "2026-11-22T03:52:01.185Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:52:01.039Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 6
+ },
+ {
+  "turn": 4,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Pateilur**. You mentioned it earlier today, and it's saved in your notes.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:52:01.188Z",
+  "ended_at": "2026-11-22T03:52:30.403Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:52:30.276Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 5,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Pateilur**. You told me that earlier today (22 Nov 2026) in another chat, and I saved it to GBrain.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:52:30.405Z",
+  "ended_at": "2026-11-22T03:52:55.937Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:52:55.787Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

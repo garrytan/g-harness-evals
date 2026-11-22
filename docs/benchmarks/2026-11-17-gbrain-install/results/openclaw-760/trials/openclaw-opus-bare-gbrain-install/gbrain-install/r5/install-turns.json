@@ -1,0 +1,140 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.760.0 (`github:garrytan/gbrain#v0.60.760.0`) wherever the docs say #stable.",
+  "reply_text": "gbrain v0.60.760.0 is installed. `gbrain --version` reports `gbrain 0.60.760.0` (commit `1597b77`).\n\n**What I ran:** I used the install command from the gbrain README and swapped `#stable` for your release tag:\n```\nbun install -g github:garrytan/gbrain#v0.60.760.0\n```\nBun wasn't on this machine, so I first installed Bun 1.4.5 with the official installer, as the README says to.\n\n**Things you should know:**\n- **v0.60.760.0 is not a stable release.** The `stable` tag currently points to v0.60.753.0, and there's no `stable-v0.60.760.0` tag. That means 760 is on the faster, less-tested alpha line. I installed it because you asked for it by name. If you want the stable version instead, run `bun install -g github:garrytan/gbrain#stable`.\n- **New shells won't find `gbrain` yet.** It's installed at `~/.bun/bin/gbrain` (`/harness-state/.bun/bin`), but that folder isn't in your PATH by default: the Bun installer didn't update any shell startup files. To fix it, run `export PATH=\"$HOME/.bun/bin:$PATH\"` or add that line to your shell startup file.\n- **There's no copy from the unrelated npm package.** The README warns that the npm package called `gbrain` is a different project that can override the real one. It isn't installed here, so the only `gbrain` is the one from GitHub.\n- **No setup has been done.** I haven't run `gbrain setup` or `gbrain init`, so no brain exists yet. The next step would be something like `gbrain init --pglite --no-embedding`, or `gbrain setup claude-code` if you use Claude Code.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:37:28.323Z",
+  "ended_at": "2026-11-22T03:38:23.405Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:38:23.308Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": false,
+   "brain_path": null,
+   "mcp": false,
+   "instructions": false,
+   "hook": false,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": false
+  },
+  "events": 8
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "reply",
+  "text": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+  "reply_text": "gbrain is set up as a free local brain with no API keys, and it's connected to OpenClaw. It takes effect in your next new conversation, not this one.\n\n**What I set up:**\n1. **The brain:** I ran `gbrain init --pglite --no-embedding`, the README's recommended keyless setup. The database runs on this machine only, with no server or Docker, and stores its data in `~/.gbrain`. Nothing leaves the machine.\n2. **Test:** I saved a fact (`remember`) and then retrieved it (`recall`), and that worked. `gbrain doctor` gave an overall health score of 90/100.\n3. **OpenClaw connection:** I added gbrain to OpenClaw's tool servers (`mcp.servers.gbrain`) using its full file path, in the limited \"starter\" mode the gbrain docs recommend. I didn't install the `gbrain` package on ClawHub, because gbrain's docs say it's an unofficial, broken upload.\n4. **Telling the agent to use it:** I ran `gbrain setup openclaw`. It did two things:\n   - Created `/workspace/AGENTS.md` with a \"check GBrain first\" section. gbrain manages that section and replaces it on upgrade.\n   - Installed and turned on a small OpenClaw plugin, `gbrain-turn-rule`, which reminds the agent each turn to check gbrain. Its first check failed because the plugin hadn't loaded yet. After the plugin loaded, I ran setup again and it passed, and OpenClaw reports the plugin as loaded.\n\n**Settings I left at their defaults:**\n- Search uses the cheapest mode and matches keywords only, because there's no embedding key for meaning-based search.\n- Agents save only what you explicitly ask them to remember.\n- Free maintenance runs in the background.\n- A redacted archive of conversations is kept on this machine.\n\n**Things you should know:**\n- **Version:** this is still v0.60.760.0, which is on the less-tested alpha line rather than stable.\n- **Test fact:** a fact reading \"gbrain install check\" is still in the brain. I left it rather than deleting it, because gbrain warns that deleting a fact like this can't be undone.\n- **Using gbrain in a terminal:** you'll need `export PATH=\"$HOME/.bun/bin:$PATH\"` first. OpenClaw doesn't need this because it uses the full path.\n- **Next steps (optional):** to add your notes, run `gbrain import ~/notes --no-embed`. For better search, an embedding key can be added later, but that costs money.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:38:23.406Z",
+  "ended_at": "2026-11-22T03:40:35.241Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:40:35.147Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 14
+ },
+ {
+  "turn": 3,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Regathas.",
+  "reply_text": "I saved it to your gbrain: your sister's new cat is called Regathas. It's stored as fact #2 under your sister and marked private, so it stays on this machine.\n\nI checked the brain first and found nothing about your sister or Regathas yet. If you tell me her name, I can file it under her name instead.\n\nRight now gbrain only saves things when you ask, like you just did. If you'd like it to automatically save lasting facts you mention (gbrain calls this \"salient\"), say the word and I'll turn it on.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:40:35.243Z",
+  "ended_at": "2026-11-22T03:41:06.942Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:41:06.814Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 5
+ },
+ {
+  "turn": 4,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Regathas**.\n\nI found this in an earlier chat (session s1), where you asked me to remember it. GBrain didn't return it when I searched just now. That chat says it was saved as a private fact, and this connection only shows facts that aren't marked private, which is likely why GBrain came back empty.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:41:06.944Z",
+  "ended_at": "2026-11-22T03:41:46.522Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:41:46.464Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 10
+ },
+ {
+  "turn": 5,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "I couldn't find your sister's new cat in GBrain.\n\n- **What I searched:** I looked for \"sister new cat\", then cat, kitten, sister and pet. I also looked for a \"sister\" entry and checked the workspace files. None of them turned up anything.\n- **Why I can't rule it out:** The brain only does exact keyword matching right now, and one page hasn't been scanned for names yet. So a note worded differently could still be in there. That said, the only saved fact I could find is a test entry from the install, so the brain looks close to empty.\n- **Possible reason:** Automatic saving is off by default, so facts are only stored when you ask me to remember them. If you mentioned the cat in an earlier chat, it probably wasn't saved.\n\nIf you tell me your sister's name and the cat's name, I'll save them.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:41:46.525Z",
+  "ended_at": "2026-11-22T03:42:19.840Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:42:19.731Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 7
+ }
+]

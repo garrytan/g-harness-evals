@@ -1,0 +1,48 @@
+GBrain v0.60.760.0 is installed as keyless memory for this agent, and a remember/recall round trip worked with real GBrain calls. One thing is still untested: recall from a brand-new OpenClaw conversation. This session started before GBrain was registered, so its tools aren't loaded here yet.
+
+**What I installed**
+- **Install:** Bun 1.4.5, then `bun install -g github:garrytan/gbrain#v0.60.760.0` in place of `#stable`. `gbrain --version` prints `0.60.760.0`.
+- **Brain:** created with `gbrain init --pglite --no-embedding`. It's a local database at `/harness-state/.gbrain/brain.pglite` and needs no API keys. I also ran the setup migrations it said were still pending; they exited 0.
+- **Connected to OpenClaw:** registered `gbrain` as an MCP server with the documented `openclaw mcp add` command. `openclaw mcp doctor gbrain --probe` reports `ok`.
+- **Instruction to use it:** `gbrain setup openclaw` added the "check GBrain first" rule. It goes in a marked block in a new `/workspace/AGENTS.md`, and a small plugin (`gbrain-turn-rule`) puts it next to every turn.
+  - The first setup run failed with `turn_hook_not_loaded`, but OpenClaw's own check showed the plugin loaded. A second run passed (exit 0), and `gbrain doctor` reports the hook as wired.
+- **Your identity and instructions:** nothing changed. There was no SOUL.md, IDENTITY.md or AGENTS.md before, so I had nothing to overwrite. I added no persona, capture, scheduled jobs or paid services.
+- **Side effect:** OpenClaw's config writer removed the comments from `openclaw.json`. The settings are intact, and the original is saved at `/tmp/openclaw.json.bak`.
+
+**Round-trip test**
+1. Through the same MCP server OpenClaw starts, `remember` saved a marker ("gbrain install check marker GBX-7Q4", provenance `install-check`) as fact #1, and `recall` returned it.
+2. I saved a second, generic test note from the command line (fact #2).
+3. In a new process, `gbrain recall` returned both facts, and an exact keyword `gbrain search "GBX-7Q4"` found them.
+
+The brain has no embedding key, so search is keyword-only and phrasing that doesn't match the saved words may be missed. No text leaves this machine.
+
+**Search mode: conservative is in effect.** GBrain chose it automatically because there's no chat key and no reranker. You can change it any time:
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+1. **conservative:** 4K token budget, at most 10 chunks, no reranker. Suits cheap or high-volume use.
+2. **balanced:** 12K budget, 25 chunks, reranked.
+3. **tokenmax:** no budget, 50 chunks, reranked. The widest retrieval; GBrain recommends it once a chat key is set.
+
+To switch, run `gbrain config set search.mode <mode>`. These are estimates of model input cost, not prices for your subscription.
+
+**Other settings in effect**
+- **Saving facts:** GBrain saves only what you ask it to remember. To have it save durable facts you state automatically, run `gbrain config set memory.auto_writeback salient` (GBrain recommends this).
+- **Upkeep:** free maintenance runs while the agent's GBrain session is open. `gbrain config set maintenance.auto false` turns it off.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, locally. `gbrain transcripts archive off` turns it off.
+
+**Your next steps**
+1. **Restart the gateway or open a new session** so OpenClaw loads the GBrain tools and the per-turn rule. Then ask: *"recall GBX-7Q4"*. If it comes back, ask me to forget it (fact #1) to finish the install check.
+2. **Do you want me to fix a trust label?** `gbrain doctor` flagged the page holding the test facts (`memory/unattributed`) as having lost its record of where it came from, so GBrain may trust it more than it should. The fix only lowers trust and can be undone; I can show you the preview with `gbrain repair provenance --source default`.
+
+GBrain also offers a hosted version at gbrain.io, so other apps can share one always-on brain. You don't need it for this local setup.

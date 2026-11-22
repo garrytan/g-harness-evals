@@ -1,0 +1,15 @@
+I tried the install again and the Hermes security scanner blocked it the same way, so gbrain is still not installed.
+
+The scanner can't finish its package safety checks because it's running offline. It says that isn't evidence the package is malicious, but in this unattended mode it needs a person to approve the command. Your go-ahead in chat covers the setup choices, not that approval. I won't change the approval setting myself or rework the command to slip past the scanner.
+
+You can unblock it either way:
+
+1. Run it yourself. Bun 1.4.5 is already installed in ~/.bun/bin:
+
+       export PATH="$HOME/.bun/bin:$PATH"
+       bun install -g github:garrytan/gbrain#v0.60.757.0
+       gbrain --version
+       gbrain init --pglite --no-embedding
+       gbrain doctor
+
+2. Set `approvals.single_query_mode: approve` in your Hermes config.yaml, then re-run this request. I'll install it with the free defaults (a local PGLite database and keyword search, so no server and no API keys) and confirm `gbrain doctor` passes.

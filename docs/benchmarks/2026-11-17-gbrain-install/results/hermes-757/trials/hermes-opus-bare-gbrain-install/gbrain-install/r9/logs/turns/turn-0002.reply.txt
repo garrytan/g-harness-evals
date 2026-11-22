@@ -1,0 +1,18 @@
+Bun 1.4.5 is now installed, but gbrain still isn't. The pinned `bun install -g github:garrytan/gbrain#v0.60.757.0` was blocked again by the same security check.
+
+The scanner works offline, so it can't look up the package's threat data. It says this isn't evidence the package is malicious. With nobody present to approve, it refuses. I didn't try cloning the repo or changing Hermes's approval setting myself. Either one would just get around the check, and "carry on" doesn't really cover switching off a security control.
+
+Bun is at `~/.bun/bin/bun` and isn't on your PATH yet. Run `export PATH="$HOME/.bun/bin:$PATH"` to use it.
+
+To finish, pick one:
+
+1. Run these yourself:
+   ```
+   export PATH="$HOME/.bun/bin:$PATH"
+   bun install -g github:garrytan/gbrain#v0.60.757.0
+   gbrain init --pglite --no-embedding
+   gbrain --version
+   ```
+   `gbrain init --pglite --no-embedding` is the free setup I'd recommend: a local database, keyword search, and no API keys.
+
+2. Or set `approvals.single_query_mode: approve` in Hermes's `config.yaml`, or start an interactive session where you can approve the prompt. Tell me and I'll run the install and that same setup.

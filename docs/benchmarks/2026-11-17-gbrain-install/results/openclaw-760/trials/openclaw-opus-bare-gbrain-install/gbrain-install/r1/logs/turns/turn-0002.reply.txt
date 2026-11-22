@@ -1,0 +1,16 @@
+gbrain is set up locally and connected to OpenClaw, using the free defaults with no API keys. It isn't proven inside OpenClaw yet: the gateway still needs a restart, and no OpenClaw session has called gbrain.
+
+**What works:**
+- **The brain itself:** I created a local brain with `gbrain init --pglite --no-embedding`. Saving a test fact ("gbrain install check") and searching for it worked from the command line.
+- **The OpenClaw connection:** OpenClaw's config now has an entry named `gbrain` that starts gbrain's server, and `openclaw mcp list` shows it. I started that server by hand and it answered with its memory tools (remember, entity, …).
+- **Telling the agent to use it:** `gbrain setup openclaw` passed its own check. It created `/workspace/AGENTS.md` with a "check the brain first" block. It also installed and enabled a small plugin, `gbrain-turn-rule`, which repeats that reminder on every message. OpenClaw reports the plugin as loaded.
+
+**Defaults now in effect** (you can change any of them later):
+- Search is keyword-only.
+- The agent saves only what you explicitly ask it to remember. To have it save important facts you mention on its own, run `gbrain config set memory.auto_writeback salient`.
+- Free upkeep runs in the background and never deletes or charges anything without asking you.
+- gbrain keeps one redacted summary page per conversation per day. Without an API key nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.
+
+**Still needed:**
+1. **Restart the gateway.** My restart request through OpenClaw's setup tool failed with "the verified inference route changed or could not be reverified". The fix it suggested is to start a new OpenClaw conversation and ask again. `openclaw gateway status` also couldn't reach the gateway, and this host has no service manager, so restart it however you launched it.
+2. **Check it in a new session.** The gbrain tools don't show up in this one. After the restart, start a new chat and ask: *"Call get_brain_identity, then recall 'gbrain install check'."* If it answers, everything is working. You can then ask it to forget that test fact.

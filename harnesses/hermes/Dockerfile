@@ -12,6 +12,10 @@
 # (tools/tirith_security.py treats an explicit path as authoritative), and
 # TIRITH_OFFLINE=1 stops Tirith's own threat-DB download, so the scan is a
 # function of the pinned binary alone (pin.json tirith).
+# The hermes command is also linked at /usr/local/bin/hermes, where Hermes's own
+# install.sh puts it (added 2026-11-21, internal-task). Hermes's terminal tool starts
+# login shells, and Debian's /etc/profile resets PATH there, so without the link
+# an agent's `hermes` command (for example `hermes mcp add`) was not found.
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11.6
 FROM ${UV_IMAGE} AS uv_source
@@ -36,7 +40,8 @@ RUN git clone --quiet --depth 1 --branch "${HERMES_TAG}" "${HERMES_REPO}" /opt/h
 ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 RUN uv venv --python /usr/local/bin/python3 /opt/harness/venv \
     && uv pip install --python /opt/harness/venv/bin/python --no-cache -e "/opt/harness/src[anthropic,mcp]" \
-    && /opt/harness/venv/bin/hermes --version
+    && /opt/harness/venv/bin/hermes --version \
+    && ln -s /opt/harness/venv/bin/hermes /usr/local/bin/hermes
 
 ARG TIRITH_VERSION=0.4.2
 ARG TIRITH_SHA256_AMD64=efa6bf414a83dba385d4f13137e8677f850ced9102fe74ebb14c72f31df0dc77

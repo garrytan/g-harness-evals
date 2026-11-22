@@ -1,0 +1,53 @@
+I installed GBrain v0.60.760.0 and connected it to this agent with no API keys. A remember/recall round trip works both from the command line and through the exact server command OpenClaw will run. I haven't yet tested the memory tools from a fresh OpenClaw session; that needs a gateway restart first.
+
+**What changed**
+- **Install:** Bun 1.4.5, then `bun install -g github:garrytan/gbrain#v0.60.760.0` in place of `#stable`. `gbrain --version` prints `0.60.760.0`.
+- **Brain:** a local database at `~/.gbrain/brain.pglite`, created with embeddings off. Search runs on keywords only, and no text goes to an embedding provider. The 5 setup migrations it listed as pending have been applied, and `gbrain doctor` reports health 100.
+- **Connection to OpenClaw:**
+  - `mcp.servers.gbrain` in `openclaw.json` runs `/harness-state/.bun/bin/gbrain serve --surface starter --advertise verbs`.
+  - `gbrain setup openclaw` added a small plugin (`gbrain-turn-rule`) that reminds the agent to check GBrain on every turn.
+  - The first setup run reported the plugin as not loaded. The plugin check then showed it loaded and hooked into prompt building, and the re-run came back clean.
+- **Your identity and instructions are kept.** There were no SOUL.md or IDENTITY.md files and I didn't create any. `/workspace/AGENTS.md` didn't exist either; it now holds only GBrain's marked brain-first section. Your model and workspace settings are unchanged. Saving `openclaw.json` removed its `//` comments (OpenClaw does this when it writes the file), and the backup I took is in `/tmp/openclaw.json.bak`, which may not survive a restart.
+
+**Round-trip test (real GBrain calls)**
+1. **Command line:** `gbrain remember` saved fact #1 with provenance `install-check`. `gbrain recall` in a separate process returned it, and an exact keyword `gbrain search` also found it, so the data persists between processes.
+2. **Through the server OpenClaw uses:**
+   - It started as gbrain 0.60.760.0 and listed its memory tools: `remember, entity, synthesize, forget, request_tools, recall, context_pack, delta`.
+   - `remember` saved fact #2 (origin `mcp:remember`), and `recall` ran without error.
+   - A fresh `gbrain recall` from the command line then returned both #1 and #2.
+
+**Search mode: conservative is in effect.** GBrain picked it because there's no chat key and no reranker. You can change it at any time:
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+1. **conservative:** 4K budget, at most 10 chunks, no reranker. Best for Haiku-class models and cost-sensitive or high-volume use.
+2. **balanced:** 12K budget, 25 chunks, reranked.
+3. **tokenmax:** no budget, 50 chunks, reranked. The widest retrieval; GBrain recommends it once a chat key is set.
+
+To switch, run `gbrain config set search.mode <mode>` (or just tell me), and check with `gbrain search modes`. Queries are never expanded by default in any mode. Without keys, balanced and tokenmax mostly mean bigger payloads, because the reranker can't run.
+
+**Other settings in effect**
+- **Automatic saving: off.** I save only what you ask me to remember. GBrain recommends `salient`: `gbrain config set memory.auto_writeback salient`.
+- **Upkeep: on.** Free maintenance runs while the GBrain session is open. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive: on.** It keeps one redacted page per conversation per day, and with no key nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.
+
+I didn't set up API keys, enrichment, cron jobs, background services or a new identity.
+
+**To finish the test**
+1. Restart the OpenClaw gateway; OpenClaw starts the GBrain server itself after the restart.
+2. In a new session, ask me to recall "gbrain install check".
+3. Then ask me to forget those two test facts.
+
+On a single-user database like this one, the command-line tool is locked while the gateway's GBrain server is running, so use the memory tools in a session from then on.
+
+GBrain also offers a hosted version at gbrain.io if you'd rather not run the brain yourself; I continued with the local install you asked for.

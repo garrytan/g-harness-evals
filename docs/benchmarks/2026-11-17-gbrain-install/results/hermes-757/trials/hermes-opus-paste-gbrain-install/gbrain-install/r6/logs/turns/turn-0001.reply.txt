@@ -1,0 +1,42 @@
+GBrain v0.60.757.0 is installed and connected to this agent, keyless. A remember/recall round trip with real gbrain calls worked from the command line. I couldn't run it through a Hermes chat session: a nested `hermes -z` couldn't reach the model provider (it gave a connection error, then timed out), so the in-chat MCP calls are not tested yet.
+
+Install:
+- Hermes's command scanner blocked the Bun installer, as the guide predicts. I used the guide's release-binary route, pinned to the v0.60.757.0 asset. It's at `/harness-state/.local/bin/gbrain` and `gbrain --version` prints 0.60.757.0.
+- `gbrain init --pglite --no-embedding` created a local brain at `/harness-state/.gbrain/brain.pglite` with no API keys. I then ran `apply-migrations --yes --no-autopilot-install`, which exited 0.
+- `gbrain setup hermes` did three things:
+  - Registered the gbrain MCP server. `hermes mcp test gbrain` connected and found 8 tools: remember, recall, entity, forget, synthesize, context_pack, delta, request_tools.
+  - Added a "check GBrain first" block to the end of SOUL.md.
+  - Added a per-turn hook to `config.yaml`.
+- Setup and its suggested fix both exited 1 with `turn_hook_not_loaded`. `hermes hooks doctor` says the hook is healthy and gbrain's own doctor reports it `wired`, so I think that error is a false alarm.
+
+Your identity and instructions are unchanged. The first line of SOUL.md is still your original text, and the gbrain block sits after it between `gbrain:brain-first` markers. Your existing `config.yaml` settings are untouched; setup only added the `mcp_servers.gbrain` block and the marked hook block.
+
+Round trip:
+- `gbrain remember "gbrain install check: Hermes memory wired on 2026-11-21 with gbrain v0.60.757.0" --provenance install-check` saved it as fact #1.
+- `gbrain recall --query "gbrain install check"` returned fact #1 with that exact text and its provenance, via keyword search (expected with no embedding key).
+- To finish the in-chat check, open a new Hermes session and ask it to recall "gbrain install check". I also wrote an MCP version of the test (stdio client against the registered server) but ran out of time before running it: `python3 /harness-state/hermes/cache/scratch/mcp_roundtrip.py`.
+
+Search mode: `conservative` is in effect, chosen automatically because there's no chat key or reranker. You can change it any time with `gbrain config set search.mode <mode>` and check it with `gbrain search modes`.
+
+  1) conservative (current): 4K token budget, at most 10 chunks, no reranker.
+  2) balanced: 12K budget, 25 chunks, reranked.
+  3) tokenmax: no budget, 50 chunks, reranked. Recommended once you have a chat key.
+
+  Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+                    Haiku 5.5     Sonnet 5.5    Opus 5.5
+                    ($0.10/M in)  ($2/M in)     ($4/M in)
+    conservative    $4/mo         $80/mo        $160/mo
+    balanced        $10/mo        $200/mo       $400/mo
+    tokenmax        $20/mo        $400/mo       $800/mo
+  Assumed payload: 4K / 10K / 20K tokens. Scales linearly with query volume.
+  Embedding, reranking and query expansion are charged separately.
+
+balanced and tokenmax rerank with Voyage, so they need `VOYAGE_API_KEY`; until then, the reranker won't run.
+
+Other settings in effect (change any time):
+- Automatic saving is off, so I only save what you ask me to remember. To have me save durable facts you state, run `gbrain config set memory.auto_writeback salient` (recommended).
+- Free upkeep is on while a gbrain session is open. Turn it off with `gbrain config set maintenance.auto false`.
+- Conversation archive is on (stays on this machine with no key). Turn it off with `gbrain transcripts archive off`.
+- I skipped the optional skills scaffold.
+
+Restart Hermes so it loads the MCP server and the updated SOUL.md. Fact #1 is a test entry; I can forget it once the in-session recall works.

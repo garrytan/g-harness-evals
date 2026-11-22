@@ -256,7 +256,7 @@ test('classes refuse by default: unclassified and denied paths, formats a class 
   expect(text.includes('/home/')).toBe(false);
   const codes = JSON.parse(readFileSync(join(GATE, 'rules.json'), 'utf8')).codes;
   const allow = loadAllow();
-  expect(allow.map((e) => e.code + ' ' + e.path)).toEqual(['PS-GITLEAKS tests/dsh-adapter.test.ts', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check-first-run.json', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check.json', 'PS-FORMAT scripts/repo-tasks/rules-fix/upstream/jinja-09907ef37891.tar.gz', 'PS-FORMAT tasks/repo/rules-fix-v1/dev/rf-28/environment/work.tar', 'PS-FORMAT tasks/repo/rules-fix-v1/dev/rf-28/environment/work.tar', 'PS-FORMAT tasks/repo/rules-fix-v1/dev/rf-28/verifier/tests.tar']);
+  expect(allow.map((e) => e.code + ' ' + e.path)).toEqual(['PS-GITLEAKS tests/dsh-adapter.test.ts', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check-first-run.json', 'PS-GITLEAKS docs/benchmarks/2026-11-14-fable-diagnosis/oracle-check.json', 'PS-FORMAT scripts/repo-tasks/rules-fix/upstream/jinja-09907ef37891.tar.gz', 'PS-FORMAT tasks/repo/rules-fix-v1/dev/rf-28/environment/work.tar', 'PS-FORMAT tasks/repo/rules-fix-v1/dev/rf-28/environment/work.tar', 'PS-FORMAT tasks/repo/rules-fix-v1/dev/rf-28/verifier/tests.tar', 'PS-GITLEAKS docs/benchmarks/2026-11-17-gbrain-install/results/openclaw-760/trials/openclaw-sol-paste-gbrain-install/gbrain-install/r7/logs/turns/turn-0001.openclaw-session.jsonl']);
   for (const e of allow) {
     expect(codes[e.code].allow).toBe(true);
     expect(blobId(readFileSync(join(ROOT, e.path)))).toBe(e.blob);

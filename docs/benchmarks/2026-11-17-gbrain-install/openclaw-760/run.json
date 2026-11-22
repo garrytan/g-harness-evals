@@ -1,0 +1,145 @@
+{
+ "schema_version": 1,
+ "run_id": "gbrain-install-openclaw-760-2026-11",
+ "question": "Regression check of gbrain's OpenClaw install fix (gbrain#9972, GST-2714; HARN-98 issue GST-3427), not a new experiment: the OpenClaw rows of gbrain-install-2026-11 rerun on gbrain v0.60.760.0 (1597b77ac8b7fe82d671cc9c874a916b33152d57, a pre-release installed by tag; releases/latest still serves v0.60.753.0), with the task, the OpenClaw pin, the scorer and both arms unchanged. In #494 (v0.60.734.0), 11 bare OpenClaw runs saved the fact to gbrain but a fresh session never asked gbrain, because the agent registered MCP by hand and skipped `gbrain setup openclaw`; v0.60.760.0's install docs run `gbrain setup openclaw` in the same step as the MCP registration, and `gbrain search` now prints remembered facts. Arm bare: \"install gbrain\". Arm paste: gbrain's README agent paste prompt at that tag, byte-identical to v0.60.734.0's and v0.60.757.0's, which points at master's INSTALL_FOR_AGENTS.md. Both arms end with the task's version line naming the tag. OpenClaw with Opus 5.5 and GPT-6.1 Sol as before, plus GPT-6.2 Sol (R54), 10 runs per arm: 60 runs. particle-1 is not rerun. Scored mechanically with the same scorer (a+b+c strict primary; rules a and c touch OpenClaw, so as-scored, a+c and a+b+c are all reported). No new deviation for OpenClaw. The image carries the Hermes rerun's declared deviation (the /usr/local/bin/hermes link, 2026-11-21), which touches only the Hermes image. The adapters are unchanged, and every trial is checked for an exit 2 at stop from the bash 5.2.21 trap error, as in the Hermes rerun.",
+ "tasks": {},
+ "wall_clock_s": {
+  "gbrain-install": 900
+ },
+ "spend_cap_usd": 101,
+ "drop_order": [],
+ "minimum_v01": [
+  "openclaw-opus-bare-gbrain-install",
+  "openclaw-opus-paste-gbrain-install",
+  "openclaw-sol-bare-gbrain-install",
+  "openclaw-sol-paste-gbrain-install",
+  "openclaw-sol62-bare-gbrain-install",
+  "openclaw-sol62-paste-gbrain-install"
+ ],
+ "order": {
+  "kind": "interleave-task",
+  "seed": 3427
+ },
+ "cells": [
+  {
+   "id": "openclaw-opus-bare-gbrain-install",
+   "harness": "openclaw",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "bare",
+    "tag": "v0.60.760.0",
+    "commit": "1597b77ac8b7fe82d671cc9c874a916b33152d57",
+    "seed": "gst3427"
+   }
+  },
+  {
+   "id": "openclaw-opus-paste-gbrain-install",
+   "harness": "openclaw",
+   "model": "anthropic:claude-opus-5-5",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "paste",
+    "tag": "v0.60.760.0",
+    "commit": "1597b77ac8b7fe82d671cc9c874a916b33152d57",
+    "seed": "gst3427",
+    "paste_file": "tasks/gbrain-install/arms/paste-0.60.760.0.md",
+    "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+   }
+  },
+  {
+   "id": "openclaw-sol-bare-gbrain-install",
+   "harness": "openclaw",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "bare",
+    "tag": "v0.60.760.0",
+    "commit": "1597b77ac8b7fe82d671cc9c874a916b33152d57",
+    "seed": "gst3427"
+   }
+  },
+  {
+   "id": "openclaw-sol-paste-gbrain-install",
+   "harness": "openclaw",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "paste",
+    "tag": "v0.60.760.0",
+    "commit": "1597b77ac8b7fe82d671cc9c874a916b33152d57",
+    "seed": "gst3427",
+    "paste_file": "tasks/gbrain-install/arms/paste-0.60.760.0.md",
+    "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+   }
+  },
+  {
+   "id": "openclaw-sol62-bare-gbrain-install",
+   "harness": "openclaw",
+   "model": "openai:gpt-6.2-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "bare",
+    "tag": "v0.60.760.0",
+    "commit": "1597b77ac8b7fe82d671cc9c874a916b33152d57",
+    "seed": "gst3427"
+   }
+  },
+  {
+   "id": "openclaw-sol62-paste-gbrain-install",
+   "harness": "openclaw",
+   "model": "openai:gpt-6.2-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 10,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "paste",
+    "tag": "v0.60.760.0",
+    "commit": "1597b77ac8b7fe82d671cc9c874a916b33152d57",
+    "seed": "gst3427",
+    "paste_file": "tasks/gbrain-install/arms/paste-0.60.760.0.md",
+    "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+   }
+  }
+ ]
+}

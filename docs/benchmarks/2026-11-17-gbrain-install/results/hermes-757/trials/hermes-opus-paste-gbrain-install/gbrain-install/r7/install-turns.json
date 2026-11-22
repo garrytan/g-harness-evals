@@ -1,0 +1,83 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.757.0 (`github:garrytan/gbrain#v0.60.757.0`) wherever the docs say #stable.",
+  "reply_text": "GBrain v0.60.757.0 is installed and connected to this Hermes agent as a keyless local brain. Your identity text is unchanged. Remember and recall both worked over real GBrain calls, but I couldn't confirm recall from a fresh chat session.\n\nSearch-mode choice. Install set the mode to conservative because there's no chat key and no reranker. The cost estimates below are the matrix from this release's install output. The install guide's own copy shows older, higher prices.\n\n    Estimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                       Haiku 5.5     Sonnet 5.5    Opus 5.5\n                       ($0.10/M in)  ($2/M in)     ($4/M in)\n       conservative    $4/mo         $80/mo        $160/mo\n       balanced        $10/mo        $200/mo       $400/mo\n       tokenmax        $20/mo        $400/mo       $800/mo\n\n       Assumed payload: conservative 4K, balanced 10K, tokenmax 20K tokens.\n       Scales linearly: x10 for 100K/mo, /10 for 1K.\n\n  1) conservative (in effect): 4K token budget, at most 10 chunks.\n  2) balanced: 12K budget, 25 chunks. Its reranker needs a key, so it can't run yet.\n  3) tokenmax: no budget, 50 chunks.\n\nSince the brain is keyless, `gbrain search` and recall never expand queries and nothing goes to a cloud provider. To change the mode: `gbrain config set search.mode <mode>`, then check with `gbrain search modes`.\n\nOther first-run settings, defaults in effect:\n- Auto-saving facts is off: it saves only what you ask. \"salient\" is the recommended option (`gbrain config set memory.auto_writeback salient`).\n- Free upkeep is on.\n- The conversation archive is on; turn it off with `gbrain transcripts archive off`.\n- No services, cron jobs or paid providers were set up.\n\nInstall:\n- The security scanner blocked the documented `curl | bash` and `bun install -g` commands. I installed Bun 1.4.5 from its GitHub release zip instead.\n- I used the guide's fallback path: cloned gbrain to `~/gbrain`, checked out commit 915e3b30, then ran `bun install` and `bun link`. That commit is the v0.60.757.0 tag, which is also `latest-stable`.\n- `gbrain --version` prints 0.60.757.0. Database setup steps are complete, and the brain is at `~/.gbrain/brain.pglite`.\n\nHermes changes (`gbrain setup hermes`):\n- **SOUL.md:** your identity text is unchanged; a marked \"check GBrain first\" block was appended after it.\n- **config.yaml:** the `gbrain` MCP server was added, plus a marked per-turn reminder hook. `hermes hooks doctor` reports it healthy.\n- **Undo:** `gbrain setup hermes --remove`. Backups of the original files are in `/harness-state/hermes/cache/scratch/hermes-pre-gbrain/`.\n\nVerification:\n- `hermes mcp test gbrain`: connected, 8 tools found.\n- `gbrain doctor --only harness_wiring`: ok.\n- Command line: saved a fact containing the code HX-7731, then read it back in a separate process (fact 1). An exact keyword search for a test page also found it.\n- MCP, using the same server command Hermes launches: one session saved fact 2 (code QX-5150). A separate session read it back, and so did the command line.\n- I couldn't confirm recall from a fresh Hermes chat session. My attempt (`hermes -z`) timed out after about 280s with no output. To check yourself, restart Hermes and ask it to recall the facts for \"install-check/note\".\n\nTwo things to know about the agent's memory tools:\n- Facts saved by the agent must name an existing page with its folder (e.g. `install-check/note`). A plain name is refused if no page has it.\n- The memory tools Hermes uses don't accept the field that marks where a fact came from (`content_origin`); saves work without it.\n\nCleanup: per the guide, the two test facts stay until you've confirmed recall in a new session. Then run `gbrain forget 1` and `gbrain forget 2`, and `gbrain delete install-check/note` for the test page.",
+  "exit": 0,
+  "started_at": "2026-11-21T19:49:26.637Z",
+  "ended_at": "2026-11-21T19:58:33.498Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-21T19:58:33.330Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.757.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "hermes/config.yaml",
+    "hermes/SOUL.md"
+   ],
+   "ok": true
+  },
+  "events": 415
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Ravoupeisk.",
+  "reply_text": "Saved in GBrain: your sister's new cat is called Ravoupeisk. It's fact #3, filed under `people/sister`, and I read it back from the brain to confirm it was saved.\n\nI don't have your sister's name. If you tell me, I'll file it under her name instead.",
+  "exit": 0,
+  "started_at": "2026-11-21T19:58:33.503Z",
+  "ended_at": "2026-11-21T19:59:00.653Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-21T19:59:00.557Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.757.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "hermes/config.yaml",
+    "hermes/SOUL.md"
+   ],
+   "ok": true
+  },
+  "events": 19
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called Ravoupeisk. That comes from your notes, which say you mentioned it in a chat earlier today.",
+  "exit": 0,
+  "started_at": "2026-11-21T19:59:00.655Z",
+  "ended_at": "2026-11-21T19:59:18.346Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-21T19:59:18.159Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.757.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "hermes/config.yaml",
+    "hermes/SOUL.md"
+   ],
+   "ok": true
+  },
+  "events": 10
+ }
+]

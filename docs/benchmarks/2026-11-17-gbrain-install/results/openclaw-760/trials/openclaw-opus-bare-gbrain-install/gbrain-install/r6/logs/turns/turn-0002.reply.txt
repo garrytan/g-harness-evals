@@ -1,0 +1,20 @@
+gbrain is set up and connected to OpenClaw, using the defaults and no API keys. It takes effect when you start a new session, because OpenClaw reads its instruction file at session start.
+
+**What I set up:**
+- **Brain:** a local brain (stored on this machine, created with `gbrain init --pglite --no-embedding`). Nothing leaves the machine. Settings I left at their defaults:
+  - Search mode is conservative.
+  - Agents only save what you explicitly ask them to remember.
+  - Free background upkeep is on.
+  - A redacted conversation archive is on.
+- **OpenClaw connection:** gbrain is registered as an MCP server named `gbrain`, using the absolute path to the program. I started it once by hand and it listed its 8 tools: remember, recall, entity, synthesize, forget, context_pack, delta and request_tools.
+- **Brain-first setup:** `gbrain setup openclaw` created `/workspace/AGENTS.md` with a "check GBrain first" section. It also installed a small plugin, `gbrain-turn-rule`, that repeats that rule on every message. The first run said the plugin wasn't loaded, but it showed as loaded on the next check, and a re-run of the setup then passed.
+- **Test:** saving a test fact and recalling it worked. I then withdrew the test fact.
+
+**Things to know:**
+- **Search is keyword-only.** Without an embedding API key, search matches words only, and near-duplicate facts aren't caught. This is the expected trade-off for staying free.
+- **Two `gbrain doctor` warnings:**
+  - `brain_score` is expected because the brain is still empty.
+  - `provenance_stamp_drift` is probably from my test fact. Its fix is marked "ask user", so I didn't run it. If you want it fixed: `gbrain repair provenance --source default`.
+- **Updates may suggest leaving your version.** gbrain's self-update is set to notify you about the stable channel, not install automatically. Your pinned v0.60.760.0 stays unless you choose to switch, but it may suggest moving to `stable`.
+- **I couldn't confirm the live gateway picked up the changes.** The OpenClaw config tool errored when I asked it to reload, and the plugins tool said there was no running gateway. If gbrain doesn't show up in a new session, restart the gateway.
+- **Optional:** if you want agents to save facts you state without being asked, run `gbrain config set memory.auto_writeback salient`. gbrain recommends this for a personal brain.

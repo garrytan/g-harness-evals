@@ -1,0 +1,18 @@
+I still couldn't finish the install. The v0.60.757.0 source is downloaded, but the gbrain command doesn't exist yet. Hermes's security scanner blocks every `bun install` command in this unattended session, and I'm not going to work around it. "Carry on without me" settles which options to use, but it isn't approval to bypass that guard. Nothing paid has been set up and no API keys were used.
+
+Already in place:
+- Bun 1.4.5 at ~/.bun/bin/bun.
+- The gbrain v0.60.757.0 source at ~/src/gbrain. I downloaded it as a tarball of the tag's commit (915e3b30), and its VERSION file reads 0.60.757.0.
+
+What's blocked: running `bun install` / `bun link` in that folder. The scanner wants to check packages against online databases, can't because it's offline, and so asks for an approval nobody is here to give. It says this is incomplete checking, not evidence that anything is malicious.
+
+To finish, either run these four commands yourself:
+
+   export PATH="$HOME/.bun/bin:$PATH"
+   cd ~/src/gbrain && bun install && bun link
+   gbrain init --pglite --no-embedding
+   gbrain doctor
+
+Or set `approvals.single_query_mode: approve` in the Hermes config.yaml (or run me interactively) and I'll do the same thing.
+
+Those use the free defaults the docs recommend. The brain is a local PGLite database with no server or Docker, and search is keyword-only, so it needs no API keys. To wire it into an agent afterwards, run `gbrain setup claude-code` or `gbrain setup codex`.

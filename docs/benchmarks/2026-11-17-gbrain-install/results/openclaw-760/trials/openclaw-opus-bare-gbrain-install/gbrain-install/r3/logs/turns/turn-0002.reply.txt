@@ -1,0 +1,31 @@
+I installed gbrain v0.60.760.0 and connected it to OpenClaw. It's free, needs no API keys, and nothing leaves this machine. One step is unconfirmed: I couldn't restart the gateway, which is needed so every conversation gets gbrain's "check gbrain first" reminder automatically.
+
+**What's set up:**
+- **The brain:** a local database at `/harness-state/.gbrain/brain.pglite`. It searches by keyword only, so no API key is needed. In a test, saving and finding a note from the command line worked, and gbrain's health check scored 90/100. The warnings are only because the brain is empty and has no embeddings (the paid add-on that enables meaning-based search), which is expected.
+- **Connection to OpenClaw:** gbrain is registered as a tool server, and I confirmed it starts and offers its memory tools (`recall`, `remember`, `entity`, `forget` and others).
+- **Instructions for the agent:** gbrain's setup created `/workspace/AGENTS.md` with a short block telling the agent to check gbrain before answering. It also installed and turned on a small plugin (`gbrain-turn-rule`) that repeats that reminder next to every message. A first check reported the plugin wasn't running, but it showed as loaded right after, and a re-run of setup passed cleanly.
+
+**What's left:**
+- **Gateway restart:** gbrain's docs say to restart the gateway so the plugin takes effect. I asked OpenClaw's setup helper to do it, but it failed with an internal error about re-verifying its model route, and it asked for a new conversation. I didn't restart it myself, because restarting the gateway from a shell isn't allowed here. Please run a restart, or ask for one in a new conversation.
+- **New session needed:** the gbrain tools aren't available in this conversation. Start a new one and ask it to recall "gbrain install check" to test it.
+- **Test note:** that test saved a note, "gbrain install check", which you can remove later. gbrain warns that forgetting it means that exact text can't be saved again.
+- **One brain user at a time:** while OpenClaw has gbrain running, the `gbrain` command line will refuse to open the brain (`pglite_busy`). Use it through the agent instead.
+
+**Settings in effect** (change any of these whenever you like):
+
+| Setting | Now | How to change |
+|---|---|---|
+| Search mode | `conservative`: retrieves about 4K tokens per lookup, picked because there's no API key | `gbrain config set search.mode balanced` or `tokenmax` |
+| Saving facts on its own | off: saves only what you ask it to remember | `gbrain config set memory.auto_writeback salient` (gbrain recommends this) |
+| Free background maintenance | on, while the agent's gbrain connection is open | `gbrain config set maintenance.auto false` |
+| Conversation archive | on: keeps one cleaned-up page per conversation per day, stored locally | `gbrain transcripts archive off` |
+
+gbrain's estimate of what the retrieved text adds to your model bill, at 10,000 lookups a month (Haiku / Sonnet / Opus):
+
+| Mode | Haiku | Sonnet | Opus |
+|---|---|---|---|
+| conservative | $4 | $80 | $160 |
+| balanced | $10 | $200 | $400 |
+| tokenmax | $20 | $400 | $800 |
+
+gbrain itself costs nothing in any mode.

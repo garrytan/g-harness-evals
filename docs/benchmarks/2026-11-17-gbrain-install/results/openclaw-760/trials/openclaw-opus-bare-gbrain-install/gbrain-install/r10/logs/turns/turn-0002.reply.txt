@@ -1,0 +1,23 @@
+gbrain now has a local brain that's free and needs no API keys, and it's connected to OpenClaw. A memory test passed from the command line, but **I haven't tested it through OpenClaw yet**. That needs a new session, and part of it only switches on after the next Gateway restart.
+
+**What I set up**
+1. **Brain:** created with `gbrain init --pglite --no-embedding`. Everything stays on this machine and no paid services are called. Search uses keyword matching only.
+2. **OpenClaw connection:** registered gbrain as a tool server (MCP) named `gbrain`, using the absolute path `/harness-state/.bun/bin/gbrain`. OpenClaw's own check says it's ok and finds 8 gbrain tools.
+3. **"Check gbrain first" rule:** `gbrain setup openclaw` wrote two things:
+   - **A new `/workspace/AGENTS.md`** (none existed before) telling the agent to check gbrain first.
+   - **A small plugin, `gbrain-turn-rule`,** that adds the same reminder to every message. It's installed and enabled. I installed it from a local folder, which OpenClaw warns is outside its usual review; I read its code first, and all it does is add that note.
+4. **Memory test:** `remember "gbrain install check"` and then `recall` found it (fact #1).
+5. **Health check:** `gbrain doctor` scores 90/100 overall, with all checks OK. The brain-content score is low (25/100) because the brain is empty and has no embeddings, which is expected for a fresh keyless setup.
+
+**Settings I left at gbrain's defaults**
+- **Saving facts:** agents only save what you ask them to remember. `gbrain config set memory.auto_writeback salient` turns on saving important facts you state.
+- **Upkeep:** free background upkeep is on and never deletes or pays for anything.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, and without an API key nothing leaves this machine. `gbrain transcripts archive off` turns it off.
+
+**Still to do**
+- **The plugin isn't active yet.** It loads the next time the Gateway starts. I couldn't restart it from here because the host doesn't allow restarts or live plugin reloads. Until then, only `AGENTS.md` carries the "check gbrain first" rule.
+- **The gbrain tools aren't available in this chat.** The connection was added partway through this session, so the tools appear from the next new session.
+- **To test it:** in a new session, ask the agent to recall "gbrain install check", then ask it to forget that fact. I left the test fact in place for this.
+- **Command-line use stops once OpenClaw is running the brain.** This brain type allows only one process at a time, so the `gbrain` command will fail with `pglite_busy`. From then on, use the gbrain tools inside OpenClaw instead.
+
+I deleted the temporary copy of the gbrain repo I'd downloaded to read its docs.

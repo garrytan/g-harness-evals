@@ -1,0 +1,50 @@
+GBrain memory is installed and connected to this agent. It runs keyless and fully local. A real remember → recall round trip passed. Your identity and instructions are unchanged, and the brain starts in **conservative** search mode (the choice is below).
+
+**What I did**
+- **Install:** added Bun 1.4.5, then installed `github:garrytan/gbrain#v0.60.760.0` in place of `#stable`. `gbrain --version` reports `0.60.760.0`.
+- **Brain:** ran `gbrain init --pglite --no-embedding`, so there are no API keys and no paid providers. The brain is at `/harness-state/.gbrain/brain.pglite`.
+- **Connect:** registered gbrain as an MCP server with `openclaw mcp add gbrain … serve --surface starter --advertise verbs`.
+- **Brain-first rule:** ran `gbrain setup openclaw`.
+  - It wrote one marked block into `/workspace/AGENTS.md`. That file didn't exist before, and the block sits between gbrain markers.
+  - It also installed the `gbrain-turn-rule` plugin, which adds the same rule to every turn.
+  - The first run reported `turn_hook_not_loaded`. OpenClaw's own check showed the plugin loaded with `before_prompt_build`, and the suggested re-run (`--instructions-only`) finished cleanly.
+  - Doctor shows the rule as current and the hook as wired, but its harness check says no agent harness was detected, even though OpenClaw lists the server. The new-session test below will settle it.
+- **Identity:**
+  - No SOUL.md, IDENTITY.md or USER.md was created or touched, and the existing config values are unchanged.
+  - One side effect: `openclaw mcp add` rewrote `openclaw.json` as plain JSON, which removed its `//` comments. A copy of the original is at `/tmp/openclaw.json.bak`, which won't survive a machine restart.
+- **Skipped on purpose:** automatic capture, scheduled jobs, background services, enrichment, skill packs and identity bootstrap.
+
+**Memory test (real GBrain calls)**
+1. **Command line:** `gbrain remember "gbrain install check" --provenance install-check` saved fact #1, and `gbrain recall` returned it.
+2. **Same server OpenClaw runs:** I started the exact registered command over MCP, and it reported gbrain 0.60.760.0 with 8 tools. `remember` saved a generic test note, "the verification codeword is heliotrope-7342", under `projects/gbrain-install-test` as fact #2.
+3. **Fresh processes:** after closing that server, a new MCP server found fact #2 by entity and by the keyword `heliotrope-7342`. The command line found it again in another new process. An exact keyword search also found fact #1 ("install check").
+4. **Still to do in a new chat:** gbrain's tools weren't loaded into this chat, which started before I registered them. Start a new session (restart the gateway if it's running) and ask me to *recall "gbrain install check"*. If it comes back, ask me to *forget* it. That fact was saved without an entity, so forgetting it withdraws that exact text for good. It's only a test marker.
+
+**Search mode (you can change it any time)**
+gbrain picked `conservative` because there's no chat key and no reranker. This setting controls how much retrieved text goes into each answer:
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+1. **conservative** (in effect): 4K-token budget, at most 10 chunks, no reranker. Best for cost-sensitive or high-volume use.
+2. **balanced:** 12K budget, 25 chunks, reranked.
+3. **tokenmax:** no budget, 50 chunks, reranked. The widest retrieval, recommended once a chat key is added.
+
+Without a key there is no reranker, so balanced and tokenmax just return more chunks. To switch, run `gbrain config set search.mode <mode>`, then check with `gbrain search modes`. Your model's cost depends on both the mode and the model you run; these are estimates, not your actual subscription prices.
+
+**Other settings in effect**
+- **Automatic saving:** off. I save only what you ask me to remember. To have me save durable facts you state, with their source, run `gbrain config set memory.auto_writeback salient` (recommended).
+- **Upkeep:** free upkeep runs while my gbrain session is open. To turn it off, run `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on. It keeps one redacted page per conversation per day, and nothing leaves this machine without an embedding key. To turn it off, run `gbrain transcripts archive off`.
+- **Search type:** keyword-only. Smarter matching of differently worded searches needs an embedding key, and only if you agree to send text to that provider.
+
+gbrain also offers a hosted version at gbrain.io (paid, nothing created until you pick a plan); this install is fully local.

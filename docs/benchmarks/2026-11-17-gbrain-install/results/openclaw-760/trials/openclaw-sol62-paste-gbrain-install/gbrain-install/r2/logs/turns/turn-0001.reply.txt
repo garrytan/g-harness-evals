@@ -1,0 +1,29 @@
+Installed **GBrain v0.60.760.0** as local, keyless memory for your existing OpenClaw agent. I registered its MCP server and added a workspace memory rule without replacing your identity or existing instructions. Automatic writeback and conversation archiving are off; free upkeep is on. No provider keys, paid enrichment, or scheduled jobs were added.
+
+**Verified:** Real `remember` and `recall` calls passed through both the CLI and the registered MCP server. MCP recall returned the saved fact from a fresh server process, and exact keyword lookup passed. I removed the MCP test fact and left a separate 24-hour marker for a fresh-chat check.
+
+**Not yet verified in a new chat:** OpenClaw’s artifact review rejected GBrain’s optional per-turn hook, so that hook isn’t active. The workspace rule and MCP registration are in place. To check a fresh chat, ask it to recall `gbrain-install-check` from GBrain and then forget the marker.
+
+### Search mode: `conservative` is active
+
+| Mode | Retrieval behavior |
+|---|---|
+| **Conservative** | 4K-token budget, up to 10 chunks, no reranker. Recommended for this keyless setup. |
+| **Balanced** | 12K-token budget, up to 25 chunks; reranks if a provider is configured. |
+| **Tokenmax** | No token-budget cap, up to 50 chunks; reranks if a provider is configured. |
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are guide estimates, not your OpenClaw subscription prices. You can switch modes anytime without adding a key; search stays keyword-only until you configure a provider. [Hosted GBrain](https://gbrain.io/cli?ref=install-for-agents) is an alternative if you later want an always-on brain across devices; this install stays local.

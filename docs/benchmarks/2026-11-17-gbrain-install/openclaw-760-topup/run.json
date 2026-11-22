@@ -1,0 +1,61 @@
+{
+ "schema_version": 1,
+ "run_id": "gbrain-install-openclaw-760-topup-2026-11",
+ "question": "Dated top-up (2026-11-22) of gbrain-install-openclaw-760-2026-11, written after that run and before these trials. Seven GPT-6.1 Sol trials of that run (bare r7 to r10, paste r7, r9 and r10) ended as model_error because the shard's metering lease was set too low: the proxy reserves a request's worst case before forwarding it, and those reservations would have passed the $13 and $18 shard leases (committed spend was $9.12 and $14.34). That is our lease sizing, not the model. The runner never reruns a recorded trial under the same run id, so this run id holds the replacement trials: GPT-6.1 Sol bare 4 runs and paste 3 runs, with the task, gbrain tag, arms, OpenClaw pin and scorer unchanged from the run spec in ../openclaw-760/run.json. The seven model_error records stay in the first run's trials.jsonl, unchanged, and are reported. Spend cap: what remains of the rerun's $101.",
+ "tasks": {},
+ "wall_clock_s": {
+  "gbrain-install": 900
+ },
+ "spend_cap_usd": 36,
+ "drop_order": [],
+ "minimum_v01": [
+  "openclaw-sol-bare-gbrain-install",
+  "openclaw-sol-paste-gbrain-install"
+ ],
+ "order": {
+  "kind": "interleave-task",
+  "seed": 34271
+ },
+ "cells": [
+  {
+   "id": "openclaw-sol-bare-gbrain-install",
+   "harness": "openclaw",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 4,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "bare",
+    "tag": "v0.60.760.0",
+    "commit": "1597b77ac8b7fe82d671cc9c874a916b33152d57",
+    "seed": "gst3427-topup"
+   }
+  },
+  {
+   "id": "openclaw-sol-paste-gbrain-install",
+   "harness": "openclaw",
+   "model": "openai:gpt-6.1-sol",
+   "slice": "gbrain-install",
+   "split": "dev",
+   "repetitions": 3,
+   "ceiling": {
+    "input_tokens": 80000,
+    "output_tokens": 6000
+   },
+   "network": "install",
+   "install": {
+    "arm": "paste",
+    "tag": "v0.60.760.0",
+    "commit": "1597b77ac8b7fe82d671cc9c874a916b33152d57",
+    "seed": "gst3427-topup",
+    "paste_file": "tasks/gbrain-install/arms/paste-0.60.760.0.md",
+    "paste_sha256": "1af1d5967c2203f9038914cab5c4fc3e86f68e296c888d3c70c928311e6846a8"
+   }
+  }
+ ]
+}

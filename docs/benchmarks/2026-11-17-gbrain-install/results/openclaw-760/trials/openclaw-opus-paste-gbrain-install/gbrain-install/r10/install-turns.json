@@ -1,0 +1,114 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.760.0 (`github:garrytan/gbrain#v0.60.760.0`) wherever the docs say #stable.",
+  "reply_text": "GBrain memory is installed on this agent with no API keys. Real GBrain calls saved and found a test note both from the command line and over MCP. Your identity and instructions are unchanged. One thing isn't proven yet: this conversation started before the setup, so the gbrain tools aren't loaded here. A gateway restart or a new session is needed to load them.\n\n**What changed**\n- **Install:** Bun 1.4.5, then `bun install -g github:garrytan/gbrain#v0.60.760.0` (version check prints `gbrain 0.60.760.0`). The brain is a local PGLite database at `~/.gbrain/brain.pglite` with embeddings off, so no text is sent to any embedding or AI provider.\n- **OpenClaw config:** I registered gbrain as an MCP server (`openclaw mcp add …`), and `openclaw mcp doctor gbrain --probe` reports **ok**. `gbrain setup openclaw` added the `gbrain-turn-rule` plugin, which places a \"check GBrain first\" rule next to every turn.\n  - Your existing model and agent settings are unchanged; only the `mcp` and `plugins` entries were added.\n  - Saving the config removed the explanatory comments from `openclaw.json`. The original file, comments included, is at `openclaw.json.pre-gbrain.bak` in the same folder.\n- **Identity:** `/workspace` had no `SOUL.md`, `IDENTITY.md` or `AGENTS.md`. Setup created `/workspace/AGENTS.md` containing only gbrain's marked block. I made no identity changes and skipped the optional identity and personal-agent bootstrap steps.\n- **Setup warning:** `gbrain setup` first reported `turn_hook_not_loaded`. OpenClaw's own check shows the plugin loaded with `before_prompt_build`, and both a setup re-run and `gbrain doctor --only harness_wiring` now report the hook as wired. Separately, that doctor check also says \"No agent harness was detected\", even though `openclaw mcp doctor` passes.\n\n**Remember/recall test**\n- **Command line, separate processes:** `gbrain remember \"…zephyr-orchid-7731…\" --provenance install-check` saved fact #1. A new process found it with `gbrain recall` and with an exact-word `gbrain search`.\n- **Over MCP:** I started the exact `gbrain serve` command OpenClaw runs and called it the way OpenClaw does (handshake, tool list, then tool calls). It listed `remember, recall, entity, forget, synthesize, context_pack, delta, request_tools`. `remember` saved fact #2 (`quartz-heron-4482`), and `recall` returned both markers.\n- **After a restart:** a fresh server process recalled both markers again, so the notes are stored on disk.\n\n**Search mode: conservative is in effect**\nIt was chosen automatically because there's no chat key and no reranker. You can change it any time:\n```\nEstimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n                  ($0.10/M in)  ($2/M in)     ($4/M in)\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n\n  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.\n  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.\n  Embedding, reranking and query expansion are separate provider charges.\n```\n1. **conservative** (in effect): 4K budget, 10 chunks max, no reranker. Best for Haiku, cost-sensitive setups and high-volume loops.\n2. **balanced**: 12K budget, 25 chunks, reranked.\n3. **tokenmax**: no budget, 50 chunks, reranked; the widest retrieval, recommended once you add a chat key.\n\nTo switch, run `gbrain config set search.mode <mode>`, then `gbrain search modes` to confirm. Without keys, search matches exact words only.\n\n**Other settings in effect**\n- **Saving facts automatically:** off; agents save only what you ask. To turn it on, run `gbrain config set memory.auto_writeback salient` (recommended).\n- **Free upkeep:** on while gbrain is running. To turn it off, run `gbrain config set maintenance.auto false`.\n- **Conversation archive:** on; nothing leaves this machine without a key. To turn it off, run `gbrain transcripts archive off`.\n- **Not set up:** API keys, background services, scheduled jobs and paid enrichment.\n\n**Next steps**\n1. Restart the OpenClaw gateway or open a new session so the gbrain tools and turn rule load. While it runs, use the MCP tools rather than the `gbrain` command: the local database allows one process at a time.\n2. In that session, ask me to recall \"quartz-heron-4482\". If it comes back, I'll remove both test notes.\n\nThe install guide also suggests the hosted option at gbrain.io: one always-on brain shared by all your agents, nothing to keep running, and nothing is created until you choose a plan.",
+  "exit": 0,
+  "started_at": "2026-11-22T02:45:13.247Z",
+  "ended_at": "2026-11-22T02:49:59.839Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T02:49:59.654Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 43
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Dilaimup.",
+  "reply_text": "Got it: I saved \"your sister's new cat is called Dilaimup\" to GBrain and read it back to confirm it's stored. Your brain had nothing about your sister before this.\n\nI don't know your sister's name, so I filed it under `people/sister`. Tell me her name and I'll file it under her instead.\n\nThis also confirms that the GBrain tools and the \"check GBrain first\" rule are now working in a new session. Searching the brain at the start of this turn also returned the two test notes from the install, so they're no longer needed. Say the word and I'll delete them.",
+  "exit": 0,
+  "started_at": "2026-11-22T02:49:59.845Z",
+  "ended_at": "2026-11-22T02:50:41.275Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T02:50:41.181Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 10
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Dilaimup**. That's from a note in GBrain saved earlier today, which records that you told me this yourself.",
+  "exit": 0,
+  "started_at": "2026-11-22T02:50:41.277Z",
+  "ended_at": "2026-11-22T02:51:06.725Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T02:51:06.603Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 4,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Dilaimup**. GBrain saved this today (2026-11-22) from something you told me directly.",
+  "exit": 0,
+  "started_at": "2026-11-22T02:51:06.727Z",
+  "ended_at": "2026-11-22T02:51:31.313Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T02:51:31.110Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

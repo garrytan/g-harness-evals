@@ -1,0 +1,21 @@
+Installed GBrain v0.60.757.0 and connected it to the existing Hermes agent over local MCP. Your identity, existing instructions, and native memory were preserved. Setup appended a GBrain memory rule and added a per-turn hook, which Hermes verified. The local database is at /harness-state/.gbrain/brain.pglite.
+
+The remember/recall round trip passed: GBrain saved a synthetic marker as fact #1, retrieved it by exact keyword in a separate CLI process, and recalled it through the registered MCP launcher. I then withdrew the marker and confirmed active recall no longer returned it. A fresh Hermes chat timed out, so recall from a live conversation remains unverified. Restart Hermes or open a new session to pick up the integration.
+
+Search mode: conservative is active. GBrain is keyless and keyword-only. Conservative returns up to 10 chunks, balanced up to 25, and tokenmax up to 50. Changing modes does not add a provider key.
+
+    Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                      Haiku 5.5     Sonnet 5.5    Opus 5.5
+                      ($0.10/M in)  ($2/M in)     ($4/M in)
+      conservative    $4/mo         $80/mo        $160/mo
+      balanced        $10/mo        $200/mo       $400/mo
+      tokenmax        $20/mo        $400/mo       $800/mo
+
+      Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+      Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+      Embedding, reranking and query expansion are separate provider charges.
+
+These are API cost examples, not your Hermes subscription prices. No choice is required now; you can select any mode later.
+
+Automatic fact saving is off. Free upkeep runs while the MCP session is open. The separate local conversation archive is on by default; use `/harness-state/.local/bin/gbrain transcripts archive off` to disable it. No cron jobs, paid providers, or optional workspace skills were added. The always-on hosted option at https://gbrain.io was not used.

@@ -1,0 +1,83 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.757.0 (`github:garrytan/gbrain#v0.60.757.0`) wherever the docs say #stable.",
+  "reply_text": "I installed gbrain v0.60.757.0 and it works: `gbrain --version` reports 0.60.757.0, and a test fact I saved came back when I searched for it.\n\nThe docs use `bun install -g github:garrytan/gbrain#stable` for the stable install. Hermes blocked the Bun installer because no one was there to approve it. So I used the docs' route for Hermes instead: the prebuilt file from the GitHub release, with no Bun needed. I took it from the v0.60.757.0 release rather than `latest` so you get exactly the version you asked for.\n\nWhat's set up:\n- **Program:** `/harness-state/.local/bin/gbrain` (205 MB, Linux x64).\n- **Brain:** a local database with no API keys, so search is keyword-only until you add an embedding key.\n- **Hermes connection:** gbrain is registered as an MCP server, and `hermes mcp test gbrain` connects and lists its tools.\n- **Instructions:** a block telling the agent to check gbrain first was added to `/harness-state/hermes/SOUL.md`, plus a hook in `/harness-state/hermes/config.yaml` that repeats that reminder every turn.\n\nThings to know:\n- **Setup warning:** `gbrain setup hermes` said the per-turn hook wasn't active, but `hermes hooks doctor` lists it as healthy. Setup probably can't see a hook that only loads with a new session. Start a new Hermes session to pick up the instructions and hook.\n- **Test fact:** \"gbrain install check\" is still saved in the brain. You can remove it with `gbrain forget <fact_id>`.\n- **PATH:** I didn't confirm that `~/.local/bin` is on your PATH. If plain `gbrain` isn't found, use the full path above.",
+  "exit": 0,
+  "started_at": "2026-11-21T20:26:13.181Z",
+  "ended_at": "2026-11-21T20:27:43.553Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-21T20:27:43.422Z",
+   "binary": "/harness-state/.local/bin/gbrain",
+   "version": "0.60.757.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "hermes/config.yaml",
+    "hermes/SOUL.md"
+   ],
+   "ok": true
+  },
+  "events": 127
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Fugragot.",
+  "reply_text": "Saved in gbrain: your sister's new cat is called Fugragot.\n\nRight now gbrain only saves things you ask it to remember. If you want, I can turn on automatic saving of lasting facts you mention (`gbrain config set memory.auto_writeback salient`). Any agent connected to this brain can read what it saves.",
+  "exit": 0,
+  "started_at": "2026-11-21T20:27:43.555Z",
+  "ended_at": "2026-11-21T20:28:05.758Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-21T20:28:05.622Z",
+   "binary": "/harness-state/.local/bin/gbrain",
+   "version": "0.60.757.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "hermes/config.yaml",
+    "hermes/SOUL.md"
+   ],
+   "ok": true
+  },
+  "events": 21
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called Fugragot. You told me that earlier today, on November 21.",
+  "exit": 0,
+  "started_at": "2026-11-21T20:28:05.759Z",
+  "ended_at": "2026-11-21T20:28:24.361Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-21T20:28:24.314Z",
+   "binary": "/harness-state/.local/bin/gbrain",
+   "version": "0.60.757.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "hermes/config.yaml",
+    "hermes/SOUL.md"
+   ],
+   "ok": true
+  },
+  "events": 8
+ }
+]

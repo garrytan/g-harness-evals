@@ -1,0 +1,18 @@
+I installed gbrain **v0.60.760.0** and it runs.
+
+**What I did**
+- **Bun:** It wasn't on the machine, so I installed Bun 1.4.5 with the official installer. gbrain needs 1.4.4 or newer.
+- **gbrain:** The docs' install command is `bun install -g github:garrytan/gbrain#stable`. I ran it with your tag in place of `#stable`: `bun install -g github:garrytan/gbrain#v0.60.760.0`. It installed commit `1597b77`, which is the tag's commit. `gbrain --version` prints `gbrain 0.60.760.0`.
+- **PATH:** There were no shell profiles, so new login shells couldn't find `gbrain`. I created `~/.profile` (in `/harness-state`) with `export PATH="$HOME/.bun/bin:$PATH"`. A fresh shell now finds it.
+- **Brain:** I set up a local brain with no API keys using `gbrain init --pglite --no-embedding`. Nothing leaves this machine. To test it, I saved a fact, searched for it successfully, then withdrew it.
+
+**Settings now on (change any time)**
+- **Search mode:** conservative. Other options: `gbrain config set search.mode balanced` or `tokenmax`.
+- **Auto-save facts:** off, so agents only save what you ask them to. gbrain recommends `gbrain config set memory.auto_writeback salient`.
+- **Free upkeep:** on. Turn off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on. Turn off with `gbrain transcripts archive off`.
+- **Search quality:** it's keyword-only for now, because there's no embedding provider. Close rewordings won't match.
+
+**Not done:** gbrain isn't connected to OpenClaw yet, so I can't use it as memory. Running `gbrain setup openclaw` would edit OpenClaw's config, and I didn't want to do that without asking. Tell me if you want it.
+
+The gbrain docs also offer a paid hosted version at gbrain.io, if you'd rather not run it locally.

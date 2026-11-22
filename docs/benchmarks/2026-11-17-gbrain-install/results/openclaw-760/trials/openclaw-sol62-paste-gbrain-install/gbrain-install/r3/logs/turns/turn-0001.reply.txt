@@ -1,0 +1,27 @@
+Installed **GBrain v0.60.760.0** and registered it with your existing OpenClaw agent. I left your identity and existing instructions intact and added only the GBrain memory rule. The brain is local and keyless; keyword search works without embeddings or paid providers.
+
+**Verified with real GBrain calls:** `remember` saved a test fact with provenance `install-check`, a separate process found it with `recall` and exact keyword search, and a fresh MCP connection using OpenClaw’s saved configuration recalled it again. OpenClaw’s runtime inspector also confirmed the per-turn hook is loaded. A fresh **chat** turn is the one check I couldn’t complete from this session. I left the test marker in place for that check: in a new chat, ask **“Use GBrain to recall ‘cobalt lantern,’ then forget the install-check marker.”**
+
+### Search mode
+
+**Conservative is active and is my recommendation while keyless.** You can switch anytime:
+
+- **Conservative:** 4K-token budget, up to 10 results, no reranker.
+- **Balanced:** 12K-token budget, up to 25 results, reranking when configured.
+- **Tokenmax:** no token-budget cap, up to 50 results, reranking when configured.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+Those are the guide’s model-input estimates, not OpenClaw subscription prices. Automatic saving and conversation archiving are **off**, with no optional skills or scheduled jobs added. Default free in-session upkeep remains **on**. Keyless means GBrain doesn’t call an embedding or reranking provider; OpenClaw’s model still receives memories it recalls. [Hosted GBrain](https://gbrain.io/) is a separate option and wasn’t used.

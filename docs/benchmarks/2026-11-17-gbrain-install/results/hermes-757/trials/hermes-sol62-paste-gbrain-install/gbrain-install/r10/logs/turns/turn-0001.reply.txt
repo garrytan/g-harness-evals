@@ -1,0 +1,27 @@
+GBrain v0.60.757.0 is installed and connected to your existing Hermes agent over local MCP. I used the checksum-verified binary from the exact GitHub release. Your identity and existing instructions were preserved; setup appended a GBrain memory rule and added a per-turn hook that passed Hermes’s own check.
+
+The remember/recall round trip passed. GBrain saved a temporary install-check marker as fact #1, then returned it by exact text in a separate CLI process and through Hermes’s configured MCP server. The model-driven check in a fresh Hermes chat timed out, so that part is still unverified. To check it, restart Hermes and ask it to recall `gbrain-install-check`, then forget fact #1. The marker expires after 24 hours.
+
+Search mode: conservative is active. GBrain is keyless and searches by keyword only. You can switch modes at any time without adding a key:
+
+  conservative — 4K-token cap, up to 10 chunks, no reranking
+  balanced — 12K-token cap, up to 25 chunks, reranking if configured
+  tokenmax — no token cap, up to 50 chunks, reranking if configured
+
+    Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                      Haiku 5.5     Sonnet 5.5    Opus 5.5
+                      ($0.10/M in)  ($2/M in)     ($4/M in)
+      conservative    $4/mo         $80/mo        $160/mo
+      balanced        $10/mo        $200/mo       $400/mo
+      tokenmax        $20/mo        $400/mo       $800/mo
+
+      Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+      Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+      Embedding, reranking and query expansion are separate provider charges.
+
+These are the guide’s example model-input costs, not your Hermes subscription prices. Tell me the mode name to switch.
+
+Automatic fact saving is off; paid enrichment, optional skills, and scheduled jobs were not enabled. Free idle upkeep and the local conversation archive are on by default. The archive stores one redacted page per conversation per day; `~/.local/bin/gbrain transcripts archive off` turns it off. GBrain itself doesn’t send text to a provider in this setup, but Hermes’s model can receive recalled text.
+
+Hosted GBrain at https://gbrain.io is an alternative; this install is local.

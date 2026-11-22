@@ -1,0 +1,40 @@
+Installed GBrain v0.60.757.0 at /harness-state/.local/bin/gbrain using the pinned release binary.
+
+Your original identity text is preserved exactly. Added the managed memory instructions, per-turn hook, Hermes MCP registration, and brain filing structure.
+
+Verified with real calls:
+  remember inserted fact #1: “GBrain installation round-trip verification marker: cedar-lantern-757.”
+  CLI recall returned it.
+  A separate MCP connection through Hermes’s registered launcher returned the same fact.
+  Hermes discovered all eight memory tools; its hook diagnostic passed.
+
+A fresh model-driven Hermes conversation was attempted but blocked by a provider connection failure. That activation test remains unverified. GBrain’s setup hook checker also reported “not loaded,” despite Hermes’s own diagnostic passing.
+
+Current settings:
+  Local PGLite; keyless, keyword-only retrieval.
+  Search: conservative.
+  Automatic fact saving and paid event extraction: off.
+  Free upkeep while connected: on.
+  Conversation archive: on by default—redacted daily conversation pages stored locally. Disable with:
+    /harness-state/.local/bin/gbrain transcripts archive off
+  No daemon, cron, paid enrichment, or off-host backup configured. Recalled text still enters your existing agent model’s context.
+
+Search-mode choice
+
+  conservative — 4K-token budget, 10 chunks, no reranker; active.
+  balanced     — 12K-token budget, 25 chunks; reranking needs a provider.
+  tokenmax     — uncapped budget, 50 chunks; widest retrieval.
+
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+
+These are GBrain’s published examples, not your harness subscription prices. Conservative remains active unless you choose another mode; changing modes does not itself enable semantic search.

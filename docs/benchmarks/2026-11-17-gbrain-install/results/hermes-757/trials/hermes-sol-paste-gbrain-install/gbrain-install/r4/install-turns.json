@@ -1,0 +1,83 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.757.0 (`github:garrytan/gbrain#v0.60.757.0`) wherever the docs say #stable.",
+  "reply_text": "Installed GBrain v0.60.757.0 at:\n/harness-state/.local/bin/gbrain\n\nAdded it to the current Hermes profile through Hermes’s MCP CLI. Your existing identity text and unrelated configuration were preserved; only GBrain’s marked memory instructions and hook were added.\n\nVerified with real calls:\n  remember → committed fact #1, provenance install-check\n  recall in a new process → returned marker amber-orbit-757\n  exact keyword search → found inbox/gbrain-install-check\n  hermes mcp test gbrain → connected, discovered 8 tools\n  hermes hooks doctor → hook executable, approved, valid JSON\n\nA fresh Hermes conversation test was attempted but blocked by its model provider’s connection failure. Local persistence is verified; recall inside a new native conversation remains unverified. GBrain’s own harness detector also missed Hermes despite Hermes’s successful connection check.\n\nCurrent settings:\n  Keyless, local PGLite; keyword-only retrieval.\n  Automatic fact capture and paid event extraction explicitly off.\n  No cron jobs, services, identity bootstrap, or optional agent skills installed.\n  Free upkeep on while the GBrain session is open.\n  Local conversation archive on by default: one redacted page per conversation per day. Disable with:\n    /harness-state/.local/bin/gbrain transcripts archive off\n\nRecalled memory still reaches your agent’s model provider. No GBrain embedding or enrichment provider was enabled.\n\nSearch-mode choice\n\nConservative is active:\n  conservative — 4K-token budget, 10 chunks, no reranker.\n  balanced — 12K-token budget, 25 chunks, reranking when configured.\n  tokenmax — no token-budget cap, 50 chunks, reranking when configured.\n\nEstimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n                  ($0.10/M in)  ($2/M in)     ($4/M in)\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n\n  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.\n  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.\n  Embedding, reranking and query expansion are separate provider charges.\n\nThese are the guide’s illustrative API costs, not prices for your harness subscription. Changing modes does not enable semantic retrieval without separately configured providers.\n\nChange any time:\n  /harness-state/.local/bin/gbrain config set search.mode balanced\n\nThe generic test fact and note remain for a post-restart check; neither asserts anything about you. No off-host backup was configured.",
+  "exit": 0,
+  "started_at": "2026-11-21T20:04:40.311Z",
+  "ended_at": "2026-11-21T20:10:40.349Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-21T20:10:40.286Z",
+   "binary": "/harness-state/.local/bin/gbrain",
+   "version": "0.60.757.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "hermes/config.yaml",
+    "hermes/SOUL.md"
+   ],
+   "ok": true
+  },
+  "events": 574
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Graretrail.",
+  "reply_text": "Remembered in GBrain and verified: your sister’s new cat is called Graretrail.",
+  "exit": 0,
+  "started_at": "2026-11-21T20:10:40.360Z",
+  "ended_at": "2026-11-21T20:11:05.572Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-21T20:11:05.474Z",
+   "binary": "/harness-state/.local/bin/gbrain",
+   "version": "0.60.757.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "hermes/config.yaml",
+    "hermes/SOUL.md"
+   ],
+   "ok": true
+  },
+  "events": 23
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister’s new cat is called Graretrail.",
+  "exit": 0,
+  "started_at": "2026-11-21T20:11:05.573Z",
+  "ended_at": "2026-11-21T20:11:26.593Z",
+  "probe": {
+   "harness": "hermes",
+   "at": "2026-11-21T20:11:26.451Z",
+   "binary": "/harness-state/.local/bin/gbrain",
+   "version": "0.60.757.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "hermes/config.yaml",
+    "hermes/SOUL.md"
+   ],
+   "ok": true
+  },
+  "events": 14
+ }
+]

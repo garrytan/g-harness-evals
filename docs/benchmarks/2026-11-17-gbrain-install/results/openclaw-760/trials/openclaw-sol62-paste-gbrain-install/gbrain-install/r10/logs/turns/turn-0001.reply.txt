@@ -1,0 +1,31 @@
+Installed **GBrain v0.60.760.0** from the requested GitHub tag. It uses a local, keyless PGLite database. I preserved the agent’s identity and existing instructions and added a GBrain memory section to its workspace.
+
+**Verified with real calls:** OpenClaw’s MCP probe discovered GBrain’s memory tools. Using that same registration, `remember` committed a synthetic test fact, and `recall` retrieved it with its `install-check` provenance after the server reopened. I withdrew that marker and confirmed it no longer came back. Exact keyword search also passed.
+
+**Still pending:** The workspace instructions are in place, but the separate per-turn hook is not active. OpenClaw’s setup tool cannot link-install the generated hook, and its packer rejected the hook-only package. A gateway operator needs to link-install it from a trusted terminal and restart the gateway. Automatic recall in a fresh OpenClaw conversation has not been verified.
+
+### Search mode
+
+**Conservative is active** because there’s no chat key or reranker configured. You can switch at any time:
+
+- **Conservative:** 4K-token budget, up to 10 chunks, no reranker. Recommended for this keyless setup.
+- **Balanced:** 12K-token budget, up to 25 chunks; uses a reranker if configured.
+- **Tokenmax:** No token cap, up to 50 chunks; uses a reranker if configured.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are estimates for downstream model input, not prices for your OpenClaw subscription. Say `balanced` or `tokenmax` if you want me to switch; changing modes does not add a provider key.
+
+Automatic saving and conversation archiving are **off**. Free in-session upkeep is **on**; no scheduler or optional workspace skills were installed. GBrain retrieval stays local, though recalled text can reach the agent’s model when used in an answer. [Hosted GBrain](https://gbrain.io/cli?ref=install-for-agents) is a separate option and wasn’t used.

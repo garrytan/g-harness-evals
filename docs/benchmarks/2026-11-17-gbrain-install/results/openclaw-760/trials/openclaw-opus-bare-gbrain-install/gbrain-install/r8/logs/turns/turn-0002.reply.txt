@@ -1,0 +1,12 @@
+gbrain is now connected to OpenClaw. It's still free and uses no API keys. The connection only takes effect in a new session, so I haven't seen an agent actually use it yet.
+
+**Settings:** I kept everything at the defaults, except one change gbrain recommends: agents now automatically save lasting facts you state (preferences, decisions, commitments), with a note of where each came from. Search stays on the low-cost conservative mode, and free upkeep and the conversation archive stay on. Nothing paid can turn on without an API key you supply.
+
+**Connection to OpenClaw:**
+- **Server registration:** I registered gbrain as a local tool server in OpenClaw's config. A connection test reached it and listed its 8 tools.
+- **Instructions:** I ran `gbrain setup openclaw`. It created `/workspace/AGENTS.md` with instructions telling agents to check gbrain before answering.
+- **Per-turn reminder:** The same setup installed a small add-on, `gbrain-turn-rule`, that puts that reminder in front of every message. The first run reported it wasn't active, and I couldn't reload it because OpenClaw's background service isn't running. OpenClaw's own check shows the add-on loaded with its hook, though, and a second setup run passed with no errors.
+
+**Health check:** gbrain's overall score is 90/100 with no failures. The brain-content part scores 25/100 only because the brain is empty and keyword-only, which is what you'd expect for a fresh brain with no API keys. It will rise as notes are added.
+
+To undo all of the OpenClaw changes, run `gbrain setup openclaw --remove`. That leaves the brain and its notes in place.

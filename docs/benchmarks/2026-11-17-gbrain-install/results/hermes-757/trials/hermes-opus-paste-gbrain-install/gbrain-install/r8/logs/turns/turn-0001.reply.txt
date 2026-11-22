@@ -1,0 +1,45 @@
+GBrain v0.60.757.0 is installed as keyless memory for this Hermes agent, and a remember/recall round trip worked through both the CLI and the MCP server Hermes uses.
+
+Install:
+  - The documented Bun route (`curl … | bash`, then `bun install -g github:garrytan/gbrain#stable`) was blocked by Hermes's command scanner, as the guide predicts. I used the guide's Hermes fallback, the release binary, but pinned it to the v0.60.757.0 release instead of `releases/latest`. It's at /harness-state/.local/bin/gbrain and reports `gbrain 0.60.757.0`.
+  - `gbrain init --pglite --no-embedding` set up a local brain at /harness-state/.gbrain/brain.pglite with no API keys. I also ran the 5 setup migrations init flagged as pending.
+
+Your identity and instructions:
+  - Your SOUL.md text is unchanged. gbrain added a marked "check GBrain first" block below it, and removing it is one command: `gbrain setup hermes --instructions-only --no-instructions`.
+  - Hermes now has a per-turn hook telling it to check GBrain first, and the MCP server `gbrain` is registered. `hermes mcp test gbrain` connected and found 8 tools, including remember, recall, entity and forget.
+  - The first `gbrain setup hermes` run ended with an error saying the hook wasn't active. Straight afterwards, `hermes hooks doctor` reported the hook healthy and a dry run of setup showed everything in place, so I treated the error as a false alarm. A new session will pick up the changes.
+
+Round-trip check (real calls):
+  - CLI: `gbrain remember` saved fact #1, and `gbrain recall --query "gbrain install check"` returned it.
+  - MCP, over the same server command Hermes runs: `remember` saved fact #2, and `recall` returned both #2 and #1. Fact #1 came back too, which shows the CLI and Hermes share one store.
+  - `gbrain doctor` scored 80/100 overall with warnings only. The low brain score (25/100) and the other warnings are expected for a near-empty brain with no embedding key.
+  - The two test facts are still in the brain. I didn't use `forget` on them because gbrain warned that forgetting a fact with no subject withdraws that claim everywhere for good.
+
+Search mode: conservative is in effect. gbrain picked it automatically because there's no chat key or reranker.
+
+  Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                    Haiku 5.5     Sonnet 5.5    Opus 5.5
+                    ($0.10/M in)  ($2/M in)     ($4/M in)
+    conservative    $4/mo         $80/mo        $160/mo
+    balanced        $10/mo        $200/mo       $400/mo
+    tokenmax        $20/mo        $400/mo       $800/mo
+
+    Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+    Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+    Embedding, reranking and query expansion are separate provider charges.
+
+  1) conservative (in effect): 4K budget, up to 10 chunks, no reranker. Best for cost-sensitive or high-volume use.
+  2) balanced: 12K budget, 25 chunks, reranked.
+  3) tokenmax: no budget limit, 50 chunks, reranked. Recommended once you add a chat key.
+
+  The reranker in balanced and tokenmax needs a Voyage key, so on this keyless brain they mostly just return bigger payloads. Expansion is off in every mode by default. To switch, run `/harness-state/.local/bin/gbrain config set search.mode <mode>`, then `gbrain search modes` to confirm.
+
+Other settings in effect (nothing waits on these):
+  - Auto-saving facts is off, so I save only what you ask me to remember. To turn it on: `gbrain config set memory.auto_writeback salient` (recommended).
+  - Free background upkeep is on; turn it off with `gbrain config set maintenance.auto false`.
+  - The conversation archive is on; with no key, nothing leaves this machine. Turn it off with `gbrain transcripts archive off`.
+  - Optional bundled skills were skipped; add them with `gbrain skillpack scaffold --all`.
+  - Automatic event extraction is on by default but does nothing until a chat key exists; then each eligible page costs one paid call. Run `gbrain config set auto_chronicle false` to opt out now.
+
+Without keys, search is keyword-only and duplicate detection catches exact repeats only. Adding a Voyage key enables semantic search and the reranker. Use the full path /harness-state/.local/bin/gbrain in commands, since it isn't on your PATH.

@@ -1,0 +1,140 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.760.0 (`github:garrytan/gbrain#v0.60.760.0`) wherever the docs say #stable.",
+  "reply_text": "I installed gbrain **v0.60.760.0** and it runs.\n\n**What I did**\n- **Bun:** It wasn't on the machine, so I installed Bun 1.4.5 with the official installer. gbrain needs 1.4.4 or newer.\n- **gbrain:** The docs' install command is `bun install -g github:garrytan/gbrain#stable`. I ran it with your tag in place of `#stable`: `bun install -g github:garrytan/gbrain#v0.60.760.0`. It installed commit `1597b77`, which is the tag's commit. `gbrain --version` prints `gbrain 0.60.760.0`.\n- **PATH:** There were no shell profiles, so new login shells couldn't find `gbrain`. I created `~/.profile` (in `/harness-state`) with `export PATH=\"$HOME/.bun/bin:$PATH\"`. A fresh shell now finds it.\n- **Brain:** I set up a local brain with no API keys using `gbrain init --pglite --no-embedding`. Nothing leaves this machine. To test it, I saved a fact, searched for it successfully, then withdrew it.\n\n**Settings now on (change any time)**\n- **Search mode:** conservative. Other options: `gbrain config set search.mode balanced` or `tokenmax`.\n- **Auto-save facts:** off, so agents only save what you ask them to. gbrain recommends `gbrain config set memory.auto_writeback salient`.\n- **Free upkeep:** on. Turn off with `gbrain config set maintenance.auto false`.\n- **Conversation archive:** on. Turn off with `gbrain transcripts archive off`.\n- **Search quality:** it's keyword-only for now, because there's no embedding provider. Close rewordings won't match.\n\n**Not done:** gbrain isn't connected to OpenClaw yet, so I can't use it as memory. Running `gbrain setup openclaw` would edit OpenClaw's config, and I didn't want to do that without asking. Tell me if you want it.\n\nThe gbrain docs also offer a paid hosted version at gbrain.io, if you'd rather not run it locally.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:53:07.783Z",
+  "ended_at": "2026-11-22T03:54:43.066Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:54:42.963Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": false,
+   "instructions": false,
+   "hook": false,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": false
+  },
+  "events": 15
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "reply",
+  "text": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+  "reply_text": "gbrain is now connected to OpenClaw. It's still free and uses no API keys. The connection only takes effect in a new session, so I haven't seen an agent actually use it yet.\n\n**Settings:** I kept everything at the defaults, except one change gbrain recommends: agents now automatically save lasting facts you state (preferences, decisions, commitments), with a note of where each came from. Search stays on the low-cost conservative mode, and free upkeep and the conversation archive stay on. Nothing paid can turn on without an API key you supply.\n\n**Connection to OpenClaw:**\n- **Server registration:** I registered gbrain as a local tool server in OpenClaw's config. A connection test reached it and listed its 8 tools.\n- **Instructions:** I ran `gbrain setup openclaw`. It created `/workspace/AGENTS.md` with instructions telling agents to check gbrain before answering.\n- **Per-turn reminder:** The same setup installed a small add-on, `gbrain-turn-rule`, that puts that reminder in front of every message. The first run reported it wasn't active, and I couldn't reload it because OpenClaw's background service isn't running. OpenClaw's own check shows the add-on loaded with its hook, though, and a second setup run passed with no errors.\n\n**Health check:** gbrain's overall score is 90/100 with no failures. The brain-content part scores 25/100 only because the brain is empty and keyword-only, which is what you'd expect for a fresh brain with no API keys. It will rise as notes are added.\n\nTo undo all of the OpenClaw changes, run `gbrain setup openclaw --remove`. That leaves the brain and its notes in place.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:54:43.068Z",
+  "ended_at": "2026-11-22T03:57:15.955Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:57:15.740Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 21
+ },
+ {
+  "turn": 3,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Draskubres.",
+  "reply_text": "I've saved in gbrain that your sister's new cat is called Draskubres, and I checked that it reads back correctly. This was the first time an agent used gbrain through OpenClaw, so the connection works too.\n\nIf you tell me your sister's name, I can attach the fact to her by name instead of to \"your sister.\"",
+  "exit": 0,
+  "started_at": "2026-11-22T03:57:15.958Z",
+  "ended_at": "2026-11-22T03:57:58.765Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:57:58.628Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 6
+ },
+ {
+  "turn": 4,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Draskubres**. You told me this earlier today, and I'd saved it in GBrain.\n\nI also checked my local memory notes. That search found nothing, and it was running in a limited mode because its search index needs a rebuild, so its results may be incomplete.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:57:58.767Z",
+  "ended_at": "2026-11-22T03:58:30.106Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:58:29.965Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 5,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Draskubres**. GBrain has this saved from when you told me earlier today, on 2026-11-22.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:58:30.108Z",
+  "ended_at": "2026-11-22T03:58:55.668Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T03:58:55.476Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

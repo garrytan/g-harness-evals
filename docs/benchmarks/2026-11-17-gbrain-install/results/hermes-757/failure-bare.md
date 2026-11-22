@@ -1,0 +1,7 @@
+| Step | Failed runs | Person-needed events | Top last gbrain codes | Example trials | As read | Reader note |
+|---|---|---|---|---|---|---|
+| binary | 6 | 26 |  | gbrain-install-hermes-757-2026-11/hermes-opus-bare-gbrain-install/gbrain-install/r1, gbrain-install-hermes-757-2026-11/hermes-opus-bare-gbrain-install/gbrain-install/r10 |  |  |
+| brain | 0 | 11 |  |  |  |  |
+| wired | 2 | 6 |  | gbrain-install-hermes-757-2026-11/hermes-opus-bare-gbrain-install/gbrain-install/r4, gbrain-install-hermes-757-2026-11/hermes-sol62-bare-gbrain-install/gbrain-install/r2 |  |  |
+| saved | 0 | 1 |  |  |  |  |
+| recalled | 3 | 0 | degraded_recall (1), first_run_decisions (1), recall_hint (1) | gbrain-install-hermes-757-2026-11/hermes-sol62-bare-gbrain-install/gbrain-install/r10, gbrain-install-hermes-757-2026-11/hermes-sol62-bare-gbrain-install/gbrain-install/r7 |  |  |

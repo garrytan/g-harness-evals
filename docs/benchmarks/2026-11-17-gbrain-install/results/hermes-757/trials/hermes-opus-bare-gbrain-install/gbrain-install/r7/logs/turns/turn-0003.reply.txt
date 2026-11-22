@@ -1,0 +1,15 @@
+gbrain is now connected to Hermes, with the free, keyless defaults. It takes effect in your next Hermes session; this one won't use it.
+
+What `gbrain setup hermes` set up:
+- **Brain tools:** gbrain is registered as an MCP server in Hermes. `hermes mcp test gbrain` connects and finds 8 tools, including remember, recall and entity.
+- **Instructions:** a "check the brain first" block was added to the end of `/harness-state/hermes/SOUL.md`. Your existing text there is unchanged.
+- **Per-turn reminder:** a hook in `/harness-state/hermes/config.yaml` repeats that rule on every turn.
+- **Health:** `gbrain doctor` now scores 100/100, with all checks passed.
+
+One error doesn't match what Hermes reports. The setup exited 1 with `turn_hook_not_loaded`, saying the per-turn hook isn't active, and still did after I ran the fix it suggests. But `hermes hooks doctor` lists that hook as approved, runnable and producing valid output, and says "All shell hooks look healthy." I think gbrain's check is wrong, but I haven't proved it. You'll know for sure if a new Hermes session checks the brain without being asked.
+
+I also withdrew the "gbrain install check" test fact, so the brain is empty and ready for your notes.
+
+Useful later:
+- **Add a notes folder:** `gbrain sources add notes --path ~/notes --federated --force`, then `gbrain sync --all`.
+- **Undo the Hermes connection:** `gbrain setup hermes --remove`.

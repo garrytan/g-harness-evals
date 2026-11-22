@@ -1,0 +1,39 @@
+**GBrain v0.60.760.0 is installed and locally verified. Native OpenClaw activation is staged but blocked at the final step.**
+
+- Preserved your identity, existing instructions, and native memory.
+- Started **keyless**: local PGLite storage, keyword retrieval, no paid providers.
+- Verified real GBrain `remember` → `recall` across separate processes, correction, withdrawal, and exact keyword search.
+- Also verified a fresh **stdio MCP connection** recalled the persisted marker.
+- Database: `/harness-state/.gbrain/brain.pglite`
+
+### Remaining activation step
+OpenClaw requires a **new conversation to reverify its configuration route** before it will allow further changes. The MCP entry is staged but disabled; the installed per-turn hook still needs conversation-access permission and provenance review. Native activation and cross-conversation recall are therefore **not yet verified**.
+
+Start a new chat and say: **“Finish GBrain activation using `/workspace/GBRAIN-INSTALL-STATUS.md`.”** The exact remaining steps and diagnostic marker are recorded there—no reinstall needed.
+
+### Search-mode choice
+**Conservative is currently applied**, appropriate for this keyless setup. You can choose anytime:
+
+1. **conservative:** 4K retrieval budget, 10 chunks, no reranker.
+2. **balanced:** 12K budget, 25 chunks, reranking when configured.
+3. **tokenmax:** no retrieval-token budget, 50 chunks, reranking when configured.
+
+Changing modes does not itself enable paid providers.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are the guide’s illustrative downstream API costs—not your subscription price or a charge incurred by installation.
+
+**Other settings:** automatic fact saving is explicitly **off**; free session-idle upkeep is on. GBrain’s default local, redacted conversation archive is on and can be disabled with `gbrain transcripts archive off`. GBrain’s keyless retrieval sends nothing to embedding providers, but memories supplied to this assistant still reach its model. No services, schedules, imports, or automatic upgrades were enabled.

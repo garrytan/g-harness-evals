@@ -8,6 +8,22 @@ Run `gbrain-install-2026-11`, gbrain v0.60.734.0 (a278ddf45887), 200 trials, 198
 - **We learned that Codex with GPT-6.1 Sol installs gbrain and recalls through it almost every time: 39/40 (87% to 100%), and OpenClaw gets there 45/60 (63% to 84%) once it is scored right.** With OpenClaw, runs given gbrain's README install block finished more often (26/30 against 19/30 bare; small samples). The readers found that runs which ran `gbrain setup openclaw` got gbrain's brain-first instruction. Bare runs often wired gbrain by hand and then looked in OpenClaw's own session history instead. You should point OpenClaw users at `gbrain setup openclaw`.
 - **What didn't work: Hermes with Opus 5.5 or GPT-6.1 Sol.** Hermes's command scanner (Tirith) blocks `bun install -g github:garrytan/gbrain#v0.60.734.0` and the git-clone fallback in single-query mode, so 22 Hermes runs never got a gbrain binary. Hermes with particle-1 finished 18/18. The scanner block is Hermes configuration, not a gbrain bug. Its own message names `approvals.single_query_mode: approve`.
 
+## OpenClaw on v0.60.760.0 (2026-11-22)
+
+We reran the OpenClaw rows on gbrain v0.60.760.0, which runs `gbrain setup openclaw` in the same install step as the MCP registration. The task, OpenClaw pin, arms and scorer are the same. Full write-up: [openclaw-760/README.md](openclaw-760/README.md).
+
+- **Runs that finished went from 28 of 40 to 39 of 40** on the four Opus 5.5 and GPT-6.1 Sol cells (a+b+c). 37 of those 40 runs installed gbrain's OpenClaw turn rule, which tells a new session to ask gbrain first.
+- **Finish line on 760:** Opus 5.5 bare 9/10 (was 6/10), Opus 5.5 paste 10/10 (was 10/10), GPT-6.1 Sol bare 10/10 (was 6/10), GPT-6.1 Sol paste 10/10 (was 6/10). New GPT-6.2 Sol cells: bare 2/10, paste 9/10. In 7 bare runs GPT-6.2 Sol installed gbrain but chose not to connect it to OpenClaw, mostly because it couldn't confirm the brain would stay private.
+- Seven GPT-6.1 Sol runs were lost to our own spend-limit sizing and rerun under a dated top-up spec. They're reported in the write-up.
+
+## Hermes on v0.60.757.0 (2026-11-21)
+
+We reran the Hermes rows on gbrain v0.60.757.0, which changed gbrain's Hermes install route. The task, Hermes pin, arms and scorer are the same. Full write-up: [hermes-757/README.md](hermes-757/README.md).
+
+- **Runs that never got a gbrain binary fell from 22 of 40 to 8 of 40** on the four Opus 5.5 and GPT-6.1 Sol cells. Most runs that installed gbrain used the release binary by tag, which Hermes's scanner lets through.
+- **Finish line on 757:** Opus 5.5 bare 3/10 (was 0/10), Opus 5.5 paste 8/10 (was 7/10), GPT-6.1 Sol bare 10/10 (was 4/10), GPT-6.1 Sol paste 10/10 (was 5/10). New GPT-6.2 Sol cells: bare 6/10, paste 10/10.
+- **Caveat on the Hermes rows below.** Our Hermes image didn't have the `hermes` command on the agent's PATH, because Hermes's login shells reset PATH. That could only have touched Opus 5.5 bare r9 and r10, the two runs that failed at wiring: both looked for `hermes`, found nothing, and were refused when they edited Hermes's config by hand. So Opus 5.5 bare could have been as high as 2/10 instead of 0/10. The rerun's image fixes this, as a declared deviation.
+
 ## Headline table
 
 Finish line = the recall reply holds the nonce, and gbrain served it in a fresh session. Each cell shows k of n counted runs with a Wilson 95% interval.

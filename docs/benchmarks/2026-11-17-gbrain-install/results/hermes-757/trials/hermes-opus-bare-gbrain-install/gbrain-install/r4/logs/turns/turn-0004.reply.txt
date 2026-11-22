@@ -1,0 +1,19 @@
+Bun is now on your PATH: I created ~/.bashrc, which didn't exist before, with `export PATH="$HOME/.bun/bin:$PATH"`. It takes effect in new shells. I couldn't confirm it from a fresh login shell, because the scanner blocks that test command in this mode.
+
+gbrain v0.60.757.0 is still installed and working, with the free, no-key defaults from last time.
+
+What I deliberately didn't do is connect gbrain to Hermes, even with "carry on without me". The connection command, `gbrain setup hermes`, has to be run by you; gbrain's own setup output says so. Its dry run shows it would change Hermes itself:
+- It would add a "check gbrain first" block to /harness-state/hermes/SOUL.md, Hermes's system prompt.
+- It would add a hook that runs on every turn to /harness-state/hermes/config.yaml and pre-approve it in shell-hooks-allowlist.json.
+- It would register gbrain as an MCP server, running /harness-state/.bun/bin/gbrain serve --surface starter --advertise verbs.
+
+That rewrites my own instructions and adds an approved hook. The setup guide also says Hermes blocks agents from editing that config file. So it needs your sign-off, not an unattended run.
+
+To connect it, run:
+
+   gbrain setup hermes
+   hermes mcp test gbrain
+
+Then start a new Hermes session. `gbrain setup hermes --dry-run` shows exactly what will change, and `gbrain setup hermes --remove` undoes it. This adds no API keys.
+
+The same applies to Claude Code or Codex if you use them: run `gbrain setup claude-code` or `gbrain setup codex` yourself.

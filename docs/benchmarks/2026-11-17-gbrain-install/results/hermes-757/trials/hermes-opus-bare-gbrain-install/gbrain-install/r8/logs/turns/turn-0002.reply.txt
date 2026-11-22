@@ -1,0 +1,21 @@
+The install is still blocked, so gbrain is not installed. Your go-ahead covered setup choices, not this, and the scanner only takes approval through its own prompt. Since this run has no one to answer that prompt, it blocks the command every time it comes up.
+
+The block isn't a finding against gbrain. The scanner couldn't run its package checks offline, and it says that is "not evidence that the package is malicious."
+
+I didn't try to get around it. Cloning the repo and linking it by hand, running the command through a subprocess, or changing your approval settings myself would all bypass a security check you haven't approved. Bun 1.4.5 is still installed at ~/.bun/bin.
+
+To finish, do one of these:
+
+1. Run it yourself. These are the free, no-key defaults I'd use:
+
+    export PATH="$HOME/.bun/bin:$PATH"
+    bun install -g github:garrytan/gbrain#v0.60.757.0
+    gbrain init --pglite --no-embedding
+    gbrain skillpack scaffold --all
+    gbrain doctor
+
+   This sets up a local brain stored on this machine, with keyword search only and no API keys. The skillpack step adds all the bundled skills, which is the docs' step for Hermes. Some warnings from `gbrain doctor` are expected on an empty brain.
+
+2. Start an interactive Hermes session and ask me again. You'll see an approval prompt, and once you approve I'll run all of the above.
+
+3. Set `approvals.single_query_mode: approve` in config.yaml and rerun me with -q. Be aware this lets every flagged command through in -q runs, not just this one.

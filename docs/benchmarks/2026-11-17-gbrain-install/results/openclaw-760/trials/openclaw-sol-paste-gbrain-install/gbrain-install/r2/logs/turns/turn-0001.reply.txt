@@ -1,0 +1,46 @@
+Installed **GBrain v0.60.760.0**, keyless, without replacing your identity or unrelated instructions.
+
+### Verified
+- Real `remember` → `recall` calls returned the saved test marker, including from separate CLI processes.
+- Exact keyword search retrieved the test page.
+- A correction superseded the original fact; `forget` then removed the corrected fact from active recall.
+- OpenClaw’s MCP probe connected and discovered GBrain’s memory tools.
+- The additive brain-first instructions and `before_prompt_build` hook are installed; runtime inspection showed the hook loaded.
+
+Database: `/harness-state/.gbrain/brain.pglite`  
+Source: `default`
+
+**Still unverified:** recall from a fresh OpenClaw conversation. This conversation’s tool catalog has not picked up GBrain yet. I retained one harmless `install-check` marker for that final test.
+
+### Search-mode choice
+**Conservative is active**—appropriate for this keyless setup.
+
+1. **conservative:** 4K-token budget, 10 chunks, no reranker.
+2. **balanced:** 12K-token budget, 25 chunks, reranking when configured.
+3. **tokenmax:** no fixed budget, 50 chunks, reranking when configured.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are illustrative downstream API input costs—not your harness subscription price. You can choose another mode anytime; switching modes does not authorize paid providers.
+
+### Settings in effect
+- Automatic fact writeback/capture: **off**.
+- Embeddings, paid enrichment, connectors, services and scheduled jobs: **not enabled**.
+- Free upkeep while GBrain is open: **on**.
+- Conversation archive: **on by default**, storing redacted local conversation pages. Disable with `gbrain transcripts archive off`.
+- This is a **personal brain**, not a per-user-isolated shared setup.
+- No GBrain provider keys were added. Recalled memory still enters your existing agent model’s context.
+
+**Final activation check:** start a fresh OpenClaw conversation and say, “Recall the GBrain install-check marker, then forget it and verify it is withdrawn.”

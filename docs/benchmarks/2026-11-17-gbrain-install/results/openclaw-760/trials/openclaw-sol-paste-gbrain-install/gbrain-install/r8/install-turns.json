@@ -1,0 +1,89 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "Add GBrain memory to this existing agent. Read and follow:\nhttps://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\nKeep my current identity and instructions, start keyless, and show me the\nsearch-mode choice. Verify a remember/recall round trip with real GBrain calls.\n\nInstall gbrain release v0.60.760.0 (`github:garrytan/gbrain#v0.60.760.0`) wherever the docs say #stable.",
+  "reply_text": "**GBrain v0.60.760.0 is installed and locally verified. Native OpenClaw activation is staged but blocked at the final step.**\n\n- Preserved your identity, existing instructions, and native memory.\n- Started **keyless**: local PGLite storage, keyword retrieval, no paid providers.\n- Verified real GBrain `remember` → `recall` across separate processes, correction, withdrawal, and exact keyword search.\n- Also verified a fresh **stdio MCP connection** recalled the persisted marker.\n- Database: `/harness-state/.gbrain/brain.pglite`\n\n### Remaining activation step\nOpenClaw requires a **new conversation to reverify its configuration route** before it will allow further changes. The MCP entry is staged but disabled; the installed per-turn hook still needs conversation-access permission and provenance review. Native activation and cross-conversation recall are therefore **not yet verified**.\n\nStart a new chat and say: **“Finish GBrain activation using `/workspace/GBRAIN-INSTALL-STATUS.md`.”** The exact remaining steps and diagnostic marker are recorded there—no reinstall needed.\n\n### Search-mode choice\n**Conservative is currently applied**, appropriate for this keyless setup. You can choose anytime:\n\n1. **conservative:** 4K retrieval budget, 10 chunks, no reranker.\n2. **balanced:** 12K budget, 25 chunks, reranking when configured.\n3. **tokenmax:** no retrieval-token budget, 50 chunks, reranking when configured.\n\nChanging modes does not itself enable paid providers.\n\n```text\nEstimated downstream input cost of the retrieved payload @ 10K queries/mo:\n\n                  Haiku 5.5     Sonnet 5.5    Opus 5.5\n                  ($0.10/M in)  ($2/M in)     ($4/M in)\n  conservative    $4/mo         $80/mo        $160/mo\n  balanced        $10/mo        $200/mo       $400/mo\n  tokenmax        $20/mo        $400/mo       $800/mo\n\n  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.\n  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.\n  Embedding, reranking and query expansion are separate provider charges.\n```\n\nThese are the guide’s illustrative downstream API costs—not your subscription price or a charge incurred by installation.\n\n**Other settings:** automatic fact saving is explicitly **off**; free session-idle upkeep is on. GBrain’s default local, redacted conversation archive is on and can be disabled with `gbrain transcripts archive off`. GBrain’s keyless retrieval sends nothing to embedding providers, but memories supplied to this assistant still reach its model. No services, schedules, imports, or automatic upgrades were enabled.",
+  "exit": 0,
+  "started_at": "2026-11-22T04:14:27.165Z",
+  "ended_at": "2026-11-22T04:20:54.437Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T04:20:54.280Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/extensions/gbrain-turn-rule",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 70
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Fletraigreip.",
+  "reply_text": "Remembered in GBrain: your sister’s new cat is called **Fletraigreip**. 🐈",
+  "exit": 0,
+  "started_at": "2026-11-22T04:20:54.449Z",
+  "ended_at": "2026-11-22T04:21:30.850Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T04:21:30.698Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/extensions/gbrain-turn-rule",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 6
+ },
+ {
+  "turn": 3,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister’s new cat is called **Fletraigreip**.",
+  "exit": 0,
+  "started_at": "2026-11-22T04:21:30.852Z",
+  "ended_at": "2026-11-22T04:23:19.849Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T04:23:19.681Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/extensions/gbrain-turn-rule",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ }
+]

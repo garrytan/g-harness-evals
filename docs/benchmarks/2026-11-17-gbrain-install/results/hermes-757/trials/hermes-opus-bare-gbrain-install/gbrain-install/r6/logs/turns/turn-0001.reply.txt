@@ -1,0 +1,14 @@
+gbrain v0.60.757.0 is installed at /harness-state/.local/bin/gbrain, and `gbrain --version` prints `gbrain 0.60.757.0`.
+
+I didn't use the `bun install -g github:garrytan/gbrain#v0.60.757.0` command the docs give. Hermes blocked the Bun installer because it pipes a download straight into a shell, and nobody was here to approve it. Instead I used the docs' Hermes route: the single prebuilt file from the release, downloaded from the v0.60.757.0 tag rather than "latest", so the version is pinned.
+
+Setup:
+- `gbrain init --pglite --no-embedding` created a local brain that needs no API keys. Search is keyword-only until you add an embedding key.
+- `gbrain setup hermes` registered the gbrain tool server with Hermes, and `hermes mcp test gbrain` connects.
+- Setup also added the "check gbrain first" instructions to /harness-state/hermes/SOUL.md and a hook that runs before each reply in /harness-state/hermes/config.yaml.
+- Setup printed an error saying that hook wasn't active, but `hermes hooks doctor` shows it allowlisted and healthy, so the warning looks wrong.
+- A save-and-recall test worked. I deleted the test fact afterwards.
+
+Start a new Hermes session to load gbrain. /harness-state/.local/bin isn't on PATH in this shell, so use the full path or add it to PATH.
+
+To install the same version with Bun instead, allow risky commands in single-query mode (`approvals.single_query_mode: approve` in config.yaml) or run the command yourself.

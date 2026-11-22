@@ -1,0 +1,41 @@
+Installed **GBrain v0.60.760.0**, keyless, while preserving your identity, native memory, and unrelated instructions.
+
+### Verified
+- Local PGLite database: `/harness-state/.gbrain/brain.pglite`, source `default`.
+- Real `remember` → `recall` round trip, including exact keyword retrieval from separate processes.
+- Synthetic test notes withdrawn; active recall confirms cleanup.
+- OpenClaw MCP registration saved; live probe found **8 memory tools**, with no diagnostics.
+- Additive memory instructions and a CLI fallback added to `/workspace/AGENTS.md`.
+
+**Native activation is partial:** this conversation’s tool catalog still doesn’t expose GBrain. The upstream per-turn hook also fails OpenClaw’s plugin-packaging requirements, so it remains inactive. New-conversation recall is **unverified**.
+
+### Search-mode choice
+**Conservative is active**, appropriate for keyless keyword search. You can choose anytime:
+1. **conservative:** 4K-token budget, 10 chunks, no reranker.
+2. **balanced:** 12K-token budget, 25 chunks, reranking when configured.
+3. **tokenmax:** no token-budget cap, 50 chunks, reranking when configured.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are illustrative downstream API costs—not your harness subscription price. Changing modes does not enable paid providers.
+
+### Other settings
+- Automatic fact writeback/capture: **off**.
+- Paid providers, connectors, schedules, and services: **not enabled**.
+- Free session-idle upkeep: **on**.
+- Conversation archive: **on by default**—redacted daily conversation pages stored locally. Disable with `gbrain transcripts archive off`.
+- No off-host backup configured.
+
+Keyless retrieval stays local, but recalled content still enters the agent model’s context. This connection is also **not per-person isolated**; it should not serve multiple users without access scoping.

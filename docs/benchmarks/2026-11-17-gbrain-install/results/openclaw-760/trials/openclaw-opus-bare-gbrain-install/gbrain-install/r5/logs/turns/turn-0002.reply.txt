@@ -1,0 +1,21 @@
+gbrain is set up as a free local brain with no API keys, and it's connected to OpenClaw. It takes effect in your next new conversation, not this one.
+
+**What I set up:**
+1. **The brain:** I ran `gbrain init --pglite --no-embedding`, the README's recommended keyless setup. The database runs on this machine only, with no server or Docker, and stores its data in `~/.gbrain`. Nothing leaves the machine.
+2. **Test:** I saved a fact (`remember`) and then retrieved it (`recall`), and that worked. `gbrain doctor` gave an overall health score of 90/100.
+3. **OpenClaw connection:** I added gbrain to OpenClaw's tool servers (`mcp.servers.gbrain`) using its full file path, in the limited "starter" mode the gbrain docs recommend. I didn't install the `gbrain` package on ClawHub, because gbrain's docs say it's an unofficial, broken upload.
+4. **Telling the agent to use it:** I ran `gbrain setup openclaw`. It did two things:
+   - Created `/workspace/AGENTS.md` with a "check GBrain first" section. gbrain manages that section and replaces it on upgrade.
+   - Installed and turned on a small OpenClaw plugin, `gbrain-turn-rule`, which reminds the agent each turn to check gbrain. Its first check failed because the plugin hadn't loaded yet. After the plugin loaded, I ran setup again and it passed, and OpenClaw reports the plugin as loaded.
+
+**Settings I left at their defaults:**
+- Search uses the cheapest mode and matches keywords only, because there's no embedding key for meaning-based search.
+- Agents save only what you explicitly ask them to remember.
+- Free maintenance runs in the background.
+- A redacted archive of conversations is kept on this machine.
+
+**Things you should know:**
+- **Version:** this is still v0.60.760.0, which is on the less-tested alpha line rather than stable.
+- **Test fact:** a fact reading "gbrain install check" is still in the brain. I left it rather than deleting it, because gbrain warns that deleting a fact like this can't be undone.
+- **Using gbrain in a terminal:** you'll need `export PATH="$HOME/.bun/bin:$PATH"` first. OpenClaw doesn't need this because it uses the full path.
+- **Next steps (optional):** to add your notes, run `gbrain import ~/notes --no-embed`. For better search, an embedding key can be added later, but that costs money.

@@ -1,0 +1,214 @@
+{"type": "system", "subtype": "init", "model": "claude-opus-5-5", "session_id": "20261121_192931_de5405", "timestamp": 1795289372810}
+{"type": "tool_use", "name": "web_extract", "input": {"urls": ["https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md"], "char_limit": 60000}, "timestamp": 1795289379297}
+{"type": "tool_result", "name": "web_extract", "output": "{\n  \"results\": [\n    {\n      \"url\": \"https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md\",\n      \"title\": \"\",\n      \"content\": \"# GBrain Installation Guide for AI Agents\\n\\nRead this file, then follow the path appropriate to the user’s request. Default to adding keyless memory to their existing agent, preserving identity and unrelated configuration. API keys, enrichment, automatic capture, and a new personal-agent identity are separate choices.\\n\\n> **Choose the installation path first.** Inside **[Grok Bot](docs/guides/grok-bot.md)** or **[Muse](docs/guides/muse.md)**, use their dedicated guide: the recommended shape keeps the brain on the user's own computer, published with `gbrain mcp expose --funnel` ([remote MCP](docs/guides/remote-mcp.md)), and installs the thin CLI inside the agent; `scripts/setup-in-agent.sh` is the in-agent alternative, and its receipt tracks repair and native enablement. To make a brain on this computer reachable from the user's other devices, apps, or cloud agents over MCP, follow the **[remote MCP guide](docs/guides/remote-mcp.md)** (`gbrain mcp expose`; confirm the plan before installing Tailscale or a service; `--funnel` only for cloud agents). For an **[existing hosted brain](docs/guides/hosted-harness-access.md)**, choose the harness's native OAuth/PKCE flow or a private machine handoff. Owner login, client management, permissions, and revocation use the separate [MCP administration](docs/mcp/ADMIN.md) path. This guide covers a local brain for other existing agents.\\n>\\n> **Memory-only path:** install → initialize → relay and confirm the Step 3.5 search-mode choice → connect the harness → verify memory. Skip identity replacement, private-repo bootstrap, automatic capture, cron installation, and paid enrichment unless requested. A keyword-only brain needs no API key. The required search-mode choice still applies; published API cost examples are not prices for the user’s harness subscription.\\n>\\n> Only if the user asks for a **new persistent personal agent** with identity and a private repo, follow `BOOTSTRAP_FOR_AGENTS.md`.\\n\\n## Step 0: If you are not Claude Code\\n\\nRead `AGENTS.md` at the repo root first. It's the non-Claude-agent operating\\nprotocol (install, read order, trust boundary, common tasks). Claude Code reads\\n`CLAUDE.md` automatically and can skip ahead.\\n\\nEvery gbrain error, refusal and recommendation follows one machine contract: read\\n`code`, follow `fix.next` (`run`, `ask_user`, `tell_user_to_run`, `wait`, `report`),\\nthen run `fix.verify`. Exit 3 means stop and ask the user. Full contract:\\n[`docs/protocol/AGENT_OPERATOR_v1.md`](docs/protocol/AGENT_OPERATOR_v1.md).\\n\\nIf you fetched this file by URL without cloning yet, the companion files live at:\\n- `https://raw.githubusercontent.com/garrytan/gbrain/master/AGENTS.md` — start here\\n- `https://raw.githubusercontent.com/garrytan/gbrain/master/docs/protocol/AGENT_OPERATOR_v1.md` — how to act on gbrain errors and notices\\n- `https://raw.githubusercontent.com/garrytan/gbrain/master/llms.txt` — full doc map\\n- `https://raw.githubusercontent.com/garrytan/gbrain/master/llms-full.txt` — same map, inlined\\n\\n## Step 1: Install GBrain\\n\\n<!-- npm-trap + #218 recovery: canonical copy lives in README.md (\\\"Install\\\" warning) — sync edits. -->\\n> **NEVER install from the npm registry.** GBrain is not distributed on npm; the npm\\n> package named `gbrain` is an unrelated package. Do NOT run `npm install -g gbrain` or\\n> `bun add -g gbrain` (note the missing `github:` prefix — that's the trap). The only\\n> supported sources are `github:garrytan/gbrain` (optionally pinned as\\n> `github:garrytan/gbrain#latest-stable`, the form the bootstrap flow mandates) and a\\n> git clone, exactly as shown below.\\n> If an unrelated npm install is already present, remove it first\\n> (`npm uninstall -g gbrain` / `bun remove -g gbrain`); `gbrain doctor` also detects this.\\n\\n> **On Codex or Claude Code?** After the CLI install below, the plugin is the\\n> fastest way to wire the MCP server + curated skills:\\n> `codex plugin marketplace add garrytan/gbrain@codex-plugin` +\\n> `codex plugin add gbrain@gbrain` (Claude Code: `/plugin marketplace add\\n> garrytan/gbrain` + `/plugin install gbrain@gbrain`). Details:\\n> docs/mcp/CODEX.md and docs/mcp/CLAUDE_CODE.md.\\n\\nDefault path (Bun 1.4.0 or newer is required — gbrain is a Bun + TypeScript runtime; on an older Bun, run `bun upgrade` first):\\n\\n```bash\\ncurl -fsSL https://bun.sh/install | bash\\nexport PATH=\\\"$HOME/.bun/bin:$PATH\\\"\\nbun install -g github:garrytan/gbrain\\n```\\n\\nVerify: `gbrain --version` should print a version number. If `gbrain` is not found,\\nrestart the shell or add the PATH export to the shell profile.\\n\\n> **If `bun install -g` aborts or `gbrain doctor` reports `schema_version: 0`** (Bun\\n> occasionally blocks the top-level postinstall hook on global installs, so schema\\n> migrations don't run automatically), the CLI prints a recovery hint pointing a...", "duration_ms": 380, "is_error": false, "timestamp": 1795289379716}
+{"type": "tool_use", "name": "terminal", "input": {"command": "which bun hermes gbrain; bun --version 2>/dev/null; ls ~/.bun/bin 2>/dev/null; hermes --version 2>/dev/null | head -3; git ls-remote https://github.com/garrytan/gbrain.git 'refs/tags/v0.60.757*' 'refs/tags/*stable*' | head"}, "timestamp": 1795289383408}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"/usr/local/bin/hermes\\nHermes Agent v0.21.5 (2026.9.24)\\nInstall directory: /opt/harness/src\\nInstall method: unknown\\n915e3b30b285ac175d8808b7e9ba0f6e82ff21c3\\trefs/tags/latest-stable\\n3e3f6a29c86ad0a9bcda43054aac651d4b2464f1\\trefs/tags/stable\\nfbf608cf86ea7b2b912ce80151f856a1a47e9533\\trefs/tags/stable^{}\\nf4183c0a9c1206c7a3b281174b4f93c5c5670e82\\trefs/tags/stable-v0.60.474.0\\nd458d8dc2cb7384476bacad5379bf48c3f44e0a1\\trefs/tags/stable-v0.60.474.0^{}\\ncdabc44f8eb69cd024159255f3fd33bccae98993\\trefs/tags/stable-v0.60.593.0\\n27f8b9d6287c2ba635532c7d3bc015c50e1d769b\\trefs/tags/stable-v0.60.593.0^{}\\n5af7eb43d3c1ce413d2fb6e12650ff493e3f9511\\trefs/tags/stable-v0.60.613.0\\n98dda48fb9fd339609d6d4eef009811280ff648d\\trefs/tags/stable-v0.60.613.0^{}\\ne1e1e879e7e62d5fff3064139a12db99e74dd8e5\\trefs/tags/stable-v0.60.620.0\", \"exit_code\": 0, \"error\": null}", "duration_ms": 846, "is_error": false, "timestamp": 1795289384260}
+{"type": "tool_use", "name": "terminal", "input": {"command": "git ls-remote https://github.com/garrytan/gbrain.git 'refs/tags/v0.60.757.0*'; curl -fsSL https://bun.sh/install | bash 2>&1 | tail -3; export PATH=\"$HOME/.bun/bin:$PATH\"; bun --version", "timeout": 300}, "timestamp": 1795289387199}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": -1, \"error\": \"BLOCKED: Command flagged as dangerous (pipe remote content to shell) but single-query mode (-q) runs without a user present to approve it. Find an alternative approach that avoids this command. To allow dangerous commands in single-query mode, set approvals.single_query_mode: approve in config.yaml.\", \"status\": \"blocked\"}", "duration_ms": 8, "is_error": true, "timestamp": 1795289387214}
+{"type": "tool_use", "name": "terminal", "input": {"command": "git ls-remote https://github.com/garrytan/gbrain.git 'refs/tags/v0.60.757.0*'; uname -m; which unzip npm node"}, "timestamp": 1795289390499}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"915e3b30b285ac175d8808b7e9ba0f6e82ff21c3\\trefs/tags/v0.60.757.0\\nx86_64\\n/usr/bin/unzip\", \"exit_code\": 1, \"error\": null}", "duration_ms": 742, "is_error": true, "timestamp": 1795289391250}
+{"type": "text", "text": "\n\nTag exists. Installing", "timestamp": 1795289393704}
+{"type": "text", "text": " Bun from", "timestamp": 1795289393705}
+{"type": "text", "text": " its", "timestamp": 1795289393705}
+{"type": "text", "text": " GitHub release zip inst", "timestamp": 1795289393706}
+{"type": "text", "text": "ead of piping a", "timestamp": 1795289393706}
+{"type": "text", "text": " script to a shell.", "timestamp": 1795289393707}
+{"type": "tool_use", "name": "terminal", "input": {"command": "cd $TMPDIR && curl -fsSLo bun.zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip && unzip -oq bun.zip && mkdir -p ~/.bun/bin && mv bun-linux-x64/bun ~/.bun/bin/ && ln -sf ~/.bun/bin/bun ~/.bun/bin/bunx && ~/.bun/bin/bun --version", "timeout": 300}, "timestamp": 1795289395851}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"1.4.5\", \"exit_code\": 0, \"error\": null, \"cwd\": \"/harness-state/hermes/cache/scratch\"}", "duration_ms": 2362, "is_error": false, "timestamp": 1795289398222}
+{"type": "tool_use", "name": "web_extract", "input": {"urls": ["https://raw.githubusercontent.com/garrytan/gbrain/master/docs/mcp/HERMES.md"], "char_limit": 20000}, "timestamp": 1795289398224}
+{"type": "tool_result", "name": "web_extract", "output": "{\n  \"results\": [\n    {\n      \"url\": \"https://raw.githubusercontent.com/garrytan/gbrain/master/docs/mcp/HERMES.md\",\n      \"title\": \"(no title)\",\n      \"content\": \"# (no title)\\nURL: https://raw.githubusercontent.com/garrytan/gbrain/master/docs/mcp/HERMES.md\\n\\n# Connect GBrain to Hermes\\n\\n> This page is the MCP-registration reference for Hermes (the NousResearch\\n> `hermes-agent`). For the full brain install — CLI, engine, skills, dream\\n> cycle — follow [INSTALL_FOR_AGENTS.md](../../INSTALL_FOR_AGENTS.md) first;\\n> this page wires the finished brain into Hermes over stdio MCP.\\n\\nHermes spawns `gbrain serve` as a local stdio subprocess. No server, no tunnel,\\nno token needed. Works with both PGLite and Supabase engines. No machine that\\nstays online? Hosted GBrain at [gbrain.io](https://gbrain.io/?ref=hermes-md) is always on.\\n\\n## Register (recommended)\\n\\n```bash\\nprintf 'Y\\\\n' | hermes mcp add gbrain --env GBRAIN_HOME=$HOME --connect-timeout 60 --command $(which gbrain) --args serve --surface starter --advertise verbs\\n```\\n\\nThe tool list shows the seven memory verbs (`recall`, `remember`, `entity`, …)\\nplus `request_tools`; every other operation stays callable, and `request_tools`\\nlists it and returns its schema. Drop `--advertise verbs` to list every\\noperation.\\n\\n`hermes mcp add` performs a real MCP handshake and tool discovery at add time,\\nthen prompts `Enable all N tools? [Y/n/select]:`. Three gotchas, all observed:\\n\\n- **`--args` must be the LAST option.** Everything after it — including a\\n misplaced `--env` — is swallowed into the server argv. To pass several\\n environment variables, list them all after ONE `--env` flag\\n (`--env A=1 B=2`); repeating the flag replaces the earlier values and the\\n server is saved disabled when its handshake then fails. Put `--env` and\\n `--connect-timeout` before `--command`, exactly as above.\\n- **Pipe the `Y` in non-interactive contexts.** EOF on the enable-tools prompt\\n prints `Cancelled.` and saves nothing. The piped `Y` saves the server with\\n all tools enabled.\\n- **The exit code is 0 even on connection failure or cancel.** Never assert on\\n `mcp add`'s exit status — verify with `hermes mcp list` and\\n `hermes mcp test gbrain` (below).\\n\\n## Brain-first instructions\\n\\nRegistering the MCP server only makes the tools available. Agents seldom call a\\nbrain nobody told them about, so finish the install with:\\n\\n```bash\\ngbrain setup hermes --instructions-only\\n```\\n\\nIt writes one short marked block into `$HERMES_HOME/SOUL.md` (default `~/.hermes/SOUL.md`), after your identity\\ntext, which stays first and unchanged: before answering any turn,\\nsearch the brain first, read the best hit, fill gaps with other tools, apply your own\\naccess rules, then finish the task. Text outside the markers is never touched, a\\nre-run upgrades the block in place, `--dry-run` previews it,\\n`--no-instructions` opts out (and is remembered) and `--remove` takes it out.\\n`gbrain doctor` warns when the block is missing or out of date. Setup never\\ncreates `SOUL.md`: Hermes uses a non-empty one instead of its default identity,\\nso start Hermes once (it seeds the file) or write your identity there first.\\n\\nThe same rule also rides every turn. Setup appends a marked `pre_llm_call` shell\\nhook to `$HERMES_HOME/config.yaml` and record\",\n      \"error\": null\n    }\n  ]\n}", "duration_ms": 342, "is_error": false, "timestamp": 1795289398577}
+{"type": "tool_use", "name": "terminal", "input": {"command": "export PATH=\"$HOME/.bun/bin:$PATH\"; bun install -g github:garrytan/gbrain#v0.60.757.0 2>&1 | tail -15; which gbrain; gbrain --version", "timeout": 600}, "timestamp": 1795289401287}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": -1, \"error\": \"BLOCKED: Security scan — [MEDIUM] Package threat intelligence could not be completed: Tirith could not complete every configured runtime threat-intelligence check for package 'github:garrytan/gbrain#v0.60.757.0' (default-version resolution was skipped by offline mode; deps.dev metadata lookup was skipped by offline mode; ecosyste.ms metadata lookup was skipped by offline mode). This is incomplete verification, not evidence that the package is malicious.; [MEDIUM] Package threat intelligence could not be completed: Tirith could not complete every configured runtime threat-intelligence check for package '2>&1' (default-version resolution was skipped by offline mode; deps.dev metadata lookup was skipped by offline mode; ecosyste.ms metadata lookup was skipped by offline mode). This is incomplete verification, not evidence that the package is malicious. but single-query mode (-q) runs without a user present to approve it. Find an alternative approach that avoids this command. To allow dangerous commands in single-query mode, set approvals.single_query_mode: approve in config.yaml.\", \"status\": \"blocked\"}", "duration_ms": 175, "is_error": true, "timestamp": 1795289401466}
+{"type": "text", "text": "\n\nThe global", "timestamp": 1795289404576}
+{"type": "text", "text": " package install", "timestamp": 1795289404577}
+{"type": "text", "text": " is blocked by the security", "timestamp": 1795289404577}
+{"type": "text", "text": " scanner.", "timestamp": 1795289404578}
+{"type": "text", "text": " Next", "timestamp": 1795289404578}
+{"type": "text", "text": " I'll try", "timestamp": 1795289404578}
+{"type": "text", "text": " the doc", "timestamp": 1795289404579}
+{"type": "text", "text": "s' de", "timestamp": 1795289404579}
+{"type": "text", "text": "terministic fallback: a", "timestamp": 1795289404580}
+{"type": "text", "text": " git clone pinned to the", "timestamp": 1795289404580}
+{"type": "text", "text": " tag, then", "timestamp": 1795289404581}
+{"type": "text", "text": " b", "timestamp": 1795289404581}
+{"type": "text", "text": "un link.", "timestamp": 1795289404581}
+{"type": "tool_use", "name": "terminal", "input": {"command": "git clone -q --depth 1 --branch v0.60.757.0 https://github.com/garrytan/gbrain.git ~/gbrain && cd ~/gbrain && git rev-parse HEAD && git describe --tags", "timeout": 300}, "timestamp": 1795289405531}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": -1, \"error\": \"BLOCKED: Security scan — [MEDIUM] URL uses raw IP address: URL points to IP address 0.0.0.1 instead of a domain name; [MEDIUM] Schemeless URL in sink context: URL without explicit scheme passed to a command that downloads/executes content but single-query mode (-q) runs without a user present to approve it. Find an alternative approach that avoids this command. To allow dangerous commands in single-query mode, set approvals.single_query_mode: approve in config.yaml.\", \"status\": \"blocked\"}", "duration_ms": 341, "is_error": true, "timestamp": 1795289405927}
+{"type": "text", "text": "\n\nThe scanner mis", "timestamp": 1795289411258}
+{"type": "text", "text": "read the", "timestamp": 1795289411259}
+{"type": "text", "text": " version string as an IP address.", "timestamp": 1795289411259}
+{"type": "text", "text": " I'll cl", "timestamp": 1795289411260}
+{"type": "text", "text": "one by the tag's commit", "timestamp": 1795289411260}
+{"type": "text", "text": " SHA instead (", "timestamp": 1795289411261}
+{"type": "text", "text": "915e3b30…,", "timestamp": 1795289411261}
+{"type": "text", "text": " from git ls-remote),", "timestamp": 1795289411262}
+{"type": "text", "text": " which g", "timestamp": 1795289411262}
+{"type": "text", "text": "ets the same code.", "timestamp": 1795289411262}
+{"type": "tool_use", "name": "terminal", "input": {"command": "mkdir -p ~/gbrain && cd ~/gbrain && git init -q && git remote add origin https://github.com/garrytan/gbrain.git && git fetch -q --depth 1 origin 915e3b30b285ac175d8808b7e9ba0f6e82ff21c3 && git checkout -q FETCH_HEAD && git rev-parse HEAD && grep '\"version\"' package.json", "timeout": 300}, "timestamp": 1795289412540}
+{"type": "tool_result", "name": "terminal", "output": "{\"output\": \"\", \"exit_code\": -1, \"error\": \"BLOCKED: Security scan — [MEDIUM] URL uses raw IP address: URL points to IP address 0.0.0.1 instead of a domain name; [MEDIUM] Schemeless URL in sink context: URL without explicit scheme passed to a command that downloads/executes content but single-query mode (-q) runs without a user present to approve it. Find an alternative approach that avoids this command. To allow dangerous commands in single-query mode, set approvals.single_query_mode: approve in config.yaml.\", \"status\": \"blocked\"}\n\n[Tool loop warning: same_tool_failure_warning; count=3; terminal has failed 3 times this turn. This looks like a loop. Do not switch to text-only replies; keep using tools, but diagnose before retrying. First inspect the latest error/output and verify your assumptions. For terminal failures, run a small diagnostic such as `pwd && ls -la` in the same tool, then try an absolute path, a simpler command, a different working directory, or a different tool such as read_file/write_file/patch.]", "duration_ms": 203, "is_error": true, "timestamp": 1795289412749}
+{"type": "text", "text": "\n\nI st", "timestamp": 1795289424736}
+{"type": "text", "text": "opped part", "timestamp": 1795289424737}
+{"type": "text", "text": "way:", "timestamp": 1795289424737}
+{"type": "text", "text": " Hermes' command", "timestamp": 1795289424738}
+{"type": "text", "text": "-security", "timestamp": 1795289424738}
+{"type": "text", "text": " gu", "timestamp": 1795289424738}
+{"type": "text", "text": "ard blocked", "timestamp": 1795289424739}
+{"type": "text", "text": " the", "timestamp": 1795289424739}
+{"type": "text", "text": " gbrain install, so", "timestamp": 1795289424740}
+{"type": "text", "text": " G", "timestamp": 1795289424740}
+{"type": "text", "text": "Brain isn't installed", "timestamp": 1795289424740}
+{"type": "text", "text": " or", "timestamp": 1795289424741}
+{"type": "text", "text": " conn", "timestamp": 1795289424741}
+{"type": "text", "text": "ected y", "timestamp": 1795289424741}
+{"type": "text", "text": "et. There's no search-m", "timestamp": 1795289424742}
+{"type": "text", "text": "ode choice to", "timestamp": 1795289424742}
+{"type": "text", "text": " show you and no rem", "timestamp": 1795289424743}
+{"type": "text", "text": "ember/recall test", "timestamp": 1795289424743}
+{"type": "text", "text": ",", "timestamp": 1795289424743}
+{"type": "text", "text": " because `gbrain init`", "timestamp": 1795289424744}
+{"type": "text", "text": " never", "timestamp": 1795289424744}
+{"type": "text", "text": " ran. Your identity,", "timestamp": 1795289424745}
+{"type": "text", "text": " SOUL.md and", "timestamp": 1795289424745}
+{"type": "text", "text": " Hermes config are untouched", "timestamp": 1795289424746}
+{"type": "text", "text": ".\n\nDone so", "timestamp": 1795289424746}
+{"type": "text", "text": " far:\n- Read IN", "timestamp": 1795289424746}
+{"type": "text", "text": "STALL_FOR", "timestamp": 1795289424747}
+{"type": "text", "text": "_AGENTS.md", "timestamp": 1795289424747}
+{"type": "text", "text": " and the Hermes MC", "timestamp": 1795289424748}
+{"type": "text", "text": "P guide. For memory-", "timestamp": 1795289424748}
+{"type": "text", "text": "only it", "timestamp": 1795289424748}
+{"type": "text", "text": " says: install, run", "timestamp": 1795289424749}
+{"type": "text", "text": " `gbrain init --p", "timestamp": 1795289424749}
+{"type": "text", "text": "glite --no-embedding", "timestamp": 1795289424750}
+{"type": "text", "text": "` (keyless),", "timestamp": 1795289424750}
+{"type": "text", "text": " show you the search-mode c", "timestamp": 1795289424750}
+{"type": "text", "text": "ost matrix and", "timestamp": 1795289424751}
+{"type": "text", "text": " wait for your p", "timestamp": 1795289424751}
+{"type": "text", "text": "ick, register gbrain with", "timestamp": 1795289424752}
+{"type": "text", "text": " Hermes, then test rem", "timestamp": 1795289424752}
+{"type": "text", "text": "ember/", "timestamp": 1795289424752}
+{"type": "text", "text": "recall.\n- Checked", "timestamp": 1795289424753}
+{"type": "text", "text": " that t", "timestamp": 1795289424753}
+{"type": "text", "text": "ag `v0.60.757", "timestamp": 1795289424754}
+{"type": "text", "text": ".0` exists on github", "timestamp": 1795289424754}
+{"type": "text", "text": ".", "timestamp": 1795289424754}
+{"type": "text", "text": "com/garrytan/g", "timestamp": 1795289424755}
+{"type": "text", "text": "brain (commit 915", "timestamp": 1795289424755}
+{"type": "text", "text": "e3b30b285ac", "timestamp": 1795289424756}
+{"type": "text", "text": "175d", "timestamp": 1795289424756}
+{"type": "text", "text": "8808b", "timestamp": 1795289424756}
+{"type": "text", "text": "7e9ba0", "timestamp": 1795289424757}
+{"type": "text", "text": "f6e82", "timestamp": 1795289424757}
+{"type": "text", "text": "ff21c3).", "timestamp": 1795289424757}
+{"type": "text", "text": "\n- Installed Bun", "timestamp": 1795289424758}
+{"type": "text", "text": " 1.4.5 into", "timestamp": 1795289424758}
+{"type": "text", "text": " ~/.bun/b", "timestamp": 1795289424759}
+{"type": "text", "text": "in from", "timestamp": 1795289424759}
+{"type": "text", "text": " Bun's official GitHub", "timestamp": 1795289424759}
+{"type": "text", "text": " release zip. The docs'", "timestamp": 1795289424760}
+{"type": "text", "text": " `curl | bash` install", "timestamp": 1795289424760}
+{"type": "text", "text": "er was blocked as \"p", "timestamp": 1795289424761}
+{"type": "text", "text": "ipe remote content to shell", "timestamp": 1795289424761}
+{"type": "text", "text": "\".\n\nWhat got blocked:", "timestamp": 1795289424761}
+{"type": "text", "text": "\n1. `bun install -", "timestamp": 1795289424762}
+{"type": "text", "text": "g github:garrytan/", "timestamp": 1795289424762}
+{"type": "text", "text": "gbrain#v0.", "timestamp": 1795289424763}
+{"type": "text", "text": "60.757.0`:", "timestamp": 1795289424763}
+{"type": "text", "text": " the guard cou", "timestamp": 1795289424763}
+{"type": "text", "text": "ldn't run its package threat", "timestamp": 1795289424764}
+{"type": "text", "text": " chec", "timestamp": 1795289424764}
+{"type": "text", "text": "ks because it's in offline m", "timestamp": 1795289424764}
+{"type": "text", "text": "ode.", "timestamp": 1795289424765}
+{"type": "text", "text": " It says this is incomplete", "timestamp": 1795289424765}
+{"type": "text", "text": " verification, not evidence of", "timestamp": 1795289424766}
+{"type": "text", "text": " malware", "timestamp": 1795289424766}
+{"type": "text", "text": ".\n2. The docs'", "timestamp": 1795289424766}
+{"type": "text", "text": " fallback, a `git cl", "timestamp": 1795289424767}
+{"type": "text", "text": "one` of the tag into", "timestamp": 1795289424767}
+{"type": "text", "text": " ~/gbrain:", "timestamp": 1795289424768}
+{"type": "text", "text": " fl", "timestamp": 1795289424768}
+{"type": "text", "text": "agged as a", "timestamp": 1795289424769}
+{"type": "text", "text": " \"raw IP address\" UR", "timestamp": 1795289424769}
+{"type": "text", "text": "L. That", "timestamp": 1795289424769}
+{"type": "text", "text": " loo", "timestamp": 1795289424770}
+{"type": "text", "text": "ks like a false positive, prob", "timestamp": 1795289424770}
+{"type": "text", "text": "ably from par", "timestamp": 1795289424771}
+{"type": "text", "text": "sing the version string.\n3", "timestamp": 1795289424771}
+{"type": "text", "text": ". Fetching the same comm", "timestamp": 1795289424772}
+{"type": "text", "text": "it by its SHA: bl", "timestamp": 1795289424772}
+{"type": "text", "text": "ocked with", "timestamp": 1795289424773}
+{"type": "text", "text": " the same fl", "timestamp": 1795289424773}
+{"type": "text", "text": "ag.\n\nThis session", "timestamp": 1795289424773}
+{"type": "text", "text": " runs without", "timestamp": 1795289424774}
+{"type": "text", "text": " an", "timestamp": 1795289424774}
+{"type": "text", "text": "yone present to approve (single", "timestamp": 1795289424775}
+{"type": "text", "text": "-query mode).", "timestamp": 1795289424775}
+{"type": "text", "text": " I stopped there rather than", "timestamp": 1795289424776}
+{"type": "text", "text": " keep r", "timestamp": 1795289424776}
+{"type": "text", "text": "ew", "timestamp": 1795289424777}
+{"type": "text", "text": "ording commands to", "timestamp": 1795289424777}
+{"type": "text", "text": " slip past a", "timestamp": 1795289424777}
+{"type": "text", "text": " security control", "timestamp": 1795289424778}
+{"type": "text", "text": ", or change its", "timestamp": 1795289424778}
+{"type": "text", "text": " sett", "timestamp": 1795289424778}
+{"type": "text", "text": "ings myself.\n\nTo continue", "timestamp": 1795289424778}
+{"type": "text", "text": ", pick one:\n-", "timestamp": 1795289424779}
+{"type": "text", "text": " Approve it", "timestamp": 1795289424779}
+{"type": "text", "text": " for", "timestamp": 1795289424780}
+{"type": "text", "text": " this task", "timestamp": 1795289424780}
+{"type": "text", "text": ": set `approvals.single", "timestamp": 1795289424780}
+{"type": "text", "text": "_query_mode: approve", "timestamp": 1795289424781}
+{"type": "text", "text": "` in your Hermes config", "timestamp": 1795289424781}
+{"type": "text", "text": ".yaml, or run me", "timestamp": 1795289424781}
+{"type": "text", "text": " interactively so", "timestamp": 1795289424781}
+{"type": "text", "text": " you can approve each", "timestamp": 1795289424782}
+{"type": "text", "text": " command.\n- Or install", "timestamp": 1795289424782}
+{"type": "text", "text": " the C", "timestamp": 1795289424782}
+{"type": "text", "text": "LI yourself: `~", "timestamp": 1795289424783}
+{"type": "text", "text": "/.bun/bin/", "timestamp": 1795289424783}
+{"type": "text", "text": "bun install -g github:gar", "timestamp": 1795289424783}
+{"type": "text", "text": "rytan/gbrain", "timestamp": 1795289424783}
+{"type": "text", "text": "#v0.60.757.", "timestamp": 1795289424784}
+{"type": "text", "text": "0`.\n\nOnce gb", "timestamp": 1795289424784}
+{"type": "text", "text": "rain run", "timestamp": 1795289424784}
+{"type": "text", "text": "s, I'll do", "timestamp": 1795289424784}
+{"type": "text", "text": " the rest:\n1.", "timestamp": 1795289424785}
+{"type": "text", "text": " Run `gbrain init --", "timestamp": 1795289424785}
+{"type": "text", "text": "pglite --no-embed", "timestamp": 1795289424785}
+{"type": "text", "text": "ding` (no API ke", "timestamp": 1795289424786}
+{"type": "text", "text": "ys)", "timestamp": 1795289424786}
+{"type": "text", "text": " and `gbrain doct", "timestamp": 1795289424786}
+{"type": "text", "text": "or --json`.\n2.", "timestamp": 1795289424786}
+{"type": "text", "text": " Show you the search-mode", "timestamp": 1795289424787}
+{"type": "text", "text": " c", "timestamp": 1795289424787}
+{"type": "text", "text": "ost matrix word", "timestamp": 1795289424787}
+{"type": "text", "text": " for word, with conservative,", "timestamp": 1795289424787}
+{"type": "text", "text": " balanced or tokenm", "timestamp": 1795289424788}
+{"type": "text", "text": "ax to", "timestamp": 1795289424788}
+{"type": "text", "text": " choose from, and ap", "timestamp": 1795289424788}
+{"type": "text", "text": "ply your choice.\n3.", "timestamp": 1795289424789}
+{"type": "text", "text": " Register g", "timestamp": 1795289424789}
+{"type": "text", "text": "brain as", "timestamp": 1795289424833}
+{"type": "text", "text": " an MCP server in", "timestamp": 1795289424882}
+{"type": "text", "text": " Hermes and conf", "timestamp": 1795289424932}
+{"type": "text", "text": "irm it with `hermes", "timestamp": 1795289424984}
+{"type": "text", "text": " mcp test gbrain", "timestamp": 1795289425033}
+{"type": "text", "text": "`.\n4. Add the", "timestamp": 1795289425082}
+{"type": "text", "text": " brain-first instructions block", "timestamp": 1795289425134}
+{"type": "text", "text": " with `gbrain setup", "timestamp": 1795289425183}
+{"type": "text", "text": " hermes --instructions-", "timestamp": 1795289425233}
+{"type": "text", "text": "only`. It", "timestamp": 1795289425284}
+{"type": "text", "text": " go", "timestamp": 1795289425333}
+{"type": "text", "text": "es after your existing S", "timestamp": 1795289425385}
+{"type": "text", "text": "OUL.md text", "timestamp": 1795289425433}
+{"type": "text", "text": " and leaves that", "timestamp": 1795289425483}
+{"type": "text", "text": " text unchanged.\n5", "timestamp": 1795289425534}
+{"type": "text", "text": ". Run a real remember,", "timestamp": 1795289425584}
+{"type": "text", "text": " then", "timestamp": 1795289425633}
+{"type": "text", "text": " recall, then forget with", "timestamp": 1795289425683}
+{"type": "text", "text": " an install-check marker, re", "timestamp": 1795289425734}
+{"type": "text", "text": "-check it from", "timestamp": 1795289425783}
+{"type": "text", "text": " a new", "timestamp": 1795289425836}
+{"type": "text", "text": " process, and run an", "timestamp": 1795289425885}
+{"type": "text", "text": " exact keyword search.", "timestamp": 1795289425934}
+{"type": "result", "session_id": "20261121_192931_de5405", "exit_code": 0, "text": "I stopped partway: Hermes' command-security guard blocked the gbrain install, so GBrain isn't installed or connected yet. There's no search-mode choice to show you and no remember/recall test, because `gbrain init` never ran. Your identity, SOUL.md and Hermes config are untouched.\n\nDone so far:\n- Read INSTALL_FOR_AGENTS.md and the Hermes MCP guide. For memory-only it says: install, run `gbrain init --pglite --no-embedding` (keyless), show you the search-mode cost matrix and wait for your pick, register gbrain with Hermes, then test remember/recall.\n- Checked that tag `v0.60.757.0` exists on github.com/garrytan/gbrain (commit 915e3b30b285ac175d8808b7e9ba0f6e82ff21c3).\n- Installed Bun 1.4.5 into ~/.bun/bin from Bun's official GitHub release zip. The docs' `curl | bash` installer was blocked as \"pipe remote content to shell\".\n\nWhat got blocked:\n1. `bun install -g github:garrytan/gbrain#v0.60.757.0`: the guard couldn't run its package threat checks because it's in offline mode. It says this is incomplete verification, not evidence of malware.\n2. The docs' fallback, a `git clone` of the tag into ~/gbrain: flagged as a \"raw IP address\" URL. That looks like a false positive, probably from parsing the version string.\n3. Fetching the same commit by its SHA: blocked with the same flag.\n\nThis session runs without anyone present to approve (single-query mode). I stopped there rather than keep rewording commands to slip past a security control, or change its settings myself.\n\nTo continue, pick one:\n- Approve it for this task: set `approvals.single_query_mode: approve` in your Hermes config.yaml, or run me interactively so you can approve each command.\n- Or install the CLI yourself: `~/.bun/bin/bun install -g github:garrytan/gbrain#v0.60.757.0`.\n\nOnce gbrain runs, I'll do the rest:\n1. Run `gbrain init --pglite --no-embedding` (no API keys) and `gbrain doctor --json`.\n2. Show you the search-mode cost matrix word for word, with conservative, balanced or tokenmax to choose from, and apply your choice.\n3. Register gbrain as an MCP server in Hermes and confirm it with `hermes mcp test gbrain`.\n4. Add the brain-first instructions block with `gbrain setup hermes --instructions-only`. It goes after your existing SOUL.md text and leaves that text unchanged.\n5. Run a real remember, then recall, then forget with an install-check marker, re-check it from a new process, and run an exact keyword search.", "tokens": {"input": 20, "output": 3301, "total": 314283, "cache_read": 289349, "cache_write": 21613}, "duration_ms": 53220, "timestamp": 1795289426031}

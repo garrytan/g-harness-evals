@@ -1,0 +1,55 @@
+GBrain v0.60.760.0 is installed and connected to this agent as keyless memory, and a remember/recall round trip worked with real GBrain calls. One gap: I couldn't test it from a brand-new OpenClaw conversation. That needs a gateway restart, which I didn't do because it would end this session.
+
+(GBrain also offers a hosted brain at gbrain.io. This install is the free self-hosted one on this machine.)
+
+**Your identity and instructions**
+- Your model, provider and workspace settings are unchanged, and I didn't use the identity setup step.
+- GBrain added a short memory block to `/workspace/AGENTS.md`. That file didn't exist before, so nothing was overwritten. It also installed and enabled a small plugin, `gbrain-turn-rule`, which adds a "check GBrain first" reminder to every turn.
+- OpenClaw's own CLI removed the comments from `openclaw.json` when it saved the new settings. The original is backed up at `/harness-state/openclaw/openclaw.json.pre-gbrain.bak`.
+
+**What was done**
+- **Install:** Bun 1.4.5, then `bun install -g github:garrytan/gbrain#v0.60.760.0` in place of `#stable`. The npm package of the same name, which the docs warn against, was not used.
+- **Keyless brain:** created with `gbrain init --pglite --no-embedding`. It's a local database with no API keys, and nothing leaves this machine.
+- **Connected to OpenClaw:** registered gbrain as a memory server in OpenClaw's config, then ran `gbrain setup openclaw`.
+  - Setup first reported that the per-turn reminder wasn't loaded, apparently checking before it had been switched on.
+  - OpenClaw's plugin check then showed it loaded, and the re-run fix and `gbrain doctor` both confirm it's wired.
+  - OpenClaw's own checks of the server pass and list its 8 tools.
+
+**Remember/recall test**
+1. **Command line:** `remember` saved test fact #1 with provenance `install-check`. A separate `recall` returned it, and an exact keyword `search` from a fresh login shell found it too.
+2. **Through the same server command OpenClaw starts:** recall found fact #1. Then `remember` saved fact #2 with provenance `install-check-mcp`: "GBrain test note: keyless install on OpenClaw verified via MCP round trip".
+   - My first attempt was refused because I passed an option this connection doesn't allow. Following the error's own fix, I dropped it and nothing was written by the failed call.
+3. **New server process:** recall returned both facts, so they survive a restart.
+4. **New OpenClaw conversation:** not done.
+   - This session's tool list was built before gbrain was added, so it can't see the gbrain tools.
+   - A local test agent couldn't start while this gateway is running, and child sessions aren't available here.
+
+**Search mode: conservative is on now (picked automatically because there are no keys)**
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+1. **conservative** (on now): 4K budget, up to 10 chunks, no reranker. Best for cheap models or high volume.
+2. **balanced:** 12K budget, 25 chunks, reranked.
+3. **tokenmax:** no budget, 50 chunks, reranked. The widest retrieval; recommended once you add a chat key.
+
+Change it any time with `gbrain config set search.mode <mode>`. Without keys, search is keyword-only and nothing is reranked or expanded. Prices are estimates of what your model would be billed for the retrieved text, not your actual plan's price.
+
+**Other settings in effect**
+- **Automatic saving:** off, so facts are saved only when you ask. GBrain recommends `gbrain config set memory.auto_writeback salient` to save lasting facts you state.
+- **Free upkeep:** on while the gbrain server is running. Turn it off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on, one redacted page per conversation per day, kept on this machine. Turn it off with `gbrain transcripts archive off`.
+- No keys, scheduled jobs, background services or extra skills were added.
+
+**To finish the test:** restart the gateway, then ask me in a new conversation to recall "gbrain install check". After that I'll delete the test marker with `forget`; I kept it for that check. The test note (fact #2) can stay or go, your call.
+
+Tell me a search mode or any setting change and I'll apply it.

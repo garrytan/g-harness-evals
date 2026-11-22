@@ -1,0 +1,29 @@
+Installed **GBrain v0.60.760.0** from the exact GitHub tag and registered it with your existing OpenClaw agent. I added GBrain guidance to `AGENTS.md` without changing your identity or replacing any existing instructions.
+
+**Verified with real GBrain calls:** `remember` committed a synthetic `install-check` marker. Separate `recall` calls found it by subject and exact text after reopening the database. OpenClaw’s native MCP probe discovered the GBrain tools, and a `recall` through the registered MCP command returned the same marker.
+
+**One integration step is still pending:** this OpenClaw setup interface could not install GBrain’s generated per-turn hook. The workspace instructions are in place, but automatic recall in a fresh chat is not yet verified. To check that separately, start a fresh chat and ask the agent to recall `gbrain-install-check`. The marker expires after 24 hours.
+
+### Search mode: `conservative` is active
+
+The brain uses local, keyword-only search. No GBrain API keys, embeddings, or paid enrichment were enabled. Automatic writeback and conversation archiving are off; free idle upkeep remains at its default, and no recurring job or optional skills were installed.
+
+- **`conservative`** — 4K token cap, up to 10 chunks, no reranking. Recommended for this keyless setup.
+- **`balanced`** — 12K token cap, up to 25 chunks; reranking requires a provider key.
+- **`tokenmax`** — no token cap, up to 50 chunks; reranking requires a provider key.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are GBrain’s published examples, not your OpenClaw subscription prices. You can change modes anytime. [Hosted GBrain](https://gbrain.io/cli?ref=install-for-agents) is also available; this install is local and keyless.

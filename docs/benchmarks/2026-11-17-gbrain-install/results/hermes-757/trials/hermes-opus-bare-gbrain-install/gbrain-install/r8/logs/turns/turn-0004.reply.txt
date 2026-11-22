@@ -1,0 +1,17 @@
+I checked again: gbrain still isn't installed. Bun 1.4.5 is there, but the gbrain install command is still blocked.
+
+Saying it again doesn't change anything on my end. In -q mode the security scanner stops that one command, and it only accepts approval through its own prompt or a config setting. I won't try to get around it.
+
+Any one of these will finish it:
+
+1. Paste this into a terminal. It uses the free, no-key defaults:
+
+    export PATH="$HOME/.bun/bin:$PATH"
+    bun install -g github:garrytan/gbrain#v0.60.757.0
+    gbrain init --pglite --no-embedding
+    gbrain skillpack scaffold --all
+    gbrain doctor
+
+2. Run `hermes` without -q, say "install gbrain", and approve the prompt. I'll do the rest.
+
+3. Add `approvals.single_query_mode: approve` to config.yaml, then rerun me with -q. This lets every flagged command through in -q runs, not just this one.

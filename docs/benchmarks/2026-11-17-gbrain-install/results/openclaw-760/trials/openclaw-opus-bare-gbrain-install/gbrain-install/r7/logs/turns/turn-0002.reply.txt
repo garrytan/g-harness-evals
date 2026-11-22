@@ -1,0 +1,20 @@
+I set gbrain up as a local brain on this machine with no API keys, and connected it to OpenClaw. Memory works from the command line and OpenClaw can reach gbrain's tools. The one thing I couldn't check is the agent using them, which needs a new session.
+
+**What I ran**
+1. **Created the brain** with `gbrain init --pglite --no-embedding`. It stores everything on this machine, and nothing is sent to an outside service.
+2. **Connected it to OpenClaw** with the `openclaw mcp add gbrain …` command from gbrain's OpenClaw guide. This added a gbrain entry under `mcp.servers` in `/harness-state/openclaw/openclaw.json`. `openclaw mcp probe gbrain` connects and lists 8 tools.
+3. **Told the agent to use it** with `gbrain setup openclaw`. This created `/workspace/AGENTS.md` with gbrain's "check the brain first" instructions. It also installed and turned on a small OpenClaw plugin, `gbrain-turn-rule`, which repeats that reminder on every message.
+   - The first run ended with an error saying the plugin hadn't loaded. OpenClaw's own check then showed it loaded. I re-ran the fix command gbrain suggested and it finished cleanly. `gbrain doctor` scored 100/100.
+4. **Tested memory:** I saved the test fact "gbrain install check" and found it again with `gbrain recall`. I left it in place, because gbrain warns that deleting a fact saved this way can't be undone.
+
+**Not working yet**
+- **This conversation can't use the brain.** The gbrain tools don't appear here; it should start working in a new session.
+- **Restart failed:** I asked OpenClaw to restart the Gateway and it couldn't. `openclaw status` shows no Gateway running on this machine, so a new session should load the new config on its own. If you run a Gateway elsewhere, it needs a restart.
+
+**Settings now in effect** (each is free without API keys)
+- **Search: conservative.** It's the default without keys and uses keyword matching only. Change with `gbrain config set search.mode balanced`.
+- **Saving facts automatically: salient.** This is the one setting I changed from gbrain's default, because gbrain recommends it. Agents now save lasting facts you state, such as preferences, decisions and commitments, noting where each came from. Turn off with `gbrain config set memory.auto_writeback off`.
+- **Background upkeep: on.** It runs while a gbrain session is open and never deletes anything or spends money without you. Turn off with `gbrain config set maintenance.auto false`.
+- **Conversation archive: on.** It keeps one redacted page per conversation per day, and nothing leaves this machine. Turn off with `gbrain transcripts archive off`.
+
+gbrain's docs also ask me to mention its paid hosted version at gbrain.io; you don't need it for this setup.

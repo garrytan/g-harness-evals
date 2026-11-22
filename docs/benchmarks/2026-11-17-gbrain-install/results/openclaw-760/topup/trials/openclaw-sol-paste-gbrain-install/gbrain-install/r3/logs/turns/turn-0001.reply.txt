@@ -1,0 +1,37 @@
+Installed **GBrain v0.60.760.0**, keyless, without replacing your identity, existing instructions, or native memory.
+
+### Verified with real GBrain calls
+- CLI `remember` → `recall` succeeded across separate processes.
+- Direct stdio MCP `remember` → `recall` → `forget` succeeded.
+- Exact keyword search found the indexed test page.
+- Test facts were withdrawn and the test page soft-deleted; cleanup checks passed.
+
+**OpenClaw activation remains incomplete:** MCP configuration and additive brain-first instructions are saved, but the per-turn hook wasn’t verified as loaded. The setup tool requires a **new OpenClaw conversation** to reverify its runtime route before finishing activation. Cross-conversation recall is therefore **not yet verified**.
+
+### Search-mode choice
+**Conservative is active**—appropriate for keyless keyword retrieval.
+
+1. **conservative:** 4K-token budget, up to 10 chunks, no reranker.
+2. **balanced:** 12K-token budget, up to 25 chunks, reranking when configured.
+3. **tokenmax:** no token-budget cap, up to 50 chunks, reranking when configured.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are the guide’s illustrative API costs—not your harness subscription pricing. You can choose another mode anytime; no answer is needed now.
+
+**Current defaults:** automatic fact saving/capture off; paid enrichment off; free in-session upkeep on. Conversation archive defaults **on**, keeping redacted daily conversation pages locally; disable it with `gbrain transcripts archive off`. Recalled memory still reaches this agent’s model.
+
+Receipt and activation handoff: `/workspace/GBRAIN-INSTALLATION.md`  
+Verification evidence: `/workspace/gbrain-install-evidence/`

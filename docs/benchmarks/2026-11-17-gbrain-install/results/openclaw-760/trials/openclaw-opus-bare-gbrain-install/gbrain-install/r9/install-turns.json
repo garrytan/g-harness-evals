@@ -1,0 +1,140 @@
+[
+ {
+  "turn": 1,
+  "session": "s1",
+  "role": "arm",
+  "text": "install gbrain\n\nInstall gbrain release v0.60.760.0 (`github:garrytan/gbrain#v0.60.760.0`) wherever the docs say #stable.",
+  "reply_text": "gbrain v0.60.760.0 is installed. `gbrain --version` prints `gbrain 0.60.760.0`, and the installed commit (`1597b77`) matches the `v0.60.760.0` tag on GitHub.\n\n- **Where:** the gbrain docs give one install command, `bun install -g github:garrytan/gbrain#stable`. I ran it with your release tag in place of `#stable`:\n  `bun install -g github:garrytan/gbrain#v0.60.760.0`\n- **Bun:** gbrain needs Bun 1.4.4 or newer, and Bun wasn't installed. I used Bun's official installer, which put Bun 1.4.5 in `~/.bun/bin`.\n- **Binary location:** `/harness-state/.bun/bin/gbrain`.\n\n**Your shell can't find `gbrain` by name yet.** That folder isn't on your PATH, and there was no shell startup file (like `~/.bashrc`) for the installer to add it to. To fix it, add `export PATH=\"$HOME/.bun/bin:$PATH\"` to your shell startup file.\n\nI only installed the command-line tool, so there's no brain (gbrain's notes database) yet. To create one with no API keys, the docs say to run `gbrain init --pglite --no-embedding`. To also connect it to Claude Code or Codex, run `gbrain setup claude-code` or `gbrain setup codex` instead. The docs also point to a hosted version at gbrain.io as an alternative to running your own. I can set up either one if you want.",
+  "exit": 0,
+  "started_at": "2026-11-22T03:59:07.754Z",
+  "ended_at": "2026-11-22T04:00:22.390Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T04:00:22.217Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": false,
+   "brain_path": null,
+   "mcp": false,
+   "instructions": false,
+   "hook": false,
+   "wired": [
+    "openclaw/openclaw.json"
+   ],
+   "ok": false
+  },
+  "events": 13
+ },
+ {
+  "turn": 2,
+  "session": "s1",
+  "role": "reply",
+  "text": "I don't have a preference. Use the defaults you recommend, keep it free with no API keys, and carry on without me.",
+  "reply_text": "gbrain is now set up as a free local brain with no API keys, and OpenClaw is connected to it. Start a new OpenClaw conversation to pick it up; this session loaded its instructions before gbrain was added.\n\n**What I set up**\n- **The brain:** a local database at `/harness-state/.gbrain/brain.pglite`, created with `gbrain init --pglite --no-embedding`. There's no paid provider, and nothing leaves this machine.\n- **OpenClaw connection:** gbrain is registered in OpenClaw's config, using its full path because OpenClaw can't find it by name. A test connection found 8 gbrain tools.\n- **Telling the agent to use it:** `gbrain setup openclaw` created `/workspace/AGENTS.md` (it didn't exist before) with a short \"check gbrain first\" section. It also installed and enabled a small OpenClaw plugin, `gbrain-turn-rule`, that repeats that reminder every turn.\n\n**Checks**\n- **Plugin:** the first `gbrain setup openclaw` run reported the reminder plugin as \"not loaded\". Re-running it a moment later found the plugin installed, enabled and allowed, and OpenClaw's own check shows it loaded and running.\n- **Gateway restart:** I tried to restart the gateway through the OpenClaw tool to be sure it picked up the changes, but the tool returned an error. It said the config change applies without a restart. The new conversation will confirm it.\n- **Health and save test:** `gbrain doctor` scores 100/100. Saving a fact and finding it again worked.\n- **Test fact:** a fact reading \"gbrain install check\" is now saved in the brain. I left it in place on purpose: gbrain warns that deleting a fact like this one is permanent and blocks that exact text from ever being saved again.\n\n**Settings in effect (gbrain's defaults)**\n- **Search mode: conservative.** It sends the least retrieved text to the AI per query, so it's the cheapest. Rough cost of that text at 10,000 queries a month (Haiku / Sonnet / Opus): conservative $4 / $80 / $160, balanced $10 / $200 / $400, tokenmax $20 / $400 / $800. To change it: `gbrain config set search.mode balanced`.\n- **Search type:** keyword only, because embeddings (meaning-based search) need a paid key. So the brain only catches exact repeats, not reworded duplicates of a fact.\n- **Automatic saving: off.** Agents save only what you ask them to remember. gbrain recommends `salient`, which saves lasting facts you state and records where each came from: `gbrain config set memory.auto_writeback salient`.\n- **Upkeep: on.** Free maintenance runs while a gbrain session is open. To turn it off: `gbrain config set maintenance.auto false`.\n- **Conversation archive: on.** It keeps one page per conversation per day, with sensitive details removed. To turn it off: `gbrain transcripts archive off`.\n\nTo add your own notes, run `gbrain import <folder> --no-embed`.",
+  "exit": 0,
+  "started_at": "2026-11-22T04:00:22.392Z",
+  "ended_at": "2026-11-22T04:02:46.350Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T04:02:46.160Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 18
+ },
+ {
+  "turn": 3,
+  "session": "s1",
+  "role": "save",
+  "text": "Remember that my sister's new cat is called Gigribrot.",
+  "reply_text": "I've saved it in gbrain: your sister's new cat is called Gigribrot. Looking it up afterwards returned the fact, so it's stored.\n\nIt's filed under \"sister\" because I don't know her name. If you tell me, I can file it under her name instead.\n\nThis also confirms the gbrain connection works in OpenClaw: the reminder to check gbrain ran at the start of this turn, and I saved and read the fact through gbrain's tools.",
+  "exit": 0,
+  "started_at": "2026-11-22T04:02:46.354Z",
+  "ended_at": "2026-11-22T04:03:22.787Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T04:03:22.592Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 6
+ },
+ {
+  "turn": 4,
+  "session": "s2",
+  "role": "recall",
+  "text": "What's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Gigribrot**. I found this in your GBrain notes, saved from something you told me in chat earlier today.",
+  "exit": 0,
+  "started_at": "2026-11-22T04:03:22.788Z",
+  "ended_at": "2026-11-22T04:03:48.271Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T04:03:48.147Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 4
+ },
+ {
+  "turn": 5,
+  "session": "s3",
+  "role": "hinted",
+  "text": "Check your gbrain memory: what's my sister's new cat called?",
+  "reply_text": "Your sister's new cat is called **Gigribrot**. You told me that earlier today, and I found it in your GBrain memory.",
+  "exit": 0,
+  "started_at": "2026-11-22T04:03:48.272Z",
+  "ended_at": "2026-11-22T04:04:12.304Z",
+  "probe": {
+   "harness": "openclaw",
+   "at": "2026-11-22T04:04:12.188Z",
+   "binary": "/harness-state/.bun/bin/gbrain",
+   "version": "0.60.760.0",
+   "brain": true,
+   "brain_path": "/harness-state/.gbrain/brain.pglite",
+   "mcp": true,
+   "instructions": true,
+   "hook": true,
+   "wired": [
+    "openclaw/openclaw.json",
+    "openclaw/gbrain/gbrain-turn-rule",
+    "/workspace/AGENTS.md"
+   ],
+   "ok": true
+  },
+  "events": 3
+ }
+]

@@ -1,0 +1,43 @@
+GBrain v0.60.757.0 is installed and connected to Hermes. It runs keyless, and a remember/recall round trip passed with real GBrain calls.
+
+Install: the pinned `bun install -g github:garrytan/gbrain#v0.60.757.0` was blocked by Hermes's security scanner. The guide expects this on Hermes and gives the release binary as the fix, so I downloaded that same tag's build instead. It's at /harness-state/.local/bin/gbrain and `--version` prints 0.60.757.0. The brain runs locally with no embeddings and no API keys, and I applied the 5 setup migrations init said were still pending.
+
+What changed:
+- SOUL.md: your identity text is unchanged. GBrain added a "check GBrain first" block after it, between gbrain:brain-first markers.
+- config.yaml: added the `gbrain` MCP server and a per-turn reminder hook. `hermes mcp test gbrain` connects and `hermes hooks doctor` says the hook is healthy. Setup itself exited with a "turn hook not loaded" error, but rechecking with gbrain's own doctor reports it wired and healthy.
+- Nothing else was turned on: no automatic fact saving, cron jobs, background service, scaffolded skills or paid providers.
+
+Round trip:
+1. `remember` saved fact #1, "gbrain install check: Hermes memory round trip marker 7f3a", with provenance install-check.
+2. A separate `gbrain recall` process found it.
+3. An exact keyword search for "7f3a" found it.
+4. Starting the MCP server exactly as Hermes registered it, a `recall` call returned the fact.
+
+Search mode: conservative. GBrain picked it because there's no chat key and no reranker. You can switch any time:
+
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+
+  1) conservative (in effect): 4K budget, 10 chunks max, no reranker.
+  2) balanced: 12K budget, 25 chunks, reranked (needs a Voyage key for the reranker).
+  3) tokenmax: no budget, 50 chunks, reranked; the widest retrieval.
+  To change: ~/.local/bin/gbrain config set search.mode <mode>
+
+Other settings in effect:
+- Writeback is off, so facts are saved only when you ask. Turn on "salient" (recommended) with `~/.local/bin/gbrain config set memory.auto_writeback salient`.
+- Free upkeep is on while a session is open. Off: `~/.local/bin/gbrain config set maintenance.auto false`.
+- The conversation archive is on and stays on this machine while there's no key. Off: `~/.local/bin/gbrain transcripts archive off`.
+- Skill scaffolding was skipped. Add it with `~/.local/bin/gbrain skillpack scaffold --all`.
+
+Left to do: the guide's last check is a recall from a new Hermes session. Start one and ask me to recall "gbrain install check", then to forget it.
+
+A hosted version also exists at gbrain.io: one always-on brain shared across agents, with a paid plan. It's only needed if you want that.

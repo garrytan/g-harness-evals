@@ -1,0 +1,25 @@
+Installed **GBrain v0.60.760.0** and registered it with your existing OpenClaw agent. It uses a local, keyless PGLite database. I added GBrain’s managed memory instructions and left your agent’s identity and unrelated instructions unchanged.
+
+**Verified with real calls:** GBrain `remember` committed a synthetic test fact, a separate CLI process found it by exact keyword, and the registered MCP server returned it through `recall`. I then withdrew it with `forget` and confirmed it no longer appeared in active recall. OpenClaw also discovered the MCP tools. A fresh-chat test remains unverified: OpenClaw couldn’t start the test session.
+
+### Search mode
+
+**Conservative is active and is my recommendation while you’re keyless.** It caps retrieval at 4K tokens and 10 chunks. **Balanced** allows 12K tokens and 25 chunks; **tokenmax** allows 50 chunks with no token cap. The latter two can rerank with a configured provider, but none was enabled. Search is keyword-only for now.
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are the guide’s illustrative API costs, not your subscription prices or a forecast. You can choose any of the three modes later.
+
+Automatic fact saving and conversation archiving are **off**. Free upkeep remains on while GBrain is running; no scheduler or paid provider was added. Keyless means GBrain retrieval runs locally, but recalled text can still enter the agent model’s context. [Hosted GBrain](https://gbrain.io/) is an optional alternative; this install is self-hosted.

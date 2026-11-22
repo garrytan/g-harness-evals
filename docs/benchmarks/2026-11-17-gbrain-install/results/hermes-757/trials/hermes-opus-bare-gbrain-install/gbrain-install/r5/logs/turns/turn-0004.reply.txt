@@ -1,0 +1,17 @@
+gbrain is still not installed, and trying again won't change that. The Hermes security scanner blocks the install command until a person approves it. I checked your Hermes config and that approval hasn't been turned on (`approvals.single_query_mode` isn't set), so the next attempt would be blocked the same way. I won't turn on that approval myself or find a way around the scanner.
+
+You can finish it either way:
+
+1. Run it yourself. It takes about a minute, and Bun is already installed:
+
+       export PATH="$HOME/.bun/bin:$PATH"
+       bun install -g github:garrytan/gbrain#v0.60.757.0
+       gbrain init --pglite --no-embedding
+       gbrain doctor
+
+2. Add this to your Hermes config.yaml, then send the request again:
+
+       approvals:
+         single_query_mode: approve
+
+   I'll install it with the free defaults (a local database and keyword search, so no server and no API keys) and check that `gbrain doctor` passes.

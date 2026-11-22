@@ -1,0 +1,14 @@
+I installed gbrain v0.60.757.0 and it works: `gbrain --version` reports 0.60.757.0, and a test fact I saved came back when I searched for it.
+
+The docs use `bun install -g github:garrytan/gbrain#stable` for the stable install. Hermes blocked the Bun installer because no one was there to approve it. So I used the docs' route for Hermes instead: the prebuilt file from the GitHub release, with no Bun needed. I took it from the v0.60.757.0 release rather than `latest` so you get exactly the version you asked for.
+
+What's set up:
+- **Program:** `/harness-state/.local/bin/gbrain` (205 MB, Linux x64).
+- **Brain:** a local database with no API keys, so search is keyword-only until you add an embedding key.
+- **Hermes connection:** gbrain is registered as an MCP server, and `hermes mcp test gbrain` connects and lists its tools.
+- **Instructions:** a block telling the agent to check gbrain first was added to `/harness-state/hermes/SOUL.md`, plus a hook in `/harness-state/hermes/config.yaml` that repeats that reminder every turn.
+
+Things to know:
+- **Setup warning:** `gbrain setup hermes` said the per-turn hook wasn't active, but `hermes hooks doctor` lists it as healthy. Setup probably can't see a hook that only loads with a new session. Start a new Hermes session to pick up the instructions and hook.
+- **Test fact:** "gbrain install check" is still saved in the brain. You can remove it with `gbrain forget <fact_id>`.
+- **PATH:** I didn't confirm that `~/.local/bin` is on your PATH. If plain `gbrain` isn't found, use the full path above.

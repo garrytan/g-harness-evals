@@ -1,0 +1,48 @@
+Installed **GBrain v0.60.760.0**, keyless, while preserving your current identity, instructions, and native OpenClaw memory.
+
+### Verified with real GBrain calls
+- MCP `remember` → `recall`: passed.
+- Closed and reopened the MCP server, then recalled the same fact: passed.
+- Exact keyword search: passed.
+- Correction and withdrawal: passed; completed fixtures cleaned up.
+- Final database health: **healthy**, schema current.
+
+**Native activation remains pending:** this environment has no running OpenClaw Gateway. The MCP registration and brain-first hook are saved, but hook execution and recall from a new OpenClaw conversation could not be verified. A harmless seven-day marker remains for that check.
+
+### Search-mode choice
+**Conservative is active**—recommended for your keyless start.
+
+1. **Conservative:** 4K-token budget, 10 chunks, no reranker.
+2. **Balanced:** 12K-token budget, 25 chunks, reranking when separately configured.
+3. **Tokenmax:** no fixed token budget, 50 chunks, widest retrieval.
+
+The guide’s cost matrix, verbatim:
+
+```text
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+
+These are illustrative downstream API input costs—not your harness subscription price or a total bill. No paid providers were enabled. Tell me a mode anytime and I’ll apply it; conservative remains active meanwhile.
+
+### Other settings
+- Automatic fact capture/writeback: **off**.
+- Automatic event extraction: **off**.
+- Free session upkeep: **on**.
+- Local redacted conversation archive: **on** by GBrain default; disable with `gbrain transcripts archive off`.
+- No cron, daemon, connector, or auto-upgrade enabled.
+
+GBrain retrieval stays local; recalled memory still enters this agent’s model context.
+
+Details and evidence: `/workspace/GBRAIN-INSTALL.md`.
+
+After the next normal OpenClaw start, use a new conversation and say: **“Recall the GBrain installation marker, then remove it.”** That is the remaining native end-to-end check.

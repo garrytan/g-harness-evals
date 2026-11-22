@@ -1,0 +1,49 @@
+GBrain v0.60.760.0 is installed and connected to this agent with no API keys, and a remember/recall round trip worked using real GBrain calls. I installed it from `github:garrytan/gbrain#v0.60.760.0` in place of `#stable`. I didn't do a recall from a new OpenClaw conversation yet; that needs your restart (step at the end).
+
+**What I set up**
+- **Install:** Bun 1.4.5, then GBrain. It runs from `~/.bun/bin/gbrain`, and I added that folder to your PATH in `~/.profile`.
+- **Brain:** created with `gbrain init --pglite --no-embedding`. It's a local database at `~/.gbrain/brain.pglite` and uses keyword search only, so nothing is sent to an embedding provider.
+- **Connection to OpenClaw:** I registered GBrain as a tool server with the absolute path and `--surface starter --advertise verbs`. `openclaw mcp doctor gbrain --probe` reports ok.
+- **Telling the agent to use it:** `gbrain setup openclaw --workspace /workspace` added a "check GBrain first" note and a plugin, `gbrain-turn-rule`, that repeats it next to each message.
+  - The first run gave a `turn_hook_not_loaded` error. The fix command it suggested then passed, and OpenClaw shows the plugin loaded.
+- **Your identity and instructions are unchanged.** There was no `AGENTS.md`, `SOUL.md` or `IDENTITY.md` in `/workspace`. `AGENTS.md` now holds only GBrain's marked note, and nothing else was written there.
+- **Config backup:** `openclaw mcp add` removed the comments from `openclaw.json` when it saved. The original is at `openclaw.json.pre-gbrain.bak`.
+
+**Round-trip check**
+I started GBrain the same way OpenClaw does, in two separate runs:
+- **First run:** saved fact #1, an install-check marker (provenance `install-check`), and fact #2, a test note: "the GBrain round-trip test phrase is periwinkle-anchor-7" (entity `gbrain-install-test`).
+- **Second run (fresh process):**
+  - Recalling `gbrain-install-test` by entity returned fact #2.
+  - Recalling "gbrain install check" returned facts #1 and #2.
+  - The command-line `gbrain search "periwinkle-anchor-7"` found the note.
+  - Recall by question with only `periwinkle-anchor-7` returned nothing. Keyword-only search can miss a hyphenated word on its own, so an empty result means "not found by a limited search", not "not saved".
+
+**Search mode: `conservative` is in effect.** GBrain picked it automatically because there's no chat key and no reranker. Here is the cost table from the guide:
+```
+Estimated downstream input cost of the retrieved payload @ 10K queries/mo:
+
+                  Haiku 5.5     Sonnet 5.5    Opus 5.5
+                  ($0.10/M in)  ($2/M in)     ($4/M in)
+  conservative    $4/mo         $80/mo        $160/mo
+  balanced        $10/mo        $200/mo       $400/mo
+  tokenmax        $20/mo        $400/mo       $800/mo
+
+  Assumed payload per query: conservative 4K, balanced 10K, tokenmax 20K tokens.
+  Scales linearly: x10 for 100K queries/mo, /10 for 1K. 200x corner-to-corner spread.
+  Embedding, reranking and query expansion are separate provider charges.
+```
+1. **conservative:** 4K token budget, up to 10 chunks, no reranker. Best for cheap, high-volume use. *(in effect)*
+2. **balanced:** 12K budget, 25 chunks, reranked. The reranker needs a provider key.
+3. **tokenmax:** no budget, 50 chunks, reranked. Recommended once you have a chat key.
+
+To switch, run `gbrain config set search.mode <mode>`, then `gbrain search modes` to confirm. Cost depends on both the mode and the model reading the results. `gbrain query` only expands the search if you pass `--expand` or turn on `search.expansion`.
+
+**Other settings now in effect** (change any time):
+- **Saving facts automatically:** off, so it saves only what you ask it to. GBrain recommends `salient`: `gbrain config set memory.auto_writeback salient`.
+- **Free upkeep:** on while GBrain's server is running. Turn off with `gbrain config set maintenance.auto false`.
+- **Conversation archive:** on, and nothing leaves this machine without a key. Turn off with `gbrain transcripts archive off`.
+- **Off unless you ask:** API keys, background jobs, scheduled tasks, bundled skills and the new-agent identity setup.
+
+**To finish (needs you):** this conversation started before GBrain was connected, so its tools aren't available here yet. Restart OpenClaw's gateway or start a new session, then ask me to "recall gbrain install check". After it comes back, I'll delete the marker (fact #1) with `forget`; the guide says to remember it again with an entity first, so the delete doesn't block that sentence from being saved later. The test note (fact #2) is safe to keep or delete.
+
+If you'd rather not run anything yourself, the guide also points to a hosted option at gbrain.io. Nothing is created there until someone picks a plan and pays.

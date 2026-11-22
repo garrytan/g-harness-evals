@@ -1,0 +1,15 @@
+gbrain still isn't installed. Your go-ahead covers the setup choices, but it doesn't clear the block. The Hermes security scanner stopped the install command itself, and in this unattended mode it waits for a person to approve. Approving it would mean you, not me, editing the config or running the command. I won't edit the config to approve myself, or reword the command to slip past the check.
+
+The free, no-API-key defaults I'd use:
+- Local PGLite database, so there's no server, no Docker and nothing to pay for.
+- No embedding provider, so search works by keyword with no API key.
+
+To finish, run this in your own terminal. Bun 1.4.5 is already installed at ~/.bun/bin:
+
+    export PATH="$HOME/.bun/bin:$PATH"
+    bun install -g github:garrytan/gbrain#v0.60.757.0
+    gbrain --version
+    gbrain init --pglite --no-embedding
+    gbrain doctor
+
+If you'd rather I do it unattended, set `approvals.single_query_mode: approve` in your Hermes config.yaml and re-run this request. I'll then run the same steps and check that the install works.

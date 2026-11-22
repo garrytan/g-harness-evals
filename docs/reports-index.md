@@ -92,3 +92,5 @@ Run folders with no row in docs/scoreboard/reports.json yet. A new folder lands 
 - [2026-11-14-shared-bot-scope](benchmarks/2026-11-14-shared-bot-scope/)
 - [2026-11-16-frontier-shootout](benchmarks/2026-11-16-frontier-shootout/)
 - [2026-11-17-gbrain-install](benchmarks/2026-11-17-gbrain-install/)
+- [2026-11-19-rules-at-scale](benchmarks/2026-11-19-rules-at-scale/)
+- [2026-11-21-shared-brain-access](benchmarks/2026-11-21-shared-brain-access/)
