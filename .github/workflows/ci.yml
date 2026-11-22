@@ -100,7 +100,7 @@ jobs:
         if: steps.docs.outputs.docs_only != 'true'
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: bun scripts/ci-tree-json.ts --junit "$RUNNER_TEMP/junit/builders.xml" --junit "$RUNNER_TEMP/junit/main.xml" --junit "$RUNNER_TEMP/junit/serial.xml" --out "$RUNNER_TEMP/checks-tree/tree.json"
+        run: bun scripts/ci-tree-json.ts --junit "$RUNNER_TEMP/junit/builders.xml" --junit "$RUNNER_TEMP/junit/proxy.xml" --junit "$RUNNER_TEMP/junit/main.xml" --junit "$RUNNER_TEMP/junit/serial.xml" --out "$RUNNER_TEMP/checks-tree/tree.json"
       # The same record as one GSTACK_TREE_JSON line (the artifact name and the file in base64) in this step's own log, for
       # a gstack that reads it from there when the run has no artifact (internal-task-a, internal-task-b): the job log is GitHub's own
       # record of this job and attempt, like the artifact. It is its own step, after the tests and outside their process,
@@ -258,8 +258,8 @@ jobs:
           git checkout -q -B main "$tip"
           git update-ref -d refs/remotes/origin/main
       # The export tree's tests run through its own scripts/run-tests.sh, the command the public repository's checks job
-      # runs: every file under tests/, in the same three phases (image builders, then the rest with one worker per core,
-      # then the serial files alone). One bun process over the same files took 25 minutes at the median on standard-4.
+      # runs: every file under tests/, in the same four phases (image builders, then the proxy files one at a time, then
+      # the rest with one worker per core, then the serial files alone). One bun process over the same files took 25 minutes at the median on standard-4.
       - name: Keyless install, typecheck, links and tests on the export tree
         working-directory: ${{ runner.temp }}/public
         run: env -i HOME="$HOME" PATH="$PATH" LANG=C.UTF-8 bash -c 'bun install --frozen-lockfile && bunx tsc --noEmit && python3 scripts/check-links.py && bash scripts/run-tests.sh'
