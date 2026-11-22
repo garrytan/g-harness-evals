@@ -14,13 +14,16 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ATTESTATION_MAP_PATH, ATTESTED, LEDGER_PATH, MAPPED, type ManifestEntry } from '../runner/prereg/prereg.ts';
-import { checkPractices, GRANDFATHERED_PATH, planProblems, readGrandfathered } from '../runner/prereg/practices.ts';
+import { checkPractices, freezeDate, GRANDFATHERED_PATH, JUDGE_100_FROM, minLabelled, planProblems as planProblemsOn, readGrandfathered } from '../runner/prereg/practices.ts';
 
 const ROOT = join(import.meta.dir, 'fixtures/prereg-practices');
 const plan = (name: string) => readFileSync(join(ROOT, name, 'PREREGISTRATION.md'), 'utf8');
 const entry = (folder: string, file = 'PREREGISTRATION.md', id = folder): ManifestEntry => ({ id, preregistration: `${folder}/${file}`, results: [`${folder}/results/**`] });
+// The fixtures read under R78's 40-output floor, a plan frozen before 2026-11-22; the floor's own tests pass dates.
+const BEFORE = '2026-11-21';
+const planProblems = (text: string, frozen = BEFORE) => planProblemsOn(text, frozen);
 const check = (entries: ManifestEntry[], opts: { spend?: boolean; old?: string[] } = {}) =>
-  checkPractices(entries, ROOT, { spend: opts.spend ?? true, grandfathered: new Set(opts.old ?? []) });
+  checkPractices(entries, ROOT, { spend: opts.spend ?? true, grandfathered: new Set(opts.old ?? []), frozen: () => BEFORE });
 
 describe('a new preregistration states the eval-loop practices', () => {
   test('the passing fixture states all four, and its report and spend lines pass', () => {
@@ -48,7 +51,7 @@ describe('a new preregistration states the eval-loop practices', () => {
 
   test('missing the judge check fails when a model judge is used, and is not needed without one (R78)', () => {
     expect(planProblems(plan('missing-judge-check'))).toEqual(['a model judge is used but there is no "## Judge check" section, read per arm (R78)']);
-    expect(planProblems(plan('pass').replace('| card | 20 | 0.6 |\n', ''))).toEqual(['"## Judge check" has no row for arm "card": the judge is read per arm, not pooled (R78)', '"## Judge check" plans 20 labelled outputs; R78 needs at least 40']);
+    expect(planProblems(plan('pass').replace('| card | 20 | 0.6 |\n', ''))).toEqual(['"## Judge check" has no row for arm "card": the judge is read per arm, not pooled (R78)', '"## Judge check" plans 20 labelled outputs; R78 needs at least 40 for a plan frozen on 2026-11-21']);
     const noJudge = plan('missing-judge-check').replace(/- Model judge:.*\n/, '- Model judge: none\n').replace(/- \*\*Judge passes R78:\*\*.*\n/, '');
     expect(planProblems(noJudge)).toEqual([]);
     expect(planProblems(plan('pass').replace(/- \*\*Judge passes R78:\*\*.*\n/, ''))).toEqual(['"## Pilot" does not say how the pilot shows "judge passes R78" (a "Judge passes R78:" field) (R111)']);
@@ -80,6 +83,86 @@ describe('a new preregistration states the eval-loop practices', () => {
     expect(planProblems(plan('pass').replace('- Paid budget: $1,200', '- Paid budget: $<n>'))).toContain('"## Eval loop" has no "Paid budget: $<n>" field');
     expect(planProblems(plan('pass').replace('- Size: counted run', '<!-- - Size: counted run -->'))).toContain('"## Eval loop" Size must be "counted run" or "quick look"');
     expect(planProblems(plan('quick-look').replace('$60\n', '$2k\n'))).toEqual(['"## Eval loop" has no "Paid budget: $<n>" field']);
+  });
+});
+
+describe('the judge check\'s labelled-output floor follows the plan\'s freeze date (R78; internal-task)', () => {
+  const judged = (n: number) => plan('pass').replace('| plain | 20 | 0.6 |', `| plain | ${n} | 0.6 |`).replace('| card | 20 | 0.6 |', `| card | ${n} | 0.6 |`);
+  test('a plan frozen before 2026-11-22 needs 40 labelled outputs; one frozen on or after it needs 100', () => {
+    expect(JUDGE_100_FROM).toBe('2026-11-22');
+    expect([minLabelled('2026-11-21'), minLabelled('2026-11-22'), minLabelled('2027-01-01')]).toEqual([40, 100, 100]);
+    expect(planProblemsOn(judged(20), '2026-11-21')).toEqual([]);
+    expect(planProblemsOn(judged(20), '2026-11-22')).toEqual(['"## Judge check" plans 40 labelled outputs; R78 needs at least 100 for a plan frozen on 2026-11-22']);
+    expect(planProblemsOn(judged(49), '2026-11-22')).toEqual(['"## Judge check" plans 98 labelled outputs; R78 needs at least 100 for a plan frozen on 2026-11-22']);
+    expect(planProblemsOn(judged(50), '2026-11-22')).toEqual([]);
+    expect(planProblemsOn(judged(19), '2026-11-21')).toEqual(['"## Judge check" plans 38 labelled outputs; R78 needs at least 40 for a plan frozen on 2026-11-21']);
+  });
+
+  test('the judge check takes one row per pilot arm: a repeated or unknown arm is a problem and does not count (outside-voice#1)', () => {
+    const card = '| card | 20 | 0.6 |';
+    expect(planProblemsOn(plan('pass').replace(card, [card, card, card, card].join('\n')), '2026-11-22')).toEqual([
+      '"## Judge check" has more than one row for arm "card": one row per pilot arm (R78)',
+      '"## Judge check" plans 40 labelled outputs; R78 needs at least 100 for a plan frozen on 2026-11-22',
+    ]);
+    expect(planProblemsOn(plan('pass').replace(card, `${card}\n| ghost | 60 | 0.6 |`), '2026-11-22')).toEqual([
+      '"## Judge check" has a row for arm "ghost", which is not a pilot arm: one row per pilot arm (R78)',
+      '"## Judge check" plans 40 labelled outputs; R78 needs at least 100 for a plan frozen on 2026-11-22',
+    ]);
+  });
+
+  test('the check passes each plan its freeze date', () => {
+    expect(checkPractices([entry('pass')], ROOT, { spend: true, grandfathered: new Set(), frozen: () => '2026-11-22' }).problems.map(p => p.problem)).toEqual(['"## Judge check" plans 40 labelled outputs; R78 needs at least 100 for a plan frozen on 2026-11-22']);
+    expect(checkPractices([entry('pass')], ROOT, { spend: true, grandfathered: new Set(), frozen: () => '2026-11-21' }).problems).toEqual([]);
+  });
+
+  test('a plan freezes when the commit adding it reaches origin/main; until then it freezes no earlier than today', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-practices-freeze-'));
+    try {
+      const git = (...a: string[]) => spawnSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...a], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
+      const later = new Date('2030-06-01T12:00:00Z');
+      git('init', '-q');
+      writeFileSync(join(dir, 'plan.md'), '# plan\n');
+      expect(freezeDate('plan.md', dir, later)).toBe('2030-06-01');
+      git('add', 'plan.md');
+      git('commit', '-qm', 'Add the plan');
+      const committed = git('log', '-1', '--format=%cI').stdout.trim();
+      const day = new Date(committed).toISOString().slice(0, 10);
+      expect(freezeDate('plan.md', dir, later)).toBe(day);
+      writeFileSync(join(dir, 'other.md'), 'x\n');
+      git('add', 'other.md');
+      git('commit', '-qm', 'Another commit');
+      git('update-ref', 'refs/remotes/origin/main', 'HEAD~1');
+      expect(freezeDate('plan.md', dir, later)).toBe(day);
+      git('update-ref', 'refs/remotes/origin/main', 'HEAD~1');
+      writeFileSync(join(dir, 'branch.md'), '# a plan on a branch\n');
+      git('add', 'branch.md');
+      git('commit', '-qm', 'A plan not yet on main');
+      expect(freezeDate('branch.md', dir, later)).toBe('2030-06-01');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('a plan merged onto main freezes at the merge, whatever date its branch commit carries', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-practices-merge-'));
+    try {
+      const git = (date: string, ...a: string[]) => spawnSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...a], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } });
+      const text = plan('pass');
+      git('2026-11-01T12:00:00Z', 'init', '-q', '-b', 'main');
+      writeFileSync(join(dir, 'README.md'), 'x\n');
+      git('2026-11-01T12:00:00Z', 'add', 'README.md');
+      git('2026-11-01T12:00:00Z', 'commit', '-qm', 'Start');
+      git('2026-11-01T12:00:00Z', 'checkout', '-qb', 'prereg');
+      writeFileSync(join(dir, 'plan.md'), text);
+      git('2026-11-20T12:00:00Z', 'add', 'plan.md');
+      git('2026-11-20T12:00:00Z', 'commit', '-qm', 'Add the plan, dated before the rule');
+      git('2026-11-20T12:00:00Z', 'update-ref', 'refs/remotes/origin/main', 'main');
+      expect(freezeDate('plan.md', dir, new Date('2026-11-21T23:00:00Z'))).toBe('2026-11-21');
+      expect(planProblemsOn(text, freezeDate('plan.md', dir, new Date('2026-11-21T23:00:00Z')))).toEqual([]);
+      git('2026-11-22T01:00:00Z', 'checkout', '-q', 'main');
+      git('2026-11-22T01:00:00Z', 'merge', '-q', '--no-ff', '-m', 'Merge the plan', 'prereg');
+      git('2026-11-22T01:00:00Z', 'update-ref', 'refs/remotes/origin/main', 'main');
+      expect(freezeDate('plan.md', dir, new Date('2030-06-01T12:00:00Z'))).toBe('2026-11-22');
+      expect(planProblemsOn(text, freezeDate('plan.md', dir))).toEqual(['"## Judge check" plans 40 labelled outputs; R78 needs at least 100 for a plan frozen on 2026-11-22']);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 
@@ -134,7 +217,7 @@ describe('prereg.ts runs the practices check', () => {
         const bad = run(...mode);
         expect([mode, bad.status, bad.stderr]).toEqual([mode, 1, expect.stringContaining(`prereg-practices: new-plan: ${prereg}: no "## Eval loop" section`)]);
       }
-      copyFileSync(join(ROOT, 'pass', 'PREREGISTRATION.md'), join(dir, prereg));
+      writeFileSync(join(dir, prereg), plan('pass').replace('| plain | 20 | 0.6 |', '| plain | 50 | 0.6 |').replace('| card | 20 | 0.6 |', '| card | 50 | 0.6 |'));
       git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qam', 'State the practices');
       for (const mode of [[], ['--public']]) {
         const ok = run(...mode);

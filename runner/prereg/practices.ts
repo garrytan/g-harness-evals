@@ -13,7 +13,8 @@
  *   of `Arm`, `Arm budget` and `Pilot cap` (each cap above $0 and at most a tenth of its arm's budget, the arm budgets
  *   adding up to no more than the paid budget) and the fields `- Part under test ran:`, `- Tasks can be supplied:` and,
  *   with a model judge, `- Judge passes R78:` (R111); with a model judge, `## Judge check` with a table of `Arm`,
- *   `Labelled outputs` and `Kappa bar` that has a row for every pilot arm, at least 40 labelled outputs in all and a
+ *   `Labelled outputs` and `Kappa bar` that has one row for each pilot arm and no other, at least 40 labelled outputs in all (100 for a
+ *   plan frozen on or after 2026-11-22, the UTC date the commit adding it reached main; see freezeDate) and a
  *   bar of at least 0.6 (R78); and above $500 paid, `## Interim look` with `- Look at: <n> of <N> units` at half the
  *   units and `- Stop bounds:` (R113).
  *
@@ -32,6 +33,7 @@
  * runner/prereg/practices-grandfathered.json, never by date: their preregistrations are frozen or counted. The list is
  * pinned by its sha256 below, so it can't grow to wave a new plan through.
  */
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -42,8 +44,11 @@ export const GRANDFATHERED_SHA256 = 'd796f85b3340a685e3ef68dcb3f96236f6abd2f6c6e
 
 const QUICK_LOOK_MAX_USD = 100;
 const INTERIM_LOOK_ABOVE_USD = 500;
-const MIN_LABELLED = 40;
 const MIN_KAPPA = 0.6;
+/** R78's labelled-output floor: 40 for a plan frozen before JUDGE_100_FROM, 100 from that UTC date on (internal-task, 2026-11-21). */
+export const JUDGE_100_FROM = '2026-11-22';
+export const minLabelled = (frozen: string): number => (frozen >= JUDGE_100_FROM ? 100 : 40);
+const todayUtc = (now = new Date()): string => now.toISOString().slice(0, 10);
 
 export interface PracticeProblem {
   id: string;
@@ -114,7 +119,7 @@ function table(lines: string[]): Array<Map<string, string>> {
 }
 
 /** Problems with one Markdown preregistration's eval-loop practices; empty when it states them all. */
-export function planProblems(text: string): string[] {
+export function planProblems(text: string, frozen = todayUtc()): string[] {
   const s = sections(text);
   const loop = s.get('eval loop');
   if (!loop) return ['no "## Eval loop" section declaring Size (counted run or quick look), Paid budget and Model judge'];
@@ -175,8 +180,24 @@ export function planProblems(text: string): string[] {
           const n = number(r.get('labelled outputs'));
           if (n === null || n <= 0) problems.push(`"## Judge check" arm "${r.get('arm')}" plans no labelled outputs of its own: the judge is read per arm, not pooled (R78)`);
         }
-        const labelled = rows.reduce((n, r) => n + Math.max(number(r.get('labelled outputs')) ?? 0, 0), 0);
-        if (labelled < MIN_LABELLED) problems.push(`"## Judge check" plans ${labelled} labelled outputs; R78 needs at least ${MIN_LABELLED}`);
+        const pilotArms = new Set(arms.map(a => a.toLowerCase()));
+        const seen = new Set<string>();
+        const repeated = new Set<string>();
+        const counted: typeof rows = [];
+        for (const r of rows) {
+          const arm = r.get('arm')!.toLowerCase();
+          if (seen.has(arm)) {
+            if (!repeated.has(arm)) problems.push(`"## Judge check" has more than one row for arm "${r.get('arm')}": one row per pilot arm (R78)`);
+            repeated.add(arm);
+            continue;
+          }
+          seen.add(arm);
+          if (pilotArms.size && !pilotArms.has(arm)) { problems.push(`"## Judge check" has a row for arm "${r.get('arm')}", which is not a pilot arm: one row per pilot arm (R78)`); continue; }
+          counted.push(r);
+        }
+        const labelled = counted.reduce((n, r) => n + Math.max(number(r.get('labelled outputs')) ?? 0, 0), 0);
+        const floor = minLabelled(frozen);
+        if (labelled < floor) problems.push(`"## Judge check" plans ${labelled} labelled outputs; R78 needs at least ${floor} for a plan frozen on ${frozen}`);
         for (const r of rows) {
           const kappa = number(r.get('kappa bar'));
           if (kappa === null || kappa < MIN_KAPPA) problems.push(`"## Judge check" arm "${r.get('arm')}": the kappa bar must be at least ${MIN_KAPPA} (R78)`);
@@ -226,7 +247,20 @@ export function readGrandfathered(cwd = process.cwd()): Set<string> {
   return new Set((JSON.parse(bytes.toString('utf8')) as { experiments: string[] }).experiments);
 }
 
-export function checkPractices(entries: ManifestEntry[], cwd = process.cwd(), opts: { spend: boolean; grandfathered?: Set<string> }): PracticesResult {
+/** The UTC date a preregistration froze: the committer date of the commit on origin/main's first-parent line that added
+ *  it, so a squash merge or a merge commit dates it at the merge, never at a branch commit. A plan not yet committed, or
+ *  not yet on origin/main, freezes no earlier than today, so a pull request that waits across a rule change is checked by
+ *  the rule it will merge under. A clone with no origin/main (the public export) reads HEAD's first-parent line. */
+export function freezeDate(path: string, cwd = process.cwd(), now = new Date()): string {
+  const run = (args: string[]): string | null => {
+    try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; }
+  };
+  const ref = run(['rev-parse', '--verify', '--quiet', 'origin/main']) !== null ? 'origin/main' : 'HEAD';
+  const added = (run(['log', ref, '--first-parent', '--diff-filter=A', '--no-renames', '--format=%cI', '--', path]) ?? '').split('\n').filter(Boolean).pop();
+  return added ? new Date(added).toISOString().slice(0, 10) : todayUtc(now);
+}
+
+export function checkPractices(entries: ManifestEntry[], cwd = process.cwd(), opts: { spend: boolean; grandfathered?: Set<string>; frozen?: (path: string) => string }): PracticesResult {
   const old = opts.grandfathered ?? readGrandfathered(cwd);
   const isMd = (e: ManifestEntry) => e.preregistration.endsWith('.md');
   const folderOf = (e: ManifestEntry) => dirname(e.preregistration);
@@ -243,7 +277,8 @@ export function checkPractices(entries: ManifestEntry[], cwd = process.cwd(), op
       problems.push({ id: e.id, file: e.preregistration, problem: 'the preregistration is missing' });
       continue;
     }
-    for (const problem of planProblems(readFileSync(join(cwd, e.preregistration), 'utf8'))) problems.push({ id: e.id, file: e.preregistration, problem });
+    const frozen = (opts.frozen ?? ((path: string) => freezeDate(path, cwd)))(e.preregistration);
+    for (const problem of planProblems(readFileSync(join(cwd, e.preregistration), 'utf8'), frozen)) problems.push({ id: e.id, file: e.preregistration, problem });
   }
   const folders = [...new Set(fresh.filter(isMd).map(folderOf))].filter(f => !oldFolders.has(f)).sort();
   for (const folder of folders) problems.push(...resultsProblems(folder, cwd, opts.spend));
