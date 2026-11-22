@@ -152,8 +152,9 @@ export function mcpCall(verb: 'remember' | 'recall', body: Record<string, any>, 
     if (search && !state.found[verb] && !state.searched[conv + ':' + verb]) {
       state.searched[conv + ':' + verb] = true;
       const sp = search.schema?.properties ?? {};
-      const key = 'query' in sp ? 'query' : (search.schema?.required ?? []).find((k: string) => sp[k]?.type === 'string') ?? 'query';
-      return { call: { tool: { name: 'tool_search', custom: false }, command: '', args: { [key]: 'gbrain ' + verb } }, via: 'search', tool: null };
+      const key = 'query' in sp ? 'query' : (search.schema?.required ?? []).find((k: string) => sp[k]?.type === 'string' || sp[k]?.type === 'array') ?? 'query';
+      const q = 'gbrain ' + verb;
+      return { call: { tool: { name: 'tool_search', custom: false }, command: '', args: { [key]: sp[key]?.type === 'array' ? [q] : q } }, via: 'search', tool: null };
     }
     const id = state.found[verb] ?? 'mcp:gbrain:gbrain__' + verb;
     const props = tc.schema?.properties ?? {};

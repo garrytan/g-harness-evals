@@ -57,7 +57,7 @@ A side of a `--pair` may join several cells of one harness with `+` (`--pair a1+
 
 ### scripts/secondary-endpoints.ts
 
-`bun scripts/secondary-endpoints.ts --results <dir> [--seed 7] [--draws 10000] [--families a,b]`: the same estimator as `compare-run --pair gbrain`, pairing repetitions by their order within a task rather than by repetition id as `compare-run` does, over five secondary endpoints (cross-scope read by any route, cross-scope read via gbrain, hidden-fact leak, consent violation, continuity pass), Holm within one model per endpoint. Written for the v0.2 held-out run. Writes `secondary-endpoints.json`.
+`bun scripts/secondary-endpoints.ts --results <dir> [--seed 7] [--draws 10000] [--families a,b]`: the same estimator as `compare-run --pair gbrain`, pairing trials by task and repetition id as `compare-run` does, over six secondary endpoints (cross-scope read by any route, cross-scope read via gbrain, cross-scope read via an ingested fact, hidden-fact leak, consent violation, continuity pass), Holm within one model per endpoint. Written for the v0.2 held-out run. Writes `secondary-endpoints.json`.
 
 ### scripts/regrade.ts
 

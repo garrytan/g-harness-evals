@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { dropLock, type IndexLine, latestOf, notifications, type Plan, publish, readIndex, type Release, resultReason, selectJobs, takeLock, versionKey } from '../scripts/install-canary/canary.ts';
-import { classifyLine, foundId, lineCommand, MCP_ERROR, mcpArgs, PROVENANCE } from '../scripts/install-canary/fake-model.ts';
+import { classifyLine, foundId, lineCommand, MCP_ERROR, mcpArgs, mcpCall, PROVENANCE } from '../scripts/install-canary/fake-model.ts';
 import { blockAfter, EXPECTED, resolveRoute, stepOf, substitute } from '../scripts/install-canary/routes.ts';
 import { newFakeState } from '../scripts/install-canary/fake-model.ts';
 import { evaluateCase, gbrainCode, overall, SCHEMA, stableRelease, type TagResult, verdictFields } from '../scripts/install-canary/run-tag.ts';
@@ -261,6 +261,19 @@ describe('scripted model', () => {
     expect(foundId(t, 'remember')).toBe('mcp:gbrain:gbrain__remember');
     expect(foundId(t, 'recall')).toBe('mcp:gbrain:gbrain__recall');
     expect(foundId('nothing here', 'recall')).toBeNull();
+  });
+  test("Hermes's tool_search gets its queries array, and tool_call then names the tool it returned", () => {
+    const fn = (name: string, parameters: unknown) => ({ type: 'function', function: { name, parameters } });
+    const body = { tools: [
+      fn('tool_search', { type: 'object', properties: { queries: { type: 'array', items: { type: 'string' } } }, required: ['queries'] }),
+      fn('tool_call', { type: 'object', properties: { calls: { type: 'array' } }, required: ['calls'] }),
+    ] };
+    const state = newFakeState([]);
+    expect(mcpCall('remember', body, state, 'cat is Zed', 'save').call?.args).toEqual({ queries: ['gbrain remember'] });
+    state.found.remember = foundId('{"results":[{"query":"gbrain remember","matches":["mcp__gbrain__forget","mcp__gbrain__remember"]}]}', 'remember')!;
+    const next = mcpCall('remember', body, state, 'cat is Zed', 'save');
+    expect(next.via).toBe('tool_call');
+    expect(next.call?.args).toEqual({ calls: [{ name: 'mcp__gbrain__remember', arguments: { fact: 'cat is Zed', provenance: PROVENANCE } }] });
   });
   test('gbrain error envelopes are errors', () => {
     expect(MCP_ERROR.test('{ "error": "invalid_params", "message": "Missing required parameter: provenance" }')).toBe(true);

@@ -3,7 +3,7 @@
 //   bun scripts/secondary-endpoints.ts --results <results/<run-id>> [--seed 7] [--draws 10000] [--families a,b]
 //
 // For each (harness, config, model) with one gbrain cell and one none cell, the same trial-by-trial pairing as
-// scripts/compare-run.ts --pair gbrain (same task, repetitions matched by order within the task; trials that ended
+// scripts/compare-run.ts --pair gbrain (same task, same repetition id on both sides; trials that ended
 // model_error, infra_error or exam_fault excluded on both sides) over six endpoints, each 1 or 0 per trial:
 //   cross_scope_any      the trial failed no_cross_scope_reads by any route
 //   cross_scope_gbrain   the trial failed no_cross_scope_reads with evidence naming a gbrain read (a seq=<n> gbrain.<tool> line)
@@ -17,7 +17,8 @@
 // Estimator: task-clustered paired bootstrap for the interval (seed, draws), exact sign-flip over task clusters for p,
 // Holm within one model per endpoint. Writes secondary-endpoints.json beside trials.jsonl and prints the Markdown table.
 // A cell with no gbrain or none counterpart is skipped and named; a missing repetition is excluded on both sides with a
-// reason; an endpoint whose families have no trial in the run is reported as not computed instead of raising PairingError.
+// reason; an endpoint whose families have no trial in the run, or a harness pair with no repetition id eligible on both sides,
+// is reported as not computed instead of raising PairingError; a pair not computed stays in its model's Holm family at p = 1.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -96,12 +97,19 @@ for (const [, cs] of groups) {
 }
 if (!cellPairs.length) { console.error(`no (harness, model) with one gbrain cell and one without${skipped.length ? ': ' + skipped.join('; ') : ''}`); process.exit(2); }
 
-const repIndex = (t: TrialRecord) => Number(t.trial_id.split('/').at(-1)!.replace(/^r/, '')) || 0;
+const rep = (t: TrialRecord) => t.trial_id.split('/').at(-1)!;
 const byTask = (cell: string, scopeRows: TrialRecord[]) => {
-  const m = new Map<string, TrialRecord[]>();
-  for (const t of scopeRows.filter((t) => t.cell === cell)) m.set(t.task, [...(m.get(t.task) ?? []), t]);
-  for (const ts of m.values()) ts.sort((a, b) => repIndex(a) - repIndex(b));
+  const m = new Map<string, Map<string, TrialRecord>>();
+  for (const t of scopeRows.filter((t) => t.cell === cell)) {
+    const reps = m.get(t.task) ?? new Map<string, TrialRecord>();
+    if (reps.has(rep(t))) { console.error(`secondary-endpoints: ${cell} has two trials for ${t.task}/${rep(t)}`); process.exit(2); }
+    m.set(t.task, reps.set(rep(t), t));
+  }
   return m;
+};
+const repIds = (a: Map<string, TrialRecord>, b: Map<string, TrialRecord>) => {
+  const n = (r: string) => Number(r.replace(/^r/, '')) || 0;
+  return [...new Set([...a.keys(), ...b.keys()])].sort((x, y) => n(x) - n(y) || x.localeCompare(y));
 };
 const pts = (x: number) => `${x >= 0 ? '+' : ''}${(100 * x).toFixed(0)}`;
 
@@ -115,17 +123,17 @@ for (const e of ENDPOINTS) {
     lines.push('', `${LABEL[e]} (families ${fams!.join(', ')}): no trial in these families, not computed.`);
     continue;
   }
-  const stats = cellPairs.map((cp) => {
+  const notComputed: Array<{ harness: string; config: string | null; model: string; cell_none: string; cell_gbrain: string; reason: string; excluded: Array<{ id: string; reason: string }> }> = [];
+  const computed = cellPairs.map((cp) => {
     const a = byTask(cp.none, scopeRows), b = byTask(cp.gbrain, scopeRows);
     const tasks = [...new Set([...a.keys(), ...b.keys()])].sort();
     const obsA: Observation[] = [], obsB: Observation[] = [];
     const excluded: Array<{ id: string; reason: string }> = [];
     for (const task of tasks) {
-      const ta = a.get(task) ?? [], tb = b.get(task) ?? [];
-      const n = Math.max(ta.length, tb.length);
-      for (let i = 0; i < n; i++) {
-        const x = ta[i], y = tb[i];
-        const id = `${task}/${i + 1}`;
+      const ra = a.get(task) ?? new Map<string, TrialRecord>(), rb = b.get(task) ?? new Map<string, TrialRecord>();
+      for (const r of repIds(ra, rb)) {
+        const x = ra.get(r), y = rb.get(r);
+        const id = `${task}/${r.replace(/^r/, '')}`;
         if (!x || !y) { const reason = x ? 'no trial in the gbrain cell' : 'no trial in the none cell'; excluded.push({ id, reason }); obsA.push({ id, cluster: task, value: null, eligible: false, reason }); obsB.push({ id, cluster: task, value: null, eligible: false, reason }); continue; }
         const reason = EXCLUDED.has(x.termination) ? `none ${x.termination}` : EXCLUDED.has(y.termination) ? `gbrain ${y.termination}` : null;
         if (reason) excluded.push({ id, reason });
@@ -133,23 +141,26 @@ for (const e of ENDPOINTS) {
         obsB.push({ id, cluster: task, value: reason ? null : value(y, e), eligible: !reason, reason: reason ?? undefined });
       }
     }
+    if (!obsA.some((o, i) => o.eligible && obsB[i]!.eligible)) { notComputed.push({ harness: cp.harness, config: cp.config, model: cp.model, cell_none: cp.none, cell_gbrain: cp.gbrain, reason: 'no repetition id with an eligible trial on both sides', excluded }); return null; }
     const pairing = pairObservations(obsA, obsB);
     const d = clusteredPairedDelta(pairing.pairs, { seed, draws });
     const count = (cell: string) => scopeRows.filter((t) => t.cell === cell).reduce((s, t) => s + value(t, e), 0);
     const n = (cell: string) => scopeRows.filter((t) => t.cell === cell).length;
     return { endpoint: e, harness: cp.harness, config: cp.config, model: cp.model, cell_none: cp.none, cell_gbrain: cp.gbrain, positive: { none: count(cp.none), gbrain: count(cp.gbrain) }, n_trials: { none: n(cp.none), gbrain: n(cp.gbrain) }, delta: d.delta, ci95: d.ci95, p: d.p_two_sided, p_method: d.p_method, n_clusters: d.n_clusters, n_pairs: d.n_pairs, excluded };
   });
+  const stats = computed.filter((s) => s !== null);
   const holm = new Array<number>(stats.length);
   for (const model of new Set(stats.map((s) => s.model))) {
     const idx = stats.map((s, i) => (s.model === model ? i : -1)).filter((i) => i >= 0);
-    const adj = holmAdjusted(idx.map((i) => stats[i]!.p));
+    const adj = holmAdjusted([...idx.map((i) => stats[i]!.p), ...notComputed.filter((s) => s.model === model).map(() => 1)]);
     idx.forEach((i, k) => { holm[i] = adj[k]!; });
   }
-  out.push({ endpoint: e, label: LABEL[e], families: fams, holm_family: 'the harness pairs of one model', comparisons: stats.map((s, i) => ({ ...s, holm_p: holm[i] })) });
+  out.push({ endpoint: e, label: LABEL[e], families: fams, holm_family: 'the harness pairs of one model', comparisons: stats.map((s, i) => ({ ...s, holm_p: holm[i] })), ...(notComputed.length ? { not_computed: notComputed } : {}) });
   lines.push('', `${LABEL[e]}${fams ? ` (families ${fams.join(', ')})` : ' (all tasks)'}:`, '',
     '| Harness | Model | none | gbrain-told | gbrain minus none (points) [95% CI, task-clustered] | p (two-sided, sign-flip) | Holm-adjusted p | Tasks | Pairs | Excluded |',
     '|---|---|---|---|---|---|---|---|---|---|',
     ...stats.map((s, i) => `| ${s.harness}${s.config ? ' ' + s.config : ''} | ${s.model} | ${s.positive.none} / ${s.n_trials.none} | ${s.positive.gbrain} / ${s.n_trials.gbrain} | ${pts(s.delta)} [${s.ci95 ? `${pts(s.ci95[0])}, ${pts(s.ci95[1])}` : 'n/a'}] | ${s.p_method === 'degenerate' ? 'degenerate (no discordant pair)' : `${s.p.toFixed(3)} (${s.p_method})`} | ${s.p_method === 'degenerate' ? 'n/a' : holm[i]!.toFixed(3)} | ${s.n_clusters} | ${s.n_pairs} | ${s.excluded.length} |`));
+  for (const s of notComputed) lines.push('', `Not computed for ${s.harness}${s.config ? ' ' + s.config : ''} on ${s.model}: ${s.reason} (${s.excluded.length} excluded).`);
 }
 writeFileSync(join(results, 'secondary-endpoints.json'), JSON.stringify({ seed, draws, families, skipped, endpoints: out }, null, 1) + '\n');
 console.log(lines.join('\n'));
