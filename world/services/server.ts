@@ -41,6 +41,8 @@ export interface WorldServerOptions {
   gbrain?: GbrainUpstream | null;
   /** v0.4 (internal-task): the task's [world] retire slugs, hidden from every read surface from construction on. */
   retire?: readonly string[];
+  /** Wall-clock delays before each socket redelivery (slack/socket.ts); absent, Slack's 3 s, 1 min and 5 min. */
+  socketRetryDelaysMs?: number[];
   /** Agent-set timers on the simulation clock (world/services/clock/timers.ts); absent or false, no timer tool exists. */
   timers?: boolean;
 }
@@ -89,7 +91,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
     ...(opts.timers ? { timers: true } : {}),
   });
   for (const a of credentials.actors) service.requireMember(a.member);
-  const socket = new SocketHub(service);
+  const socket = new SocketHub(service, opts.socketRetryDelaysMs ? { retryDelaysMs: opts.socketRetryDelaysMs } : {});
 
   const tokens = new Map<string, Member>();
   for (const a of credentials.actors) tokens.set(a.token, service.requireMember(a.member));
@@ -203,6 +205,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
         const resolved = service.expire(body.turn as number, windows as Array<{ turn: number; from_ts: string; to_ts: string | null }>);
         return Response.json({ ok: true, windows: resolved });
       }
+      if (path === '/admin/socket/redeliver' && req.method === 'POST') return Response.json({ ok: true, sent: socket.redeliverNow() });
       if (path === '/admin/timers' && req.method === 'GET') {
         if (!service.timers) return Response.json({ ok: false, error: 'timers are not enabled in this world' }, { status: 404 });
         const until = url.searchParams.get('due_by');
@@ -217,7 +220,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
         if (!r) return Response.json({ ok: false, error: `no timer ${body.id}` }, { status: 404 });
         return Response.json({ ok: true, ...r });
       }
-      if (path === '/admin/socket') return Response.json({ connections: socket.connections, unacked: socket.unacked.size });
+      if (path === '/admin/socket') return Response.json({ connections: socket.connections, unacked: socket.unacked.size, redelivered: socket.redelivered, dropped: socket.dropped });
       if (path === '/admin/gbrain/requester' && req.method === 'POST') {
         // internal-task-a: the runner names the requesting member at each turn's start and clears it when the turns are over. internal-task-b: it
         // also names the turn's channel, so the tap can send a remember made in a shared channel under that channel's ingest token.
@@ -259,7 +262,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
     gbrain: () => gbrain,
     gbrainRequester: () => gbrainRequester,
     gbrainIngest: () => ingest,
-    stop: () => { ingest?.stop(); server.stop(true); },
+    stop: () => { ingest?.stop(); socket.stop(); server.stop(true); },
   };
 }
 

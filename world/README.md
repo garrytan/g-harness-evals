@@ -38,7 +38,8 @@ tokens, and serves on `127.0.0.1:8790`:
 | `GET /.well-known/oauth-protected-resource[/gbrain]`, `GET /.well-known/oauth-authorization-server`, `POST /oauth/token` | an OAuth client, by client id and secret | internal-task: the client-credentials issuer (below); exists only when the gbrain upstream has a `provider` block, else 404 |
 | `GET /clock` | anyone | the simulation clock |
 | `POST /clock/advance` | runner, admin token | `{"seconds": N}` or `{"to": "<ISO instant>"}`, forward only |
-| `GET /admin/snapshot`, `GET /admin/events`, `POST /admin/fence`, `GET /admin/socket` | runner, admin token | state for graders, the in-memory event list, stop accepting writes (contract item 7), socket connection count |
+| `GET /admin/snapshot`, `GET /admin/events`, `POST /admin/fence`, `GET /admin/socket` | runner, admin token | state for graders, the in-memory event list, stop accepting writes (contract item 7), socket connection count with `unacked`, `redelivered` and `dropped` envelope counts |
+| `POST /admin/socket/redeliver` | runner and tests, admin token | send every un-acknowledged socket envelope's next retry now instead of waiting for its timer; answers `{ok, sent}` (below, Persistence) |
 | `POST /admin/gbrain/requester` | runner, admin token | `{"member": "<id>"}` or `{"member": null}`, the member whose gbrain token the tap presents under member scope (below); logged as a `gbrain.requester` admin event |
 | `POST /admin/expire` | runner, admin token | v0.4: `{"turn": N, "windows": [{"turn": k, "from_ts": "<ts>", "to_ts": "<ts>" or null}]}`, hide every message inside each window from every read surface (below); logged as an `admin.expire` admin event |
 | `GET /admin/timers`, `POST /admin/timers/fire` | runner, admin token | only in a world with timers on (a task with `[clock] timers = true`, docs/tasks.md "Timers"), else 404: list every agent-set timer, or those due by `?due_by=<ISO instant>`; `{"id", "turn"}` marks one fired after its timer turn answered |
@@ -262,8 +263,9 @@ bot belongs to, plus an `app_mention` envelope when the text mentions `<@BOTID>`
                "event": { "type": "message", "channel": "C...", "channel_type": "channel", "user": "U...", "text": "...", "ts": "1791986400.000123", "event_ts": "1791986400.000123" } } }
 ```
 
-The client acknowledges with `{"envelope_id": "..."}`. Envelopes are not replayed: an event raised while no
-client is connected is dropped, as in real Socket Mode, so the runner checks `GET /admin/socket` shows a
+The client acknowledges with `{"envelope_id": "..."}`. An envelope not acknowledged in time is sent again, as
+Slack retries (see Persistence below), but an event raised while no client is connected is dropped, as in real
+Socket Mode, so the runner checks `GET /admin/socket` shows a
 connection before driving actor messages. The bot's own posts are delivered too, with `bot_id`, as Slack
 does. It is a websocket, not long polling.
 
@@ -291,7 +293,11 @@ client SDK over both transports.
   acting for several actors in one trial; the multi-user authority mapping (TODOS, eng-r2-native-2 and
   eng-r2-outside-1) decides that.
 - **Persistence.** State lives in the process; the snapshot endpoint is the hand-off to graders. There is no
-  SQLite copy yet, and no replay of socket envelopes.
+  SQLite copy yet. Socket envelopes are redelivered the way Slack's Events API retries them (slack/socket.ts):
+  an envelope not acknowledged within 3 s comes again with `retry_attempt` 1 and `retry_reason` "timeout", then
+  after 1 min and 5 min, keeping its `envelope_id` and `event_id`, and is dropped after the third retry or when no
+  client is left to receive it or its message's turn has expired (`/admin/expire`); an event raised while no client is connected is still not queued. `POST /admin/socket/redeliver` sends every pending retry at once, and `GET /admin/socket`
+  counts `redelivered` and `dropped` envelopes.
 - **Thread fidelity.** Threads are flat replies with `thread_ts`; reactions, edits, files and reply counts are
   not modelled (v0.4 expiry hides whole turn windows, not single messages), and `search.messages` is a substring match.
 - **Egress and isolation.** The admin endpoints are protected by a token only; the per-trial network
