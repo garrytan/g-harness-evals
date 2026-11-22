@@ -12,6 +12,9 @@
 # head is installed: every changed path is on its list of human-facing pages, none of them pinned) skips the checks
 # job's typecheck and tests and runs the docs checks instead (the two tests that read the README and every Markdown page,
 # the link and hub-fragment checks), and the job reports success, so every required check reports.
+# main's ruleset requires the ci-result job, which always runs and fails when any job above failed or was cancelled:
+# GitHub counts a skipped required job as passed, so docker-e2e (skipped when no gbrain path changed, and also when the
+# changes job fails) is never required by name.
 # Paid runs (live harness trials) are manual, run on a trusted pushed SHA with a
 # reserved budget, and land receipts in the repo. Actions are pinned to commit SHAs;
 # Bun is pinned by bun-version.
@@ -278,3 +281,19 @@ jobs:
       - name: Build log on failure
         if: failure()
         run: tail -60 /tmp/gbrain-build/build.log || true
+
+  # The one result main's ruleset requires from this workflow. It runs even when a job it needs failed, and fails when any
+  # of them failed or was cancelled; a skipped job passes here only because it was skipped by its own condition, since a
+  # job skipped by a failed dependency leaves that dependency's failure in the list.
+  ci-result:
+    needs: [checks, verify, prereg, public-export, changes, docker-e2e]
+    if: always()
+    runs-on: ${{ github.repository == 'garrytan/harness-evals' && 'ubicloud-standard-2-ubuntu-2404' || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - name: Fail when a job above failed or was cancelled
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if printf '%s' "$RESULTS" | grep -qE '"(failure|cancelled)"'; then echo "a required job failed or was cancelled"; exit 1; fi
