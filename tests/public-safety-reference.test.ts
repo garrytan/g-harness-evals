@@ -5,17 +5,18 @@
 // reference is read from a commit the same way the pack builder reads a checkout; fails_when=a file sharing 20 distinct
 // 8-word shingles with the reference is not counted at 20, a file sharing 19 is, a JSON-escaped copy is missed, a
 // shingle a world/ file or another harness capture holds still counts, a user-role blob or a nested file is read as
-// reference, the git reader and the checkout reader disagree, or a commit with no reference files yields reference
-// text; why_new=the export caught the prompt only through three exact marker lines (internal-task); seam=lib/reference.ts on
-// throwaway git repositories; no_claim=the export gate itself (tests/public-export-cli.test.ts, private repository
-// only) and the pack (tests/private-admission-pack.test.ts).
+// reference, the git reader and the checkout reader disagree, the overlap scan splits or lower-cases a non-ASCII word
+// differently from words(), or a commit with no reference files yields reference text; why_new=the export caught the
+// prompt only through three exact marker lines (internal-task); seam=lib/reference.ts on throwaway git repositories;
+// no_claim=the export gate itself (tests/public-export-cli.test.ts, private repository only) and the pack
+// (tests/private-admission-pack.test.ts).
 import { afterAll, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { dropCommon, isReferencePath, overlap, PRESET_PROMPT, reference, referenceFiles, referenceFilesAt, referenceShingles, referenceTexts, SHINGLE_K, SHINGLE_THRESHOLD } from '../scripts/public-safety/lib/reference.ts';
+import { dropCommon, isReferencePath, overlap, PRESET_PROMPT, reference, referenceFiles, referenceFilesAt, referenceShingles, referenceTexts, shingles, SHINGLE_K, SHINGLE_THRESHOLD, words } from '../scripts/public-safety/lib/reference.ts';
 import { repo } from './public-safety-fixture.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'he-public-safety-reference-'));
@@ -101,4 +102,17 @@ test('shingles another harness capture or world/ also holds are dropped, so they
   expect(capture.count).toBe(40 - 30);
   const claude = await shared({ [CC + 'z.json']: JSON.stringify({ text: PROMPT.slice(0, 30).join(' ') }) }, text);
   expect(claude.count).toBe(plain.count);
+});
+
+test('overlap splits and lower-cases words exactly as words() does, for non-ASCII and astral letters, digits and a lone surrogate', () => {
+  const text = 'Ⅻ Kelvin İstanbul ΟΔΟΣ 𝐀𝐁 straße Ａｂｃ 42 x\uD800y the END';
+  expect(words(text).length).toBe(12);
+  const ref = new Set<string>();
+  shingles(text, ref);
+  const set = new Set<string>();
+  expect(overlap('lead in: ' + text, reference(ref), set)).toBe('lead in: '.length);
+  expect([...set].sort()).toEqual([...ref].sort());
+  const changed = text.replace('ΟΔΟΣ', 'ΟΔΟ'), one = new Set<string>();
+  expect(overlap(changed, reference(ref), one)).toBe(changed.indexOf('𝐀𝐁'));
+  expect(one.size).toBe(1);
 });

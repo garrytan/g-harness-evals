@@ -157,32 +157,67 @@ export function jsonUnescaped(text: string): string {
   return text.replace(/\\(u[0-9a-fA-F]{4}|[\s\S])/g, (m, e: string) => (e.length === 5 ? String.fromCharCode(parseInt(e.slice(1), 16)) : ' ').padEnd(m.length, ' '));
 }
 
-export interface Reference { shingles: Set<string>; vocab: Set<string> }
+// FNV-1a over a word's UTF-16 code units, and an ordered mix of 8 such word hashes. They only pick which windows to
+// join into a shingle string; a match is always the exact string found in the reference set.
+const wordHash = (w: string) => { let h = 2166136261; for (let i = 0; i < w.length; i++) h = Math.imul(h ^ w.charCodeAt(i), 16777619); return h >>> 0; };
+const windowHash = (hs: number[], from: number) => { let x = 0; for (let j = 0; j < SHINGLE_K; j++) x = (Math.imul(x, 0x9e3779b1) + hs[(from + j) % SHINGLE_K]!) >>> 0; return x; };
+
+export interface Reference { shingles: Set<string>; vocab: Set<string>; vocabHashes: Set<number>; shingleHashes: Set<number> }
 
 export function reference(shingleSet: Set<string>): Reference {
   const vocab = new Set<string>();
-  for (const s of shingleSet) for (const w of s.split(' ')) vocab.add(w);
-  return { shingles: shingleSet, vocab };
+  const shingleHashes = new Set<number>();
+  for (const s of shingleSet) {
+    const ws = s.split(' ');
+    for (const w of ws) vocab.add(w);
+    shingleHashes.add(windowHash(ws.map(wordHash), 0));
+  }
+  return { shingles: shingleSet, vocab, vocabHashes: new Set([...vocab].map(wordHash)), shingleHashes };
+}
+
+const WORD_CHAR = /^[\p{L}\p{N}]$/u;
+const wordCodePoints = new Map<number, boolean>();
+
+// The UTF-16 length of the WORD character at i, or 0 when the code point there is not one.
+function wordCharAt(text: string, i: number): number {
+  const c = text.charCodeAt(i);
+  if (c < 128) return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) ? 1 : 0;
+  const cp = text.codePointAt(i)!;
+  let yes = wordCodePoints.get(cp);
+  if (yes === undefined) { yes = WORD_CHAR.test(String.fromCodePoint(cp)); wordCodePoints.set(cp, yes); }
+  return yes ? (cp > 0xffff ? 2 : 1) : 0;
 }
 
 // Adds every reference shingle a text holds to shared, and returns the character offset of the first one this text added
-// (-1 if none), so a file read in several leaves counts its distinct shared shingles once. Only a window of 8 reference
-// words can match, so no other window is joined.
+// (-1 if none), so a file read in several leaves counts its distinct shared shingles once. Words are WORD runs lower-cased,
+// as in words(); only a window of 8 reference words whose hashes match a reference shingle is joined and compared.
 export function overlap(text: string, ref: Reference, shared: Set<string>): number {
-  const ring: string[] = new Array(SHINGLE_K).fill('');
-  const at: number[] = new Array(SHINGLE_K).fill(0);
-  let first = -1, run = 0, n = 0;
-  for (const m of text.matchAll(WORD)) {
-    const w = m[0].toLowerCase();
-    ring[n % SHINGLE_K] = w;
-    at[n % SHINGLE_K] = m.index!;
+  const start: number[] = new Array(SHINGLE_K).fill(0);
+  const end: number[] = new Array(SHINGLE_K).fill(0);
+  const hash: number[] = new Array(SHINGLE_K).fill(0);
+  let first = -1, run = 0, n = 0, i = 0;
+  while (i < text.length) {
+    let width = wordCharAt(text, i);
+    if (!width) { i++; continue; }
+    const from = i;
+    let h = 2166136261, ascii = true;
+    while (width) {
+      const c = text.charCodeAt(i);
+      if (c >= 128) ascii = false;
+      else h = Math.imul(h ^ (c >= 65 && c <= 90 ? c + 32 : c), 16777619);
+      i += width;
+      width = i < text.length ? wordCharAt(text, i) : 0;
+    }
+    start[n % SHINGLE_K] = from;
+    end[n % SHINGLE_K] = i;
+    hash[n % SHINGLE_K] = ascii ? h >>> 0 : wordHash(text.slice(from, i).toLowerCase());
+    run = ref.vocabHashes.has(hash[n % SHINGLE_K]!) ? run + 1 : 0;
     n++;
-    run = ref.vocab.has(w) ? run + 1 : 0;
-    if (run < SHINGLE_K) continue;
-    let s = ring[n % SHINGLE_K]!;
-    for (let i = 1; i < SHINGLE_K; i++) s += ' ' + ring[(n + i) % SHINGLE_K];
+    if (run < SHINGLE_K || !ref.shingleHashes.has(windowHash(hash, n))) continue;
+    let s = '';
+    for (let j = 0; j < SHINGLE_K; j++) { const k = (n + j) % SHINGLE_K; s += (j ? ' ' : '') + text.slice(start[k], end[k]).toLowerCase(); }
     if (!ref.shingles.has(s) || shared.has(s)) continue;
-    if (first < 0) first = at[n % SHINGLE_K]!;
+    if (first < 0) first = start[n % SHINGLE_K]!;
     shared.add(s);
   }
   return first;
