@@ -7,13 +7,14 @@ import { z } from 'zod';
 import { lifecycleProblems } from '../contracts.ts';
 
 export const FAMILIES = ['scope_isolation', 'shared_channel', 'org_security', 'handoff', 'scheduled', 'continuity', 'synthesis', 'corrections', 'approval_relay', 'product_probe',
-  'expired_recall', 'memory_scope', 'session_synthesis', 'retired_record'] as const;
+  'expired_recall', 'memory_scope', 'session_synthesis', 'retired_record', 'week'] as const;
 export type Family = (typeof FAMILIES)[number];
 
 export const PREDICATE_KINDS = [
   'reply_matches', 'reply_not_matches', 'message_posted', 'no_message_posted', 'no_cross_scope_reads', 'event', 'no_event',
   'approval_requested', 'no_write_before', 'calendar_created', 'draft_created', 'digest_posted', 'custom',
-  'fact_readable_at_ask',
+  'told_by', 'timer_set', 'max_bot_posts', 'no_repeat_posts',
+  'fact_readable_at_ask', 'relay_private',
 ] as const;
 export type PredicateKind = (typeof PREDICATE_KINDS)[number];
 
@@ -31,6 +32,7 @@ export function compileRegex(pattern: string): RegExp {
 const memberId = z.string().regex(/^[a-z][a-z0-9-]*$/, 'member ids are lower-case kebab-case, for example dana-okafor');
 const regexString = z.string().min(1).refine((s) => { try { compileRegex(s); return true; } catch { return false; } }, 'not a valid regular expression');
 const turnRef = z.number().int().min(1);
+const isoInstant = z.string().refine((s) => /T\d\d:\d\d/.test(s) && Number.isFinite(Date.parse(s)), 'an ISO-8601 instant with a time, for example 2026-10-15T09:15:00-05:00');
 
 const base = { id: z.string().min(1), kind: z.enum(PREDICATE_KINDS), capability: z.string().min(1).optional() };
 
@@ -50,7 +52,15 @@ const predicateSchema = z.discriminatedUnion('kind', [
   z.object({ ...base, kind: z.literal('draft_created'), turn: turnRef, to: z.string().min(1), pattern: regexString, only_recipients: z.array(z.string().min(1)).min(1).optional() }).strict(),
   z.object({ ...base, kind: z.literal('digest_posted'), channel: z.string().min(1), after_sim_ts: z.string().min(1), pattern: regexString, sources: z.array(z.string().min(1)).min(1), not_pattern: regexString.optional() }).strict(),
   z.object({ ...base, kind: z.literal('custom'), module: z.string().min(1) }).strict(),
-  z.object({ ...base, kind: z.literal('fact_readable_at_ask') }).strict(),
+  /** Week events (docs/tasks.md): the bot told a conversation something by a simulated time; a timer was set with a due time
+   *  in range; the bot posted at most max messages; no two bot posts in one conversation repeat each other. */
+  z.object({ ...base, kind: z.literal('told_by'), channel: z.string().min(1), pattern: regexString, by_sim_ts: isoInstant, after_sim_ts: isoInstant.optional() }).strict(),
+  z.object({ ...base, kind: z.literal('timer_set'), turns: z.array(turnRef).min(1).optional(), due_after: isoInstant, due_before: isoInstant, reason_pattern: regexString.optional() }).strict(),
+  z.object({ ...base, kind: z.literal('max_bot_posts'), channel: z.string().min(1).optional(), max: z.number().int().min(0) }).strict(),
+  z.object({ ...base, kind: z.literal('no_repeat_posts'), channel: z.string().min(1).optional(), threshold: z.number().gt(0).max(1).optional() }).strict(),
+  z.object({ ...base, kind: z.literal('fact_readable_at_ask'), needed: z.array(z.number().int().min(0)).min(1).optional() }).strict(),
+  /** A fact one member asked the bot to relay to another stays in their two DMs: no bot post anywhere else matches pattern. */
+  z.object({ ...base, kind: z.literal('relay_private'), pattern: regexString, allowed: z.array(z.string().min(1)).min(1) }).strict(),
 ]);
 
 export type Predicate = z.infer<typeof predicateSchema>;
@@ -67,6 +77,10 @@ const turnSchema = z.object({
   /** v0.4 (internal-task): before this turn the runner expires every message inside these earlier turns' windows (runner/contracts.ts,
    *  lifecycleProblems for the shape rules). */
   expire_turns: z.array(z.number()).optional(),
+  /** Week events ([clock] timers tasks only, docs/tasks.md "Week events"). */
+  burst: z.array(z.object({ actor: memberId.optional(), text: z.string().min(1) }).strict()).min(1).optional(),
+  redeliver: z.literal(true).optional(),
+  restart_before: z.literal(true).optional(),
 }).strict();
 
 /** v0.4 (internal-task): one [[mechanism.needed]] entry (MechanismFact in runner/contracts.ts). Values are checked by lifecycleProblems,
@@ -94,9 +108,11 @@ const taskSchema = z.object({
   world: z.object({ retire: z.array(z.string()) }).strict().optional(),
   /** Agent-set timers on the simulation clock (docs/tasks.md, "Timers"): the world offers timer_set, timer_list and
    *  timer_cancel, and the runner delivers each timer as a turn when the clock passes it; end_advance_s moves the clock once
-   *  more after the last turn so timers due then fire too. Not combined with expire_turns. */
+   *  more after the last turn so timers due then fire too. expire_turns never hides a message posted in a timer turn. */
   clock: z.object({ timers: z.literal(true), end_advance_s: z.number().int().min(0).optional() }).strict().optional(),
-}).strict().refine((t) => !t.clock || !t.turns.some((x) => x.expire_turns), 'expire_turns cannot be combined with [clock] timers');
+}).strict().refine((t) => !!t.clock || !t.turns.some((x) => x.burst || x.redeliver || x.restart_before), 'burst, redeliver and restart_before need [clock] timers = true')
+  .refine((t) => !t.turns.some((x) => x.channel === 'dm' && x.burst?.some((b) => b.actor !== undefined && b.actor !== x.actor)), "a DM burst comes from the turn's own actor")
+  .refine((t) => !t.turns.some((x) => x.burst?.some((b) => b.actor !== undefined && !t.actors.includes(b.actor))), 'every burst actor is in actors');
 
 export type Task = z.infer<typeof taskSchema>;
 export type Turn = z.infer<typeof turnSchema>;
@@ -164,6 +180,7 @@ export function parseTask(text: string, file = 'task.toml'): Task {
     if (p.kind !== 'fact_readable_at_ask') continue;
     if (!task.predicates.secondary?.includes(p.id)) problems.push(`predicate "${p.id}": fact_readable_at_ask never grades; list it in predicates.secondary`);
     if (!task.mechanism?.needed) problems.push(`predicate "${p.id}": fact_readable_at_ask reads the [[mechanism.needed]] facts and the task has none`);
+    for (const i of p.needed ?? []) if (i >= (task.mechanism?.needed?.length ?? 0)) problems.push(`predicate "${p.id}": needed = ${i} but [[mechanism.needed]] has ${task.mechanism?.needed?.length ?? 0} fact(s)`);
   }
   if (task.mechanism) {
     for (const [field, n] of [['needed_turn', task.mechanism.needed_turn], ['superseded_turn', task.mechanism.superseded_turn]] as const) {

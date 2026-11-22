@@ -180,8 +180,8 @@ export class TrialWorld {
 
   /** v0.4 (internal-task): expire earlier turns' windows through the admin route, before the turn that carries expire_turns; the world
    *  logs it as an admin.expire event. Returns how many windows held messages. */
-  async expire(turn: number, windows: ExpiryWindowRequest[]): Promise<number> {
-    const res = await this.admin('/admin/expire', { method: 'POST', body: JSON.stringify({ turn, windows }) });
+  async expire(turn: number, windows: ExpiryWindowRequest[], keepTs: readonly string[] = []): Promise<number> {
+    const res = await this.admin('/admin/expire', { method: 'POST', body: JSON.stringify({ turn, windows, ...(keepTs.length ? { keep_ts: keepTs } : {}) }) });
     const body = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` })) as { ok: boolean; windows?: unknown[]; error?: string };
     if (!body.ok) throw new RunnerError('HE-WORLD-001', `the world refused to expire turn ${turn}'s windows: ${body.error}`);
     return body.windows?.length ?? 0;

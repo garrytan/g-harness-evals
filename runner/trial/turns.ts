@@ -10,10 +10,14 @@
 // member message. The adapter's answer with exit 0 is the acknowledgement: only then is the timer marked fired, so a repeated
 // tick never fires it twice and a timer whose turn failed or never answered stays pending. Timer turns go to timer-turns.jsonl, never turns.jsonl,
 // and a reply of exactly NOTHING_TO_SAY is not posted (reply_withheld 'no_reply'). Without [clock] timers nothing here changes.
+// Week events (docs/tasks.md "Week events", [clock] timers tasks only): restart_before stops the harness and starts it again on
+// the same workspace and state before the turn; burst posts more messages in the turn's conversation just before its own, all
+// answered in the one turn; redeliver hands the same request again after the answer, with retry_attempt 1, and writes that
+// window to redelivery-turns.jsonl.
 
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { expiryWindows, type TimerTurnWindow, type TurnRequest, type TurnResponse, type TurnWindow } from '../contracts.ts';
+import { expiryWindows, type RedeliveryTurnWindow, type TimerTurnWindow, type TurnRequest, type TurnResponse, type TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { HarnessGone, type Harness, awaitResponse, writeRequest } from './harness.ts';
 import { composePrompt, TIMER_PROMPT_PATH, type TaskSpec } from './task.ts';
@@ -31,6 +35,8 @@ export interface TurnLoopOptions {
   log: (line: string) => void;
   /** Called with the turn number and its exit as soon as the adapter's response for it arrives, before the next turn's request is written. */
   onAnswered?: (turn: number, exit: TurnWindow['exit']) => void;
+  /** Week events: how long a restart_before restart gives the old harness to stop and the new one to be ready. */
+  restart?: { graceMs: number; readyTimeoutMs: number };
 }
 
 export interface TurnLoopResult {
@@ -40,7 +46,14 @@ export interface TurnLoopResult {
   /** Why the loop ended before the last turn, if it did. */
   ended_early: 'timeout' | 'harness_gone' | 'exam_fault' | null;
   error?: string;
+  /** Week events; empty or 0 on any other task. */
+  redelivery_windows: RedeliveryTurnWindow[];
+  restarts: Array<{ before_turn: number; wall_ms: number }>;
+  burst_messages: number;
 }
+
+type WeekCounts = Pick<TurnLoopResult, 'redelivery_windows' | 'restarts' | 'burst_messages'>;
+type LoopEnd = Omit<TurnLoopResult, keyof WeekCounts>;
 
 const VALID_EXITS = new Set([0, 2, 3, 124]);
 /** Most timer turns one clock move may deliver; past it the rest stay pending and the move completes. */
@@ -48,6 +61,11 @@ export const MAX_TIMER_TURNS_PER_ADVANCE = 20;
 export const NOTHING_TO_SAY = 'NOTHING_TO_SAY';
 
 export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
+  const week: WeekCounts = { redelivery_windows: [], restarts: [], burst_messages: 0 };
+  return { ...await turnLoop(o, week), ...week };
+}
+
+async function turnLoop(o: TurnLoopOptions, week: WeekCounts): Promise<LoopEnd> {
   const windows: TurnWindow[] = [];
   const timerWindows: TimerTurnWindow[] = [];
   const turnsLog = join(o.turnsDir, '..', 'turns.jsonl');
@@ -56,11 +74,11 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
   const timers = !!o.task.clock?.timers;
   const timerPrompt = timers ? readFileSync(TIMER_PROMPT_PATH, 'utf8') : '';
   let delivery = 0;
-  const done = (ended_early: TurnLoopResult['ended_early'], error?: string): TurnLoopResult => ({ windows, timer_windows: timerWindows, ended_early, ...(error ? { error } : {}) });
+  const done = (ended_early: TurnLoopResult['ended_early'], error?: string): LoopEnd => ({ windows, timer_windows: timerWindows, ended_early, ...(error ? { error } : {}) });
 
   // Move the clock forward by `seconds`, delivering each timer due on the way first. Returns a result only when a timer turn
   // ended the trial early.
-  const advance = async (seconds: number, afterTurn: number, phase?: 'end'): Promise<TurnLoopResult | null> => {
+  const advance = async (seconds: number, afterTurn: number, phase?: 'end'): Promise<LoopEnd | null> => {
     const target = new Date(Date.parse(o.world.simNow()) + seconds * 1000).toISOString();
     const tried = new Set<string>();
     for (let fired = 0; fired < MAX_TIMER_TURNS_PER_ADVANCE; fired++) {
@@ -78,11 +96,12 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     return null;
   };
 
-  const deliverTimer = async (t: Awaited<ReturnType<TrialWorld['dueTimers']>>[number], afterTurn: number, phase?: 'end'): Promise<TurnLoopResult | null> => {
+  const deliverTimer = async (t: Awaited<ReturnType<TrialWorld['dueTimers']>>[number], afterTurn: number, phase?: 'end'): Promise<LoopEnd | null> => {
     const setEvent = o.world.events.find((e) => e.tool === 'timer_set' && e.effect?.timer === t.id);
-    const origin = setEvent ? [...windows, ...timerWindows].find((w) => setEvent.seq > w.started_seq && setEvent.seq <= w.ended_seq) : undefined;
+    const origin = setEvent ? [...windows, ...timerWindows, ...week.redelivery_windows].find((w) => setEvent.seq > w.started_seq && setEvent.seq <= w.ended_seq) : undefined;
     if (!origin) return done('exam_fault', new RunnerError('HE-WORLD-001', `timer ${t.id} was set outside every turn window; the runner cannot tell which conversation it belongs to`).message);
-    const fromTimer = 'kind' in origin;
+    const fromTimer = 'kind' in origin && origin.kind === 'timer';
+    const setInTurn = 'of_turn' in origin ? origin.of_turn : fromTimer ? null : origin.turn;
     delivery += 1;
     const d = delivery;
     const actor = o.world.actor(origin.actor);
@@ -105,13 +124,13 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     const started_wall = new Date().toISOString();
     writeRequest(o.turnsDir, req);
     o.harness.notify?.(req);
-    o.log(`timer turn ${d}: ${t.id} due ${t.due}, in the session of ${fromTimer ? 'timer turn' : 'turn'} ${origin.turn}; waiting up to ${o.task.time_budget_s + o.graceS} s`);
+    o.log(`timer turn ${d}: ${t.id} due ${t.due}, in the session of ${fromTimer ? 'timer turn' : 'turn'} ${setInTurn ?? origin.turn}; waiting up to ${o.task.time_budget_s + o.graceS} s`);
     let response: TurnResponse | null;
     let gone: HarnessGone | null = null;
     try { response = await awaitResponse(o.turnsDir, d, (o.task.time_budget_s + o.graceS) * 1000, o.harness); }
     catch (e) { if (!(e instanceof HarnessGone)) throw e; gone = e; response = null; }
     const base = {
-      turn: d, kind: 'timer' as const, timer_id: t.id, due: t.due, set_in_turn: fromTimer ? null : origin.turn, after_turn: afterTurn, ...(phase ? { phase } : {}),
+      turn: d, kind: 'timer' as const, timer_id: t.id, due: t.due, set_in_turn: setInTurn, after_turn: afterTurn, ...(phase ? { phase } : {}),
       actor: actor.member.id, slack_user_id: actor.slack_user_id, channel: origin.channel, channel_name: origin.channel_name, channel_type: origin.channel_type, text, request_ts: origin.request_ts,
       started_wall, ended_wall: new Date().toISOString(), started_seq, ended_seq: o.world.lastSeq, thread_ts: origin.thread_ts ?? null, session_key: origin.session_key ?? origin.channel,
     };
@@ -152,14 +171,67 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     return { reply_ts, reply_text, ...(withheld ? { reply_withheld: withheld } : {}) };
   };
 
+  // Week events: hand the same request again, the way Slack retries an event it thinks went unanswered.
+  const redeliver = async (first: TurnRequest, n: number): Promise<LoopEnd | null> => {
+    const req: TurnRequest = { ...first, turn: (delivery += 1), retry_attempt: 1 };
+    const d = req.turn;
+    const started_seq = o.world.lastSeq;
+    const started_wall = new Date().toISOString();
+    writeRequest(o.turnsDir, req);
+    o.harness.notify?.(req);
+    o.log(`turn ${n}: handed again as request ${d} (retry_attempt 1); waiting up to ${o.task.time_budget_s + o.graceS} s`);
+    let response: TurnResponse | null;
+    let gone: HarnessGone | null = null;
+    try { response = await awaitResponse(o.turnsDir, d, (o.task.time_budget_s + o.graceS) * 1000, o.harness); }
+    catch (e) { if (!(e instanceof HarnessGone)) throw e; gone = e; response = null; }
+    const threadTs = first.thread_ts;
+    const base = {
+      turn: d, kind: 'redelivery' as const, of_turn: n, retry_attempt: 1, actor: first.actor.member, slack_user_id: first.actor.slack_user_id,
+      channel: first.channel.id, channel_name: first.channel.name, channel_type: first.channel.type, text: first.text, request_ts: first.ts,
+      started_wall, ended_wall: new Date().toISOString(), started_seq, ended_seq: o.world.lastSeq, thread_ts: threadTs, session_key: threadTs ? `${first.channel.id}:${threadTs}` : first.channel.id,
+    };
+    const recordAgain = (w: RedeliveryTurnWindow) => { week.redelivery_windows.push(w); appendFileSync(join(o.turnsDir, '..', 'redelivery-turns.jsonl'), JSON.stringify(w) + '\n'); };
+    if (gone) { o.log(`request ${d}: ${gone.message}`); recordAgain({ ...base, exit: gone.exit === 3 ? 3 : 2, reply_ts: null, reply_text: null }); return done('harness_gone', gone.message); }
+    if (!response) {
+      o.log(`request ${d}: HE-ADAPTER-003 no response after ${o.task.time_budget_s + o.graceS} s; killing the harness, exit 124`);
+      await o.harness.kill();
+      recordAgain({ ...base, exit: 124, reply_ts: null, reply_text: null });
+      return done('timeout');
+    }
+    let exit = Number(response.exit) as TurnWindow['exit'];
+    if (!VALID_EXITS.has(exit)) exit = 2;
+    o.onAnswered?.(d, exit);
+    const posted = await postReply(response, first.channel.id, first.channel.name, threadTs, started_seq, base.ended_seq, d);
+    recordAgain({ ...base, exit, ...posted });
+    o.log(`request ${d}: exit ${exit}${posted.reply_ts ? `, reply ts ${posted.reply_ts}` : posted.reply_withheld ? `, reply withheld (${posted.reply_withheld})` : ', no reply'}`);
+    if (o.world.gbrainLive) {
+      const f = await o.world.flushGbrainIngest();
+      if (f.failed.length) return ingestFault(o, windows, timerWindows, d, f.failed);
+    }
+    return null;
+  };
+
   for (let i = 0; i < o.task.turns.length; i++) {
     const turn = o.task.turns[i]!;
     const n = i + 1;
     if (turn.advance_clock_s && timers) { const ended = await advance(Number(turn.advance_clock_s), i); if (ended) return ended; }
     else if (turn.advance_clock_s) { const now = await o.world.advanceClock(Number(turn.advance_clock_s)); o.log(`turn ${n}: clock advanced ${turn.advance_clock_s} s to ${now}`); }
     if (turn.expire_turns?.length) {
-      const held = await o.world.expire(n, expiryWindows(turn.expire_turns, windows.map((w) => w.request_ts)));
+      const inTimerTurn = (seq: number) => timerWindows.some((w) => seq > w.started_seq && seq <= w.ended_seq);
+      const keep = [...new Set([
+        ...o.world.events.filter((e) => inTimerTurn(e.seq) && typeof (e.effect as { ts?: unknown } | null)?.ts === 'string').map((e) => (e.effect as { ts: string }).ts),
+        ...timerWindows.flatMap((w) => (w.reply_ts ? [w.reply_ts] : [])),
+      ])];
+      const held = await o.world.expire(n, expiryWindows(turn.expire_turns, windows.map((w) => w.request_ts)), keep);
       o.log(`turn ${n}: expired the windows of turn(s) ${turn.expire_turns.join(', ')} (${held} of ${turn.expire_turns.length} held messages)`);
+    }
+    if (turn.restart_before) {
+      if (!o.harness.restart || !o.restart) return exam(windows, timerWindows, `turn ${n} restarts the harness, and this ${o.harness.kind} harness cannot be restarted here`);
+      const t0 = Date.now();
+      try { await o.harness.restart(o.restart.graceMs, o.restart.readyTimeoutMs); }
+      catch (e) { if (!(e instanceof HarnessGone)) throw e; o.log(`turn ${n}: the restart failed: ${e.message}`); return done('harness_gone', e.message); }
+      week.restarts.push({ before_turn: n, wall_ms: Date.now() - t0 });
+      o.log(`turn ${n}: harness restarted on the same workspace and state (${Date.now() - t0} ms)`);
     }
 
     const actor = o.world.actor(turn.actor);
@@ -176,6 +248,14 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
       if (!c) return exam(windows, timerWindows, `turn ${n}: channel ${turn.channel} does not exist in the ${o.world.split} split`);
       channelId = c.id; channelName = c.name; channelType = 'channel';
     }
+    const burst: NonNullable<TurnRequest['burst']> = [];
+    for (const b of turn.burst ?? []) {
+      const who = o.world.actor(b.actor ?? turn.actor);
+      const p = await o.world.slack(who.token, 'chat.postMessage', { channel: channelId, text: b.text });
+      if (!p.ok) return exam(windows, timerWindows, `turn ${n}: posting ${who.member.id}'s burst message to ${channelName} failed: ${p.error}`);
+      burst.push({ actor: who.member.id, ts: String(p.ts), text: b.text });
+    }
+    week.burst_messages += burst.length;
     const posted = await o.world.slack(actor.token, 'chat.postMessage', { channel: channelId, text: turn.text });
     if (!posted.ok) return exam(windows, timerWindows, `turn ${n}: posting ${turn.actor}'s message to ${channelName} failed: ${posted.error}`);
     const ts = String(posted.ts);
@@ -186,7 +266,8 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
       trial_id: o.trialId,
       prompt: composePrompt(o.preamble, {
         requester_name: actor.member.name, requester_handle: actor.member.handle, requester_role: actor.member.role, requester_team: actor.member.team ?? 'no team',
-        channel_name: channelType === 'dm' ? `a direct message (channel id ${channelId})` : `#${channelName}`, channel_type: channelType, sim_now: simNow, message: turn.text, bot_name: bot.handle,
+        channel_name: channelType === 'dm' ? `a direct message (channel id ${channelId})` : `#${channelName}`, channel_type: channelType, sim_now: simNow, bot_name: bot.handle,
+        message: burst.length ? [...burst.map((b) => `${o.world.actor(b.actor).member.name} (ts ${b.ts}): ${b.text}`), `${actor.member.name} (ts ${ts}): ${turn.text}`].join('\n\n') : turn.text,
         request_ts: ts,
       }),
       actor: { member: actor.member.id, slack_user_id: actor.slack_user_id, name: actor.member.name, role: actor.member.role, team: actor.member.team },
@@ -196,6 +277,7 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
       thread_ts: threadTs,
       sim_now: simNow,
       time_budget_s: o.task.time_budget_s,
+      ...(burst.length ? { burst } : {}),
     };
     // Under member scope the brain answers this turn as the requester; the setting persists through wait_s
     // until the next turn's bracket, and the trial clears it after the last turn.
@@ -221,7 +303,8 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
     const ended_wall = new Date().toISOString();
 
     const base = { turn: n, actor: actor.member.id, slack_user_id: actor.slack_user_id, channel: channelId, channel_name: channelName, channel_type: channelType, text: turn.text, request_ts: ts, started_wall, ended_wall, started_seq, ended_seq,
-      thread_ts: threadTs, session_key: threadTs ? `${channelId}:${threadTs}` : channelId, ...(req.turn !== n ? { delivery: req.turn } : {}) };
+      thread_ts: threadTs, session_key: threadTs ? `${channelId}:${threadTs}` : channelId, ...(req.turn !== n ? { delivery: req.turn } : {}),
+      ...(burst.length ? { burst_ts: burst.map((b) => b.ts) } : {}), ...(turn.restart_before ? { restarted_before: true as const } : {}) };
     if (gone) {
       o.log(`turn ${n}: ${gone.message}`);
       record({ ...base, exit: gone.exit === 3 ? 3 : 2, reply_ts: null, reply_text: null });
@@ -244,13 +327,14 @@ export async function runTurns(o: TurnLoopOptions): Promise<TurnLoopResult> {
       const f = await o.world.flushGbrainIngest();
       if (f.failed.length) return ingestFault(o, windows, timerWindows, n, f.failed);
     }
+    if (turn.redeliver) { const ended = await redeliver(req, n); if (ended) return ended; }
     if (turn.wait_s) await Bun.sleep(Number(turn.wait_s) * 1000);
   }
   if (timers && o.task.clock?.end_advance_s) { const ended = await advance(o.task.clock.end_advance_s, o.task.turns.length, 'end'); if (ended) return ended; }
   return done(null);
 }
 
-function exam(windows: TurnWindow[], timerWindows: TimerTurnWindow[], message: string): TurnLoopResult {
+function exam(windows: TurnWindow[], timerWindows: TimerTurnWindow[], message: string): LoopEnd {
   return { windows, timer_windows: timerWindows, ended_early: 'exam_fault', error: new RunnerError('HE-WORLD-001', message).message };
 }
 
@@ -262,7 +346,7 @@ function ingestFaultMessage(where: string, failed: IngestFailure[]): string {
   return new RunnerError('HE-GBRAIN-011', `${where}: ${failed.length} message(s) were not written into the brain (${failed.slice(0, 3).map((x) => x.channel ? `${x.channel}/${x.ts} -> ${x.source}: ${x.error ?? 'error'}` : x.error ?? 'error').join('; ')})`).message;
 }
 
-function ingestFault(o: TurnLoopOptions, windows: TurnWindow[], timerWindows: TimerTurnWindow[], turn: number, failed: IngestFailure[]): TurnLoopResult {
+function ingestFault(o: TurnLoopOptions, windows: TurnWindow[], timerWindows: TimerTurnWindow[], turn: number, failed: IngestFailure[]): LoopEnd {
   const error = ingestFaultMessage(`turn ${turn}`, failed);
   o.log(error);
   return { windows, timer_windows: timerWindows, ended_early: 'exam_fault', error };

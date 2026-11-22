@@ -33,6 +33,15 @@ export interface Harness {
   stop(graceMs: number): Promise<void>;
   /** Immediate kill, for a turn past its budget. */
   kill(): Promise<void>;
+  /** Week events (a turn with restart_before): end the harness the way stop does, keep its workspace, state and logs, start
+   *  it again and wait for the new ready file. Rejects with a HarnessGone when the new start is not ready in time. */
+  restart?(graceMs: number, readyTimeoutMs: number): Promise<void>;
+}
+
+/** Before a restart: the ready file belongs to the old start, so it moves aside under the restart's number. */
+export function clearReady(logs: string, n: number): void {
+  const ready = join(logs, 'ready');
+  if (existsSync(ready)) renameSync(ready, join(logs, `ready.before-restart-${n}`));
 }
 
 export class HarnessGone extends Error {
@@ -102,25 +111,34 @@ export function startProcessHarness(opts: ProcessHarnessOptions): Harness {
   const cmd = opts.adapter.endsWith('.sh') ? ['bash', opts.adapter] : /\.(ts|js|mjs)$/.test(opts.adapter) ? [process.execPath, opts.adapter] : [opts.adapter];
   const out = openSync(join(opts.dirs.logs, 'harness.stdout.log'), 'a');
   const err = openSync(join(opts.dirs.logs, 'harness.stderr.log'), 'a');
-  const proc = Bun.spawn([...cmd, 'serve'], {
+  const spawn = () => Bun.spawn([...cmd, 'serve'], {
     stdin: 'ignore', stdout: out, stderr: err,
     env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: opts.dirs.state, ...opts.env },
   });
+  let proc = spawn();
   const exited = async () => proc.exitCode ?? (proc.signalCode ? 128 + 15 : null);
+  const end = async (graceMs: number) => {
+    if (await exited() !== null) return;
+    proc.kill('SIGTERM');
+    const dead = await Promise.race([proc.exited.then(() => true), Bun.sleep(graceMs).then(() => false)]);
+    if (!dead) { proc.kill('SIGKILL'); await proc.exited; }
+  };
   let stopped: Promise<void> | null = null;
+  let restarts = 0;
   return {
     kind: 'process',
     waitReady: (timeoutMs) => pollReady(opts.dirs.logs, timeoutMs, exited),
     exited,
     stop(graceMs) {
-      stopped ??= (async () => {
-        if (await exited() !== null) return;
-        proc.kill('SIGTERM');
-        const dead = await Promise.race([proc.exited.then(() => true), Bun.sleep(graceMs).then(() => false)]);
-        if (!dead) { proc.kill('SIGKILL'); await proc.exited; }
-      })();
+      stopped ??= end(graceMs);
       return stopped;
     },
     async kill() { if (await exited() === null) { proc.kill('SIGKILL'); await proc.exited; } },
+    async restart(graceMs, readyTimeoutMs) {
+      await end(graceMs);
+      clearReady(opts.dirs.logs, (restarts += 1));
+      proc = spawn();
+      await pollReady(opts.dirs.logs, readyTimeoutMs, exited);
+    },
   };
 }

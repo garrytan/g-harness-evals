@@ -34,6 +34,10 @@ services:
     # networking for core, Postgres on a loopback port, and one trial at a
     # time per host port pair (QM_CORE_PORT, QM_PG_PORT). See README.md.
     network_mode: host
+    # A restart_before week event restarts core with the task service, so QM's agent loses its process memory like every other
+    # harness and resumes from what it persisted (runner/trial/docker.ts restart).
+    labels:
+      harness-eval.restart: with-task
     depends_on:
       pg:
         condition: service_healthy

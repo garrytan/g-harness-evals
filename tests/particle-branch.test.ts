@@ -373,10 +373,11 @@ describe.skipIf(!haveQmImages || !haveCompose || qmBusy)(`QM: one run turn on Pa
     const project = `he-particle-qm-${process.pid}`;
     // The checkout's adapter replaces the image's in the task container, as the other container tests mount theirs.
     const override = join(dir, 'compose.adapter.yaml');
-    writeFileSync(override, `services:\n  task:\n    volumes:\n      - ${join(QM_DIR, 'adapter.sh')}:/opt/harness/adapter.sh:ro\n`);
     const compose = ['compose', '-f', join(QM_DIR, 'compose.yaml'), '-f', override, '-p', project];
     try {
       const port = await firstMatch(fake.stdout as ReadableStream<Uint8Array>, /listening (\d+)/);
+      // As the runner's compose override does (runner/trial/trial.ts), core may dial the custom provider's private origin.
+      writeFileSync(override, `services:\n  task:\n    volumes:\n      - ${join(QM_DIR, 'adapter.sh')}:/opt/harness/adapter.sh:ro\n  core:\n    environment:\n      PRIVATE_NETWORK_ALLOWED_ORIGINS: http://host.docker.internal:${port}\n`);
       const env: Record<string, string> = { ...dockerEnv(), HE_WORKSPACE: join(dir, 'workspace'), HE_STATE: join(dir, 'state'), HE_LOGS: join(dir, 'logs'), HE_TURNS: join(dir, 'turns'),
         HE_MODEL_BASE_URL: `http://host.docker.internal:${port}/qm-${process.pid}/particle`, HE_MODEL_API_KEY: TOKEN, HE_MODEL_NAME: 'particle-1', HE_TIME_BUDGET_S: '180',
         HE_TASK_SLICE: 'smoke', HE_TRIAL_ID: 'qm-particle', QM_IMAGE: 'harness-eval/qm:dev', HE_UID: String(process.getuid!()), HE_GID: String(process.getgid!()), COMPOSE_PROJECT_NAME: project };

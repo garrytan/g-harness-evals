@@ -254,7 +254,8 @@ snapshot_memory() {
 }
 
 # One serve turn: the prompt and the job go under HE_LOG_DIR, qm-api.mjs posts the turn and leaves
-# {http, body} beside them. Arguments: request path, session key, turn name, budget. Returns the
+# {http, body} beside them. A member's message (a redelivery included) carries origin {kind: human, messageTs},
+# as QM's own chat surfaces send it; a timer turn carries none, so QM records it as direct. Arguments: request path, session key, turn name, budget. Returns the
 # mapped exit code; the reply text is in <turn>.reply.txt.
 serve_turn() {
   local req=$1 key=$2 name=$3 budget=$4 code
@@ -267,7 +268,8 @@ serve_turn() {
     const conversation = r.channel.type === "dm"
       ? { kind: "dm", threadRef: key }
       : { kind: "channel", threadRef: key, channelRef: r.channel.id, channelName: r.channel.name };
-    fs.writeFileSync(job, JSON.stringify({ actor: { externalId: r.actor.slack_user_id, displayName: r.actor.name }, conversation, text_file: prompt }));
+    const origin = r.kind === "timer" ? {} : { origin: { kind: "human", messageTs: r.ts } };
+    fs.writeFileSync(job, JSON.stringify({ actor: { externalId: r.actor.slack_user_id, displayName: r.actor.name }, conversation, text_file: prompt, ...origin }));
   ' "$req" "$key" "$prompt" "$job"
   set +e
   timeout -k 5 "$((budget + 10))" node /opt/harness/qm-api.mjs turn "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$job" "$budget" > "$result" 2> >(tee -a "$err" >&2)
@@ -300,6 +302,10 @@ write_response() {
 
 stopping=0
 trap 'stopping=1' TERM INT
+# Slack event keys this adapter process has handed to QM. A redelivered message whose key is here is dropped with no
+# reply, as QM's own Slack surface drops it (slack-event-key.mjs). Like QM's in-memory deduper, the set starts empty
+# when the adapter starts, and a key whose turn failed is forgotten so a redelivery can retry it.
+declare -A seen_events
 printf '{"harness":"qm","version":"%s","trial":"%s","ready_at":"%s","inner_harness":"%s","config":"%s","session_keys":"conversation.threadRef dm:<member> (scope personal:<slack user id>) | channel:<id> (scope channel:<id>); :t<thread_ts> appended on a thread turn"}\n' "${QM_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$QM_HARNESS" "$HE_HARNESS_CONFIG" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
@@ -315,6 +321,14 @@ while [ "$stopping" -eq 0 ]; do
       process.stdout.write([r.turn, r.time_budget_s || process.env.HE_TIME_BUDGET_S, key].join(" ") + "\n");
     ' "$req")
     log "turn $turn: session $key, budget ${budget}s"
+    event_key=$(node /opt/harness/slack-event-key.mjs "$req")
+    if [ "$event_key" != "-" ] && [ -n "${seen_events[$event_key]:-}" ]; then
+      : > "$HE_LOG_DIR/turns/$name.reply.txt"
+      write_response "$resp" "$turn" 0 "$HE_LOG_DIR/turns/$name.reply.txt" "$(now)" "$(now)" "dropped: Slack redelivery of $event_key, as QM's Slack surface drops it"
+      log "turn $turn: dropped as a Slack redelivery of $event_key (QM's Slack surface dedupes on channel:ts)"
+      continue
+    fi
+    [ "$event_key" = "-" ] || seen_events[$event_key]=1
     snapshot_memory "$HE_LOG_DIR/turns/$name.memory.json"
     started=$(now)
     set +e
@@ -327,6 +341,7 @@ while [ "$stopping" -eq 0 ]; do
     fi
     set -e
     ended=$(now)
+    [ "$code" -eq 0 ] || [ "$event_key" = "-" ] || unset "seen_events[$event_key]"
     detail=""
     case "$code" in
       0) ;;

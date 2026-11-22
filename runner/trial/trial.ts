@@ -19,7 +19,7 @@
 // and after the meter is read the trial's receipts are copied to <trial dir>/ablation.ndjson and summarized into the
 // record's ablation field. The filter's outcome never changes the termination: the primary analysis is intention to treat.
 
-import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TimerTurnWindow, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
@@ -38,7 +38,7 @@ import type { SlotLimits } from '../proxy/metering-proxy.ts';
 import { RunProxy, embeddingUsage, reconcile, summarizeAblation, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { wireOfModel } from '../proxy/ablate.ts';
 import { loadTask, type TaskSpec } from './task.ts';
-import { flushIngestAfterFence, runTurns } from './turns.ts';
+import { flushIngestAfterFence, runTurns, type TurnLoopResult } from './turns.ts';
 import { cellRoute } from './routes.ts';
 import { CURSOR_KEY_ENV, cursorEgressEnv } from './cursor.ts';
 import { skillArmImage } from './set-t.ts';
@@ -313,6 +313,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let readyTurnHook = 'no ready file';
   let windows: TurnWindow[] = [];
   let timerWindows: TimerTurnWindow[] = [];
+  let week: Pick<TurnLoopResult, 'redelivery_windows' | 'restarts' | 'burst_messages'> = { redelivery_windows: [], restarts: [], burst_messages: 0 };
   let endedEarly: string | null = null;
   const answeredHook: { turn_runs: Array<number | null>; turns: number[] } = { turn_runs: [], turns: [] };
   let error: string | undefined;
@@ -344,7 +345,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         const image = opts.image ?? skillArmImage(cell) ?? `harness-eval/${cell.harness.replace(/^_/, '')}:dev`;
         const compose = join(harnessDir, 'compose.yaml');
         harness = existsSync(compose)
-          ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: token, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) }, ...(providerWiring ? { coreEnv: providerWiring.coreEnv } : {}), modelProvider: provider })
+          ? await startComposeHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, composeFile: compose, timeBudgetS: task.time_budget_s, repoRoot: opts.repoRoot, stackEnv: { HE_MODEL_BASE_URL: env.HE_MODEL_BASE_URL!, HE_MODEL_API_KEY: token, HE_MODEL_NAME: modelName, HE_TIME_BUDGET_S: env.HE_TIME_BUDGET_S!, HE_TASK_SLICE: 'multiuser', HE_TRIAL_ID: trial.id, ...(cell.config ? { HE_HARNESS_CONFIG: cell.config } : {}) }, coreEnv: { ...(cell.harness === 'qm' ? { PRIVATE_NETWORK_ALLOWED_ORIGINS: [...new Set([new URL(world.harnessUrl).origin, ...(/\/particle\/?$/.test(env.HE_MODEL_BASE_URL!) ? [new URL(env.HE_MODEL_BASE_URL!).origin] : [])])].join(',') } : {}), ...providerWiring?.coreEnv }, modelProvider: provider })
           : await startDockerHarness({ harness: cell.harness, image, trialSlug: slot, dirs, env, repoRoot: opts.repoRoot, ...(installViewPath ? { readOnlyMounts: { [installViewPath]: '/he-gbrain-install' } } : {}), ...(network ? { network } : {}), ...(opts.captureDns ? { dns: opts.captureDns } : {}), ...(opts.cursor ? { secretEnv: { [CURSOR_KEY_ENV]: opts.cursor.key } } : {}) });
       }
       await harness.waitReady(opts.readyTimeoutS * 1000);
@@ -360,9 +361,11 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
 
     if (!readyFailure) {
       const loop = await runTurns({ task, preamble: opts.preamble, world, harness: harness!, turnsDir: dirs.turns, trialId: trial.id, graceS: opts.turnGraceS, log,
+        ...(task.clock?.timers ? { restart: { graceMs: opts.stopGraceS * 1000, readyTimeoutMs: opts.readyTimeoutS * 1000 } } : {}),
         onAnswered: (turn, exit) => { if (readyTurnHook === 'ran') noteAnsweredTurn(answeredHook, dirs.logs, turn, exit); } });
       windows = loop.windows;
       timerWindows = loop.timer_windows;
+      week = { redelivery_windows: loop.redelivery_windows, restarts: loop.restarts, burst_messages: loop.burst_messages };
       endedEarly = loop.ended_early;
       if (loop.error) error = loop.error;
     }
@@ -402,7 +405,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     }
 
     if (windows.length) {
-      const evidence: TrialEvidence = { trial_id: trial.id, task_dir: task.dir, split: cell.split, world_path: world.worldPath, bot_member: world.botMember.id, snapshot, events: world.events, turns: windows, ...(task.clock?.timers ? { timer_turns: timerWindows } : {}) };
+      const evidence: TrialEvidence = { trial_id: trial.id, task_dir: task.dir, split: cell.split, world_path: world.worldPath, bot_member: world.botMember.id, snapshot, events: world.events, turns: windows, ...(task.clock?.timers ? { timer_turns: timerWindows, redelivery_turns: week.redelivery_windows } : {}) };
       grade = await ctx.grade(evidence);
     }
     writeAtomic(paths.grade!, JSON.stringify(grade, null, 1) + '\n');
@@ -431,7 +434,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   if (semanticError) { error = semanticError; log(semanticError); }
 
   const exits = windows.map((w) => w.exit);
-  const decided = trialTermination({ cellModel: cell.model, fromExits: classify([...exits, ...timerWindows.map((w) => w.exit)], readyFailure, endedEarly, grade.approval_stop), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) });
+  const decided = trialTermination({ cellModel: cell.model, fromExits: classify([...exits, ...timerWindows.map((w) => w.exit), ...week.redelivery_windows.map((w) => w.exit)], readyFailure, endedEarly, grade.approval_stop), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) });
   if (decided.note) { log(decided.note); error = error ? `${error}; ${decided.note}` : decided.note; }
   const termination = decided.termination;
   const ended = Date.now();
@@ -441,6 +444,10 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     cap_stop: capStop,
     turns: { planned: task.turns.length, run: windows.length, exits },
     ...(task.clock?.timers ? { timer_turns: { run: timerWindows.length, exits: timerWindows.map((w) => w.exit) } } : {}),
+    ...(task.clock?.timers ? { week: {
+      redeliveries: { run: week.redelivery_windows.length, exits: week.redelivery_windows.map((w) => w.exit) }, restarts: week.restarts, burst_messages: week.burst_messages,
+      timers_set: world.events.filter((e) => e.tool === 'timer_set' && e.outcome === 'ok').length, memory_files: countFiles(join(dirs.workspace, 'memory')),
+    } } : {}),
     usage, wall_ms: ended - started, started_at, ended_at: new Date(ended).toISOString(), paths,
     ...(error ? { error } : {}),
     ...(gbrainRecord ? { gbrain: gbrainRecord } : {}),
@@ -518,6 +525,16 @@ export function semanticCheck(events: WorldEvent[], usage: TrialEmbeddingUsage):
   if (usage.requests === 0) return { ...base, ok: false, reason: `${searches.length} gbrain search call(s) and no forwarded /v1/embeddings line under the trial key (${usage.refused} refused, ${usage.failed} failed): the brain answered keyword-only` };
   if (degraded.length) return { ...base, ok: false, reason: `${degraded.length} of ${searches.length} gbrain search replies carry gbrain's degraded stamp (${[...new Set(degraded.map((e) => (e.effect as { degraded: string }).degraded))].join(', ')}): the query embedding did not arrive in time` };
   return { ...base, ok: true };
+}
+
+/** Files under dir, recursively; 0 when it does not exist. */
+export function countFiles(dir: string): number {
+  try {
+    if (!statSync(dir).isDirectory()) return 0;
+    return readdirSync(dir, { recursive: true, withFileTypes: true }).filter((d) => d.isFile()).length;
+  } catch {
+    return 0;
+  }
 }
 
 export function appendRecord(runDir: string, record: TrialRecord): void {

@@ -6,8 +6,11 @@
 // first turn's marker in the conversation it is sent, and the reply NOTHING_TO_SAY must leave the conversation untouched.
 // The fake harness runs as a host process, always. claude-code, codex, openclaw, hermes and harness-zero run in their
 // harness-eval/<name>:dev images on the run's internal network when docker and the image are there (harness-zero builds its
-// image from the checkout), and are skipped otherwise, like tests/internal-network-harnesses.test.ts. QM, cursor, dsh and
-// pi are not certified for timer turns, and the runner refuses a [clock] timers task on them (HE-PREREG-009).
+// image from the checkout), and are skipped otherwise, like tests/internal-network-harnesses.test.ts. QM runs as its compose
+// stack (Postgres, core, task) on the default bridge, since the runner keeps compose stacks off the internal network
+// (HE-NET-001), when harness-eval/qm:dev and qm-sandbox:dev carry pin.json's commit; its fake model calls timer_set through
+// QM's mcp_call. Cursor, dsh and pi are not certified for timer turns, and the runner refuses a [clock] timers task on them
+// (HE-PREREG-009).
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
@@ -30,15 +33,19 @@ const haveImage = (h: string) => haveDocker && docker(['image', 'inspect', `harn
 const REMINDER = 'A reminder you set';
 const mark = (h: string) => `TT-MARK-${h}`;
 
-type Lane = 'claude-code' | 'codex' | 'openclaw' | 'hermes' | 'harness-zero';
-const LANES: Record<Lane, { model: string; config?: string }> = {
-  'claude-code': { model: 'anthropic:claude-opus-5-5' },
-  'harness-zero': { model: 'anthropic:claude-opus-5-5', config: 'zero-min' },
-  codex: { model: 'openai:gpt-6-luna' },
-  openclaw: { model: 'openai:gpt-6-luna' },
-  hermes: { model: 'openai:gpt-6-luna' },
+type Lane = 'claude-code' | 'codex' | 'openclaw' | 'hermes' | 'harness-zero' | 'qm';
+const LANES: Record<Lane, { model: string; config?: string; network?: 'internal'; utility_models?: string[] }> = {
+  'claude-code': { model: 'anthropic:claude-opus-5-5', network: 'internal' },
+  // QM's session-title and other side calls name its shipped Anthropic housekeeping model (harness housekeeping, shipped default).
+  qm: { model: 'anthropic:claude-opus-5-5', config: 'pi', utility_models: ['anthropic:claude-haiku-5-5', 'anthropic:claude-sonnet-5-5'] },
+  'harness-zero': { model: 'anthropic:claude-opus-5-5', config: 'zero-min', network: 'internal' },
+  codex: { model: 'openai:gpt-6-luna', network: 'internal' },
+  openclaw: { model: 'openai:gpt-6-luna', network: 'internal' },
+  hermes: { model: 'openai:gpt-6-luna', network: 'internal' },
 };
-const laneOn = (h: Lane) => h === 'harness-zero' ? haveDocker : haveImage(h);
+const QM_PIN: string = JSON.parse(readFileSync(join(ROOT, 'harnesses', 'qm', 'pin.json'), 'utf8')).commit;
+const qmImagesAtPin = () => haveDocker && ['harness-eval/qm:dev', 'harness-eval/qm-sandbox:dev'].every((i) => docker(['image', 'inspect', '-f', '{{index .Config.Labels "harness-eval.commit"}}', i]).stdout.trim() === QM_PIN);
+const laneOn = (h: Lane) => h === 'harness-zero' ? haveDocker : h === 'qm' ? qmImagesAtPin() : haveImage(h);
 const timerArgs = (h: string) => ({ in_minutes: 30, reason: `check back with Dana ${mark(h)}` });
 
 const tmp = mkdtempSync(join(tmpdir(), 'he-timer-adapters-'));
@@ -105,8 +112,13 @@ function fakeAnthropic(seen: Array<{ marker: string; inHistory: boolean }>) {
       seen.push({ marker, inHistory: all.replace(tail, '').includes(`[tt:set ${marker}]`) });
       content = [{ type: 'text', text: 'NOTHING_TO_SAY' }];
     } else if (agent && m && tail.includes('[tt:set') && !tail.includes('tool_result')) {
-      const name = body.tools!.map((t) => t.name ?? '').find((x) => x.endsWith('timer_set')) ?? 'mcp__world__timer_set';
-      content = [{ type: 'tool_use', id: 'toolu_tt_' + n, name, input: timerArgs(m[0].slice('TT-MARK-'.length)) }];
+      const names = body.tools!.map((t) => t.name ?? '');
+      const args = timerArgs(m[0].slice('TT-MARK-'.length));
+      // QM lists MCP servers in a ## Connectors note ("- world [<server id>] (...)") and runs their tools through mcp_call.
+      const server = JSON.stringify(body).match(/- world \[([^\]]+)\]/)?.[1];
+      content = names.includes('mcp_call') && server
+        ? [{ type: 'tool_use', id: 'toolu_tt_' + n, name: 'mcp_call', input: { server, tool: 'timer_set', args } }]
+        : [{ type: 'tool_use', id: 'toolu_tt_' + n, name: names.find((x) => x.endsWith('timer_set')) ?? 'mcp__world__timer_set', input: args }];
     }
     const stop = content[0]!.type === 'tool_use' ? 'tool_use' : 'end_turn';
     const msg = { id: 'msg_tt_' + n, type: 'message', role: 'assistant', model: String(body.model ?? ''), content, stop_reason: stop, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
@@ -141,7 +153,7 @@ describe.skipIf(!(Object.keys(LANES) as Lane[]).some(laneOn))('timer turns on ea
       const lane = LANES[h];
       const args = timerArgs(h);
       const calls: Record<Lane, Turn | null> = {
-        'claude-code': null, 'harness-zero': null,
+        'claude-code': null, 'harness-zero': null, qm: null,
         codex: { call: 'mcp__world__timer_set', arguments: args },
         openclaw: { call: 'tool_call', arguments: { id: 'world__timer_set', args } },
         hermes: { call: 'tool_call', arguments: { name: 'mcp__world__timer_set', arguments: args } },
@@ -149,7 +161,7 @@ describe.skipIf(!(Object.keys(LANES) as Lane[]).some(laneOn))('timer turns on ea
       // The first turn plays the call and then answers "Will do." however many requests the harness sends; the request that
       // carries the timer prompt switches the script to NOTHING_TO_SAY (onBody above runs before the answer).
       if (calls[h]) fakeR.setScript([calls[h]!, ...Array.from({ length: 8 }, () => ({ text: 'Will do.' }))]);
-      const cell: Cell = { id: h, harness: h, model: lane.model, slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 200_000, output_tokens: 20_000 }, network: 'internal', ...(lane.config ? { config: lane.config } : {}) };
+      const cell: Cell = { id: h, harness: h, model: lane.model, slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 200_000, output_tokens: 20_000 }, ...(lane.network ? { network: lane.network } : {}), ...(lane.config ? { config: lane.config } : {}), ...(lane.utility_models ? { utility_models: lane.utility_models } : {}) };
       const seen = lane.model.startsWith('openai:') ? seenR : seenA;
       const before = seen.length;
       const { rec, timerTurns, events, logs } = await runLane(cell, `Please check back with me in 30 minutes. [tt:set ${mark(h)}]`, { harnessMode: 'docker', proxyUpstream: { anthropic: `http://127.0.0.1:${fakeA.port}`, openai: `http://127.0.0.1:${fakeR.port}` } });

@@ -35,7 +35,7 @@
 // amendment names in its registry entry (runner/stats/kit.ts). With --against the --results run's preregistration
 // chooses. Every comparisons file records the choice under stats_kit (commit, source, and the preregistration commit).
 //
-// --pair gbrain pairs trial by trial (same task, repetitions matched by order within the task) over two scopes:
+// --pair gbrain pairs trial by trial (same task, same repetition id; a repetition missing on one side is excluded by its id) over two scopes:
 // the primary endpoint (the capable families, scope_isolation, shared_channel, org_security and handoff, or
 // --families) and all tasks as a secondary. A cell is the gbrain arm when its manifest entry has a truthy
 // `gbrain` field or its id has a "gbrain" segment; every gbrain cell of a (harness, config, model) is paired against
@@ -204,12 +204,20 @@ if (pairMode === 'gbrain') {
   const isGbrainCell = (c: (typeof manifest.cells)[number]) => Boolean(c.gbrain) || /(^|-)gbrain(-|$)/.test(c.id);
   const present = manifest.cells.filter((c) => rows.some((t) => t.cell === c.id));
   const med = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2; };
-  const repIndex = (t: TrialRecord) => Number(rep(t).replace(/^r/, '')) || 0;
   const byTask = (cell: string, scopeRows: TrialRecord[]) => {
-    const m = new Map<string, TrialRecord[]>();
-    for (const t of scopeRows.filter((t) => t.cell === cell)) m.set(t.task, [...(m.get(t.task) ?? []), t]);
-    for (const ts of m.values()) ts.sort((a, b) => repIndex(a) - repIndex(b));
+    const m = new Map<string, Map<string, TrialRecord>>();
+    for (const t of scopeRows.filter((t) => t.cell === cell)) {
+      const reps = m.get(t.task) ?? new Map<string, TrialRecord>();
+      if (reps.has(rep(t))) { console.error(`--pair gbrain: ${cell} has two trials for ${t.task}/${rep(t)}`); process.exit(2); }
+      m.set(t.task, reps.set(rep(t), t));
+    }
     return m;
+  };
+  /** The repetition ids of one task in either cell, in repetition order: a pair is the same id on both sides, so a repetition
+   *  missing on one side is excluded under its own id and never shifts the pairs after it. */
+  const repIds = (a: Map<string, TrialRecord>, b: Map<string, TrialRecord>) => {
+    const n = (r: string) => Number(r.replace(/^r/, '')) || 0;
+    return [...new Set([...a.keys(), ...b.keys()])].sort((x, y) => n(x) - n(y) || x.localeCompare(y));
   };
   const scopes = [{ scope: 'primary', families: families ?? PRIMARY_FAMILIES }, { scope: 'all', families: null as string[] | null }];
   const designArg = arg('design');
@@ -271,7 +279,7 @@ if (pairMode === 'gbrain') {
     const scored = (t: TrialRecord) => !EXCLUDED.has(t.termination) && !notApplied(t);
     const why = (t: TrialRecord) => notApplied(t) ?? t.termination;
     for (const t of rows) if (scored(t)) exposure.set(t.trial_id, exposureOf(t));
-    /** Trial-by-trial pairing of two cells (same task, repetitions by order) over any per-trial value; a pair with a
+    /** Trial-by-trial pairing of two cells (same task, same repetition id) over any per-trial value; a pair with a
      *  model, infra or exam error, an installer that did not take, a missing trial or a missing value on either side is excluded
      *  with its reason. */
     const paired = (base: string, rung: string, scopeRows: TrialRecord[], value: (t: TrialRecord) => number | null) => {
@@ -280,11 +288,11 @@ if (pairMode === 'gbrain') {
       const obsA: Observation[] = [], obsB: Observation[] = [];
       const excluded: Array<{ id: string; reason: string }> = [];
       const perTask = tasks.map((task) => {
-        const ta = a.get(task) ?? [], tb = b.get(task) ?? [];
-        const n = Math.max(ta.length, tb.length);
-        for (let i = 0; i < n; i++) {
-          const x = ta[i], y = tb[i];
-          const id = `${task}/${i + 1}`;
+        const ra = a.get(task) ?? new Map<string, TrialRecord>(), rb = b.get(task) ?? new Map<string, TrialRecord>();
+        const ta = [...ra.values()], tb = [...rb.values()];
+        for (const r of repIds(ra, rb)) {
+          const x = ra.get(r), y = rb.get(r);
+          const id = `${task}/${r.replace(/^r/, '')}`;
           const vx = x && scored(x) ? value(x) : null, vy = y && scored(y) ? value(y) : null;
           const reason = !x ? 'no trial in the base cell' : !y ? 'no trial in the rung cell' : !scored(x) ? `base ${why(x)}` : !scored(y) ? `rung ${why(y)}` : vx === null ? 'no value in the base cell' : vy === null ? 'no value in the rung cell' : null;
           if (reason) excluded.push({ id, reason });
@@ -440,11 +448,12 @@ if (pairMode === 'gbrain') {
     const excluded: ExcludedPair[] = [];
     let faulted = 0;
     const perTask = tasks.map((task) => {
-      const ta = a.get(task) ?? [], tb = b.get(task) ?? [];
-      const n = Math.max(ta.length, tb.length);
-      for (let i = 0; i < n; i++) {
-        const x = ta[i], y = tb[i];
-        const id = `${task}/${i + 1}`;
+      const ra = a.get(task) ?? new Map<string, TrialRecord>(), rb = b.get(task) ?? new Map<string, TrialRecord>();
+      const ta = [...ra.values()], tb = [...rb.values()];
+      const reps = repIds(ra, rb);
+      for (const r of reps) {
+        const x = ra.get(r), y = rb.get(r);
+        const id = `${task}/${r.replace(/^r/, '')}`;
         const noneWhy = !x ? 'no trial in the none cell' : EXCLUDED.has(x.termination) ? `none ${x.termination}` : null;
         const faultKept = faultsAsFailures && !noneWhy && !!y && isIngestFault(y);
         const gbrainWhy = !y ? 'no trial in the gbrain cell' : faultKept ? null : EXCLUDED.has(y.termination) ? `gbrain ${y.termination}` : null;
@@ -454,7 +463,7 @@ if (pairMode === 'gbrain') {
         obsA.push({ id, cluster: task, value: reason ? null : pass(x!), eligible: !reason, reason: reason ?? undefined });
         obsB.push({ id, cluster: task, value: reason ? null : faultKept ? 0 : pass(y!), eligible: !reason, reason: reason ?? undefined });
       }
-      return { task, family: familyOf.get(task)!, none: ta.filter((t) => pass(t) === 1).length, gbrain: tb.filter((t) => pass(t) === 1).length, reps: n };
+      return { task, family: familyOf.get(task)!, none: ta.filter((t) => pass(t) === 1).length, gbrain: tb.filter((t) => pass(t) === 1).length, reps: reps.length };
     });
     const pairing = pairObservations(obsA, obsB);
     const d = clusteredPairedDelta(pairing.pairs, { seed, draws });

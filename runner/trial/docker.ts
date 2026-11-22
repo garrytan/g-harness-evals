@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { RunnerError } from '../errors.ts';
-import { type Harness, type TrialDirs, pollReady } from './harness.ts';
+import { type Harness, type TrialDirs, clearReady, HarnessGone, pollReady } from './harness.ts';
 import { isHostAddress } from './world.ts';
 
 export function dockerAvailable(): boolean {
@@ -104,24 +104,35 @@ export async function startDockerHarness(opts: DockerHarnessOptions): Promise<Ha
     const [status, code] = r.stdout.trim().split(' ');
     return status === 'running' || status === 'created' ? null : Number(code);
   };
-  const collect = async () => {
+  const collect = async (file = 'docker.log') => {
     const logs = await sh(['docker', 'logs', name]);
-    writeFileSync(join(opts.dirs.logs, 'docker.log'), `${logs.stdout}\n${logs.stderr}`);
+    writeFileSync(join(opts.dirs.logs, file), `${logs.stdout}\n${logs.stderr}`);
     await sh(['docker', 'rm', '-f', name]);
   };
+  const halt = (graceMs: number) => sh(['docker', 'stop', '-t', String(Math.ceil(graceMs / 1000)), name], { timeoutMs: graceMs + 30_000 });
   let stopped: Promise<void> | null = null;
+  let restarts = 0;
   return {
     kind: 'docker',
     waitReady: (timeoutMs) => pollReady(opts.dirs.logs, timeoutMs, exited),
     exited,
     stop(graceMs) {
       stopped ??= (async () => {
-        await sh(['docker', 'stop', '-t', String(Math.ceil(graceMs / 1000)), name], { timeoutMs: graceMs + 30_000 });
+        await halt(graceMs);
         await collect();
       })();
       return stopped;
     },
     async kill() { await sh(['docker', 'kill', name]); },
+    async restart(graceMs, readyTimeoutMs) {
+      const n = (restarts += 1);
+      await halt(graceMs);
+      await collect(`docker.before-restart-${n}.log`);
+      clearReady(opts.dirs.logs, n);
+      const again = await sh(dockerRunArgs(opts, name), opts.secretEnv ? { env: opts.secretEnv } : {});
+      if (again.status !== 0) throw new HarnessGone(again.status, `docker run failed on restart ${n}: ${(again.stderr || again.stdout).trim().slice(0, 400)}`);
+      await pollReady(opts.dirs.logs, readyTimeoutMs, exited);
+    },
   };
 }
 
@@ -197,18 +208,40 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
     }
     await sh([...compose, 'down', '-v', '--remove-orphans'], { env, timeoutMs: 300_000 });
   };
+  const halt = (graceMs: number) => sh([...compose, 'stop', '-t', String(Math.ceil(graceMs / 1000)), 'task'], { env, timeoutMs: graceMs + 30_000 });
   let stopped: Promise<void> | null = null;
+  let restarts = 0;
   return {
     kind: 'compose',
     waitReady: (timeoutMs) => pollReady(opts.dirs.logs, timeoutMs, exited),
     exited,
     stop(graceMs) {
       stopped ??= (async () => {
-        await sh([...compose, 'stop', '-t', String(Math.ceil(graceMs / 1000)), 'task'], { env, timeoutMs: graceMs + 30_000 });
+        await halt(graceMs);
         await teardown();
       })();
       return stopped;
     },
     async kill() { await sh([...compose, 'kill', 'task'], { env }); },
+    // The task service and every service labelled harness-eval.restart=with-task (QM core, which runs the agent) restart; the
+    // other services and the volumes (QM's database) stay up, as when the agent's process crashed on a host whose database survived.
+    async restart(graceMs, readyTimeoutMs) {
+      const n = (restarts += 1);
+      await halt(graceMs);
+      const task = await sh([...compose, 'logs', '--no-color', 'task'], { env });
+      writeFileSync(join(opts.dirs.logs, `docker.before-restart-${n}.log`), `${task.stdout}\n${task.stderr}`);
+      clearReady(opts.dirs.logs, n);
+      const config = await sh([...compose, 'config', '--format', 'json'], { env });
+      if (config.status !== 0) throw new HarnessGone(config.status, `docker compose config failed on restart ${n}: ${config.stderr.trim().slice(0, 400)}`);
+      const services = (JSON.parse(config.stdout) as { services: Record<string, { labels?: Record<string, string> }> }).services;
+      const withTask = Object.keys(services).filter((s) => services[s]!.labels?.['harness-eval.restart'] === 'with-task');
+      if (withTask.length) {
+        const r = await sh([...compose, 'restart', '-t', String(Math.ceil(graceMs / 1000)), ...withTask], { env, timeoutMs: graceMs + 120_000 });
+        if (r.status !== 0) throw new HarnessGone(r.status, `docker compose restart of ${withTask.join(', ')} failed on restart ${n}: ${r.stderr.trim().slice(0, 400)}`);
+      }
+      const again = await sh([...compose, 'up', '-d', '--no-color', '--no-deps', '--force-recreate', 'task'], { env, timeoutMs: (opts.timeBudgetS + 180) * 1000 });
+      if (again.status !== 0) throw new HarnessGone(again.status, `docker compose up of the task service failed on restart ${n}: ${again.stderr.trim().slice(0, 400)}`);
+      await pollReady(opts.dirs.logs, readyTimeoutMs, exited);
+    },
   };
 }

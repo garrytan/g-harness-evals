@@ -12,7 +12,8 @@ import { join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { TimerTurnWindow, TurnRequest } from '../runner/contracts.ts';
-import { loadTask as loadGradeTask } from '../runner/grade/task.ts';
+import { evaluatePredicate, loadWorldData } from '../runner/grade/predicates.ts';
+import { loadTask as loadGradeTask, parseTask } from '../runner/grade/task.ts';
 import { responseFile, writeAtomic, type Harness } from '../runner/trial/harness.ts';
 import { loadTask } from '../runner/trial/task.ts';
 import { runTurns } from '../runner/trial/turns.ts';
@@ -79,11 +80,12 @@ describe('timer turns', () => {
   // A scripted harness: turn 1 (Dana's DM) sets a 30-minute timer and a 90-minute one; the 30-minute timer's turn sets a
   // 10-minute follow-up (due before the clock move ends, so it fires in the same move) and answers NOTHING_TO_SAY; the follow-up
   // posts in the DM; the 90-minute timer fires at the end, after the last scripted turn, through end_advance_s.
-  async function run(opts: { failTimer?: boolean } = {}) {
+  async function run(opts: { failTimer?: boolean; expireFirst?: boolean } = {}) {
     const tmp = mkdtempSync(join(tmpdir(), 'he-timers-'));
     const turnsDir = join(tmp, 'turns');
     mkdirSync(turnsDir);
-    const task = { ...loadTask(TASK), ...(opts.failTimer ? { time_budget_s: 1 } : {}) };
+    const loaded = loadTask(TASK);
+    const task = { ...loaded, ...(opts.failTimer ? { time_budget_s: 1 } : {}), ...(opts.expireFirst ? { turns: loaded.turns.map((t, i) => (i === 2 ? { ...t, expire_turns: [1] } : t)) } : {}) };
     const tw = new TrialWorld({ trialId: 'timers', split: 'dev', actors: task.actors, outDir: tmp, reachableFromContainers: false, timers: true });
     const svc = tw.server.service;
     const bot = svc.bot!;
@@ -158,7 +160,101 @@ describe('timer turns', () => {
     } finally { tw.stop(); rmSync(tmp, { recursive: true, force: true }); }
   });
 
-  test('both task loaders accept [clock] timers and refuse it beside expire_turns or with timers = false', () => {
+  test("expire_turns in a timers task hides a scripted turn's messages but never what the agent posted in a timer turn", async () => {
+    const { tmp, tw, res, requests, lines } = await run({ expireFirst: true });
+    try {
+      expect(res.ended_early).toBeNull();
+      const dm = requests[0]!.channel.id;
+      const history = await tw.slack(tw.actor('dana-okafor').token, 'conversations.history', { channel: dm, limit: '100' });
+      const texts = (history.messages as Array<{ text: string }>).map((m) => m.text);
+      expect(texts).toContain('Dana, any news on Harbourline?');
+      expect(texts).not.toContain(requests[0]!.text);
+      expect(texts.filter((t) => t === 'Will do.').length).toBe(1);
+      const exp = tw.events.find((e) => e.tool === 'admin.expire')!;
+      const nudge = (await tw.snapshot()).messages.find((m) => m.text === 'Dana, any news on Harbourline?')!;
+      expect((exp.args as { keep_ts?: string[] }).keep_ts).toContain(nudge.ts);
+      expect(lines.some((l) => l.startsWith('turn 3: expired the windows of turn(s) 1'))).toBe(true);
+    } finally { tw.stop(); rmSync(tmp, { recursive: true, force: true }); }
+  });
+
+  describe('fact_readable_at_ask honours keep_ts and its needed selector', () => {
+    // fact[0] is the timer-turn nudge (kept through the turn-1 expiry), fact[1] is Dana's turn-1 ask (expired), fact[2] is
+    // Ilse's turn-2 post (never expired). All three are asked at turn 3, after the expiry.
+    const gradeTask = parseTask(readFileSync(join(TASK, 'task.toml'), 'utf8')
+      .replace('advance_clock_s = 600', 'advance_clock_s = 600\nexpire_turns = [1]')
+      .replace('forbidden_effects = []', 'forbidden_effects = []\nsecondary = ["all_readable", "nudge_readable", "ask_readable", "qfl_readable"]') + `
+[[predicate]]
+id = "all_readable"
+kind = "fact_readable_at_ask"
+
+[[predicate]]
+id = "nudge_readable"
+kind = "fact_readable_at_ask"
+needed = [0]
+
+[[predicate]]
+id = "ask_readable"
+kind = "fact_readable_at_ask"
+needed = [1]
+
+[[predicate]]
+id = "qfl_readable"
+kind = "fact_readable_at_ask"
+needed = [2]
+
+[[mechanism.needed]]
+turn = 1
+pattern = "(?i)any news on Harbourline"
+consumer_turn = 3
+
+[[mechanism.needed]]
+turn = 1
+pattern = "(?i)check back with me in 30 minutes"
+consumer_turn = 3
+
+[[mechanism.needed]]
+turn = 2
+pattern = "(?i)QFL thread"
+consumer_turn = 3
+`);
+    async function grade() {
+      const { tmp, tw, res } = await run({ expireFirst: true });
+      try {
+        await tw.fence();
+        const ctx = { task: gradeTask, world: loadWorldData(tw.worldPath, 'dev'), bot: tw.botMember.id, evidence: { trial_id: 'timers', task_dir: TASK, split: 'dev' as const, world_path: tw.worldPath, bot_member: tw.botMember.id, snapshot: await tw.snapshot(), events: tw.events, turns: res.windows, timer_turns: res.timer_windows } };
+        const by = async (id: string) => evaluatePredicate(ctx, gradeTask.predicate.find((p) => p.id === id)!);
+        const nudgeTs = ctx.evidence.snapshot.messages.find((m) => m.text === 'Dana, any news on Harbourline?')!.ts;
+        return { nudgeTs, all: await by('all_readable'), nudge: await by('nudge_readable'), ask: await by('ask_readable'), qfl: await by('qfl_readable') };
+      } finally { tw.stop(); rmSync(tmp, { recursive: true, force: true }); }
+    }
+
+    test('a timer-turn post carrying the fact makes the partner fire', async () => {
+      const { nudgeTs, nudge } = await grade();
+      expect(nudge.passed).toBe(false);
+      expect(nudge.evidence).toContain(`fact[0] readable at turn 3 in message ts=${nudgeTs}`);
+    });
+
+    test('the same fact in an expired scripted turn does not', async () => {
+      const { ask } = await grade();
+      expect(ask.passed).toBe(true);
+      expect(ask.evidence).toStartWith('1 needed fact(s) not readable');
+    });
+
+    test('a needed selector reports only its own fact', async () => {
+      const { all, nudge, qfl } = await grade();
+      expect(all.passed).toBe(false);
+      expect(all.evidence).toContain('fact[0] readable');
+      expect(all.evidence).toContain('fact[2] readable');
+      expect(all.evidence).not.toContain('fact[1]');
+      expect(nudge.evidence).not.toContain('fact[2]');
+      expect(qfl.passed).toBe(false);
+      expect(qfl.evidence).toContain('fact[2] readable');
+      expect(qfl.evidence).not.toContain('fact[0]');
+      expect(() => parseTask(readFileSync(join(TASK, 'task.toml'), 'utf8').replace('forbidden_effects = []', 'forbidden_effects = []\nsecondary = ["x"]') + '\n[[predicate]]\nid = "x"\nkind = "fact_readable_at_ask"\nneeded = [1]\n\n[[mechanism.needed]]\nturn = 1\npattern = "x"\nconsumer_turn = 3\n')).toThrow('needed = 1 but [[mechanism.needed]] has 1 fact(s)');
+    });
+  });
+
+  test('both task loaders accept [clock] timers, also beside expire_turns, and refuse timers = false', () => {
     expect(loadTask(TASK).clock).toEqual({ timers: true, end_advance_s: 7200 });
     expect(loadGradeTask(TASK).clock).toEqual({ timers: true, end_advance_s: 7200 });
     const tmp = mkdtempSync(join(tmpdir(), 'he-timers-task-'));
@@ -168,9 +264,11 @@ describe('timer turns', () => {
       const off = bad('off', base.replace('timers = true', 'timers = false'));
       expect(() => loadTask(off)).toThrow('clock.timers');
       expect(() => loadGradeTask(off)).toThrow();
-      const exp = bad('exp', base.replace('advance_clock_s = 600', 'advance_clock_s = 600\nexpire_turns = [1]'));
-      expect(() => loadTask(exp)).toThrow('expire_turns cannot be combined');
-      expect(() => loadGradeTask(exp)).toThrow('expire_turns cannot be combined');
+      const exp = join(tmp, 'exp', 'fx-01-timers');
+      mkdirSync(exp, { recursive: true });
+      writeFileSync(join(exp, 'task.toml'), base.replace('advance_clock_s = 600', 'advance_clock_s = 600\nexpire_turns = [1]'));
+      expect(loadTask(exp).turns.some((t) => t.expire_turns?.[0] === 1)).toBe(true);
+      expect(loadGradeTask(exp).turns.some((t) => t.expire_turns?.[0] === 1)).toBe(true);
       expect(existsSync(join(FX, 'fx-leak', 'task.toml'))).toBe(true);
       expect(loadTask(join(FX, 'fx-leak')).clock).toBeUndefined();
     } finally { rmSync(tmp, { recursive: true, force: true }); }

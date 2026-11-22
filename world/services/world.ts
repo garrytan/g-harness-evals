@@ -94,6 +94,8 @@ export class WorldService {
   private fenced = false;
   private readonly retired: Set<string>;
   private readonly expired: ExpiredWindow[] = [];
+  /** Week events: messages posted in a timer turn, which an expired window never hides (the agent's own timer carried them). */
+  private readonly keptFromExpiry = new Set<string>();
   private listeners: ((m: Message) => void)[] = [];
   private counters = { event: 0, mail: 0, pending: 0, dm: 0 };
 
@@ -153,13 +155,15 @@ export class WorldService {
 
   /** A message every read surface may return: not from a retired record and not inside an expired turn's window. */
   private readable(m: Message): boolean {
-    return !this.isRetired(m) && !inExpiredWindow(m.ts, this.expired);
+    return !this.isRetired(m) && (this.keptFromExpiry.has(m.ts) || !inExpiredWindow(m.ts, this.expired));
   }
 
   /** Admin only (POST /admin/expire): hide every message inside each window, whoever posted it and wherever. A window runs from
    *  its turn's actor post (from_ts, inclusive) to the next turn's actor post (to_ts, exclusive), or to every message posted so
-   *  far when to_ts is null; it is resolved here to the messages it holds, so a later post never falls inside it. */
-  expire(turn: number, windows: Array<{ turn: number; from_ts: string; to_ts: string | null }>): ExpiredWindow[] {
+   *  far when to_ts is null; it is resolved here to the messages it holds, so a later post never falls inside it. keep_ts (week
+   *  events) names messages posted in timer turns: they stay readable even inside a window, now and at every later expiry. */
+  expire(turn: number, windows: Array<{ turn: number; from_ts: string; to_ts: string | null }>, keepTs: readonly string[] = []): ExpiredWindow[] {
+    for (const ts of keepTs) this.keptFromExpiry.add(ts);
     const resolved: ExpiredWindow[] = [];
     let hidden = 0;
     for (const w of windows) {
@@ -167,10 +171,10 @@ export class WorldService {
       if (!inside.length) continue;
       const through = inside.reduce((a, m) => (compareTs(m.ts, a) > 0 ? m.ts : a), inside[0]!.ts);
       resolved.push({ turn: w.turn, from_ts: w.from_ts, through_ts: through });
-      hidden += inside.filter((m) => !inExpiredWindow(m.ts, this.expired)).length;
+      hidden += inside.filter((m) => !this.keptFromExpiry.has(m.ts) && !inExpiredWindow(m.ts, this.expired)).length;
     }
     this.expired.push(...resolved);
-    this.log.append({ actor: null, via: 'admin', tool: 'admin.expire', kind: 'admin', args: { turn, windows }, outcome: 'ok', effect: { windows: resolved, hidden } });
+    this.log.append({ actor: null, via: 'admin', tool: 'admin.expire', kind: 'admin', args: { turn, windows, ...(keepTs.length ? { keep_ts: [...keepTs] } : {}) }, outcome: 'ok', effect: { windows: resolved, hidden } });
     return resolved;
   }
 

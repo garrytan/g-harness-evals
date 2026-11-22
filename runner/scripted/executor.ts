@@ -10,7 +10,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
 import { join } from 'node:path';
 import type { Script, ScriptedTurn, TurnRequest, TurnResponse } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import { type Harness, type TrialDirs, responseFile, writeAtomic } from '../trial/harness.ts';
+import { type Harness, type TrialDirs, clearReady, responseFile, writeAtomic } from '../trial/harness.ts';
 import { substitute } from '../grade/play.ts';
 
 export function loadScript(path: string): Script {
@@ -51,6 +51,7 @@ export interface ScriptedHarnessOptions {
 export function startScriptedHarness(opts: ScriptedHarnessOptions): Harness {
   let client: Client | null = null;
   let closed = false;
+  let restarts = 0;
   const log = join(opts.dirs.logs, 'scripted.log');
   const connect = async () => {
     if (client) return client;
@@ -87,5 +88,12 @@ export function startScriptedHarness(opts: ScriptedHarnessOptions): Harness {
     notify(req) { void answer(req); },
     async stop() { closed = true; await client?.close().catch(() => undefined); client = null; },
     async kill() { closed = true; await client?.close().catch(() => undefined); client = null; },
+    // A script keeps no state between turns, so a restart only drops the world-MCP connection and writes a new ready file.
+    async restart() {
+      await client?.close().catch(() => undefined);
+      client = null;
+      clearReady(opts.dirs.logs, (restarts += 1));
+      writeFileSync(join(opts.dirs.logs, 'ready'), new Date().toISOString() + '\n');
+    },
   };
 }

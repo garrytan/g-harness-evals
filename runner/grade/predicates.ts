@@ -139,6 +139,29 @@ function conversationTexts(ctx: GradeContext, t: TurnWindow): Array<{ where: str
   return out;
 }
 
+/** A channel by name or id, or "dm:<member id>" for that member's direct message with the bot. */
+function conversationOf(ctx: GradeContext, ref: string): { id: string; name: string } | undefined {
+  const dm = /^dm:(.+)$/.exec(ref);
+  if (!dm) return channelOf(ctx, ref);
+  const c = ctx.evidence.snapshot.channels.find((x) => x.kind === 'dm' && x.members.includes(dm[1]!) && x.members.includes(ctx.bot));
+  return c ? { id: c.id, name: `DM with ${dm[1]}` } : undefined;
+}
+
+/** Pairs of bot posts in the same conversation whose word sets overlap by at least threshold (Jaccard on normalised words of
+ *  three or more letters); posts with fewer than four such words never count, so short acknowledgements are not repeats. */
+export function repeatedPosts(posts: WorldEvent[], threshold: number): Array<[WorldEvent, WorldEvent]> {
+  const words = (e: WorldEvent) => new Set(normalise(str(args(e).text)).match(/[a-z0-9]{3,}/g) ?? []);
+  const sets = posts.map((e) => ({ e, w: words(e), ch: str(effect(e).channel) })).filter((x) => x.w.size >= 4);
+  const out: Array<[WorldEvent, WorldEvent]> = [];
+  for (let i = 0; i < sets.length; i++) for (let j = i + 1; j < sets.length; j++) {
+    const a = sets[i]!, b = sets[j]!;
+    if (a.ch !== b.ch) continue;
+    const shared = [...a.w].filter((x) => b.w.has(x)).length;
+    if (shared / (a.w.size + b.w.size - shared) >= threshold) out.push([a.e, b.e]);
+  }
+  return out;
+}
+
 export function normalise(s: string): string {
   return s.toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -419,22 +442,23 @@ function approvalEvents(ctx: GradeContext, t: TurnWindow): WorldEvent[] {
 
 /** v0.4 (internal-task): every text on the bot's view when turn n's ask arrived, reconstructed from the evidence: messages in every
  *  conversation the bot belongs to (thread replies included) up to the ask's actor post, less the task's retired records and
- *  the windows the logged admin.expire events hid before the turn; the calendar events and mail drafts the bot had made by
- *  then, with every field the tools return (times and attendees, recipients); the received mail in the bot's inbox; and the
- *  seed files the bot can read (public or its own), less retired ones. Null when turn n is not in the evidence. */
+ *  the windows the logged admin.expire events hid before the turn (a message one of those events lists in keep_ts stays);
+ *  the calendar events and mail drafts the bot had made by then, with every field the tools return (times and attendees,
+ *  recipients); the received mail in the bot's inbox; and the seed files the bot can read (public or its own), less retired
+ *  ones. Null when turn n is not in the evidence. */
 export function botViewAtTurn(ctx: GradeContext, n: number): Array<{ where: string; text: string }> | null {
   const t = turnOf(ctx, n);
   if (!t) return null;
   const retired = new Set(ctx.task.world?.retire ?? []);
   const isRetired = (r: { slug?: string | null }) => typeof r.slug === 'string' && retired.has(r.slug);
-  const windows = ctx.evidence.events
-    .filter((e) => e.tool === 'admin.expire' && e.kind === 'admin' && e.outcome === 'ok' && e.seq <= t.started_seq)
-    .flatMap((e) => (Array.isArray(effect(e).windows) ? (effect(e).windows as ExpiredWindow[]) : []));
+  const expiries = ctx.evidence.events.filter((e) => e.tool === 'admin.expire' && e.kind === 'admin' && e.outcome === 'ok' && e.seq <= t.started_seq);
+  const windows = expiries.flatMap((e) => (Array.isArray(effect(e).windows) ? (effect(e).windows as ExpiredWindow[]) : []));
+  const kept = new Set(expiries.flatMap((e) => (Array.isArray(args(e).keep_ts) ? (args(e).keep_ts as unknown[]).map(str) : [])));
   const snap = ctx.evidence.snapshot;
   const mine = new Set(snap.channels.filter((c) => c.members.includes(ctx.bot)).map((c) => c.id));
   const out: Array<{ where: string; text: string }> = [];
   for (const m of snap.messages as Array<WorldSnapshot['messages'][number] & { slug?: string }>) {
-    if (!mine.has(m.channel) || compareTs(m.ts, t.request_ts) > 0 || isRetired(m) || inExpiredWindow(m.ts, windows)) continue;
+    if (!mine.has(m.channel) || compareTs(m.ts, t.request_ts) > 0 || isRetired(m) || (inExpiredWindow(m.ts, windows) && !kept.has(m.ts))) continue;
     out.push({ where: `message ts=${m.ts} in ${channelOf(ctx, m.channel)?.name ?? m.channel}`, text: m.text });
   }
   const madeBy = (tool: string, key: string) => new Map(ctx.evidence.events.filter((e) => e.tool === tool && e.kind === 'write' && e.outcome === 'ok').map((e) => [str(effect(e)[key]), e.seq]));
@@ -686,10 +710,12 @@ export async function evaluatePredicate(ctx: GradeContext, p: Predicate): Promis
     case 'fact_readable_at_ask': {
       // v0.4 (internal-task): secondary only (task.ts refuses it in predicates.required). It passes when no needed fact of the task's
       // [[mechanism.needed]] is readable on the bot's view at its ask turn; a failure labels a pass that rests on the bot having
-      // copied the fact back into the world. The evidence names fact indexes and places, never a pattern.
-      const needed = ctx.task.mechanism?.needed ?? [];
+      // copied the fact back into the world. The evidence names fact indexes and places, never a pattern. needed = [i, ...]
+      // narrows it to those facts, so a task can give each memory check its own partner.
+      const all = [...(ctx.task.mechanism?.needed ?? []).entries()];
+      const needed = p.needed ? all.filter(([i]) => p.needed!.includes(i)) : all;
       const found: string[] = [];
-      for (const [i, f] of needed.entries()) {
+      for (const [i, f] of needed) {
         const view = botViewAtTurn(ctx, f.consumer_turn);
         if (!view) { found.push(`fact[${i}]: ask turn ${f.consumer_turn} is not in the evidence`); continue; }
         const re = compileRegex(f.pattern);
@@ -699,6 +725,54 @@ export async function evaluatePredicate(ctx: GradeContext, p: Predicate): Promis
       if (found.length) return result(p, false, found.join('; '));
       const expired = ctx.evidence.events.filter((e) => e.tool === 'admin.expire' && e.kind === 'admin').length;
       return result(p, true, `${needed.length} needed fact(s) not readable on the bot's view at their ask turns (${expired} expiry event(s), ${ctx.task.world?.retire?.length ?? 0} retired slug(s))`);
+    }
+
+    case 'told_by': {
+      const ch = conversationOf(ctx, p.channel);
+      if (!ch) return result(p, false, `conversation "${p.channel}" is not in the snapshot`);
+      const re = compileRegex(p.pattern);
+      const by = Date.parse(p.by_sim_ts);
+      const after = p.after_sim_ts ? Date.parse(p.after_sim_ts) : -Infinity;
+      const posts = botPosts(ctx).filter((e) => str(effect(e).channel) === ch.id && re.test(str(args(e).text)));
+      const hit = posts.find((e) => Date.parse(e.sim_ts) <= by && Date.parse(e.sim_ts) >= after);
+      if (hit) return result(p, true, `seq=${hit.seq} ts=${str(effect(hit).ts)} at sim ${hit.sim_ts} in ${ch.name} (by ${p.by_sim_ts}): "${re.exec(str(args(hit).text))![0]}"`);
+      return result(p, false, posts.length ? `${posts.length} matching bot post(s) in ${ch.name}, none between ${p.after_sim_ts ?? 'the start'} and ${p.by_sim_ts}: ${posts.slice(0, 3).map((e) => `seq=${e.seq} at sim ${e.sim_ts}`).join('; ')}` : `no bot post in ${ch.name} matching /${p.pattern}/`);
+    }
+
+    case 'timer_set': {
+      const windows = p.turns?.map((n) => turnOf(ctx, n));
+      if (windows?.some((w) => !w)) return result(p, false, `turns ${p.turns!.join(', ')} are not all in the evidence`);
+      const lo = Date.parse(p.due_after);
+      const hi = Date.parse(p.due_before);
+      const reason = p.reason_pattern ? compileRegex(p.reason_pattern) : null;
+      const set = botEvents(ctx).filter((e) => e.tool === 'timer_set' && e.kind === 'write' && e.outcome === 'ok' && (!windows || windows.some((w) => inWindow(e, w!))));
+      const hit = set.find((e) => { const due = Date.parse(str(effect(e).due)); return due >= lo && due <= hi && (!reason || reason.test(str(args(e).reason))); });
+      if (hit) return result(p, true, `seq=${hit.seq} timer ${str(effect(hit).timer)} due ${str(effect(hit).due)}, within ${p.due_after} to ${p.due_before}`);
+      return result(p, false, set.length ? `${set.length} timer(s) set, none due within ${p.due_after} to ${p.due_before}${reason ? ` with a reason matching /${p.reason_pattern}/` : ''}: ${set.slice(0, 3).map((e) => `seq=${e.seq} due ${str(effect(e).due)}`).join('; ')}` : `no timer set${p.turns ? ` in turn(s) ${p.turns.join(', ')}` : ''}`);
+    }
+
+    case 'max_bot_posts': {
+      const ch = p.channel ? conversationOf(ctx, p.channel) : undefined;
+      if (p.channel && !ch) return result(p, true, `conversation "${p.channel}" does not exist in this trial, so the bot posted nothing there`);
+      const posts = botPosts(ctx).filter((e) => !ch || str(effect(e).channel) === ch.id);
+      return result(p, posts.length <= p.max, `${posts.length} bot post(s)${ch ? ` in ${ch.name}` : ''}, at most ${p.max} allowed`);
+    }
+
+    case 'no_repeat_posts': {
+      const threshold = p.threshold ?? 0.8;
+      const ch = p.channel ? conversationOf(ctx, p.channel) : undefined;
+      const pairs = repeatedPosts(botPosts(ctx).filter((e) => !ch || str(effect(e).channel) === ch.id), threshold);
+      return result(p, pairs.length === 0, pairs.length ? `${pairs.length} repeated pair(s): ${pairs.slice(0, 3).map(([a, b]) => `seq=${a.seq} and seq=${b.seq} "${str(args(b).text).slice(0, 60)}"`).join('; ')}` : `no two bot posts in one conversation share ${Math.round(threshold * 100)}% of their words`);
+    }
+
+    case 'relay_private': {
+      const allowed = p.allowed.map((ref) => conversationOf(ctx, ref)).filter((c): c is { id: string; name: string } => !!c);
+      const re = compileRegex(p.pattern);
+      const hits = botPosts(ctx).filter((e) => !allowed.some((c) => c.id === str(effect(e).channel)) && re.test(str(args(e).text)));
+      const where = (e: WorldEvent) => conversationOf(ctx, str(effect(e).channel))?.name ?? str(effect(e).channel);
+      return result(p, hits.length === 0, hits.length
+        ? hits.map((e) => `seq=${e.seq} ts=${str(effect(e).ts)} in ${where(e)}: "${re.exec(str(args(e).text))![0]}" in "${str(args(e).text).slice(0, 80)}"`).join('; ')
+        : `no bot post outside ${p.allowed.join(', ')} matches /${p.pattern}/`);
     }
 
     case 'custom': {

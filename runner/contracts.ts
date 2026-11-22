@@ -34,6 +34,12 @@ export interface TurnRequest {
    *  is the ts of that turn's message. Adapters need not read it: the prompt carries everything. */
   kind?: 'timer';
   timer?: { id: string; due: string; reason: string; note: string | null; set_at: string };
+  /** Week events ([clock] timers tasks only, docs/tasks.md "Week events"): the messages posted in the same conversation just
+   *  before this one and not answered on their own, oldest first. The prompt's message carries them too. */
+  burst?: Array<{ actor: string; ts: string; text: string }>;
+  /** Week events: set when the runner hands the same message again, the way Slack retries an event it thinks went unanswered
+   *  (retry_attempt 1, reason timeout). Same ts, same prompt; only the request number differs. */
+  retry_attempt?: number;
 }
 
 /** The adapter's answer. exit follows docs/adapters.md: 0 completed, 2 harness error, 3 model error,
@@ -86,6 +92,10 @@ export interface TurnWindow {
   session_key?: string;
   /** [clock] timers tasks only: the request number (turn-<NNNN> files) when timer turns make it differ from `turn`. */
   delivery?: number;
+  /** Week events: the ts of each burst message posted before this turn's own message, oldest first. */
+  burst_ts?: string[];
+  /** Week events: the runner stopped the harness and started it again, on the same workspace and state, before this turn. */
+  restarted_before?: true;
 }
 
 /** [clock] timers tasks only: one timer turn, written to timer-turns.jsonl and never into turns.jsonl, so every predicate
@@ -99,6 +109,14 @@ export interface TimerTurnWindow extends Omit<TurnWindow, 'delivery'> {
   after_turn: number;
   /** 'end' for a timer fired by [clock] end_advance_s after the last scripted turn. */
   phase?: 'end';
+}
+
+/** Week events: a turn the runner handed a second time with retry_attempt (task turn field redeliver), written to
+ *  redelivery-turns.jsonl and never into turns.jsonl. `turn` is the request number, `of_turn` the scripted turn repeated. */
+export interface RedeliveryTurnWindow extends Omit<TurnWindow, 'delivery' | 'burst_ts' | 'restarted_before'> {
+  kind: 'redelivery';
+  of_turn: number;
+  retry_attempt: number;
 }
 
 /** GET /admin/snapshot as the world returns it after the fence. Files are not in the snapshot; graders
@@ -132,6 +150,8 @@ export interface TrialEvidence {
   turns: TurnWindow[];
   /** [clock] timers tasks only (TimerTurnWindow). */
   timer_turns?: TimerTurnWindow[];
+  /** [clock] timers tasks only (RedeliveryTurnWindow). */
+  redelivery_turns?: RedeliveryTurnWindow[];
 }
 
 export interface PredicateResult {
@@ -179,6 +199,9 @@ export interface Script {
   id: string;
   task: string;
   turns: ScriptedTurn[];
+  /** Other predicates a mutation also fails because its one violation is theirs too, for example a relayed figure posted
+   *  where a planted instruction asked for it also breaks relay_private. The week matrix test expects exactly these and id. */
+  also_fails?: string[];
 }
 
 // ---- v0.4 (internal-task) lifecycle: per-turn expiry, per-task retirement and the [mechanism] table ---------------
@@ -585,6 +608,9 @@ export interface TrialRecord {
   turns: { planned: number; run: number; exits: number[] };
   /** [clock] timers tasks only: the timer turns delivered and how each ended. */
   timer_turns?: { run: number; exits: number[] };
+  /** [clock] timers tasks only: the week-event counts a reader needs to see the parts under test ran (docs/tasks.md "Week
+   *  events"). memory_files counts files under the workspace's memory/ directory at the end of the trial. */
+  week?: { redeliveries: { run: number; exits: number[] }; restarts: Array<{ before_turn: number; wall_ms: number }>; burst_messages: number; timers_set: number; memory_files: number };
   usage: TrialUsage | null;
   wall_ms: number;
   started_at: string;

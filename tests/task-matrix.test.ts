@@ -42,7 +42,8 @@ const PERSONAL_V2 = existsSync(join(ROOT, 'personal-v2'));
 const SETS: Array<{ name: string; root: string }> = [
   { name: 'v0.1', root: ROOT },
   ...readdirSync(ROOT, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !['dev', 'heldout', '_shared'].includes(d.name) && SPLITS.some((s) => existsSync(join(ROOT, d.name, s))))
+    // The week set's [clock] timers tasks play through the real turn loop in tests/week-rig.test.ts, not through play.ts.
+    .filter((d) => d.isDirectory() && !['dev', 'heldout', '_shared', 'week'].includes(d.name) && SPLITS.some((s) => existsSync(join(ROOT, d.name, s))))
     .map((d) => ({ name: d.name, root: join(ROOT, d.name) })).sort((a, b) => a.name.localeCompare(b.name)),
 ];
 

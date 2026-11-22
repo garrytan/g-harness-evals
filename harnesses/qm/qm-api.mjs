@@ -2,7 +2,7 @@
 // plugins sign them: x-signature = v0=HMAC-SHA256(secret, "v0:<ts>:<METHOD>\n<path>\n<body>").
 //
 //   node qm-api.mjs turn <core-url> <secret> <job.json> [timeout-s]
-//     job: { actor: { externalId, displayName? }, conversation: { kind, threadRef, channelRef?, channelName? },
+//     job: { actor: { externalId, displayName? }, conversation: { kind, threadRef, channelRef?, channelName? }, origin?,
 //            text_file }
 //     Posts one turn to /v1/turns, prints {http, body} as JSON on stdout and exits 0 on a completed turn,
 //     3 on a model error, 124 when the request outlived timeout-s, 2 otherwise.
@@ -61,6 +61,7 @@ if (mode === 'turn') {
     actor: job.actor,
     conversation: job.conversation,
     text: readFileSync(job.text_file, 'utf8'),
+    ...(job.origin ? { origin: job.origin } : {}),
   });
   const out = await signed('POST', '/v1/turns', body, {}, timeoutS);
   console.log(JSON.stringify(out));

@@ -13,7 +13,7 @@
 ARG NODE_IMAGE=node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
 FROM ${NODE_IMAGE} AS src
 ARG QM_REPO=https://github.com/yc-software/qm
-ARG QM_COMMIT=90e4ced75dba0f711e9737e5bb2f2d718870fb0f
+ARG QM_COMMIT=77024e79699565296bdde10974ae3d26fd393df8
 RUN apk add --no-cache git \
     && git init -q /src && cd /src \
     && git remote add origin "${QM_REPO}" \
@@ -43,8 +43,8 @@ COPY --from=src /src/docs/images/slack-app-config-token-setup.gif /app/docs/imag
 RUN npm run build
 
 FROM ${NODE_IMAGE}
-ARG QM_VERSION=main@90e4ced7
-ARG QM_COMMIT=90e4ced75dba0f711e9737e5bb2f2d718870fb0f
+ARG QM_VERSION=main@77024e79
+ARG QM_COMMIT=77024e79699565296bdde10974ae3d26fd393df8
 LABEL org.opencontainers.image.title="harness-eval QM harness (core + adapter)" \
       harness-eval.harness="qm" \
       harness-eval.version="${QM_VERSION}" \
@@ -64,13 +64,11 @@ COPY --from=src /src/plugins/onboarding ./plugins/onboarding
 COPY --from=src /src/plugins/chassis ./plugins/chassis
 COPY --from=src /src/plugins/auth/src ./plugins/auth/src
 COPY --from=src /src/plugins/portal/src ./plugins/portal/src
-COPY --from=src /src/plugins/web-ui/server ./plugins/web-ui/server
-COPY --from=src /src/plugins/web-ui/src/app-edit.ts ./plugins/web-ui/src/app-edit.ts
 COPY --from=web-ui-build /app/plugins/web-ui/dist-web ./plugins/web-ui/dist-web
 COPY --from=src /src/tsconfig.json ./
 
 COPY config/ /opt/harness/config/
-COPY adapter.sh qm-api.mjs qm-directory.mjs pin.json /opt/harness/
+COPY adapter.sh qm-api.mjs qm-directory.mjs slack-event-key.mjs pin.json /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /data /workspace /harness-state && chown node:node /data /workspace /harness-state
 
 ENV NODE_ENV=production DATA_DIR=/data QM_VERSION=${QM_VERSION} GIT_SHA=${QM_COMMIT}

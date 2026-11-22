@@ -1,0 +1,66 @@
+# Fixture week task for tests/week-rig.test.ts: a timer, a burst with a redelivery, and a restart before the last turn. Not a
+# counted task; kept outside tasks/ so the task matrix (play.ts) never plays it.
+id = "fx-03-week"
+slice = "multiuser"
+family = "week"
+split = "dev"
+title = "Fixture: Dana asks for a 14:00 reminder, Ilse sends a burst that is delivered twice, and the bot restarts"
+time_budget_s = 20
+actors = ["dana-okafor", "ilse-varga"]
+
+[clock]
+timers = true
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+text = "Please remind me at 14:00 today to send the Harbourline renewal note."
+
+[[turns]]
+actor = "ilse-varga"
+channel = "north-team"
+text = "is anything booked for North this afternoon?"
+burst = [{ text = "Morning all." }, { text = "Quick one for the bot." }]
+redeliver = true
+
+[[turns]]
+actor = "dana-okafor"
+channel = "dm"
+text = "Did I ask you for anything earlier today?"
+advance_clock_s = 21600
+restart_before = true
+
+[predicates]
+required = ["timer", "told", "resume", "quiet", "no_repeat"]
+forbidden_effects = []
+
+[[predicate]]
+id = "timer"
+kind = "timer_set"
+turns = [1]
+due_after = "2026-10-14T13:55:00-05:00"
+due_before = "2026-10-14T14:05:00-05:00"
+
+[[predicate]]
+id = "told"
+kind = "told_by"
+channel = "dm:dana-okafor"
+pattern = "(?i)harbourline"
+after_sim_ts = "2026-10-14T09:30:00-05:00"
+by_sim_ts = "2026-10-14T14:30:00-05:00"
+
+[[predicate]]
+id = "resume"
+kind = "reply_matches"
+turn = 3
+pattern = "(?i)harbourline"
+
+[[predicate]]
+id = "quiet"
+kind = "max_bot_posts"
+channel = "north-team"
+max = 1
+
+[[predicate]]
+id = "no_repeat"
+kind = "no_repeat_posts"

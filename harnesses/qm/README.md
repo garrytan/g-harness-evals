@@ -1,16 +1,16 @@
 # QM harness
 
-**[QM](https://github.com/yc-software/qm) at main commit `90e4ced75dba0f711e9737e5bb2f2d718870fb0f`, through Pi.**
+**[QM](https://github.com/yc-software/qm) at main commit `77024e79699565296bdde10974ae3d26fd393df8`, through Pi.**
 
-- **Pin:** `main@90e4ced7` (2026-11-07 UTC), set by the S1 edition rerun's pilot amendment ([below](#re-pin-to-main-90e4ced7-2026-11-06-gst-1514-pilot-amendment)). QM has no release tag past `v0.1.15`. Most sections below were written at `b6786d67` and say so.
-- **The `serve` entry does not work at this pin:** QM refuses MCP servers on private network addresses, so the world MCP server can't be registered (below). A build-arg alone does not get around this: `prepare.sh` refuses any image whose `harness-eval.commit` label differs from `pin.json`'s commit, and this Dockerfile copies files that `b6786d67` lacks. A multi-user cell runs from a worktree at the last main commit before the pilot amendment merged, where `pin.json`, the Dockerfile and the image label all name `b6786d675f83d9a818c5d5335cc017ffea9ec7a7`.
+- **Pin:** `main@77024e79` (2026-11-21 UTC), QM main when the crew moved to one QM pin ([below](#re-pin-to-main-77024e79-2026-11-21-one-qm-pin)). Before that `main@198faa2b` (2026-11-08 UTC), 17 commits after `90e4ced7`, the commit that added `PRIVATE_NETWORK_ALLOWED_ORIGINS` ([below](#re-pin-to-main-198faa2b-2026-11-21-timer-turns)), and before that `main@90e4ced7` (2026-11-07 UTC), set by the S1 edition rerun's pilot amendment ([below](#re-pin-to-main-90e4ced7-2026-11-06-gst-1514-pilot-amendment)). QM has no release tag past `v0.1.15`. Most sections below were written at `b6786d67` or `90e4ced7` and say so. A counted run keeps the pin its preregistration commit holds.
+- **The `serve` entry works again at this pin:** QM refuses MCP servers on private network addresses unless an operator lists the exact origin in core's `PRIVATE_NETWORK_ALLOWED_ORIGINS`, and the runner now sets it to the world's origin for every QM trial, so the world MCP server registers. At `90e4ced7` there was no such setting and serve exited 2 before `ready`; multi-user cells then ran from a worktree pinned at `b6786d675f83d9a818c5d5335cc017ffea9ec7a7`, and those results keep that pin.
 - **Older cells:** cells before 2026-10-30 ran tag `v0.1.15` (commit `7417aa2a`); their results keep that pin.
 - **Topology:** QM is a service, so this is the sidecar topology of the [adapter protocol](../../docs/adapters.md). `compose.yaml` runs Postgres (`pgvector/pgvector:0.8.1-pg16`), QM core, and a task container whose entrypoint is `adapter.sh` (`HE_ENTRY` selects `run` or `serve`). Both entry points are implemented.
 - **Signing:** `qm-api.mjs` signs every request to core the way QM's own plugins do (`x-timestamp`, `x-signature = v0=HMAC-SHA256(secret, "v0:<ts>:<METHOD>\n<path>\n<body>")`).
 
 `run` posts one DM turn to core's `POST /v1/turns` as actor `U1` with `instruction.md` as the text, waits for the synchronous turn result and exits per the protocol.
 
-`serve` first registers the world-MCP server through QM's admin API, `PUT /v1/admin/mcp-servers/world` with `{url: $HE_WORLD_MCP_URL, auth: "bearer", bearerToken: $HE_WORLD_MCP_TOKEN, credentialScope: "shared", readOnly: false, enabled: true}`, as the principal `harness-admin` (`x-admin-actor: harness-admin@harness-eval`; `config/core.env` grants it `org_admin` through `ADMIN_GRANTS`, the route refuses anyone else); core probes `tools/list` against the world before saving, so the 200 in `qm-mcp-register.json` lists the 14 tools. Then each `TurnRequest` becomes one `POST /v1/turns` whose `actor.externalId` is the requester's Slack user id (with `displayName`) and whose conversation is `{kind: "dm", threadRef: "dm:<member>"}` or `{kind: "channel", threadRef: "channel:<id>", channelRef: <id>, channelName}`. That is QM's native scoping: a DM runs in scope `personal:<slack user id>`, a channel in `channel:<id>`, and `threadRef` names the session inside the scope. The reply is `TurnResult.reply`. Core stays up for the whole trial; nothing is restarted between turns.
+`serve` first registers the world-MCP server through QM's admin API, `PUT /v1/admin/mcp-servers/world` with `{url: $HE_WORLD_MCP_URL, auth: "bearer", bearerToken: $HE_WORLD_MCP_TOKEN, credentialScope: "shared", readOnly: false, enabled: true}`, as the principal `harness-admin` (`x-admin-actor: harness-admin@harness-eval`; `config/core.env` grants it `org_admin` through `ADMIN_GRANTS`, the route refuses anyone else); core probes `tools/list` against the world before saving, so the 200 in `qm-mcp-register.json` lists the 14 tools. Then each `TurnRequest` becomes one `POST /v1/turns` whose `actor.externalId` is the requester's Slack user id (with `displayName`) and whose conversation is `{kind: "dm", threadRef: "dm:<member>"}` or `{kind: "channel", threadRef: "channel:<id>", channelRef: <id>, channelName}`. That is QM's native scoping: a DM runs in scope `personal:<slack user id>`, a channel in `channel:<id>`, and `threadRef` names the session inside the scope. The reply is `TurnResult.reply`. Core stays up between turns. A `restart_before` week event restarts core together with the task service (core carries the label `harness-eval.restart: with-task`), so QM resumes from what it saved in Postgres and the state directory, like every other harness after a restart.
 
 ## Agent loop and configs (internal-task, re-pinned 2026-10-30)
 
@@ -67,13 +67,21 @@ QM cannot run an OpenRouter cell (`openrouter:<id>`, DeepSeek V4.1 Flash 1017 th
 
 - **Cell model:** `openai:<model>`, for example `openai:gpt-6.1-sol`. The runner then merges `compose.openai.yaml` over `compose.yaml`. An Anthropic cell loads no extra file.
 - **Wiring:** QM core gets `OPENAI_BASE_URL` set to the metering proxy's `/openai` route plus `/v1`, and the per-trial dummy token as `OPENAI_API_KEY`. `MODEL_PROVIDER=openai` is set and the Anthropic pair is cleared. No real key reaches the stack.
-- **Housekeeping:** on an OpenAI cell, QM's own housekeeping calls go to `gpt-5.6-luna` (harness housekeeping, shipped default), as they go to `claude-haiku-5-5` on an Anthropic cell. List it in the cell's `utility_models` so the proxy forwards and meters it.
+- **Housekeeping:** on an OpenAI cell, QM's own housekeeping calls go to `gpt-5.6-luna` (harness housekeeping, shipped default), as they go to `claude-haiku-5-5` on an Anthropic cell. From `main@77024e79` an Anthropic cell's session titles go to `claude-sonnet-5-5` instead. List them in the cell's `utility_models` so the proxy forwards and meters them.
 - **Where it runs:** Sol cells run through the runner and the shard path (`scripts/run-shard.sh`). The single-shot `harnesses/run-trial.sh` now merges `compose.<provider>.yaml` the same way, so hello and smoke runs work too.
 - **QM's own route, no custom provider.** QM has a built-in `openai` provider, so a Sol cell needs no Particle-style registration. `prepare.sh` and `adapter.sh` add nothing for it, and the token reaches core only as `OPENAI_API_KEY`, as on an Anthropic cell. `pin.json` `model_openai` records the transport.
 - **Requests:** Pi calls the Responses API (`POST <base>/v1/responses`, streamed) with `reasoning` effort medium (QM's `auto`) and `max_output_tokens` 128,000 (the registry row's `maxTokens`), the same cap as the OpenClaw Sol cells.
 - **Housekeeping stays at the shipped default.** `gpt-5.6-luna` is QM's auxiliary model for the `openai` provider (`auxiliaryModelFor`, `src/model/pi-models.ts`), and it needs no Anthropic credential, so it is not pinned to the cell model. No deviation is declared.
 
 Keyless proof at `90e4ced7` (2026-11-08, `tests/qm-openai-branch.test.ts`): one `run` turn through `compose.yaml` and `compose.openai.yaml` against a fake Responses endpoint completed with two requests, a side call on `gpt-5.6-luna` and the agent turn on `gpt-6.1-sol`, both at effort medium and `max_output_tokens` 128,000. The same file checks that the Opus and Particle stacks still equal main's (`tests/fixtures/qm-openai/golden/`, from `2a47028c6b`). No paid call was made.
+
+## Member turns are sent as human turns (2026-11-21)
+
+**Each member's message reaches QM marked as written by a person, the way QM's own chat surfaces send it.** In `serve`, the adapter posts every member turn to `POST /v1/turns` with `origin: {kind: "human", messageTs: <the message ts>}`. A redelivered message counts as a member turn. A timer turn carries no origin, so QM records it as `direct` (an automated caller), as before.
+
+- **Why.** QM keys several behaviours on the origin: whether it may share memory and files across scopes under the Open sharing posture, its screening and approvals, and its author checks (`src/core/orchestrator.ts`, `liveAuthorTurn`; `src/resolution/sharing-access.ts`). Before this change every turn arrived as `direct` (`src/api/app-turn.ts:247` defaults a missing origin to it), so trials tested a different QM from the one a Slack team uses. The always-on week pilot found it: with the Open posture, no shared-room memory reached a DM until member turns carried `human`. internal-task, QM's minder, recommended the change.
+- **What it doesn't change.** At QM's shipped Isolated posture, a DM still reads only its own scope. The single-shot `run` entry is unchanged.
+- **A Slack redelivery is dropped, as QM's Slack surface drops it.** QM's Slack surface skips a message whose channel and ts it has already handled, before any turn starts (`dedupeKey`, `src/slack/message-gating.ts:171-174`, called from `src/slack/events.ts:141` and `:150`, and skipped by `dedupedRun`, `message-gating.ts:190-196`). The adapter does the same with `slack-event-key.mjs`. A redelivered member message with the same channel and ts gets no QM turn and no reply, and the adapter log says so. A new message is a new turn even when its text repeats, and a timer turn is never dropped. Like QM's in-memory deduper, the set of seen keys starts empty when the adapter starts, and a key whose turn failed is forgotten. With every member turn sent as `human`, the agent answered 5 of 9 redelivered messages with a note ("I answered this one already, so I haven't posted again") instead of `NOTHING_TO_SAY`, and that note is itself the posted reply. `tests/qm-redelivery.test.ts` covers the key.
 
 ## Images
 
@@ -127,6 +135,25 @@ Not done: the `admin` and `web-ui` services, Slack, the egress proxy, and the mo
 
 - **Excluded from set T grading:** every path under `.agent-skills/` at the workspace root. A skill tree there is QM's copy of a catalog skill, never something the agent wrote.
 - **No set T check can match it today:** every check names a path, or a glob under a task directory such as `kb/**/*.md`. But `scripts/skill-resolver/check-set-t.ts` scans globs with `dot: true`, so a root-level glob added later (`**/*.md`, `**/SKILL.md`) would count these files. Such a check has to exclude `.agent-skills/` first.
+
+## Re-pin to main 77024e79 (2026-11-21, one QM pin)
+
+**QM moves to main `77024e79`, 2309 commits after `198faa2b`, so every harness-evals run uses one QM pin.** Timer turns and restarts work at this pin; the one change a cell sees is a new housekeeping model.
+
+- **Session titles call `claude-sonnet-5-5`.** `TITLE_MODEL_ID` (`src/agent/session-title-prompt.ts`) names it and `utilityRoute` (`src/agent/agent-run.ts`) tries it before the auxiliary model, so on an Anthropic cell QM asks for Sonnet 5.5 once per titled session. It is harness housekeeping at its shipped default: the cell lists `anthropic:claude-sonnet-5-5` in `utility_models` beside `anthropic:claude-haiku-5-5`, and the proxy meters it. Without that the trial ends `model_error` (HE-MODEL-001), which is how the first run at this pin failed.
+- **Build.** Both Dockerfiles build at this commit unchanged apart from the commit and version.
+- **Checked:** the qm lanes of `tests/timer-turn-adapters.test.ts` (timer set through the world MCP, timer turn answered in the same conversation) and `tests/week-rig.test.ts` (the harness restarts and the next turn runs in the session that heard the marker) pass with both images built at this pin, and `tests/qm*.test.ts` passes (271 tests). No paid model call was made.
+- **Not re-checked at this pin:** the gbrain memory provider's OAuth and the S1 edition driver. `src/mcp/mcp-client.ts` changed a lot since `198faa2b`; the world MCP registration and `mcp_call` work in the lanes above.
+
+## Re-pin to main 198faa2b (2026-11-21, timer turns)
+
+**The `serve` entry registers the world MCP server again, so QM can take timer turns.** QM [#3206](https://github.com/yc-software/qm/pull/3206) (`198faa2b`) adds `PRIVATE_NETWORK_ALLOWED_ORIGINS`: exact origins core's guarded fetch may dial on a private address (`src/util/network.ts`; loopback, link-local and metadata addresses stay refused).
+
+- **What the runner does.** For a QM trial it gives core `PRIVATE_NETWORK_ALLOWED_ORIGINS` set to the world's origin, `http://host.docker.internal:<port>` (core runs on the host network, where that name is the docker bridge gateway, a private address). It goes through the compose override's core block (`runner/trial/trial.ts`, `composeOverride`), so `compose.yaml` and the golden stack environments (`tests/fixtures/qm-openai/golden/`) are unchanged. The gbrain tap is on the same origin. A Particle cell also lists the metering proxy's origin there, since QM registers Particle as a custom provider and dials it from core, and the guard refuses that private address too (`tests/particle-branch.test.ts` gives core the fake endpoint's origin the same way).
+- **Core build.** QM's `deploy/core/Dockerfile` dropped the web UI relay server (#3204), so `Dockerfile` no longer copies `plugins/web-ui/server` or `plugins/web-ui/src/app-edit.ts`. The sandbox build is unchanged.
+- **API.** None of the routes the adapter calls changed in the 17 commits (`git diff 90e4ced7 198faa2b -- src/api src/mcp`): `/v1/turns` only gained exports and a browser flag on `/v1/runs/:id/withdraw`, the MCP server admin route is untouched, and `mcp-client.ts` only swapped a slash-trim regex for a helper.
+- **Checked:** `tests/timer-turn-adapters.test.ts`, the qm lane, with both images built at this pin: serve registers the world, the fake model sets a timer through QM's `mcp_call` to the world's `timer_set`, the runner delivers the timer turn, QM sends the model the conversation of `dm:<member>` with the first turn in it, and the reply `NOTHING_TO_SAY` is withheld. `harnesses/clock-capabilities.json` marks QM certified. QM's Anthropic housekeeping calls (`claude-haiku-5-5`) need the cell to list that model in `utility_models`, as before.
+- **Not re-checked at this pin:** the gbrain memory provider's OAuth and the S1 edition driver.
 
 ## Re-pin to main 90e4ced7 (2026-11-06, internal-task pilot amendment)
 
@@ -270,6 +297,18 @@ Findings:
 - The MCP registration route needs an `org_admin` grant; with Postgres and no `ADMIN_GRANTS`, core boots with no admin at all and the route answers 403, so `config/core.env` names `harness-admin`.
 
 ## Changelog
+
+### 2026-11-21: member turns are sent as human turns
+
+In `serve`, member turns reach QM with `origin: {kind: "human", messageTs}`, timer turns stay `direct`, and a Slack redelivery with the same channel and ts is dropped, as QM's Slack surface drops it (the Member turns section). Why: QM gates cross-scope sharing, screening and author checks on the origin, and `direct` made every trial an automated caller.
+
+### 2026-11-21: re-pinned to main 77024e79 (one QM pin)
+
+Both images and `pin.json` name QM `77024e79`. Anthropic cells now list `claude-sonnet-5-5` in `utility_models` for QM's session titles (the Re-pin to main 77024e79 section). Why: the crew keeps one QM pin, and current QM main passes the timer-turn and restart checks.
+
+### 2026-11-21: re-pinned to main 198faa2b (timer turns)
+
+Both images and `pin.json` name QM `198faa2b`, the first commit with `PRIVATE_NETWORK_ALLOWED_ORIGINS`; the runner lists the world's origin there, so `serve` registers the world MCP server, and QM is certified for timer turns (the Re-pin to main 198faa2b section). Why: the week-long timers tasks need QM in serve mode on a branch that has the timer code.
 
 ### 2026-11-08: no OpenRouter cells (internal-task)
 

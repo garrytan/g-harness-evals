@@ -703,7 +703,7 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
       const dir = taskDirFor(cell, task, tasksRoot);
       const turns = taskTurnCount(dir);
       if (!turns) throw new RunnerError('HE-TASK-001', `cell ${cell.id}: ${dir}/task.toml is missing or has no turns; fix: add the task (docs/tasks.md) or drop it from the cell`);
-      if (taskHasTimers(dir) && (cell.harness_mode === 'scripted' || !timerTurnsCertified(cell.harness))) throw new RunnerError('HE-PREREG-009', `cell ${cell.id}: task ${task} has [clock] timers, and ${cell.harness_mode === 'scripted' ? 'scripted mode does not deliver timer turns yet' : `harness ${cell.harness} is not certified for timer turns (harnesses/clock-capabilities.json)`}; fix: run it on a certified harness or drop the task from the cell`);
+      if (taskHasTimers(dir) && cell.harness_mode !== 'scripted' && !timerTurnsCertified(cell.harness)) throw new RunnerError('HE-PREREG-009', `cell ${cell.id}: task ${task} has [clock] timers, and harness ${cell.harness} is not certified for timer turns (harnesses/clock-capabilities.json); fix: run it on a certified harness or drop the task from the cell`);
       const scripts: Array<{ name: string; path: string } | null> = cell.script === 'oracle' ? [{ name: 'oracle', path: join(dir, 'oracle.json') }]
         : cell.script === 'mutations' ? listMutations(dir, cell.id)
         : [null];

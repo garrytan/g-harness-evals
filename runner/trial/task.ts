@@ -17,6 +17,13 @@ export interface TaskTurn {
   thread?: 'new';
   /** v0.4 (internal-task): earlier turns whose windows the runner expires before this turn (runner/contracts.ts, expiryWindows). */
   expire_turns?: number[];
+  /** Week events ([clock] timers tasks only, docs/tasks.md "Week events"): messages posted in the same conversation just before
+   *  this turn's own message, with no turn of their own; actor defaults to the turn's actor. */
+  burst?: Array<{ actor?: string; text: string }>;
+  /** Week events: after the answer, hand the same message again as a retry (retry_attempt 1). */
+  redeliver?: true;
+  /** Week events: stop the harness and start it again on the same workspace and state before this turn. */
+  restart_before?: true;
 }
 
 export interface TaskSpec {
@@ -70,8 +77,16 @@ export function loadTask(dir: string): TaskSpec {
   if (clock !== undefined) {
     if (clock.timers !== true) problems.push('clock.timers (only true is defined)');
     if (clock.end_advance_s !== undefined && !(Number(clock.end_advance_s) >= 0)) problems.push('clock.end_advance_s');
-    if (turns.some((t) => t.expire_turns)) problems.push('expire_turns cannot be combined with [clock] timers');
   }
+  turns.forEach((t, i) => {
+    if (t.burst === undefined && t.redeliver === undefined && t.restart_before === undefined) return;
+    if (clock?.timers !== true) problems.push(`turns[${i}]: burst, redeliver and restart_before need [clock] timers = true`);
+    if (t.redeliver !== undefined && t.redeliver !== true) problems.push(`turns[${i}].redeliver (only true is defined)`);
+    if (t.restart_before !== undefined && t.restart_before !== true) problems.push(`turns[${i}].restart_before (only true is defined)`);
+    if (t.burst !== undefined && (!Array.isArray(t.burst) || !t.burst.length || t.burst.some((b) => typeof b?.text !== 'string' || !b.text || (b.actor !== undefined && typeof b.actor !== 'string')))) problems.push(`turns[${i}].burst needs one or more { text, actor? }`);
+    else if (t.burst && t.channel === 'dm' && t.burst.some((b) => b.actor !== undefined && b.actor !== t.actor)) problems.push(`turns[${i}].burst: a DM burst comes from the turn's own actor`);
+    else if (t.burst?.some((b) => b.actor !== undefined && !(Array.isArray(raw.actors) && raw.actors.includes(b.actor)))) problems.push(`turns[${i}].burst: every burst actor is in actors`);
+  });
   const budget = Number(raw.time_budget_s ?? 0);
   if (!(budget > 0)) problems.push('time_budget_s');
   if (problems.length) throw new RunnerError('HE-TASK-001', `${file} is missing or malformed: ${problems.join(', ')}; schema in docs/tasks.md`);
