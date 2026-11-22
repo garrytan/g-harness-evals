@@ -38,6 +38,8 @@ Run it as a background operation with a timeout covering the whole shard and reg
 
 ## A fan-out
 
+**Before each counted shard, run the launch check:** `bun scripts/launch-preflight.ts <plan folder> --manifest <fanout.json> --shard <name> --dest <the shard's results root> --ledger <every pilot and counted ledger> --pilot <pilot results dir>` on the machine that holds the provider keys. It refuses when the plan's pilot-priced total passes its spend stop, when a shard cell has no pilot price, or when a provider the shard calls is out of credit, rejects the key or can't serve the model. Launch only on exit 0. [cost-projection.md](cost-projection.md) has the details and the logged override. `fanout.sh` doesn't run it for you yet.
+
 ```sh
 scripts/ubicloud/fanout.sh --manifest ~/.capy/work/<run>/fanout.json [--max-vcpus N] [--parallel N] [--dry-run] \
   [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--replicate-to <drive folder>] [--replicate-seconds 1200]

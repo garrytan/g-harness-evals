@@ -38,3 +38,9 @@ The pilot runs 4 tasks per arm and shows, on that arm's own outputs:
 
 - Look at: 32 of 64 units
 - Stop bounds: stop for harm if the card arm trails by more than 15 points with the 95% range below 0; no stop for benefit.
+
+## Cost projection
+
+- Spend stop: $1,200
+- Pilot-priced projection: $980.40
+- Projection receipt: plan-cost-receipt.json

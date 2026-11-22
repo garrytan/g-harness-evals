@@ -34,3 +34,8 @@ The pilot runs 4 tasks per arm and shows, on that arm's own outputs:
 | plain | 20 | 0.6 |
 | card | 20 | 0.6 |
 
+## Cost projection
+
+- Spend stop: $1,200
+- Pilot-priced projection: $980.40
+- Projection receipt: plan-cost-receipt.json
