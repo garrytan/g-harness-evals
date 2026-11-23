@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { BUILDERS } from '../scripts/ci/select-tests.ts';
+import { BUILDERS, EXPORT_FULL_RUN } from '../scripts/ci/select-tests.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 const SCRIPT = join(ROOT, 'scripts/ci/select-tests.ts');
@@ -63,11 +63,11 @@ function run(change: (dir: string) => void, mapBody?: unknown | Uint8Array | nul
 }
 
 /** The selector as CI runs it: no bunfig.toml, tsconfig.json or .env from the repository. */
-function cli(dir: string, base: string, head: string, mapFile: string, now = NOW) {
+function cli(dir: string, base: string, head: string, mapFile: string, now = NOW, extra: string[] = []) {
   const cfg = temp('select-tests-cfg-');
   writeFileSync(join(cfg, 'bunfig.toml'), '');
   writeFileSync(join(cfg, 'tsconfig.json'), '{}');
-  const r = spawnSync('bun', ['--no-env-file', '--config=' + join(cfg, 'bunfig.toml'), '--tsconfig-override=' + join(cfg, 'tsconfig.json'), SCRIPT, '--base', base, '--head', head, '--map-file', mapFile, '--now', now], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir } });
+  const r = spawnSync('bun', ['--no-env-file', '--config=' + join(cfg, 'bunfig.toml'), '--tsconfig-override=' + join(cfg, 'tsconfig.json'), SCRIPT, '--base', base, '--head', head, '--map-file', mapFile, '--now', now, ...extra], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir } });
   expect(r.status).toBe(0);
   return { out: r.stdout.trim().split('\n').filter(Boolean), why: r.stderr.trim() };
 }
@@ -173,7 +173,7 @@ test('select-tests judges the merge commit CI tests', () => {
 type Deps = { paths: string[]; dirs: string[]; trees: string[] };
 type MapBody = { always: Record<string, string[]>; tests: Record<string, Deps> };
 
-function drifted(mainChange: (dir: string) => void, prChange: (dir: string) => void, mapOf: (base: string) => unknown = map) {
+function drifted(mainChange: (dir: string) => void, prChange: (dir: string) => void, mapOf: (base: string) => unknown = map, extra: string[] = []) {
   const { dir, base } = repo();
   const file = join(dir, '..', 'map.json.gz');
   writeFileSync(file, Bun.gzipSync(new TextEncoder().encode(JSON.stringify(mapOf(base)))));
@@ -185,7 +185,7 @@ function drifted(mainChange: (dir: string) => void, prChange: (dir: string) => v
   prChange(dir);
   sh(dir, 'add', '-A');
   sh(dir, 'commit', '-q', '--allow-empty', '-m', 'change');
-  return cli(dir, tip, sh(dir, 'rev-parse', 'HEAD'), file);
+  return cli(dir, tip, sh(dir, 'rev-parse', 'HEAD'), file, NOW, extra);
 }
 
 // Value: protects=a test whose reads changed with the base after the trace still runs (it is picked by the files it read
@@ -224,16 +224,18 @@ describe('select-tests and what the trace cannot see', () => {
   });
 });
 
-// Value: protects=a selected docker test never runs without the phase-1 builder that makes its image, and the selector's
-// BUILDERS list matches run-tests.sh's; fails_when=a test that runs a built image is selected alone (it skips on a clean
-// runner) or the two lists drift; why_new=the /ship review of #558 (second-model finding, internal-task's round grant);
+// Value: protects=a selected docker test never runs without the phase-1 builder that makes its image, also when its trace
+// ties it to one builder and a new case needs another, and the selector's BUILDERS list matches run-tests.sh's;
+// fails_when=a test that runs a built image is selected alone (it skips on a clean runner), a docker test the map ties to
+// the claude-code builder gets only that builder, or the two lists drift; why_new=the /ship review of #558 (second-model
+// findings at select-tests.ts:107 and :117, internal-task's round grant and the export-selection follow-up);
 // seam=the CLI over a temp repository; no_claim=docker itself.
 test('select-tests adds the image builders a selected docker test needs', () => {
   const { dir } = repo();
   put(dir, {
     'tests/adapter-conformance.test.ts': 'b\n', 'tests/claude-code-adapter.test.ts': 'b\n', 'tests/codex-adapter.test.ts': 'b\n',
     'tests/sdk.test.ts': "spawnSync('docker', ['run', IMAGE]);\n", 'tests/plain.test.ts': "spawnSync('docker', ['run', 'x']);\n",
-    'harnesses/cc/Dockerfile': 'FROM x\n', 'src/s.ts': 's\n', 'src/p.ts': 'p\n',
+    'tests/ctx.test.ts': "readFileSync('harnesses/cc/Dockerfile');\n", 'harnesses/cc/Dockerfile': 'FROM x\n', 'src/s.ts': 's\n', 'src/p.ts': 'p\n', 'src/c.ts': 'c\n',
   });
   sh(dir, 'add', '-A');
   sh(dir, 'commit', '-q', '-m', 'builders');
@@ -245,6 +247,7 @@ test('select-tests adds the image builders a selected docker test needs', () => 
     'tests/codex-adapter.test.ts': { paths: ['tests/codex-adapter.test.ts'], dirs: [], trees: [] },
     'tests/sdk.test.ts': { paths: ['src/s.ts', 'tests/sdk.test.ts'], dirs: [], trees: ['harnesses/cc'] },
     'tests/plain.test.ts': { paths: ['src/p.ts', 'tests/plain.test.ts'], dirs: [], trees: [] },
+    'tests/ctx.test.ts': { paths: ['src/c.ts', 'tests/ctx.test.ts'], dirs: [], trees: ['harnesses/cc'] },
   });
   const file = join(dir, '..', 'map.json.gz');
   writeFileSync(file, Bun.gzipSync(new TextEncoder().encode(JSON.stringify(m))));
@@ -254,7 +257,9 @@ test('select-tests adds the image builders a selected docker test needs', () => 
     sh(dir, 'commit', '-q', '-am', 'change ' + path);
     return cli(dir, base, sh(dir, 'rev-parse', 'HEAD'), file);
   };
-  expect(pick('src/s.ts').out).toEqual(['tests/claude-code-adapter.test.ts', 'tests/sdk.test.ts', 'tests/x.test.ts']);
+  const all = ['tests/adapter-conformance.test.ts', 'tests/claude-code-adapter.test.ts', 'tests/codex-adapter.test.ts'];
+  expect(pick('src/s.ts').out).toEqual([...all, 'tests/sdk.test.ts', 'tests/x.test.ts']);
+  expect(pick('src/c.ts').out).toEqual(['tests/claude-code-adapter.test.ts', 'tests/ctx.test.ts', 'tests/x.test.ts']);
   const r = pick('src/p.ts');
   expect(r.out).toEqual(['tests/adapter-conformance.test.ts', 'tests/claude-code-adapter.test.ts', 'tests/codex-adapter.test.ts', 'tests/plain.test.ts', 'tests/x.test.ts']);
   expect(r.why).toContain('plus 3 image builder(s)');
@@ -272,14 +277,93 @@ test('ci.yml runs the base copy on pull requests only and writes tree.json only 
   const step = (name: string) => steps.find((s) => s.name === name)!;
   const sel = step('Test selection (pull requests)');
   expect(sel.if).toBe("github.repository == 'garrytan/harness-evals' && github.event_name == 'pull_request' && steps.docs.outputs.docs_only != 'true'");
-  expect(sel.run).toContain('git show "$base:scripts/ci/select-tests.ts" > "$d/select-tests.ts"');
-  expect(sel.run).toContain('git fetch -q --no-tags origin +refs/heads/ci-test-map:refs/ci-test-map/map');
-  expect(sel.run).toContain('bun --no-env-file --config="$d/bunfig.toml" --tsconfig-override="$d/tsconfig.json" "$d/select-tests.ts"');
-  expect(sel.run).not.toContain('--depth');
-  expect(sel.run).toContain('--base "$base" --head HEAD --map-rev refs/ci-test-map/map');
+  expect(sel.run).toBe('bash scripts/ci/select-step.sh "$RUNNER_TEMP/select-tests"');
+  const exportSel = (Bun.YAML.parse(text) as { jobs: Record<string, { steps: { name?: string; run?: string }[] }> }).jobs['public-export']!.steps.find((s) => s.name === 'Test selection (pull requests)')!;
+  expect(exportSel.run).toBe('bash scripts/ci/select-step.sh "$RUNNER_TEMP/select-tests" --profile export');
+  const script = readFileSync(join(ROOT, 'scripts/ci/select-step.sh'), 'utf8');
+  expect(script).toContain('git show "$base:scripts/ci/select-tests.ts" > "$d/select-tests.ts"');
+  expect(script).toContain('git fetch -q --no-tags origin +refs/heads/ci-test-map:refs/ci-test-map/map');
+  expect(script).toContain('bun --no-env-file --config="$d/bunfig.toml" --tsconfig-override="$d/tsconfig.json" "$d/select-tests.ts"');
+  expect(script).not.toContain('--depth');
+  expect(script).toContain('--base "$base" --head HEAD --map-rev refs/ci-test-map/map "${profile[@]}"');
+  const docs = step('Docs-only change').run!;
+  expect(docs.indexOf("grep -qiF '[full tests]'")).toBeGreaterThan(-1);
+  expect(docs.indexOf("grep -qiF '[full tests]'")).toBeLessThan(docs.indexOf('docs-only.ts'));
   expect(steps.findIndex((s) => s === sel)).toBeLessThan(steps.findIndex((s) => s.name === 'Install (frozen lockfile)'));
   for (const name of ['Tested tree record (tree.json)', 'Tested tree record in the log', 'Upload the tested tree', 'Tests (statistics kit, preregistration checker)']) {
     expect({ name, if: step(name).if }).toEqual({ name, if: "steps.docs.outputs.docs_only != 'true' && steps.select.outputs.selected != 'true'" });
   }
   expect(step('Selected tests (pull request)').if).toBe("steps.docs.outputs.docs_only != 'true' && steps.select.outputs.selected == 'true'");
+});
+
+// Value: protects=the public-export job's selected run on the export tree still runs everything when the pull request
+// changes what the export publishes or writes (its manifest, rules and scrub table, the export tool, the preregistration
+// ledger and the run documents), while what the base changed after the trace never forces it; fails_when=a pull request
+// that changes publication/ or docs/benchmarks/ gets a selected export run, the default profile starts treating export
+// inputs as a full run, or base drift under an export input forces every export run to full until the next map;
+// why_new=test selection on the export tree (internal-task's option A, 2026-11-23); seam=the CLI over a temp repository;
+// no_claim=the export itself.
+describe('select-tests --profile export', () => {
+  const exportMap = (base: string) => { const v: MapBody = map(base); v.tests['tests/a.test.ts'].paths.push('docs/benchmarks/run/r.json', 'publication/manifest.json'); return v; };
+  const seed = (dir: string) => { put(dir, { 'docs/benchmarks/run/r.json': '1\n', 'publication/manifest.json': '{}\n' }); sh(dir, 'add', '-A'); sh(dir, 'commit', '-q', '-m', 'seed'); };
+  const pr = (path: string, extra: string[]) => drifted(seed, (dir) => put(dir, { [path]: 'changed\n' }), (base) => exportMap(base), extra);
+  test('runs everything when the pull request changes an export input', () => {
+    for (const path of ['docs/benchmarks/run/r.json', 'publication/manifest.json']) {
+      const r = pr(path, ['--profile', 'export']);
+      expect(r.out).toEqual(['all']);
+      expect(r.why).toBe('full run: ' + path + ' changed, and ' + EXPORT_FULL_RUN.find((p) => path.startsWith(p)) + ' is an export input');
+    }
+  });
+  test('selects as usual without the profile, and for a change outside the export inputs', () => {
+    expect(pr('docs/benchmarks/run/r.json', []).out).toEqual(['tests/a.test.ts', 'tests/x.test.ts']);
+    expect(pr('src/a.ts', ['--profile', 'export']).out).toEqual(['tests/a.test.ts', 'tests/x.test.ts']);
+  });
+  test('never runs everything for what the base changed under an export input after the trace', () => {
+    const r = drifted((dir) => put(dir, { 'docs/benchmarks/run/r.json': '2\n' }), (dir) => put(dir, { 'src/b.ts': 'b2\n' }), (base) => exportMap(base), ['--profile', 'export']);
+    expect(r.out).toEqual(['tests/a.test.ts', 'tests/b.test.ts', 'tests/x.test.ts']);
+  });
+  test('refuses an unknown profile', () => {
+    const { dir, base } = repo();
+    const r = spawnSync('bun', [SCRIPT, '--base', base, '--head', base, '--map-file', join(dir, 'none.gz'), '--profile', 'nope'], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir } });
+    expect(r.status).toBe(2);
+    expect(r.stdout).toBe('');
+  });
+});
+
+// Value: protects=the step script both CI jobs run turns every unclear case into the full run: the label, [full tests],
+// an empty selection, and a base whose selector predates the export profile; fails_when=one of those yields
+// selected=true, or a clean list is not passed through; why_new=the step moved out of ci.yml so the public-export job can
+// share it, and #558's final review found an empty list read as a selection (ci.yml:126); seam=scripts/ci/select-step.sh
+// on a temp repository with a merge commit and a stub base selector; no_claim=the real selector (tested above).
+test('select-step.sh runs everything unless the base selector prints a clean list', () => {
+  const { dir } = repo();
+  const stub = (marker: string) => { put(dir, { 'scripts/ci/select-tests.ts': marker + "console.log(process.env.STUB_OUT ?? '');\n" }); sh(dir, 'add', '-A'); sh(dir, 'commit', '-q', '--allow-empty', '-m', 'stub'); };
+  sh(dir, 'remote', 'add', 'origin', dir);
+  sh(dir, 'branch', 'ci-test-map');
+  const merge = (marker: string, message: string) => {
+    sh(dir, 'checkout', '-q', '-B', 'main');
+    stub(marker);
+    sh(dir, 'checkout', '-q', '-B', 'pr');
+    put(dir, { 'src/a.ts': 'a' + Math.random() + '\n' });
+    sh(dir, 'commit', '-q', '-am', message);
+    sh(dir, 'checkout', '-q', 'main');
+    sh(dir, 'merge', '-q', '--no-ff', '-m', 'merge', 'pr');
+  };
+  const step = (env: Record<string, string>, ...args: string[]) => {
+    const out = temp('select-step-');
+    const r = spawnSync('bash', [join(ROOT, 'scripts/ci/select-step.sh'), join(out, 'sel'), ...args], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir, GITHUB_OUTPUT: join(out, 'out'), GITHUB_STEP_SUMMARY: join(out, 'summary'), ...env } });
+    expect(r.status).toBe(0);
+    return { output: readFileSync(join(out, 'out'), 'utf8').trim(), list: readFileSync(join(out, 'sel', 'selection.txt'), 'utf8').trim(), log: r.stdout };
+  };
+  merge('// EXPORT_FULL_RUN\n', 'change');
+  expect(step({ STUB_OUT: 'tests/a.test.ts' })).toMatchObject({ output: 'selected=true', list: 'tests/a.test.ts' });
+  expect(step({ STUB_OUT: 'tests/a.test.ts' }, '--profile', 'export')).toMatchObject({ output: 'selected=true', list: 'tests/a.test.ts' });
+  expect(step({ STUB_OUT: '' })).toMatchObject({ output: 'selected=false', list: 'all' });
+  expect(step({ STUB_OUT: 'tests/a.test.ts', FULL_LABEL: 'true' })).toMatchObject({ output: 'selected=false', list: 'all', log: 'full run: the full-tests label\n' });
+  expect(step({ STUB_OUT: 'tests/a.test.ts', HEAD_REF: 'ci-test-map' })).toMatchObject({ output: 'selected=false', list: 'all' });
+  merge('', 'change [Full Tests]');
+  expect(step({ STUB_OUT: 'tests/a.test.ts' })).toMatchObject({ output: 'selected=false', log: "full run: [full tests] in the head commit's message\n" });
+  merge('', 'change');
+  expect(step({ STUB_OUT: 'tests/a.test.ts' })).toMatchObject({ output: 'selected=true' });
+  expect(step({ STUB_OUT: 'tests/a.test.ts' }, '--profile', 'export')).toMatchObject({ output: 'selected=false', log: "full run: the base's scripts/ci/select-tests.ts has no export profile\n" });
 });

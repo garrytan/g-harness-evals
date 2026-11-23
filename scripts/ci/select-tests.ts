@@ -3,11 +3,13 @@
  * Picks the test files a pull request can affect, from the runtime test map the nightly test-map workflow publishes on
  * the orphan branch ci-test-map (scripts/ci/test-map/, .github/workflows/test-map.yml).
  *
- *   bun scripts/ci/select-tests.ts --base <rev> --head <rev> (--map-rev <rev> | --map-file <path>) [--now <iso>]
+ *   bun scripts/ci/select-tests.ts --base <rev> --head <rev> (--map-rev <rev> | --map-file <path>) [--now <iso>] [--profile export]
  *
  * Prints "all", or the selected test files one per line, and says why on stderr. It prints "all" when the map is missing,
  * unreadable or not schema 1, more than 3 days old, or traced at a commit that is not an ancestor of --base; when a
- * changed path is a FULL_RUN path, in the pull request or in what the base changed after the traced commit; when a file the
+ * changed path is a FULL_RUN path, in the pull request or in what the base changed after the traced commit; with --profile
+ * export (the public-export job's run on the export tree), when the pull request changes an export input (EXPORT_FULL_RUN:
+ * what decides which files the export publishes, how it rewrites them and the files it writes itself); when a file the
  * pull request changes, of any kind, is one the map does not tie to a test (no test read it, it is under no test's tree,
  * and it adds or removes no entry in a directory a test listed), other than a test file; when the selection comes out
  * empty; or when anything else goes wrong.
@@ -22,9 +24,10 @@
  *     says nothing about its reads);
  *   - the same for what the base changed after the traced commit, so a test whose reads changed with the base is picked by
  *     the files it read when traced (those changes alone never force a full run, since the base's own full run passed);
- *   - the image builders (BUILDERS, run-tests.sh's phase 1) a selected test needs: each builder that shares a tree with it
- *     (the map gives a test that runs an image the build context of that image), or every builder when a selected test
- *     mentions docker and shares a tree with none, so a docker test never skips for want of its image.
+ *   - the image builders (BUILDERS, run-tests.sh's phase 1) a selected test needs: every builder when a selected test
+ *     mentions docker (its old trace may not name an image a new case runs), else each builder that shares a tree with it
+ *     (the map gives a test that runs an image the build context of that image), so a docker test never skips for want
+ *     of its image.
  * CI passes the pull request's merge commit as --head, so the list names files in the tree the tests run in.
  * CI runs the base commit's copy of this file with no bunfig.toml, tsconfig.json or .env from the head, so a pull request
  * cannot change its own selection, and it imports nothing from the repository. Selection is safe only because
@@ -35,6 +38,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 export const FULL_RUN_FILES: readonly string[] = ['package.json', 'bun.lock', 'bunfig.toml', 'tsconfig.json', 'scripts/run-tests.sh'];
 export const FULL_RUN_DIRS: readonly string[] = ['.github/', 'tests/setup/', 'scripts/ci/'];
+export const EXPORT_FULL_RUN: readonly string[] = ['publication/', 'scripts/public-export/', 'scripts/public-safety/', 'scripts/prereg-ledger.ts', 'runner/prereg/', 'docs/benchmarks/'];
 export const MAX_AGE_HOURS = 72;
 export const BUILDERS: readonly string[] = ['tests/adapter-conformance.test.ts', 'tests/claude-code-adapter.test.ts', 'tests/codex-adapter.test.ts'];
 export const TEST_FILE = /^tests\/.*[._](test|spec)\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
@@ -69,9 +73,10 @@ const ancestors = (p: string): string[] => {
 
 /**
  * The selection for one change set against one map. headTests is every test file at the head; newDirs the directories
- * the change creates or removes.
+ * the change creates or removes; extraFull more paths (a trailing / for a directory) that force a full run when the pull
+ * request itself changes them.
  */
-export function select(map: TestMap, changes: readonly Change[], headTests: ReadonlySet<string>, newDirs: ReadonlySet<string>): Verdict {
+export function select(map: TestMap, changes: readonly Change[], headTests: ReadonlySet<string>, newDirs: ReadonlySet<string>, extraFull: readonly string[] = []): Verdict {
   const exact = new Map<string, Set<string>>(), dirs = new Map<string, Set<string>>(), trees = new Map<string, Set<string>>();
   const add = (idx: Map<string, Set<string>>, k: string, t: string) => { let s = idx.get(k); if (!s) idx.set(k, (s = new Set())); s.add(t); };
   const sel = new Set(Object.keys(map.always));
@@ -87,6 +92,8 @@ export function select(map: TestMap, changes: readonly Change[], headTests: Read
     if (FULL_RUN_FILES.includes(path)) return { all: true, why: 'full run: ' + path + ' changed' + by };
     const dir = FULL_RUN_DIRS.find((d) => path.startsWith(d));
     if (dir) return { all: true, why: 'full run: ' + path + ' is under ' + dir + by };
+    const extra = drift ? undefined : extraFull.find((p) => (p.endsWith('/') ? path.startsWith(p) : path === p));
+    if (extra) return { all: true, why: 'full run: ' + path + ' changed, and ' + extra + ' is an export input' };
     const hit = new Set(exact.get(path) ?? []);
     const anc = ancestors(path);
     for (const a of [...anc, path]) for (const t of trees.get(a) ?? []) hit.add(t);
@@ -114,7 +121,7 @@ export function addBuilders(map: TestMap, files: readonly string[], headTests: R
     if (BUILDERS.includes(t)) continue;
     const trees = map.tests[t]?.trees ?? [];
     const named = BUILDERS.filter((b) => (map.tests[b]?.trees ?? []).some((x) => trees.includes(x)));
-    for (const b of named.length ? named : dockerTests.has(t) ? BUILDERS : []) out.add(b);
+    for (const b of dockerTests.has(t) ? BUILDERS : named) out.add(b);
   }
   return [...out].filter((t) => headTests.has(t)).sort();
 }
@@ -126,7 +133,7 @@ function git(args: string[], input?: string, ok = [0]): { status: number; out: B
 }
 
 /** The verdict for --base and --head with the map's bytes (null when the map could not be read at all). */
-export function decide(bytes: Uint8Array | null, base: string, head: string, now: Date): Verdict {
+export function decide(bytes: Uint8Array | null, base: string, head: string, now: Date, extraFull: readonly string[] = []): Verdict {
   if (!bytes) return { all: true, why: 'full run: no test map (the ci-test-map branch is missing or could not be read)' };
   const map = parseMap(bytes);
   if (typeof map === 'string') return { all: true, why: 'full run: ' + map };
@@ -154,7 +161,7 @@ export function decide(bytes: Uint8Array | null, base: string, head: string, now
     const lines = git(['cat-file', '--batch-check'], keys.join('\n') + '\n').out.toString().split('\n');
     keys.forEach((k, i) => { if (lines[i]?.endsWith(' missing')) newDirs.add(probe.get(k)!); });
   }
-  const v = select(map, changes, headTests, newDirs);
+  const v = select(map, changes, headTests, newDirs, extraFull);
   if (v.all) return v;
   const picked = v.files;
   const users = picked.filter((t) => !BUILDERS.includes(t));
@@ -166,8 +173,8 @@ export function decide(bytes: Uint8Array | null, base: string, head: string, now
 
 function main(argv: string[]): number {
   const arg = (name: string) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
-  const base = arg('--base'), head = arg('--head'), rev = arg('--map-rev'), file = arg('--map-file');
-  if (!base || !head || (!rev && !file)) { console.error('usage: bun scripts/ci/select-tests.ts --base <rev> --head <rev> (--map-rev <rev> | --map-file <path>) [--now <iso>]'); return 2; }
+  const base = arg('--base'), head = arg('--head'), rev = arg('--map-rev'), file = arg('--map-file'), profile = arg('--profile');
+  if (!base || !head || (!rev && !file) || (profile !== undefined && profile !== 'export')) { console.error('usage: bun scripts/ci/select-tests.ts --base <rev> --head <rev> (--map-rev <rev> | --map-file <path>) [--now <iso>] [--profile export]'); return 2; }
   const now = arg('--now') ? new Date(arg('--now')!) : new Date();
   let v: Verdict;
   try {
@@ -177,7 +184,7 @@ function main(argv: string[]): number {
       const r = spawnSync('git', ['show', rev + ':test-map.json.gz'], { maxBuffer: 1 << 30 });
       bytes = r.status === 0 ? r.stdout : null;
     }
-    v = decide(bytes, base, head, now);
+    v = decide(bytes, base, head, now, profile === 'export' ? EXPORT_FULL_RUN : []);
   } catch (e) {
     v = { all: true, why: 'full run: ' + (e as Error).message };
   }
