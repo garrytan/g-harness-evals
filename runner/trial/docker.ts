@@ -19,6 +19,12 @@ import { RunnerError } from '../errors.ts';
 import { type Harness, type TrialDirs, clearReady, HarnessGone, pollReady } from './harness.ts';
 import { isHostAddress } from './world.ts';
 
+/** A harness that never started: `docker run`, prepare.sh or `docker compose up` failed, so no turn ran. run.ts writes the trial to
+ *  not-started.jsonl instead of trials.jsonl and goes on to the next trial; --resume retries it (docs/errors.md, HE-RUN-006). */
+export class HarnessNotStarted extends RunnerError {
+  constructor(message: string) { super('HE-RUN-006', message); }
+}
+
 export function dockerAvailable(): boolean {
   const r = spawnSync('docker', ['info'], { stdio: 'ignore' });
   return r.status === 0;
@@ -97,7 +103,11 @@ export async function startDockerHarness(opts: DockerHarnessOptions): Promise<Ha
   const name = `he-${opts.trialSlug}`;
   await sh(['docker', 'rm', '-f', name]);
   const run = await sh(dockerRunArgs(opts, name), opts.secretEnv ? { env: opts.secretEnv } : {});
-  if (run.status !== 0) throw new RunnerError('HE-RUN-006', `docker run failed for ${opts.image}: ${(run.stderr || run.stdout).trim().slice(0, 400)}; fix: build the image (harnesses/${opts.harness}/README.md) and check the docker daemon`);
+  if (run.status !== 0) {
+    // docker can create the container and then fail to start it; remove it so no stopped container stays on the run's network.
+    await sh(['docker', 'rm', '-f', name]);
+    throw new HarnessNotStarted(`docker run failed for ${opts.image}: ${(run.stderr || run.stdout).trim().slice(0, 400)}; fix: build the image (harnesses/${opts.harness}/README.md) and check the docker daemon`);
+  }
   const exited = async (): Promise<number | null> => {
     const r = await sh(['docker', 'inspect', '-f', '{{.State.Status}} {{.State.ExitCode}}', name]);
     if (r.status !== 0) return 1;
@@ -176,7 +186,7 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
   const prepare = join(repoRoot, 'harnesses', opts.harness, 'prepare.sh');
   if (existsSync(prepare)) {
     const r = await sh(['bash', prepare, resolve(opts.dirs.root)], { env });
-    if (r.status !== 0) throw new RunnerError('HE-RUN-006', `${prepare} failed: ${r.stderr.trim().slice(0, 400)}`);
+    if (r.status !== 0) throw new HarnessNotStarted(`${prepare} failed: ${r.stderr.trim().slice(0, 400)}`);
     for (const line of r.stdout.split('\n')) { const eq = line.indexOf('='); if (eq > 0) env[line.slice(0, eq)] = line.slice(eq + 1); }
   }
   const override = join(opts.dirs.root, 'compose.serve.yaml');
@@ -187,7 +197,7 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
   writeFileSync(join(opts.dirs.logs, 'compose.log'), `${up.stdout}\n${up.stderr}`);
   if (up.status !== 0) {
     await sh([...compose, 'down', '-v', '--remove-orphans'], { env });
-    throw new RunnerError('HE-RUN-006', `docker compose up failed for ${opts.composeFile}: ${up.stderr.trim().slice(0, 400)}; see ${join(opts.dirs.logs, 'compose.log')}`);
+    throw new HarnessNotStarted(`docker compose up failed for ${opts.composeFile}: ${up.stderr.trim().slice(0, 400)}; see ${join(opts.dirs.logs, 'compose.log')}`);
   }
   const exited = async (): Promise<number | null> => {
     const r = await sh([...compose, 'ps', '-a', '--format', 'json', 'task'], { env });

@@ -985,7 +985,7 @@ async function keyless(a: Args, ref: ResolvedRef, tag: string, dir: string): Pro
   // The fake harness through the runner and the tap: one trial per surface and the gbrain-docs trial. The grader is a stub
   // (the task has no predicates); the keyless check is about structure, not grades.
   const result = await executeRun(manifest, manifestPath, {
-    harnessMode: 'docker', gbrainImage: tag, repoRoot: ROOT, turnGraceS: 10, stopGraceS: 5, readyTimeoutS: 120,
+    harnessMode: 'docker', gbrainImage: tag, repoRoot: ROOT, turnGraceS: 10, stopGraceS: 5, readyTimeoutS: 120, throwOnNotStarted: true,
     grade: () => ({ grade: 'n/a', predicates: [], consent_violation: false, approval_stop: false, effects: [] }),
     proxyEnv: { PATH: process.env.PATH, HOME: process.env.HOME, ANTHROPIC_API_KEY: 'placeholder-anthropic', OPENAI_API_KEY: 'placeholder-openai' },
     log: (line) => console.log(`RUN: ${line}`),

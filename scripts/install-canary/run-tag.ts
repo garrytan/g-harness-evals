@@ -157,7 +157,7 @@ export async function runCase(o: CaseOptions): Promise<CaseEvidence> {
   let thrown: string | null = null;
   try {
     await executeRun(JSON.parse(readFileSync(manifestPath, 'utf8')), manifestPath, {
-      harnessMode: 'docker', repoRoot: o.repoRoot, leaseUsd: 100, newLease: true, maxOutputTokens: 128000,
+      harnessMode: 'docker', repoRoot: o.repoRoot, leaseUsd: 100, newLease: true, maxOutputTokens: 128000, throwOnNotStarted: true,
       proxyEnv: { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp', ...DUMMY_KEYS },
       proxyUpstream: { anthropic: base, openai: base, particle: base + '/particle' },
       installKeyEnv: { ...DUMMY_KEYS }, log: (l) => o.log('[' + o.label + '] ' + l),

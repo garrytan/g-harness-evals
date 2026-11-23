@@ -177,7 +177,7 @@ async function pushSession(o: { harness: string; model: string; config: string; 
     const manifest = buildManifest(prereg, preregSha, new Date().toISOString(), { tasksRoot });
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 1));
     const grade = (): GradeResult => ({ grade: 'pass', predicates: [], consent_violation: false, approval_stop: false, effects: [] });
-    const result = await executeRun(manifest, manifestPath, { harnessMode: 'docker', image: o.image, grade, proxyEnv: ENV, repoRoot: ROOT, leaseUsd: 50, newLease: true, maxOutputTokens: 128_000,
+    const result = await executeRun(manifest, manifestPath, { harnessMode: 'docker', image: o.image, grade, proxyEnv: ENV, repoRoot: ROOT, leaseUsd: 50, newLease: true, maxOutputTokens: 128_000, throwOnNotStarted: true,
       capture: { upstream: { [provider]: 'http://127.0.0.1:' + fake.port }, dns: null }, log: (l) => writeFileSync(join(o.dir, 'progress.log'), l + '\n', { flag: 'a' }) });
     const record = result.records[0]!;
     return { record, log: readLog(join(o.dir, 'fake.ndjson')), status: readStatus(join(record.paths.dir, 'logs', 'skill-resolver', 'status.ndjson')) };

@@ -1,7 +1,9 @@
 // Dispatch a manifest: one metering proxy for the run, then each trial in manifest order. Multi-user trials
 // go through runner/trial/trial.ts; hello and smoke trials shell out to harnesses/run-trial.sh so the M0
 // preregistration still runs through the same command. Every finished trial is one line of trials.jsonl,
-// which --resume reads to skip what already ran. A lease refusal from the proxy is recorded on the trial
+// which --resume reads to skip what already ran. A trial whose harness never started (HarnessNotStarted: docker run, prepare.sh or
+// docker compose up failed) gets no trials.jsonl line: it goes to not-started.jsonl, the run goes on, --resume retries it, and the
+// invocation exits 7 while a selected trial is in not-started.jsonl and not in trials.jsonl. A lease refusal from the proxy is recorded on the trial
 // as model_error with cap_stop and prints HE-BUDGET-001; the run goes on unless --stop-on-cap.
 //
 // An invocation whose cells have network "internal" creates (or reuses) the run's internal docker network before the
@@ -24,7 +26,7 @@ import { dirname, join, resolve } from 'node:path';
 import type { HarnessMode, Termination, TrialRecord } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { SET_WORLDS_FILE, cellModels, gbrainSetWorld, isSealedCell, setWorldPath, setWorldPinProblem, setWorldPins, type Cell, type Manifest, type Trial } from '../run.ts';
-import { type InternalNetwork, ensureInternalNetwork, internalNetworkName, removeInternalNetwork } from './docker.ts';
+import { HarnessNotStarted, type InternalNetwork, ensureInternalNetwork, internalNetworkName, removeInternalNetwork } from './docker.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { defaultPreambleFor, loadPreamble } from './task.ts';
 import { type CaptureConfig, captureDnsGapLine, captureLine, captureSummary } from './capture.ts';
@@ -81,10 +83,33 @@ export interface RunOptions {
    *  canary reads the provider keys' values (default this process's environment). */
   installLsRemote?: LsRemote;
   installKeyEnv?: Record<string, string | undefined>;
+  /** One-trial diagnostic scripts: a harness that never started throws HarnessNotStarted, as before not-started.jsonl, so the script reports the docker error. */
+  throwOnNotStarted?: boolean;
+}
+
+/** executeRun's exit codes. 3 is the cap or tag stop, which scripts/run-shard.sh passes through on purpose. 7 is a trial whose harness
+ *  never started: scripts/ubicloud/run-shard.sh reads 4 as a failed smoke, so 4 is never a runner code (tests/exit-codes.test.ts). */
+export const RUN_EXIT = { ok: 0, capStop: 3, harnessNotStarted: 7 } as const;
+
+export const NOT_STARTED_FILE = 'not-started.jsonl';
+
+/** The trials of `selected` that some invocation wrote to not-started.jsonl and none has recorded in trials.jsonl since. */
+export function unstartedTrials(runDir: string, selected: Trial[]): Array<{ trial_id: string; cell: string }> {
+  const file = join(runDir, NOT_STARTED_FILE);
+  if (!existsSync(file)) return [];
+  const recorded = new Set(readRecords(runDir).map((r) => r.trial_id));
+  const lines = readFileSync(file, 'utf8').split('\n').map((l, i) => {
+    if (!l) return null;
+    try { return JSON.parse(l) as { trial_id: string; cell: string }; } catch (e) {
+      throw new RunnerError('HE-RUN-007', `${file} line ${i + 1} is not JSON (${(e as Error).name}); fix: read that line on your own machine, then repair or remove it, and rerun`);
+    }
+  }).filter((l) => l !== null);
+  const ids = new Set(lines.map((l) => l.trial_id));
+  return selected.filter((t) => ids.has(t.id) && !recorded.has(t.id)).map((t) => ({ trial_id: t.id, cell: t.cell }));
 }
 
 export interface RunResult {
-  exit: 0 | 3;
+  exit: (typeof RUN_EXIT)[keyof typeof RUN_EXIT];
   records: TrialRecord[];
   skipped: string[];
   cap_stop: boolean;
@@ -127,6 +152,8 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   const selected = manifest.trials.filter((t) => !opts.cells || opts.cells.includes(t.cell));
   const pending = selected.filter((t) => !done.has(t.id));
   const skipped = selected.filter((t) => done.has(t.id)).map((t) => t.id);
+  // A torn not-started.jsonl line is HE-RUN-007 here, before any lease or append, not after the trials ran.
+  unstartedTrials(runDir, selected);
   log(`run ${manifest.run_id}: ${pending.length} trials to run, ${skipped.length} already recorded, harness mode ${opts.harnessMode}`);
 
   const modeFor = (cell: Cell): HarnessMode => (cell.harness_mode === 'scripted' ? 'scripted' : opts.harnessMode);
@@ -187,7 +214,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   const downloaded = new Set<string>();
   const offline: Array<{ trial: string; denied_hosts: string[]; denied: number; key_found: boolean }> = [];
   let capStop = false;
-  let exit: 0 | 3 = 0;
+  let exit: RunResult['exit'] = RUN_EXIT.ok;
   try {
     if (internal.length) {
       network = await ensureInternalNetwork(internalNetworkName(manifest.run_id));
@@ -229,7 +256,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
           log(problem);
           console.error(problem);
           appendFileSync(join(runDir, 'install-stops.jsonl'), JSON.stringify({ at: new Date().toISOString(), cell: cell.id, trial: trial.id, tag: cell.install!.tag, commit: cell.install!.commit, error: problem }) + '\n');
-          exit = 3;
+          exit = RUN_EXIT.capStop;
           continue;
         }
       }
@@ -252,18 +279,44 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
         }
       }
       openEgress?.setTrial(cell.slice === INSTALL_SLICE ? trial.id : null);
-      const record = cell.slice === INSTALL_SLICE
-        ? await runInstallTrial({ cell, trial, runDir, trialDir, proxy, log, opts: serveOpts(), egress: openEgress, keyEnv: opts.installKeyEnv }).catch((e: unknown) => {
-          if (e instanceof InstallLeak && e.record) { appendRecord(runDir, e.record); records.push(e.record); }
-          throw e;
-        })
-        : cell.slice === SET_T_SLICE
-        ? await runSetTTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() })
-        : cell.slice === SKILL_REQUESTS_SLICE
-        ? await runSkillRequestTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() })
-        : isSingleShot(cell)
-        ? await runSingleShot({ cell, trial, trialDir, proxy, log, image: opts.image, repoRoot: opts.repoRoot })
-        : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() });
+      const attemptStart = new Date().toISOString();
+      let record: TrialRecord;
+      try {
+        record = cell.slice === INSTALL_SLICE
+          ? await runInstallTrial({ cell, trial, runDir, trialDir, proxy, log, opts: serveOpts(), egress: openEgress, keyEnv: opts.installKeyEnv }).catch((e: unknown) => {
+            if (e instanceof InstallLeak && e.record) { appendRecord(runDir, e.record); records.push(e.record); }
+            throw e;
+          })
+          : cell.slice === SET_T_SLICE
+          ? await runSetTTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() })
+          : cell.slice === SKILL_REQUESTS_SLICE
+          ? await runSkillRequestTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() })
+          : isSingleShot(cell)
+          ? await runSingleShot({ cell, trial, trialDir, proxy, log, image: opts.image, repoRoot: opts.repoRoot })
+          : await runTrial({ cell, trial, runDir, trialDir, proxy, grade, log, opts: serveOpts() });
+      } catch (e) {
+        if (!(e instanceof HarnessNotStarted) || opts.throwOnNotStarted) throw e;
+        // A Cursor trial's key never reaches not-started.jsonl or run.log, even if docker echoed it.
+        const error = cursorTrial ? e.message.split(cursorTrial.key).join('[CURSOR_API_KEY]') : e.message;
+        const key = trialKey(trial.id);
+        const meter = proxy ? await proxy.finalize(key).catch(() => null) : null;
+        // The usage log is append-only across a resume: only this attempt's lines count, as in runSkillRequestTrial.
+        const startup = meter ? summarizeUsage(key, meter, proxy!.usageLines(key).filter((l) => l.at === undefined || l.at >= attemptStart)) : null;
+        appendFileSync(join(runDir, NOT_STARTED_FILE), JSON.stringify({ at: new Date().toISOString(), trial_id: trial.id, cell: cell.id, error, ...(proxy ? { usd: startup?.usage.usd ?? null, undrained: meter ? meter.undrained ?? 0 : null, cap_stop: startup?.cap_stop ?? null } : {}) }) + '\n');
+        log(`trial ${trial.id} not started (cell ${cell.id}): ${error}; written to ${NOT_STARTED_FILE}, not trials.jsonl, and --resume retries it${startup?.usage.usd ? ` (usd=${startup.usage.usd.toFixed(4)} metered before the harness failed)` : ''}`);
+        if (cursorTrial) {
+          egress!.setTrial(null);
+          const found = keyValueFound([trialDir], cursorTrial.key);
+          log(`cursor trial ${trial.id} (not started): key scan of ${trialDir}: ${found ? 'FOUND' : 'clean'}`);
+          if (found) throw new RunnerError('HE-CURSOR-003', `the ${opts.cursor!.offline ? 'offline canary' : 'CURSOR_API_KEY'} value is in a file under ${trialDir} after trial ${trial.id}, whose harness did not start; the run stops before another trial. fix: find the file without printing the value (bun scripts/cursor/key-scan.ts ${trialDir} --list names it), keep that trial directory out of every copy, publication and drive, and fix the path that wrote it before resuming`);
+        }
+        if (startup?.cap_stop) {
+          capStop = true;
+          console.error(`HE-BUDGET-001 the metering proxy refused a call for trial ${trial.id} before its harness started: the lease or the program cap in ${proxy?.ledgerPath} is spent. ${opts.stopOnCap ? 'Stopping: the run is incomplete.' : 'Continuing with the next trial.'} Recovery: raise the cap in the ledger (set-cap, with the owner's authorization) and rerun with --resume --lease-usd <new>`);
+          if (opts.stopOnCap) { exit = RUN_EXIT.capStop; break; }
+        }
+        continue;
+      }
       // internal-task (H10): the harness's provenance-manifest digest (runner/trial/provenance.ts), on harnesses that have one.
       const provenance = checkoutProvenance(cell.harness, opts.repoRoot);
       if (provenance) record.provenance_sha256 = provenance.digest;
@@ -276,13 +329,13 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
         const found = keyValueFound([trialDir], cursorTrial.key);
         log(`cursor trial ${trial.id}: egress ${denials.length} denied${deniedHosts.length ? ` (${deniedHosts.join(', ')})` : ''}; key scan of ${trialDir}: ${found ? 'FOUND' : 'clean'}`);
         if (opts.cursor!.offline) offline.push({ trial: trial.id, denied_hosts: deniedHosts, denied: denials.length, key_found: found });
-        if (found) throw new RunnerError('HE-CURSOR-003', `the ${opts.cursor!.offline ? 'offline canary' : 'CURSOR_API_KEY'} value is in a file under ${trialDir} after trial ${trial.id}; the run stops before another trial. fix: find the file without printing the value (bun scripts/cursor/key-scan.ts ${trialDir} names it), keep that trial directory out of every copy, publication and drive, and fix the path that wrote it before resuming`);
+        if (found) throw new RunnerError('HE-CURSOR-003', `the ${opts.cursor!.offline ? 'offline canary' : 'CURSOR_API_KEY'} value is in a file under ${trialDir} after trial ${trial.id}; the run stops before another trial. fix: find the file without printing the value (bun scripts/cursor/key-scan.ts ${trialDir} --list names it), keep that trial directory out of every copy, publication and drive, and fix the path that wrote it before resuming`);
       }
       log(`trial ${trial.id}: termination=${record.termination} grade=${record.grade} consent_violation=${record.consent_violation} wall_ms=${record.wall_ms}${record.usage ? ` usd=${record.usage.usd.toFixed(4)}` : ''}${record.cap_stop ? ' cap_stop' : ''}`);
       if (record.cap_stop) {
         capStop = true;
         console.error(`HE-BUDGET-001 the metering proxy refused a call for trial ${trial.id}: the lease or the program cap in ${proxy?.ledgerPath} is spent; the trial is recorded as model_error with cap_stop. ${opts.stopOnCap ? 'Stopping: the run is incomplete.' : 'Continuing with the next trial.'} Recovery: raise the cap in the ledger (set-cap, with the owner's authorization) and rerun with --resume --lease-usd <new>`);
-        if (opts.stopOnCap) { exit = 3; break; }
+        if (opts.stopOnCap) { exit = RUN_EXIT.capStop; break; }
       }
     }
   } finally {
@@ -296,6 +349,11 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       log(`cursor offline rehearsal: ${ok ? 'ok' : 'FAILED'} (${offline.length} trials; cursor-offline.json)`);
     }
     if (network) log(await removeInternalNetwork(network.name) ? `internal network ${network.name} removed` : `internal network ${network.name} not removed (a container is still attached); fix: docker network rm ${network.name}`);
+  }
+  const unstarted = unstartedTrials(runDir, selected);
+  if (unstarted.length) {
+    log(`run ${manifest.run_id}: ${unstarted.length} trials never started (cells ${[...new Set(unstarted.map((t) => t.cell))].join(', ')}), listed in ${NOT_STARTED_FILE}; fix the harness start and rerun with --resume`);
+    if (exit !== RUN_EXIT.capStop) exit = RUN_EXIT.harnessNotStarted;
   }
   const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, complete: readRecords(runDir).length === manifest.trials.length && !capStop, ...(logSections ? { log_sections: true } : {}), ...(opts.capture ? { capture: captureSummary(opts.capture) } : {}) };
   writeAtomic(join(runDir, 'run-summary.json'), JSON.stringify(summary, null, 1) + '\n');
@@ -455,6 +513,10 @@ async function runSkillRequestTrial(ctx: TrialContext): Promise<TrialRecord> {
         arm: cell.skill_arm ?? null, model_requests: modelRequests, request_cap: cell.request_cap ?? null, got_skill: got.opened, ...(delivery ? { block_delivery: delivery } : {}),
         clean_arm: { ...cleanArm, paths: cleanArm.paths.map(redact) }, scrubbed },
     };
+  } catch (e) {
+    // A harness that never started goes to not-started.jsonl with its message, redacted here as record.error is.
+    if (e instanceof HarnessNotStarted) e.message = redact(e.message);
+    throw e;
   } finally {
     // A throw before the scrub (the trial, a malformed status line, a trace read) still leaves no request text in the trial directory.
     if (!scrubbed && existsSync(ctx.trialDir)) scrubTrialDir(ctx.trialDir, texts);
