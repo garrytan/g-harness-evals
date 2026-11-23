@@ -16,7 +16,9 @@
 # gsta-135-adapters checks that chat_complete leaves no entry in /tmp by counting /tmp, which any other test running at
 # the same time changes. tests/sealed-publication.test.ts reads every tracked file (about 257,000 files, 2.4 GB) for an
 # age identity. That read is disk-bound: about 2 s on a warm Capy machine, 43 s alone in CI's serial phase, and past
-# 60 s beside CI's loaded parallel phase.
+# 60 s beside CI's loaded parallel phase. tests/fake-upstream-google-xai.test.ts frees a loopback port and hands its
+# number to scripts/frontier-harbor/fake-upstream.ts, which prints the port it was given rather than one it bound, so the
+# test can't ask for port 0; beside the parallel phase's port-0 listeners another file could take that port first.
 # tests/.timings.json (per-file milliseconds) makes phases 1 to 3 start their slowest files first; a file missing
 # from it still runs. Phase 3's workers default to the core count (HE_TEST_PARALLEL overrides). Every phase runs; the
 # exit status is the last failing phase's.
@@ -64,6 +66,7 @@ PROXY=(
   tests/week-rig.test.ts
 )
 SERIAL=(
+  tests/fake-upstream-google-xai.test.ts
   tests/gsta-135-adapters.test.ts
   tests/sealed-publication.test.ts
 )

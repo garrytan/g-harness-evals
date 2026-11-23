@@ -1,46 +1,24 @@
-// Week events (docs/tasks.md, "Week events"): restart_before, burst and redeliver on [clock] timers tasks, and the four week
-// predicates (told_by, timer_set, max_bot_posts, no_repeat_posts). Keyless. The fake harness (a host process) shows the turn
-// loop delivers each event and that the harness's state survives the restart; the scripted executor plays the fixture week
-// task's oracle and mutations, and every task under tasks/multiuser/week/, through the real runner and the real grader, so each
-// mutation fails exactly the predicate it is named for. When their images are present, a restart lane per pilot harness
-// (claude-code, qm) shows the adapter resumes its session after the harness starts again (skipped otherwise, like the image
-// lanes elsewhere).
+// Week events (docs/tasks.md, "Week events"): restart_before, burst and redeliver on [clock] timers tasks. Keyless. The fake
+// harness (a host process) shows the turn loop delivers each event and that the harness's state survives the restart. When
+// their images are present, a restart lane per pilot harness (claude-code, qm) shows the adapter resumes its session after the
+// harness starts again (skipped otherwise, like the image lanes elsewhere). These cases start the metering proxy, so
+// scripts/run-tests.sh runs this file in its one-at-a-time proxy phase; the scripted week tasks, which start none, are in
+// tests/week-tasks.test.ts.
 
 import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import type { RedeliveryTurnWindow, Script, TimerTurnWindow, TrialRecord, TurnRequest, TurnWindow } from '../runner/contracts.ts';
-import { buildManifest, loadPrereg, type Cell, type Prereg } from '../runner/run.ts';
-import { executeRun } from '../runner/trial/run.ts';
-import { countFiles, loadGrader } from '../runner/trial/trial.ts';
+import { join } from 'node:path';
+import type { RedeliveryTurnWindow, TimerTurnWindow, TurnRequest, TurnWindow } from '../runner/contracts.ts';
+import type { Cell } from '../runner/run.ts';
+import { countFiles } from '../runner/trial/trial.ts';
 import { stream as anthropicStream } from '../scripts/gsta-135/fake-anthropic.ts';
+import { cleanEnv, ROOT, runWeek } from './helpers/week-run.ts';
 
-const ROOT = resolve(import.meta.dir, '..');
-const FIXTURES = join(import.meta.dir, 'fixtures', 'week-tasks');
-const WEEK_PREAMBLE = join(ROOT, 'tasks', 'multiuser', '_shared', 'preamble.week.md');
-const cleanEnv = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? tmpdir() };
-const PROXY_ENV = { ...cleanEnv, ANTHROPIC_API_KEY: 'placeholder-anthropic', OPENAI_API_KEY: 'placeholder-openai' };
 const tmp = mkdtempSync(join(tmpdir(), 'he-week-rig-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 
-let runs = 0;
-async function run(cells: Cell[], tasksRoot: string, grade: Parameters<typeof executeRun>[2]['grade'], over: Partial<Parameters<typeof executeRun>[2]> = {}) {
-  const runId = `week-${++runs}-${process.pid}`;
-  const dir = join(tmp, runId);
-  mkdirSync(dir, { recursive: true });
-  const prereg: Prereg = { schema_version: 1, run_id: runId, question: 'week events', tasks: {}, cells, wall_clock_s: { multiuser: 600 }, spend_cap_usd: 1, drop_order: [], minimum_v01: [] };
-  writeFileSync(join(dir, 'prereg.json'), JSON.stringify(prereg));
-  const { prereg: p, sha256 } = loadPrereg(join(dir, 'prereg.json'));
-  const manifest = buildManifest(p, sha256, '2026-11-21T00:00:00Z', { tasksRoot });
-  const manifestPath = join(dir, 'manifest.json');
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  const lines: string[] = [];
-  const result = await executeRun(manifest, manifestPath, { harnessMode: cells[0]!.harness_mode === 'scripted' ? 'scripted' : 'process', preamblePath: WEEK_PREAMBLE, grade, proxyEnv: PROXY_ENV, leaseUsd: 1, newLease: true,
-    turnGraceS: 5, stopGraceS: 5, readyTimeoutS: 30, repoRoot: ROOT, log: (l) => lines.push(l), ...over });
-  return { records: result.records as TrialRecord[], lines };
-}
 const jsonl = <T>(path: string): T[] => existsSync(path) ? readFileSync(path, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l) as T) : [];
 
 describe('week events on the fake harness (host process)', () => {
@@ -57,7 +35,7 @@ describe('week events on the fake harness (host process)', () => {
       '[predicates]', 'required = []', 'forbidden_effects = []', '',
     ].join('\n'));
     const cell: Cell = { id: 'fake', harness: '_fake', model: 'anthropic:claude-opus-5-5', slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 20_000, output_tokens: 2_000 }, harness_mode: 'process', adapter: join(ROOT, 'harnesses', '_fake', 'adapter.sh') };
-    const { records, lines } = await run([cell], taskRoot, () => ({ grade: 'pass', predicates: [], consent_violation: false, approval_stop: false, effects: [] }));
+    const { records, lines } = await runWeek(tmp, [cell], taskRoot, () => ({ grade: 'pass', predicates: [], consent_violation: false, approval_stop: false, effects: [] }));
     const rec = records[0]!;
     const dir = rec.paths.dir!;
     expect(rec.termination, lines.slice(-15).join('\n')).toBe('completed');
@@ -96,7 +74,7 @@ describe('week events on the fake harness (host process)', () => {
       '[predicates]', 'required = []', 'forbidden_effects = []', '',
     ].join('\n'));
     const cell: Cell = { id: 'fake', harness: '_fake', model: 'anthropic:claude-opus-5-5', slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 20_000, output_tokens: 2_000 }, harness_mode: 'process', adapter: join(ROOT, 'harnesses', '_fake', 'adapter.sh') };
-    const { records, lines } = await run([cell], taskRoot, () => ({ grade: 'pass', predicates: [], consent_violation: false, approval_stop: false, effects: [] }));
+    const { records, lines } = await runWeek(tmp, [cell], taskRoot, () => ({ grade: 'pass', predicates: [], consent_violation: false, approval_stop: false, effects: [] }));
     const rec = records[0]!;
     expect(rec.termination, rec.error ?? lines.slice(-15).join('\n')).toBe('completed');
     expect(rec.week).toMatchObject({ redeliveries: { run: 1, exits: [0] }, timers_set: 2 });
@@ -117,37 +95,6 @@ describe('countFiles (the record\'s week.memory_files)', () => {
     expect(countFiles(join(root, 'missing'))).toBe(0);
     expect(countFiles(join(root, 'memory'))).toBe(0);
   });
-});
-
-/** Oracle and every mutation of each week task under root, played by the scripted executor through the real runner and grader. */
-async function matrix(root: string, taskSet?: string) {
-  const base = join(root, 'multiuser', ...(taskSet ? [taskSet] : []), 'dev');
-  const ids = existsSync(base) ? readdirSync(base).filter((d) => existsSync(join(base, d, 'task.toml'))).sort() : [];
-  const grade = await loadGrader();
-  for (const id of ids) {
-    test(`${taskSet ?? 'fixture'} ${id}: the oracle passes every predicate and each mutation fails exactly its own`, async () => {
-      const cell = (cid: string, script: 'oracle' | 'mutations'): Cell => ({ id: cid, harness: 'scripted', model: 'none', slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 0, output_tokens: 0 },
-        harness_mode: 'scripted', script, tasks: [id], ...(taskSet ? { task_set: taskSet } : {}) });
-      const { records, lines } = await run([cell('oracle', 'oracle'), cell('mut', 'mutations')], root, grade);
-      const mutations = readdirSync(join(base, id, 'mutations')).map((f) => f.replace(/\.json$/, '')).sort();
-      expect(records).toHaveLength(1 + mutations.length);
-      for (const rec of records) {
-        const failed = rec.predicates.filter((p) => !p.passed).map((p) => p.id);
-        const name = rec.script!.split('/').pop()!.replace(/\.json$/, '');
-        const also = name === 'oracle' ? [] : (JSON.parse(readFileSync(join(base, id, 'mutations', `${name}.json`), 'utf8')) as Script).also_fails ?? [];
-        expect(rec.termination, `${name}: ${rec.error ?? lines.slice(-5).join(' | ')}`).toBe('completed');
-        expect(failed, `${name}: ${rec.predicates.filter((p) => !p.passed).map((p) => p.evidence).join(' | ')}`).toEqual(name === 'oracle' ? [] : [name, ...also].sort());
-      }
-    }, 180_000);
-  }
-  return ids;
-}
-
-describe('week tasks, scripted', async () => {
-  const fixtures = await matrix(FIXTURES);
-  test('the fixture week task is there', () => expect(fixtures).toEqual(['fx-03-week']));
-  const week = await matrix(join(ROOT, 'tasks'), 'week');
-  test('the week set has its ten dev tasks', () => expect(week).toHaveLength(10));
 });
 
 /** A fake Anthropic endpoint for the restart lane: an agent request (it declares tools) whose newest user text asks for the
@@ -201,7 +148,7 @@ describe.skipIf(!Object.values(RESTART_LANES).some((l) => l.on))('a restart on e
           '[predicates]', 'required = []', 'forbidden_effects = []', '',
         ].join('\n'));
         const cell: Cell = { id: h, harness: h, model: 'anthropic:claude-opus-5-5', slice: 'multiuser', split: 'dev', repetitions: 1, ceiling: { input_tokens: 200_000, output_tokens: 20_000 }, ...lane.cell };
-        const { records, lines } = await run([cell], taskRoot, () => ({ grade: 'pass', predicates: [], consent_violation: false, approval_stop: false, effects: [] }),
+        const { records, lines } = await runWeek(tmp, [cell], taskRoot, () => ({ grade: 'pass', predicates: [], consent_violation: false, approval_stop: false, effects: [] }),
           { harnessMode: 'docker', leaseUsd: 5, maxOutputTokens: 128000, readyTimeoutS: 300, turnGraceS: 30, stopGraceS: 10, proxyUpstream: { anthropic: `http://127.0.0.1:${fake.port}` } });
         const rec = records[0]!;
         const dir = rec.paths.dir!;
