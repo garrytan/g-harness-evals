@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { dropLock, type IndexLine, latestOf, notifications, type Plan, publish, readIndex, type Release, resultReason, selectJobs, takeLock, versionKey } from '../scripts/install-canary/canary.ts';
+import { dropLock, type IndexLine, latestOf, notifications, type Plan, publish, readIndex, type Release, resultReason, selectJobs, sendStatuses, STATUS_MAX, statusDescription, statusLines, statusPosts, statusState, takeLock, versionKey } from '../scripts/install-canary/canary.ts';
 import { classifyLine, foundId, lineCommand, MCP_ERROR, mcpArgs, mcpCall, PROVENANCE } from '../scripts/install-canary/fake-model.ts';
 import { blockAfter, EXPECTED, resolveRoute, stepOf, substitute } from '../scripts/install-canary/routes.ts';
 import { newFakeState } from '../scripts/install-canary/fake-model.ts';
@@ -282,6 +282,93 @@ describe('scripted model', () => {
 });
 
 
+describe('commit status', () => {
+  const SHA = 'a'.repeat(40);
+  const RUN = '20261123T025437Z-3567';
+  test('success only when tested and promotable; failure when it blocks stable or is not promotable; none when untested', () => {
+    expect(statusState(line('v1', 'pass'))).toBe('success');
+    expect(statusState(line('v1', 'fail'))).toBe('failure');
+    expect(statusState(line('v1', 'harness_or_env'))).toBe('failure');
+    expect(statusState(line('v1', 'incomplete'))).toBe('failure');
+    expect(statusState(line('v1', 'pass', { promotable: false }))).toBe('failure');
+    expect(statusState(line('v1', 'skipped'))).toBeNull();
+    expect(statusState(line('v1', 'fail', { tested: false }))).toBeNull();
+  });
+  test('the description reads v<V> run <id>: pass or fail <harness,...>, and never passes 140 characters', () => {
+    expect(statusDescription('v0.60.765.0', RUN, 'success', [], 'pass')).toBe('v0.60.765.0 run ' + RUN + ': pass');
+    expect(statusDescription('v0.60.761.0', RUN, 'failure', ['openclaw/setup', 'hermes/setup'], 'fail')).toBe('v0.60.761.0 run ' + RUN + ': fail openclaw/setup,hermes/setup');
+    expect(statusDescription('0.60.766.0', RUN, 'pending', [], 'incomplete')).toBe('v0.60.766.0 run ' + RUN + ': testing');
+    expect(statusDescription('v0.60.766.0', RUN, 'failure', [], 'incomplete')).toEndWith(': fail incomplete');
+    expect(statusDescription('v0.60.766.0', RUN, 'failure', [], 'pass')).toEndWith(': fail partial');
+    const many = ['claude-code', 'codex', 'openclaw', 'hermes'].flatMap((h) => ['doc_route', 'bun', 'binary', 'setup', 'mcp_listed', 'remember', 'recall'].map((s) => h + '/' + s));
+    const d = statusDescription('v0.60.766.0', RUN, 'failure', many, 'fail');
+    expect(d.length).toBeLessThanOrEqual(STATUS_MAX);
+    expect(d).toMatch(/: fail claude-code\/doc_route,.*,\+\d+$/);
+    expect(statusDescription('v0.60.766.0', 'x'.repeat(200), 'failure', many, 'fail').length).toBeLessThanOrEqual(STATUS_MAX);
+  });
+  test('one post per commit: a tag and its stable-channel line on one commit post failure if either fails; untested lines post nothing', () => {
+    const posts = statusPosts([
+      { ...line('v0.60.761.0', 'pass', { run_id: RUN }), commit: SHA },
+      { ...line('v0.60.761.0', 'fail', { run_id: RUN, channel: 'stable', failed: ['hermes/setup'] }), commit: SHA },
+      { ...line('v0.60.765.0', 'pass', { run_id: RUN }), commit: 'b'.repeat(40) },
+      { ...line('v0.60.750.0', 'skipped', { run_id: RUN }), commit: 'c'.repeat(40) },
+    ]);
+    expect(posts).toEqual([
+      { sha: SHA, tag: 'v0.60.761.0', state: 'failure', description: 'v0.60.761.0 run ' + RUN + ': fail hermes/setup' },
+      { sha: 'b'.repeat(40), tag: 'v0.60.765.0', state: 'success', description: 'v0.60.765.0 run ' + RUN + ': pass' },
+    ]);
+  });
+  test('an incomplete rerun reposts the release\'s earlier verdict instead of replacing it with failure', () => {
+    const idx = [line('v1', 'pass', { run_id: 'A', commit: SHA }), line('v2', 'fail', { run_id: 'A', failed: ['codex/setup'] }), line('v1', 'incomplete', { run_id: 'B' }), line('v2', 'incomplete', { run_id: 'B' }), line('v3', 'incomplete', { run_id: 'B' }), line('v0', 'skipped', { run_id: 'B' })];
+    expect(statusLines(idx, 'B').map((l) => [l.tag, l.run_id, l.status])).toEqual([['v1', 'A', 'pass'], ['v2', 'A', 'fail'], ['v3', 'B', 'incomplete']]);
+    expect(statusLines(idx, 'B', ['v3']).map((l) => l.tag)).toEqual(['v3']);
+    expect(statusLines([...idx, line('v1', 'incomplete', { run_id: 'C', channel: 'stable' })], 'C').map((l) => [l.tag, l.run_id, l.channel])).toEqual([['v1', 'A', 'tag']]);
+  });
+  test('status --pending posts pending once per started job, ignores unknown jobs, and reads the log once more after the stop file', () => {
+    const root = mkdtempSync(join(tmpdir(), 'install-canary-pending-'));
+    const bin = join(root, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'gh'), '#!/bin/sh\necho "$@" >> ' + join(root, 'gh.args') + '\necho "capy-ai[bot]"\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'git'), '#!/bin/sh\nfor r in "$@"; do case $r in refs/tags/v1) echo "' + SHA + '\t$r";; refs/tags/v0) echo "' + 'b'.repeat(40) + '\t$r";; esac; done\n', { mode: 0o755 });
+    writeFileSync(join(root, 'plan.json'), JSON.stringify({ jobs: [{ id: 'v1', tag: 'v1', channel: 'tag', args: [] }, { id: 'stable-v0', tag: 'v0', channel: 'stable', args: ['--stable'] }, { id: 'v9', tag: 'v9', channel: 'tag', args: [] }], skipped: [], deferred: [] }));
+    writeFileSync(join(root, 'vm.log'), '[vm] building\n[vm] job v1: run-tag.ts\n[vm] job v1: run-tag.ts\n[vm] job stable-v0: run-tag.ts\n[vm] job other: x\n');
+    writeFileSync(join(root, 'stop'), '');
+    const run = () => spawnSync(process.execPath, [resolve(import.meta.dir, '../scripts/install-canary/canary.ts'), 'status', '--pending', '--plan', join(root, 'plan.json'), '--run-id', RUN, '--watch', join(root, 'vm.log'), '--stop', join(root, 'stop')], { env: { PATH: bin + ':/usr/bin:/bin', HOME: root }, encoding: 'utf8' });
+    const r = run();
+    expect(r.status).toBe(0);
+    expect(readFileSync(join(root, 'gh.args'), 'utf8').trim().split('\n')).toEqual([SHA, 'b'.repeat(40)].map((s, i) => 'api -X POST repos/garrytan/gbrain/statuses/' + s + ' -f state=pending -f context=gbrain/install-canary -f description=' + ['v1', 'v0'][i] + ' run ' + RUN + ': testing --jq .creator.login'));
+    writeFileSync(join(root, 'vm.log'), '[vm] job v9: run-tag.ts\n');
+    const miss = run();
+    expect(miss.status).toBe(7);
+    expect(miss.stdout).toContain('CANARY_STATUS: v9 pending not posted: git ls-remote found no commit');
+  });
+  test('a post that throws or lands under another login counts as failed', () => {
+    const p = { sha: SHA, tag: 'v1', state: 'success' as const, description: 'd' };
+    expect(sendStatuses([p], () => 'capy-ai[bot]')).toBe(0);
+    expect(sendStatuses([p], () => 'someone-else')).toBe(1);
+    expect(sendStatuses([p, p], () => { throw new Error('HTTP 403'); })).toBe(2);
+  });
+  test('canary.ts status posts through gh, and a failed post prints CANARY_STATUS and exits 7', () => {
+    const root = mkdtempSync(join(tmpdir(), 'install-canary-status-'));
+    const dest = join(root, 'dest');
+    mkdirSync(dest);
+    writeFileSync(join(dest, 'index.jsonl'), JSON.stringify(line('v0.60.765.0', 'pass', { run_id: RUN, commit: SHA })) + '\n' + JSON.stringify(line('v0.60.750.0', 'skipped', { run_id: RUN })) + '\n');
+    const bin = join(root, 'bin');
+    mkdirSync(bin);
+    const run = (gh: string) => {
+      writeFileSync(join(bin, 'gh'), gh, { mode: 0o755 });
+      return spawnSync(process.execPath, [resolve(import.meta.dir, '../scripts/install-canary/canary.ts'), 'status', '--dest', dest, '--run-id', RUN], { env: { PATH: bin + ':/usr/bin:/bin', HOME: root }, encoding: 'utf8' });
+    };
+    const ok = run('#!/bin/sh\necho "$@" >> ' + join(root, 'gh.args') + '\necho "capy-ai[bot]"\n');
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toContain('posted as capy-ai[bot]');
+    expect(readFileSync(join(root, 'gh.args'), 'utf8').trim()).toBe('api -X POST repos/garrytan/gbrain/statuses/' + SHA + ' -f state=success -f context=gbrain/install-canary -f description=v0.60.765.0 run ' + RUN + ': pass --jq .creator.login');
+    const bad = run('#!/bin/sh\necho "HTTP 403: Resource not accessible by integration" >&2\nexit 1\n');
+    expect(bad.status).toBe(7);
+    expect(bad.stdout).toContain('CANARY_STATUS: v0.60.765.0 success on ' + SHA.slice(0, 12) + ' not posted: HTTP 403');
+  }, 30000);
+});
+
 describe('shell scripts', () => {
   const ROOT = resolve(import.meta.dir, '..');
   const env = { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: tmpdir() };
@@ -294,6 +381,16 @@ describe('shell scripts', () => {
     const r = spawnSync('bash', [join(ROOT, 'scripts/install-canary/run.sh'), '--bogus'], { env, encoding: 'utf8' });
     expect(r.status).toBe(2);
     expect(r.stderr).toContain('unknown argument --bogus');
+  });
+  test('scripts/install-canary/run.sh posts no commit status when results go to another folder or for a --harness check', () => {
+    const dest = mkdtempSync(join(tmpdir(), 'install-canary-nostatus-'));
+    const bin = join(dest, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'bun'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const r = spawnSync('bash', [join(ROOT, 'scripts/install-canary/run.sh'), '--dest', dest], { env: { PATH: bin + ':/usr/bin:/bin', HOME: dest }, encoding: 'utf8' });
+    expect(r.stdout).toContain('commit status: none posted (results go to ' + dest);
+    const h = spawnSync('bash', [join(ROOT, 'scripts/install-canary/run.sh'), '--dest', dest, '--harness', 'codex'], { env: { PATH: bin + ':/usr/bin:/bin', HOME: dest }, encoding: 'utf8' });
+    expect(h.stdout).toContain('commit status: none posted (a --harness check');
   });
   test('scripts/install-canary/run.sh puts request.args back when it stops before publishing, and leaves a bad one alone', () => {
     for (const body of ['--max 2\n', '--bogus\n']) {

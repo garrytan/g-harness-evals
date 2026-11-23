@@ -21,7 +21,7 @@
    - Each tool call is a fresh shell, so the guide's earlier `export` lines are put in front of each later line, as they would be in one terminal session. The line the guard judges is otherwise the guide's line, byte for byte.
 4. **Grade** from what happened, never from the reply: the tool results, the install probe, Hermes's guard log, and whether the recalled text holds the saved nonce.
 5. **If a release fails**, the failing harnesses run again on the last passing release. Failing there too means the harness or environment changed, not gbrain: the line is `harness_or_env`.
-6. **Publish** (`canary.ts publish`), then take down any VM left over and drop the lock.
+6. **Publish** (`canary.ts publish`), post the commit statuses (below), then take down any VM left over and drop the lock.
 
 ## Verdicts
 
@@ -46,6 +46,23 @@
 Writes go per-release files first, then the index, then `latest.json`, each by rename, so a reader never sees half a file. A run holds `.lock` (run id and expiry) while it works. Publishing the same run twice adds nothing.
 
 gbrain's maintainers are told about every `fail` and `harness_or_env`, and about `incomplete` twice in a row for the same release. `run.sh` prints those lines between `CANARY_NOTIFY_BEGIN` and `CANARY_NOTIFY_END`.
+
+## Commit status
+
+**Why it matters:** gbrain's daily stable promotion fails closed. From 2026-11-24 20:30Z it promotes a release to stable only when that release's commit has a `gbrain/install-canary` status of `success`. **No status means not tested yet, so stable waits.** A `failure` also holds stable.
+
+`run.sh` posts the status on each tested release's commit in `garrytan/gbrain` (`canary.ts status`, through `gh api` with the machine's GitHub credential):
+
+- **pending** when that release's job starts on the VM (`run.sh` watches the VM log for the job's start line). Only releases in this run's plan get one.
+- **success** after publish, when the release was tested and is promotable.
+- **failure** after publish, when it was tested and blocks stable or isn't promotable (`fail`, `harness_or_env`, `incomplete`). An `incomplete` run is no verdict, so when the release already has an earlier verdict, that verdict is posted again instead.
+- **nothing** for a release that wasn't tested (`skipped`).
+
+The description is `v<V> run <run id>: pass` or `v<V> run <run id>: fail <harness/step,...>` (`testing` while pending), at most 140 characters. A failure that names no harness names its status instead (`fail incomplete`), and a list too long to fit ends in `+<n>`. A release and its stable-channel job on the same commit post once: `failure` if either failed. There's no link: the results folder isn't public. A re-test posts again, and GitHub shows the newest status.
+
+- **Who posts:** Capy machines post through Capy's GitHub app, so the status shows as `capy-ai[bot]`, the login gbrain accepts. `run.sh` reads the poster back from each reply and logs it.
+- **When none is posted:** a `--harness` check (a few harnesses only; no verdict on the release) and a run whose results go to another `--dest` folder.
+- **When a post fails:** `run.sh` prints a `CANARY_STATUS` line and exits 7, after the results are published. If publish itself fails, the releases keep this run's pending status, and `run.sh` prints a `CANARY_STATUS` line naming them. The automation forwards `CANARY_STATUS` lines. Repost by hand with `bun scripts/install-canary/canary.ts status --dest <results folder> --run-id <run id> [--tag <tag>]`.
 
 ## Guard modes
 
@@ -82,6 +99,7 @@ Every failure prints one code and a fix line. Codes are stable.
 | `CANARY_DRIVE_WRITE` | the drive write failed; results stay in `~/.capy/work/install-canary/<run id>` | by hand |
 | `CANARY_VM_LEFT` | this run's VM was still up after the run; `run.sh` took it down | none |
 | `CANARY_RUN_FAILED` | a job wrote no result | 3 incomplete tries |
+| `CANARY_STATUS` | a commit status didn't post, or posted as a login gbrain doesn't accept; the results still published, `run.sh` exits 7 | by hand |
 
 ## Running it by hand
 

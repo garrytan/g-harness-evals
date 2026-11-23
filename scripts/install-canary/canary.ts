@@ -6,12 +6,18 @@
 //   bun scripts/install-canary/canary.ts unlock  --dest <dir> --run-id <id>
 //   bun scripts/install-canary/canary.ts select  --dest <dir> --out <plan.json> [--max 4] [--candidate <tag>] [--tag <tag>]...
 //   bun scripts/install-canary/canary.ts publish --dest <dir> --plan <plan.json> --results <dir> --run-id <id> [--vm-error <code>]
+//   bun scripts/install-canary/canary.ts status  --dest <dir> --run-id <id> [--tag <tag>]...
+//   bun scripts/install-canary/canary.ts status  --pending --plan <plan.json> --run-id <id> --watch <vm.log> --stop <file>
+//
+// status posts the gbrain/install-canary commit status on each tested release's commit, which gbrain's stable promotion requires
+// (docs/install-canary.md, "Commit status"). Exit 7 when any post failed; each failure prints a CANARY_STATUS line.
 //
 // dest holds latest.json, index.jsonl, runs/<tag>/, and runs/stable-<tag>/ (docs/install-canary.md, "Where results go").
 // Every failure prints one stable error code from ERRORS with its fix line; exit 0 means the step did what it says.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { gbrainLsRemote, tagCommit } from '../../runner/trial/install.ts';
 import { HARNESSES } from './routes.ts';
 import { SCHEMA, type Status, type TagResult, stableRelease } from './run-tag.ts';
 
@@ -25,6 +31,7 @@ export const ERRORS = {
   CANARY_DRIVE_WRITE: { fix: 'writing to the drive folder failed; the pulled results stay under ~/.capy/work/install-canary/<run id>; rerun publish', retry: 'by hand' },
   CANARY_VM_LEFT: { fix: 'a VM with owner installcanary was still up after the run; run.sh took it down, check ubi-runner.sh list --mine', retry: 'none needed' },
   CANARY_RUN_FAILED: { fix: 'run-tag.ts wrote no result.json for a job (log <job>.log in the pulled results); published incomplete', retry: '3 incomplete tries per tag' },
+  CANARY_STATUS: { fix: 'the gbrain/install-canary commit status did not land as an allowed poster, so gbrain stable waits on this release; the published results stand. Repost with: bun scripts/install-canary/canary.ts status --dest <dir> --run-id <id>', retry: 'by hand' },
 } as const;
 export type ErrorCode = keyof typeof ERRORS;
 export const errorLine = (code: ErrorCode, msg: string) => code + ': ' + msg + '\nfix: ' + ERRORS[code].fix + ' (retry: ' + ERRORS[code].retry + ')';
@@ -199,6 +206,81 @@ export function dropLock(dest: string, runId: string): boolean {
   return true;
 }
 
+export const STATUS_CONTEXT = 'gbrain/install-canary';
+export const STATUS_REPO = 'garrytan/gbrain';
+/** The poster gbrain's stable promotion accepts (internal-task, 2026-11-23): Capy machines post through Capy's GitHub app. */
+export const STATUS_LOGINS = ['capy-ai[bot]'];
+export const STATUS_MAX = 140;
+export type StatusState = 'success' | 'failure' | 'pending';
+export interface StatusPost { sha: string; tag: string; state: StatusState; description: string }
+
+/** success when tested and promotable; failure when tested and it blocks stable or isn't promotable; nothing when untested. */
+export function statusState(l: Pick<IndexLine, 'tested' | 'promotable' | 'blocks_stable'>): 'success' | 'failure' | null {
+  if (!l.tested) return null;
+  return l.promotable && !l.blocks_stable ? 'success' : 'failure';
+}
+
+/** `v<V> run <id>: pass`, `v<V> run <id>: fail <harness,...>` or `v<V> run <id>: testing`, at most STATUS_MAX characters. A failure
+ *  that names no harness (incomplete, a partial run) names its status instead; a list too long to fit ends in +<n>. */
+export function statusDescription(tag: string, runId: string, state: StatusState, failed: string[], status: Status): string {
+  const head = (tag.startsWith('v') ? tag : 'v' + tag) + ' run ' + runId + ': ';
+  if (state !== 'failure') return (head + (state === 'success' ? 'pass' : 'testing')).slice(0, STATUS_MAX);
+  const names = failed.length ? failed : [status === 'pass' ? 'partial' : status];
+  for (let n = names.length; n > 0; n--) {
+    const d = head + 'fail ' + names.slice(0, n).join(',') + (n < names.length ? ',+' + (names.length - n) : '');
+    if (d.length <= STATUS_MAX) return d;
+  }
+  return (head + 'fail +' + names.length).slice(0, STATUS_MAX);
+}
+
+/** One post per commit for a run's lines: failure when any tested line on that commit fails, else success. Lines need a commit. */
+export function statusPosts(lines: Array<IndexLine & { commit: string }>): StatusPost[] {
+  const by = new Map<string, Array<IndexLine & { commit: string }>>();
+  for (const l of lines) if (statusState(l)) by.set(l.commit, [...(by.get(l.commit) ?? []), l]);
+  return [...by].map(([sha, ls]) => {
+    const bad = ls.filter((l) => statusState(l) === 'failure');
+    const state = bad.length ? 'failure' : 'success';
+    const failed = [...new Set(bad.flatMap((l) => l.failed))];
+    return { sha, tag: ls[0]!.tag, state, description: statusDescription(ls[0]!.tag, ls[0]!.run_id, state, failed, (bad[0] ?? ls[0]!).status) };
+  });
+}
+
+/** The lines run runId posts for. An incomplete line is no verdict on its release (as in latestOf), so when the release has an
+ *  earlier verdict on either channel (both share the commit's one status), that verdict is posted again, restoring what this
+ *  run's pending replaced. */
+export function statusLines(index: IndexLine[], runId: string, only: string[] = []): IndexLine[] {
+  const verdict = (l: IndexLine) => l.status !== 'incomplete' && l.status !== 'skipped' && !(l.status === 'pass' && !l.promotable);
+  return index.filter((l) => l.run_id === runId && (!only.length || only.includes(l.tag)) && statusState(l))
+    .map((l) => (l.status !== 'incomplete' ? l : [...index].reverse().find((b) => b.run_id !== runId && b.tag === l.tag && verdict(b)) ?? l));
+}
+
+/** Posts one status through gh (the machine's GitHub credential) and returns who GitHub says posted it; one retry. */
+export function postStatus(p: StatusPost): string {
+  let last: unknown;
+  for (let i = 0; i < 2; i++) {
+    try {
+      return execFileSync('gh', ['api', '-X', 'POST', 'repos/' + STATUS_REPO + '/statuses/' + p.sha, '-f', 'state=' + p.state, '-f', 'context=' + STATUS_CONTEXT, '-f', 'description=' + p.description, '--jq', '.creator.login'],
+        { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    } catch (e) { last = e; if (i === 0) Bun.sleepSync(5000); }
+  }
+  const err = last as { stderr?: string; message?: string };
+  throw new Error(String(err.stderr || err.message || last).trim().split('\n').pop()!.slice(0, 200));
+}
+
+/** Posts each status and prints one line per post; returns how many did not land as an allowed poster. */
+export function sendStatuses(posts: StatusPost[], post: (p: StatusPost) => string = postStatus): number {
+  let bad = 0;
+  for (const p of posts) {
+    const what = p.tag + ' ' + p.state + ' on ' + p.sha.slice(0, 12);
+    let login: string;
+    try { login = post(p); } catch (e) { bad++; console.log(errorLine('CANARY_STATUS', what + ' not posted: ' + (e as Error).message)); continue; }
+    if (STATUS_LOGINS.includes(login)) { console.log('status ' + what + ' posted as ' + login + ': ' + p.description); continue; }
+    bad++;
+    console.log(errorLine('CANARY_STATUS', what + ' posted as ' + (login || 'nobody') + ', which gbrain does not accept (allowed: ' + STATUS_LOGINS.join(', ') + ')'));
+  }
+  return bad;
+}
+
 async function releases(): Promise<Release[]> {
   const url = 'https://api.github.com/repos/garrytan/gbrain/releases?per_page=30';
   let body: any;
@@ -208,13 +290,57 @@ async function releases(): Promise<Release[]> {
   return (body as any[]).filter((r) => !r.draft && /^v\d+(\.\d+){2,3}$/.test(r.tag_name)).map((r) => ({ tag: r.tag_name, prerelease: !!r.prerelease, published_at: r.published_at, assets: (r.assets ?? []).map((a: any) => a.name) }));
 }
 
+const commitOf = (tag: string) => { const r = gbrainLsRemote(tag); return r.status === 0 ? tagCommit(r.stdout, tag) : null; };
+
+/** The status subcommand. --pending watches vm.log and posts pending for each job as its "[vm] job <id>:" line appears, until the
+ *  stop file exists (one last read after it does). Otherwise it posts the final status for each tested line of the run. */
+async function status(argv: string[], dest: string | undefined, runId: string | undefined): Promise<number> {
+  const flag = (n: string) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
+  const only = argv.flatMap((a, i) => (a === '--tag' && argv[i + 1] ? [argv[i + 1]!] : []));
+  if (!runId) { console.error('status needs --run-id'); return 2; }
+  let bad = 0;
+  if (argv.includes('--pending')) {
+    const planPath = flag('--plan');
+    const watch = flag('--watch');
+    const stop = flag('--stop');
+    if (!planPath || !watch || !stop) { console.error('status --pending needs --plan, --watch and --stop'); return 2; }
+    const plan: Plan = JSON.parse(readFileSync(planPath, 'utf8'));
+    const started = new Set<string>();
+    for (;;) {
+      const last = existsSync(stop);
+      for (const m of (existsSync(watch) ? readFileSync(watch, 'utf8') : '').matchAll(/^\[vm\] job (\S+):/gm)) {
+        const job = plan.jobs.find((j) => j.id === m[1]);
+        if (!job || started.has(job.id)) continue;
+        started.add(job.id);
+        const sha = commitOf(job.tag);
+        if (!sha) { bad++; console.log(errorLine('CANARY_STATUS', job.tag + ' pending not posted: git ls-remote found no commit for the tag')); continue; }
+        bad += sendStatuses([{ sha, tag: job.tag, state: 'pending', description: statusDescription(job.tag, runId, 'pending', [], 'incomplete') }]);
+      }
+      if (last) return bad ? 7 : 0;
+      await Bun.sleep(5000);
+    }
+  }
+  if (!dest) { console.error('status needs --dest (or --pending)'); return 2; }
+  const lines = statusLines(readIndex(dest), runId, only);
+  if (!lines.length) { console.log('status: run ' + runId + ' has no tested line' + (only.length ? ' for ' + only.join(' ') : '') + ', so nothing is posted'); return only.length ? 2 : 0; }
+  const ready: Array<IndexLine & { commit: string }> = [];
+  for (const l of lines) {
+    const sha = l.commit ?? commitOf(l.tag);
+    if (sha) ready.push({ ...l, commit: sha });
+    else { bad++; console.log(errorLine('CANARY_STATUS', l.tag + ' not posted: git ls-remote found no commit for the tag')); }
+  }
+  bad += sendStatuses(statusPosts(ready));
+  return bad ? 7 : 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [cmd] = argv;
   const flag = (n: string) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
   const all = (n: string) => argv.flatMap((a, i) => (a === n && argv[i + 1] ? [argv[i + 1]!] : []));
   const dest = flag('--dest');
   const runId = flag('--run-id');
-  if (!dest) { console.error('usage: canary.ts lock|unlock|select|publish --dest <dir> ...'); return 2; }
+  if (cmd === 'status') return await status(argv, dest, runId);
+  if (!dest) { console.error('usage: canary.ts lock|unlock|select|publish|status --dest <dir> ...'); return 2; }
   if (cmd === 'lock' || cmd === 'unlock') {
     if (!runId) { console.error('--run-id is required'); return 2; }
     if (cmd === 'unlock') { console.log(dropLock(dest, runId) ? 'unlocked' : 'no lock of ours'); return 0; }

@@ -17,11 +17,17 @@
 # A request written while a run is going waits for the next run. gbrain's release owner writes the next stable candidate there;
 # a --dest in it sends that run's results to another folder (used for test runs).
 #
+# When the results go to the default folder (the one gbrain reads) and the run is not a --harness subset, it posts the
+# gbrain/install-canary commit status on each tested release's commit: pending as each job starts, then success or failure after
+# publish (canary.ts status). A status that does not land prints a CANARY_STATUS line; the published results stand.
+#
 # Prints the published lines, latest.json's line, and a CANARY_NOTIFY_BEGIN/END block naming what gbrain's maintainers must hear about.
-# Exit 0 when the run published (whatever the verdicts), 4 locked, 5 GitHub or ls-remote failed, 6 the drive write failed.
+# Exit 0 when the run published (whatever the verdicts), 4 locked, 5 GitHub or ls-remote failed, 6 the drive write failed,
+# 7 published but a commit status did not land.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-dest=<private drive>/handoffs/gbrain-install-canary
+default_dest="<private drive>/handoffs/gbrain-install-canary"
+dest=$default_dest
 local_run=
 sel=()
 harness=
@@ -63,9 +69,15 @@ if [ -f "$request" ] && mv "$request" "$request.$run_id" 2>/dev/null; then
   if [ -n "$ok" ]; then sel+=(${rsel[@]+"${rsel[@]}"}); dest=$rdest; harness=$rharness
   else requeue "$claimed"; claimed=; fi
 fi
+post_status=1
+if [ -n "$harness" ]; then post_status=; echo "[canary] commit status: none posted (a --harness check is no verdict on the release)"
+elif [ "$dest" != "$default_dest" ]; then post_status=; echo "[canary] commit status: none posted (results go to $dest, not the folder gbrain reads)"; fi
+status_rc=0
+watcher=
 plan=.install-canary-plan-$run_id.json
 locked=
 cleanup() {
+  [ -z "$watcher" ] || kill "$watcher" 2>/dev/null
   rm -f "$plan"
   [ -z "$locked" ] || bun $c unlock --dest "$dest" --run-id "$run_id" >/dev/null
   [ -z "$claimed" ] || [ ! -e "$claimed" ] || requeue "$claimed"
@@ -80,6 +92,10 @@ bun $c lock --dest "$dest" --run-id "$run_id" --ttl-min $(( (njobs + 3) * 60 )) 
 vm_error=()
 if [ "$njobs" -gt 0 ]; then
   cp "$work/plan.json" "$plan"
+  if [ -n "$post_status" ]; then
+    bun $c status --pending --plan "$work/plan.json" --run-id "$run_id" --watch "$work/vm.log" --stop "$work/status-watch.stop" >"$work/status-pending.log" 2>&1 &
+    watcher=$!
+  fi
   if [ -n "$local_run" ]; then
     CANARY_OUT=$work/out/canary-out bash scripts/install-canary/vm.sh "$plan" >"$work/vm.log" 2>&1
     rc=$?
@@ -88,12 +104,26 @@ if [ "$njobs" -gt 0 ]; then
       --pull "/home/ubi/canary-out:$work/out" -- bash scripts/install-canary/vm.sh "$plan" >"$work/vm.log" 2>&1
     rc=$?
   fi
+  if [ -n "$watcher" ]; then
+    touch "$work/status-watch.stop"
+    wait "$watcher" || status_rc=7
+    watcher=
+    cat "$work/status-pending.log"
+  fi
   grep -E '^\[vm\] job|^install canary|^CANARY_' "$work/vm.log" || true
   if grep -q '^CANARY_IMAGE_BUILD' "$work/vm.log"; then vm_error=(--vm-error CANARY_IMAGE_BUILD)
   elif [ "$rc" -ne 0 ] && [ ! -d "$work/out/canary-out" ]; then vm_error=(--vm-error CANARY_VM); echo "CANARY_VM: the VM run exited $rc with no results; log $work/vm.log"; fi
 fi
 bun $c publish --dest "$dest" --plan "$work/plan.json" --results "$work/out/canary-out" --run-id "$run_id" ${vm_error[@]+"${vm_error[@]}"} | tee "$work/publish.log"
 prc=${PIPESTATUS[0]}
+if [ "$prc" -ne 0 ] && grep -q '^status .* pending on ' "$work/status-pending.log" 2>/dev/null; then
+  echo "CANARY_STATUS: publish failed, so these releases keep this run's pending status: $(sed -n 's/^status \([^ ]*\) pending on \([0-9a-f]*\) .*/\1 (\2)/p' "$work/status-pending.log" | paste -sd, -)"
+  echo "fix: publish by hand, then repost with: bun $c status --dest $dest --run-id $run_id"
+fi
+if [ "$prc" -eq 0 ] && [ -n "$post_status" ]; then
+  bun $c status --dest "$dest" --run-id "$run_id" | tee -a "$work/publish.log"
+  [ "${PIPESTATUS[0]}" -eq 0 ] || status_rc=7
+fi
 if [ "$prc" -eq 0 ] && [ -n "$claimed" ]; then
   grep . "$claimed" | tail -n +2 > "$work/request.rest"
   if [ -s "$work/request.rest" ]; then requeue "$work/request.rest"; fi
@@ -108,4 +138,5 @@ if [ -z "$local_run" ] && [ -f "$work/vm.log" ]; then
     bash scripts/ubicloud/ubi-runner.sh down "$name" >/dev/null 2>&1
   done
 fi
+[ "$prc" -ne 0 ] || prc=$status_rc
 exit "$prc"
