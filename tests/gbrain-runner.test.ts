@@ -318,10 +318,10 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-memory.md');
       }
       else if (p.run_id === 'shared-brain-access-2026-11') {
-        // internal-task-a (internal-task-b): the shared-bot run again at gbrain v0.60.754.0 (6a507316), cap $521. Bots: OpenClaw and Hermes on Opus 5.5 and GPT-6.2 Sol,
+        // internal-task-a (internal-task-b): the shared-bot run again at gbrain v0.60.761.0 (87bdceed, amendment 69b08f6d), cap $541 (amendment 8f599947). Bots: OpenClaw and Hermes on Opus 5.5 and GPT-6.2 Sol,
         // the company brain open, refused and labelled (each asker's key on the reader-labelled company brain). Installer: Claude Code and Codex on 17 tasks,
         // installer open, member and labelled, told open and told labelled (the ladder preamble), and none.
-        expect(c.task_set).toBe('v0.3.1'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(3); expect(p.spend_cap_usd).toBe(521); expect(p.gbrain_commit).toBe('6a507316104fd23e0f1c9fb7e2ebabd8fdc5488c');
+        expect(c.task_set).toBe('v0.3.1'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(3); expect(p.spend_cap_usd).toBe(541); expect(p.gbrain_commit).toBe('87bdceed85b8b47446cadcb89eb26a9c7fcaa467');
         expect(p.cells).toHaveLength(28); expect(buildManifest(p, sha256, '2026-11-21T00:00:00Z').trials).toHaveLength(1572);
         expect(['anthropic:claude-opus-5-5', 'openai:gpt-6.2-sol']).toContain(c.model);
         const installer = c.harness === 'claude-code' || c.harness === 'codex';

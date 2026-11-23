@@ -3,7 +3,7 @@
 // sharded by whole cells across machines, each shard a clean checkout at the same commit running `plan` itself, trials
 // sequential within a shard).
 //
-//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--skipped-by-rule <cell>[=<reason>] ...] [--cells a,b]
+//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--skipped-by-rule <cell>[=<reason>] ...] [--cells a,b] [--amendment <commit> ...]
 //
 // --partial (internal-task, plan decision 9's stop rule): a run that stopped on its cap is reported from what exists and is never
 // resumed or backfilled. The merge then accepts manifest trials that no shard recorded, writes them, in manifest order,
@@ -50,6 +50,14 @@
 // refusal, and so is a shard without a preflight-clean-arm.json that records clean: true (the v0.4 runs' clean-arm
 // preflight, scripts/run-shard.sh --clean-arm-preflight). manifest.json is then the first shard's restricted to those cells (cells, trials, per-cell ceilings and their
 // total) with a "subset" block giving the preregistration's full cell and trial counts; every shard's own manifest is kept whole.
+// --amendment <commit> (shared-brain-access-2026-11's lease amendment): shards planned after a dated amendment changed the
+// preregistration hold a different prereg_sha256 and spend_cap_usd. Each --amendment names a commit in this checkout's history
+// whose preregistration for the run hashes to such a shard's prereg_sha256; a shard planned under it may differ from the first
+// shard's manifest in those two fields only. An amendment that no shard was planned under, or that names the first shard's own
+// preregistration, is refused, and shards.json lists each amendment with its shards. Without --amendment any difference is refused.
+// The merged manifest.json stays the first shard's, with the original prereg_sha256 and spend_cap_usd; the amended values are in
+// shards.json's amendments and in each amended shard's <name>.manifest.json. So name a shard planned under the original
+// preregistration first: the order of --shard decides which plan manifest.json carries.
 // Nothing is written until every check has passed, and an --out that already holds trials.jsonl, unstarted.json or a
 // proxy usage log is refused.
 // A sealed run (its manifest.json has a "sealed" block, docs/sealed-custody.md) is merged inside custody with
@@ -60,6 +68,8 @@
 // (HE-SEALED-003) a root whose opening-receipt.json is missing or names another opening than the manifest's. A manifest,
 // trials.jsonl or receipt that is not JSON is refused naming the file, the line and the parser's error class only.
 
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { UsageLine } from '../runner/proxy/metering-proxy.ts';
@@ -75,7 +85,9 @@ export interface ShardInput { name: string; dir: string }
 export interface ShardInfo { name: string; machine: string | null; commit: string | null; images: unknown; source: string; trials: number; cells: string[] }
 export interface CapStopEvidence { cell: string; shard: string; cap_stop_trial: string }
 export interface SkippedByRule { cell: string; reason: string; planned_trials: number }
-export interface ShardsFile { cells: Record<string, string>; shards: Record<string, ShardInfo>; skipped_by_rule?: SkippedByRule[] }
+export interface AmendedPlan { commit: string; prereg_sha256: string }
+export interface AmendmentRecord extends AmendedPlan { spend_cap_usd: unknown; shards: string[] }
+export interface ShardsFile { cells: Record<string, string>; shards: Record<string, ShardInfo>; skipped_by_rule?: SkippedByRule[]; amendments?: AmendmentRecord[] }
 
 export class MergeError extends Error {}
 
@@ -85,7 +97,7 @@ const PER_SHARD_FILES = ['ledger.sqlite', 'proxy.log', 'proxy-usage.ndjson', 'ab
 const perShard = (entry: string) => PER_SHARD_FILES.includes(entry) || /^reconcile.*\.json$/.test(entry) || /^preflight-/.test(entry) || entry === 'gbrain-install' || entry === 'laneb';
 
 /** Plan the merge without writing: every refusal is raised here. */
-export interface MergeOptions { partial?: boolean; vmLost?: string[]; skippedByRule?: Array<{ cell: string; reason: string }>; cells?: string[] }
+export interface MergeOptions { partial?: boolean; vmLost?: string[]; skippedByRule?: Array<{ cell: string; reason: string }>; cells?: string[]; amendments?: AmendedPlan[] }
 
 export function planMerge(out: string, shards: ShardInput[], options: MergeOptions = {}): { manifest: { run_id: string; trials: Array<{ id: string; cell: string }> } & Record<string, unknown>; subset: boolean; rows: TrialRecord[]; shardsFile: ShardsFile; copies: Array<{ from: string; to: string }>; unstarted: Array<{ id: string; cell: string }>; capStops: CapStopEvidence[]; vmLost: string[] } {
   const only = options.cells;
@@ -106,11 +118,19 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   const first = manifests[0]!;
   // A shard planned after the opening was resumed holds the rewritten receipt (and its sha256): the same opening merges.
   const sealedDiff = (a?: Sealed, b?: Sealed): string[] => (!a || !b ? (a || b ? ['sealed'] : []) : a.set !== b.set ? ['sealed.set'] : openingDiff(a.receipt, b.receipt).map((k) => `sealed.receipt.${k}`));
+  const amended = new Set((options.amendments ?? []).map((x) => x.prereg_sha256));
   manifests.forEach((m, i) => {
     if (i === 0) return;
     const a = strip(first), b = strip(m);
     const differing = [...[...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => canonical(a[k]) !== canonical(b[k])), ...sealedDiff(first.sealed, m.sealed)];
+    if (differing.length && amended.has(String(m.prereg_sha256)) && differing.every((k) => k === 'prereg_sha256' || k === 'spend_cap_usd')) return;
     if (differing.length) throw new MergeError(`shard ${shards[i]!.name}: manifest.json differs from shard ${shards[0]!.name}'s in ${differing.join(', ')}; every shard must run plan at the same commit on the same preregistration`);
+  });
+  const amendments: AmendmentRecord[] = (options.amendments ?? []).map((x) => {
+    if (x.prereg_sha256 === first.prereg_sha256) throw new MergeError(`--amendment ${x.commit}: its preregistration is the one shard ${shards[0]!.name} was planned under; an amendment names a later preregistration`);
+    const under = shards.filter((_, i) => manifests[i]!.prereg_sha256 === x.prereg_sha256);
+    if (!under.length) throw new MergeError(`--amendment ${x.commit}: no shard was planned under its preregistration (sha256 ${x.prereg_sha256.slice(0, 12)})`);
+    return { ...x, spend_cap_usd: manifests[shards.indexOf(under[0]!)]!.spend_cap_usd, shards: under.map((u) => u.name) };
   });
   const manifestCells = (first.cells as Array<{ id: string }> | undefined)?.map((c) => c.id) ?? [...new Set(first.trials.map((t) => t.cell))];
   if (only) {
@@ -217,7 +237,7 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   const rows = plannedTrials.filter((t) => rowsById.has(t.id)).map((t) => rowsById.get(t.id)!);
   const unstarted = plannedTrials.filter((t) => !owner.has(t.id) && !skippedCells.includes(t.cell)).map((t) => ({ id: t.id, cell: t.cell }));
   const skippedByRule = skipped.map((s) => ({ cell: s.cell, reason: s.reason, planned_trials: plannedTrials.filter((t) => t.cell === s.cell).length }));
-  const shardsFile = { cells, shards: infos, ...(skippedByRule.length ? { skipped_by_rule: skippedByRule } : {}) };
+  const shardsFile = { cells, shards: infos, ...(skippedByRule.length ? { skipped_by_rule: skippedByRule } : {}), ...(amendments.length ? { amendments } : {}) };
   if (!only) return { manifest: first, subset: false, rows, shardsFile, copies, unstarted, capStops, vmLost };
   const perCell = Object.fromEntries(Object.entries((first.per_cell_ceiling_usd as Record<string, number> | undefined) ?? {}).filter(([c]) => only.includes(c)));
   const manifest = {
@@ -228,6 +248,22 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
     subset: { prereg_cells: manifestCells.length, prereg_trials: first.trials.length, cells: only.length, trials: plannedTrials.length },
   };
   return { manifest, subset: true, rows, shardsFile, copies, unstarted, capStops, vmLost };
+}
+
+/** Resolve --amendment <commit>: a commit in this checkout's history and the sha256 of the run's preregistration there. */
+export function resolveAmendment(commit: string, runId: string, cwd = process.cwd()): AmendedPlan {
+  const git = (...args: string[]) => spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const rev = git('rev-parse', '--verify', '--quiet', `${commit}^{commit}`);
+  if (rev.status !== 0) throw new MergeError(`--amendment ${commit}: not a commit in this checkout`);
+  const sha = rev.stdout.trim();
+  if (git('merge-base', '--is-ancestor', sha, 'HEAD').status !== 0) throw new MergeError(`--amendment ${commit}: not in this checkout's history; merge from a checkout that holds the amendment`);
+  const files = git('ls-tree', '-r', '--name-only', sha, '--', 'docs/benchmarks').stdout.split('\n').filter((f) => f.endsWith('/prereg.json'));
+  const hits = files.flatMap((f) => {
+    const text = git('show', `${sha}:${f}`).stdout;
+    try { return (JSON.parse(text) as { run_id?: unknown }).run_id === runId ? [text] : []; } catch { return []; }
+  });
+  if (hits.length !== 1) throw new MergeError(`--amendment ${commit}: ${hits.length ? 'more than one' : 'no'} docs/benchmarks/*/prereg.json at that commit has run_id ${runId}`);
+  return { commit: sha, prereg_sha256: createHash('sha256').update(hits[0]!).digest('hex') };
 }
 
 export function mergeShards(out: string, shards: ShardInput[], options: MergeOptions = {}): ShardsFile & { unstarted: number } {
@@ -264,7 +300,7 @@ if (import.meta.main) {
     return [{ cell, reason: (eq < 0 ? '' : v.slice(eq + 1).trim()) || "the preregistration's conditional rule did not run this cell" }];
   });
   if (!argv.includes('--out') || !out || !shards.length) {
-    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--skipped-by-rule <cell>[=<reason>] ...] [--cells a,b]');
+    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--skipped-by-rule <cell>[=<reason>] ...] [--cells a,b] [--amendment <commit> ...]');
     process.exit(2);
   }
   const sealedRoot = argv.includes('--sealed-root') ? argv[argv.indexOf('--sealed-root') + 1] : undefined;
@@ -288,11 +324,13 @@ if (import.meta.main) {
   }
   if (sealed) sealedGuard({ root: sealedRoot!, set: sealed.set, repoRoot: process.cwd(), preregJson: sealed.receipt?.prereg_json, logFile: join(out, 'merge-shards.sealed.log'), allow: [/^Merged \d+ shard\(s\) into /, /^\| /, /^Partial merge: \d+ manifest trial/], label: 'scripts/merge-shards.ts' });
   try {
-    const f = mergeShards(out, shards, { partial, vmLost, skippedByRule, cells: only });
+    const amendments = argv.flatMap((a, i) => (a === '--amendment' ? [argv[i + 1] ?? ''] : [])).map((c) => resolveAmendment(c, planned[0]?.m.run_id ?? ''));
+    const f = mergeShards(out, shards, { partial, vmLost, skippedByRule, cells: only, amendments });
     const cellsOf = (name: string) => Object.entries(f.cells).filter(([, s]) => s === name).map(([c]) => c);
     console.log([`Merged ${shards.length} shard(s) into ${out}: ${Object.keys(f.cells).length} cells, ${Object.values(f.shards).reduce((s, i) => s + i.trials, 0)} trials.`, '', '| Shard | Machine | Commit | Trials | Cells |', '|---|---|---|---|---|',
       ...Object.values(f.shards).map((i) => `| ${i.name} | ${i.machine ?? 'unknown'} | ${i.commit ?? 'unknown'} | ${i.trials} | ${cellsOf(i.name).join(', ')} |`)].join('\n'));
     for (const s of f.skipped_by_rule ?? []) console.log(`Skipped by rule: ${s.cell} (${s.planned_trials} planned trials, none run): ${s.reason}`);
+    for (const a of f.amendments ?? []) console.log(`Amendment ${a.commit.slice(0, 10)}: ${a.shards.length} shard(s) planned under its preregistration (spend_cap_usd ${a.spend_cap_usd}): ${a.shards.join(', ')}`);
     if (partial) console.log(`Partial merge: ${f.unstarted} manifest trial(s) unstarted, listed in ${join(out, 'unstarted.json')}; nothing was backfilled.`);
   } catch (e) {
     if (e instanceof MergeError || e instanceof RunnerError) { console.error(e instanceof MergeError ? `merge-shards: ${e.message}` : e.message); process.exit(2); }

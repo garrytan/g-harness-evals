@@ -1,0 +1,31 @@
+{
+  "run": "2026-11-21-shared-brain-access",
+  "about": "The shared-brain access run on gbrain v0.60.761.0: per-cell exposure, answers, refused reads and cost, and the preregistered paired comparisons for the refusal, the labelled company brain with per-person keys, per-person keys alone and the installer and told routes, from the stored evidence of every scored trial.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/shared-brain-access.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/shared-brain-access.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged trial list and per-shard receipts (results/trials.jsonl, manifest.json, shards.json, unstarted.json and each shard's manifest, run-summary, ledger and proxy usage)",
+      "reason": "They were written by the run itself and merged from each VM's results with scripts/merge-shards.ts; verify uses them as the run's receipts."
+    },
+    {
+      "what": "analysis.txt, the analysis script's printed tables",
+      "reason": "It is the same script's terminal output on the same receipts; verify compares the JSON file the tables are printed from."
+    },
+    {
+      "what": "skill-read-audit.tsv",
+      "reason": "A one-off grep count over the full trial transcripts, which live in the private raw archive and are not committed."
+    }
+  ]
+}
