@@ -2,7 +2,7 @@
 // scripts/gbrain-leak-preflight.ts writes carries "token" and "writer_token" fields holding the name of the gbrain token an
 // asker used (he-member-<name>, member-<name>, trial-leak-preflight-<arm>-<split>, public-only) and "secret" fields holding
 // the scripted PFS<seed><n>Z marker, which gstack-redact reports as env.kv. The entry lets exactly those shapes through on the
-// leak-preflight record paths of that one preregistration, and nothing else.
+// leak-preflight record paths of the gbrain access-leaks preregistration and the always-on week run's shards, and nothing else.
 //
 // Value: protects=a real-shaped key in a leak-preflight record still fails the pregate secrets check, in a token field and on
 // any other line of the file, and the same token names on another path are still reported; fails_when=the entry is widened
@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path';
 const ROOT = join(import.meta.dir, '..');
 const SCRUBBED_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'USER', 'LOGNAME'].includes(k)).concat([['GIT_CONFIG_GLOBAL', '/dev/null'], ['GIT_CONFIG_NOSYSTEM', '1']])) as Record<string, string>;
 const GLOB = 'docs/benchmarks/2026-11-09-gbrain-access-leaks/preflight/**/leak-preflight-*.json';
+const WEEK_GLOB = 'docs/benchmarks/2026-11-22-always-on-week/results/shards/*/leak-preflight-*.json';
 const RECORD = 'docs/benchmarks/2026-11-09-gbrain-access-leaks/preflight/v0.60.758.0/leak/leak-preflight-member-sources-dev.json';
 const FIRST = 'docs/benchmarks/2026-11-09-gbrain-access-leaks/preflight/leak/leak-preflight-open-dev.json';
 const OTHER = 'docs/benchmarks/2026-11-09-gbrain-access-leaks/preflight/v0.60.758.0/gbrain-check/check.json';
@@ -40,7 +41,7 @@ const NAMES: Array<Record<string, string | null>> = [
 test('the leak-preflight entry is env.kv on the record glob only, anchored at the value and ending at its closing quote', () => {
   const found = entry();
   expect(found).toHaveLength(1);
-  expect(found[0]).toEqual(expect.objectContaining({ finding: 'env.kv', paths: [GLOB] }));
+  expect(found[0]).toEqual(expect.objectContaining({ finding: 'env.kv', paths: [GLOB, WEEK_GLOB] }));
   const re = new RegExp('^(?:' + found[0]!.pattern + ')(?![\\w-])');
   const at = (line: string, key: string) => { const k = line.indexOf('"' + key + '": "'); return line.slice(k + key.length + 5); };
   for (const v of ['he-member-anselm-grieve', 'member-moss', 'trial-leak-preflight-open-dev', 'public-only', 'PFS1RJHH3P7Z', 'PFSX22I0N12N']) expect(re.test(at('"token": "' + v + '",', 'token'))).toBe(true);
