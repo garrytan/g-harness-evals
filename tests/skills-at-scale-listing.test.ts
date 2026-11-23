@@ -5,7 +5,7 @@ import { ladder, synthSkills, spread } from '../scripts/skills-at-scale/synth-ca
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildKit, catalogSha, drawPins } from '../scripts/skills-at-scale/build-kit.ts';
+import { buildKit, catalogSha, drawPins, gbrainRelease, imageCatalogProblem, PIN } from '../scripts/skills-at-scale/build-kit.ts';
 import { parseConfig, setupArgv, systemPreamble, GBRAIN_CATALOG } from '../scripts/skills-at-scale/arm.ts';
 
 const D1 = 'Use this skill to write the hiring report with the kazo tool. Keeps a log of every step.';
@@ -82,6 +82,22 @@ describe('the synthetic ladder', () => {
     const before = catalogSha(join(root, 'cat'));
     writeFileSync(join(root, 'cat', 'skills', 'a', 'template.md'), 't');
     expect(catalogSha(join(root, 'cat'))).not.toBe(before);
+  });
+  test('gbrain installs by commit: the pin\'s, or the full commit given with another tag', () => {
+    expect(gbrainRelease()).toEqual({ tag: PIN.tag, version: PIN.version, commit: PIN.commit, pinned: true });
+    expect(() => gbrainRelease('v9.9.9.0')).toThrow('needs its full 40-character commit');
+    expect(() => gbrainRelease('v9.9.9.0', 'abc123')).toThrow('needs its full 40-character commit');
+    expect(gbrainRelease('v9.9.9.0', 'a'.repeat(40))).toEqual({ tag: 'v9.9.9.0', version: '9.9.9.0', commit: 'a'.repeat(40), pinned: false });
+  });
+  test('an image runs a cell only when its catalog label is the cell manifest\'s catalog_hash', () => {
+    const root = mkdtempSync(join(tmpdir(), 'sas-label-'));
+    const m = join(root, 'manifest.json');
+    writeFileSync(m, JSON.stringify({ catalog_hash: 'f'.repeat(64), skills: [] }));
+    expect(imageCatalogProblem('harness-eval/codex:sas-100', 'f'.repeat(64), m)).toBeNull();
+    expect(imageCatalogProblem('harness-eval/codex:sas-100', '', m)).toContain('carries no harness-eval.sas-catalog label');
+    expect(imageCatalogProblem('harness-eval/codex:sas-100', 'e'.repeat(64), m)).toContain('carries catalog eeeeeeeeeeee');
+    writeFileSync(m, JSON.stringify({ skills: [] }));
+    expect(imageCatalogProblem('harness-eval/codex:sas-100', 'f'.repeat(64), m)).toContain('has no catalog_hash');
   });
 });
 

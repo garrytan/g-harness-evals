@@ -160,6 +160,7 @@ describe('skills-at-scale catalog ladder', () => {
     const names = readFileSync(join(out, 'rungs', '11.txt'), 'utf8').split('\n').filter(Boolean);
     expect(m).toMatchObject({ catalog_hash: first.rungHashes['11'], skill_count: names.length, rung: 11 });
     expect(m.skills.map((s: { name: string }) => s.name)).toEqual(names);
+    expect(m.skills.every((s: { name: string; original_name: string }) => typeof s.original_name === 'string' && (s.original_name === s.name || s.name.endsWith('-' + s.original_name)))).toBe(true);
     expect(m.skills.every((s: { target: unknown; pin: unknown }) => typeof s.target === 'boolean' && typeof s.pin === 'boolean' && (!s.pin || s.target))).toBe(true);
     const manifest = JSON.parse(first.records['manifest.json']!) as { skills: Array<{ name: string; pack: string }> };
     for (const s of m.skills) {

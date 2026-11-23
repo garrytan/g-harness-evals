@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MAX_ATTEMPTS, cacheDirProblem, cacheWriter, generate, sealedDirProblem, stratumOf, writeSet, type WriteRequest, type Writer } from '../scripts/skills-at-scale/gen-set-l.ts';
+import { MAX_ATTEMPTS, SHARED_PREAMBLE_MIN, cacheDirProblem, cacheWriter, generate, ownBody, sealedDirProblem, stratumOf, writeSet, type WriteRequest, type Writer } from '../scripts/skills-at-scale/gen-set-l.ts';
 import { treeFiles } from '../scripts/seal-heldout.ts';
 
 const N = 8;
@@ -79,6 +79,37 @@ describe('set L generation', () => {
     const g2 = await generate({ catalog: catalog(), targets: names, writer: cacheWriter(cache, round2) });
     expect(g2.pending).toBe(N);
     expect(round2.some((p) => p.prompt.includes('previous attempt'))).toBe(true);
+  });
+
+  test('a preamble a pack\'s skills share is cut before the writer sees the body; a short shared start stays', async () => {
+    const preamble = Array.from({ length: 40 }, (_, i) => 'Shared preamble line ' + i + ' that every generated skill in this pack repeats.').join('\n') + '\n';
+    expect(preamble.length).toBeGreaterThan(SHARED_PREAMBLE_MIN);
+    const own = (body: string, sibling: string, name = 'alpha', other = 'beta') => ownBody({ name, body }, [{ name: other, body: sibling }]);
+    expect(own(preamble + 'Own steps for A.\n', preamble + 'Own steps for B.\n')).toEqual({ body: 'Own steps for A.\n', cut: preamble.length });
+    expect(own('# Title\nOwn steps for A.\n', '# Title\nOwn steps for B.\n')).toEqual({ body: '# Title\nOwn steps for A.\n', cut: 0 });
+    expect(own(preamble, preamble + 'more')).toEqual({ body: preamble, cut: 0 });
+    const named = (n: string) => 'Run this before you ' + n + ' anything.\n' + preamble;
+    expect(own(named('review') + 'Own steps.\n', named('ship') + 'Other steps.\n', 'review', 'ship')).toEqual({ body: 'Own steps.\n', cut: named('review').length });
+    const dir = catalog();
+    for (const n of ['sk-000', 'sk-002']) writeFileSync(join(dir, 'skills', n, 'SKILL.md'), '---\nname: ' + n + '\n---\n' + preamble + 'Body for target number ' + n.slice(-1) + '. Steps follow.\n');
+    const calls: WriteRequest[] = [];
+    const g = await generate({ catalog: dir, targets: names, writer: fake(calls) });
+    expect(g.plan.preamble_cut).toEqual({ 'sk-000': preamble.length, 'sk-002': preamble.length });
+    expect(calls.some((c) => c.prompt.includes('Shared preamble line'))).toBe(false);
+  });
+
+  test('a prompt the provider refuses is dropped with its reason, not left pending', async () => {
+    const cache = mkdtempSync(join(tmpdir(), 'setl-cache-'));
+    const pending: WriteRequest[] = [];
+    await generate({ catalog: catalog(), targets: names, writer: cacheWriter(cache, pending) });
+    const answer = fake([]);
+    const skillFirst = pending.find((p) => p.prompt.includes('target number 5'))!, none = pending.find((p) => /Variant 1 of 4/.test(p.prompt))!;
+    for (const p of pending) writeFileSync(join(cache, p.key + '.json'), JSON.stringify(p === skillFirst || p === none ? { blocked: 'blockReason:OTHER' } : { text: await answer(p) }));
+    const g = await generate({ catalog: catalog(), targets: names, writer: cacheWriter(cache, []) });
+    const blocked = g.plan.drops.filter((d) => d.reason.includes('refused the prompt (blockReason:OTHER)'));
+    expect(blocked.map((d) => [d.target, d.style])).toEqual([[null, null], ['sk-005', 'low']]);
+    expect(g.rows.some((r) => r.id === blocked[0]!.id)).toBe(false);
+    expect(g.rows.filter((r) => r.kind === 'none').length).toBe(119);
   });
 
   test('the sealed half: refused inside the checkout, committed by digest outside it', async () => {

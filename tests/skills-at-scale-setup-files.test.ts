@@ -16,7 +16,7 @@ describe('skills-at-scale setup files', () => {
     expect(pin.tag).toBe('v' + pin.version);
     expect(pin.commit).toMatch(/^[0-9a-f]{40}$/);
     expect(pin.sha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(pin.install).toBe('bun install -g github:garrytan/gbrain#' + pin.tag);
+    expect(pin.install).toBe('bun install -g github:garrytan/gbrain#' + pin.commit);
   });
 
   test('each recorded keyless output parses and says what it is', () => {

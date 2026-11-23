@@ -1,32 +1,52 @@
 #!/usr/bin/env bun
 // The skills-at-scale kit and its images (internal-task-a, internal-task-b). The kit is one directory the arms read in the container at
 // /opt/skills-at-scale (HE_SAS_DIR overrides it): bun/ (gbrain installed the way its README says, bun install -g
-// github:garrytan/gbrain#<tag>, at the release --gbrain or SAS_GBRAIN_TAG names, else scripts/skills-at-scale/gbrain-pin.json's, with Bun from the pinned
+// github:garrytan/gbrain#<commit>, at the release --gbrain or SAS_GBRAIN_TAG names, else scripts/skills-at-scale/gbrain-pin.json's, with Bun from the pinned
 // oven/bun image at /usr/local/bin/bun), bin/sas-arm (scripts/skills-at-scale/arm.ts, compiled), catalog/skills and
 // catalog/manifest.json (one rung), pins.json, kit.json and system-preamble.md (the task preamble's fixed text, for the Hermes
 // -system-preamble arms).
 //
 //   bun scripts/skills-at-scale/build-kit.ts --catalog <rung dir with skills/> --out <kit dir> [--pins <file>]
-//       [--gbrain <tag>] [--image <harness>[,<harness>...] --tag <tag> [--from <image tag>]]
+//       [--gbrain <tag> [--gbrain-commit <sha>]] [--image <harness>[,<harness>...] --tag <tag> [--from <image tag>]]
 //
 // The compiled release asset (pinnedGbrain, downloaded with gh into ~/.capy/work/skills-at-scale/gbrain/<tag>/ and checked
 // against the pin's sha256) is only for ranking offline on the host. Without --pins the kit pins 20 skills: a seeded pick of the catalog's target skills (all
 // skills when the manifest marks none), each with a line cut from its description (the plan's decision D policy).
 // --image builds harness-eval/<h>:sas-base (harness-eval/<h>:dev, or :<from> into sas-base-<from>, plus Bun, gbrain and bin/) and
-// harness-eval/<h>:sas-<tag> (sas-base plus the catalog and the json files).
+// harness-eval/<h>:sas-<tag> (sas-base plus the catalog and the json files, labelled harness-eval.sas-catalog=<the rung's
+// catalog_hash>, which run preflight checks against each skills-at-scale cell's catalog).
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { catalogHashOf } from '../skill-resolver/shard-kit.ts';
 import { systemPreamble } from './arm.ts';
 
 const HERE = import.meta.dir;
 export const KIT_DIR = '/opt/skills-at-scale';
 export const PIN = JSON.parse(readFileSync(join(HERE, 'gbrain-pin.json'), 'utf8')) as { repo: string; tag: string; version: string; commit: string; install: string; bun_image: string; asset: string; sha256: string; openclaw_min_version: string };
-/** The gbrain release a kit installs: --gbrain <tag> (or SAS_GBRAIN_TAG), else gbrain-pin.json's tag, so a newer release drops in without an edit. */
-export const gbrainRelease = (tag?: string) => { const t = tag || process.env.SAS_GBRAIN_TAG || PIN.tag; return { tag: t, version: t.replace(/^v/, ''), pinned: t === PIN.tag }; };
+/** The gbrain release a kit installs: --gbrain <tag> (or SAS_GBRAIN_TAG), else gbrain-pin.json's tag, so a newer release drops in
+ *  without an edit. It installs by commit, since a tag can move: the pin's commit, or for another tag the full commit that
+ *  --gbrain-commit (or SAS_GBRAIN_COMMIT) names. */
+export function gbrainRelease(tag?: string, commit?: string) {
+  const t = tag || process.env.SAS_GBRAIN_TAG || PIN.tag;
+  const c = t === PIN.tag ? PIN.commit : commit || process.env.SAS_GBRAIN_COMMIT;
+  if (!c || !/^[0-9a-f]{40}$/.test(c)) throw new Error('gbrain ' + t + ' is not the pin (' + PIN.tag + '), so it needs its full 40-character commit; fix: pass --gbrain-commit <sha> (or SAS_GBRAIN_COMMIT), from git ls-remote https://github.com/' + PIN.repo + ' refs/tags/' + t);
+  return { tag: t, version: t.replace(/^v/, ''), commit: c, pinned: t === PIN.tag };
+}
+/** The image label that names the catalog a sas-<tag> image carries, by the rung manifest's catalog_hash (shard-kit catalogHashOf). */
+export const CATALOG_LABEL = 'harness-eval.sas-catalog';
+/** Why an image cannot run a cell whose catalog is the rung manifest at manifestPath, or null: the image's CATALOG_LABEL value
+ *  (empty when it has none) must equal that manifest's catalog_hash, or the trial would score against another catalog. */
+export function imageCatalogProblem(image: string, label: string, manifestPath: string): string | null {
+  const want = (JSON.parse(readFileSync(manifestPath, 'utf8')) as { catalog_hash?: string }).catalog_hash;
+  if (!want) return manifestPath + ' has no catalog_hash, so nothing can check the image carries that catalog; fix: point the cell at a rung manifest.json from build-ladder.ts';
+  if (!label) return 'image ' + image + ' carries no ' + CATALOG_LABEL + ' label, so its catalog is unknown; fix: build it with build-kit.ts --catalog <the cell\'s rung> --image';
+  if (label !== want) return 'image ' + image + ' carries catalog ' + label.slice(0, 12) + ', the cell\'s ' + manifestPath + ' is ' + want.slice(0, 12) + '; fix: rebuild the image from that rung with build-kit.ts --image';
+  return null;
+}
 const sha256 = (b: string | Buffer) => createHash('sha256').update(b).digest('hex');
 const ENV = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp' };
 
@@ -84,7 +104,7 @@ export function catalogSha(rung: string): string {
   return sha256(files('').sort().map((f) => f + ' ' + sha256(readFileSync(join(skills, f)))).join('\n'));
 }
 
-export function buildKit(o: { catalog: string; out: string; pins?: string; gbrain?: string }): Record<string, unknown> {
+export function buildKit(o: { catalog: string; out: string; pins?: string; gbrain?: string; gbrainCommit?: string }): Record<string, unknown> {
   const out = resolve(o.out), holds = (p: string) => p === out || p.startsWith(out + '/');
   if (holds(resolve(o.catalog)) || holds(resolve(HERE, '..', '..'))) throw new Error('--out ' + out + ' holds the catalog or this checkout, and the build replaces it; pick a kit folder of its own');
   rmSync(o.out, { recursive: true, force: true });
@@ -97,9 +117,13 @@ export function buildKit(o: { catalog: string; out: string; pins?: string; gbrai
   const pins: Pin[] = o.pins ? JSON.parse(readFileSync(o.pins, 'utf8')) : drawPins(skills);
   writeFileSync(join(o.out, 'pins.json'), JSON.stringify(pins, null, 1) + '\n');
   writeFileSync(join(o.out, 'system-preamble.md'), systemPreamble(readFileSync(join(HERE, '../../tasks/multiuser/_shared/preamble.md'), 'utf8')));
-  const g = gbrainRelease(o.gbrain);
-  const kit = { schema_version: 1, gbrain_version: g.version, gbrain_tag: g.tag, gbrain_is_pin: g.pinned, gbrain_pin: PIN,
-    catalog_source: resolve(o.catalog), catalog_sha256: catalogSha(o.catalog), skills: readdirSync(join(o.catalog, 'skills')).length, pins_sha256: sha256(readFileSync(join(o.out, 'pins.json'))),
+  const g = gbrainRelease(o.gbrain, o.gbrainCommit);
+  const catalogHash = catalogHashOf(join(o.out, 'catalog'));
+  const manifest = join(o.catalog, 'manifest.json');
+  const listed = existsSync(manifest) ? (JSON.parse(readFileSync(manifest, 'utf8')) as { catalog_hash?: string }).catalog_hash : undefined;
+  if (listed && listed !== catalogHash) throw new Error(manifest + ' says catalog_hash ' + listed + ', the copied skills hash to ' + catalogHash + '; fix: rebuild the rung with build-ladder.ts');
+  const kit = { schema_version: 1, gbrain_version: g.version, gbrain_tag: g.tag, gbrain_commit: g.commit, gbrain_is_pin: g.pinned, gbrain_pin: PIN,
+    catalog_source: resolve(o.catalog), catalog_sha256: catalogSha(o.catalog), catalog_hash: catalogHash, skills: readdirSync(join(o.catalog, 'skills')).length, pins_sha256: sha256(readFileSync(join(o.out, 'pins.json'))),
     sas_arm_sha256: sha256(readFileSync(join(o.out, 'bin', 'sas-arm'))) };
   writeFileSync(join(o.out, 'kit.json'), JSON.stringify(kit, null, 1) + '\n');
   return kit;
@@ -107,8 +131,8 @@ export function buildKit(o: { catalog: string; out: string; pins?: string; gbrai
 
 /** harness-eval/<h>:sas-base (dev plus Bun, gbrain and bin/, rebuilt when bin/, the pin or the dev image changed) and harness-eval/<h>:sas-<tag> (base plus the catalog and the json files). */
 export function buildImages(kit: string, harnesses: string[], tag: string, from = 'dev'): string[] {
-  const g = JSON.parse(readFileSync(join(kit, 'kit.json'), 'utf8')) as { gbrain_tag: string; gbrain_version: string };
-  const binSha = sha256(sha256(readFileSync(join(kit, 'bin', 'sas-arm'))) + JSON.stringify(PIN) + g.gbrain_tag);
+  const g = JSON.parse(readFileSync(join(kit, 'kit.json'), 'utf8')) as { gbrain_tag: string; gbrain_version: string; gbrain_commit: string; catalog_hash: string };
+  const binSha = sha256(sha256(readFileSync(join(kit, 'bin', 'sas-arm'))) + JSON.stringify(PIN) + g.gbrain_tag + g.gbrain_commit);
   const images: string[] = [];
   for (const h of harnesses) {
     const base = 'harness-eval/' + h + ':sas-base' + (from === 'dev' ? '' : '-' + from);
@@ -117,10 +141,10 @@ export function buildImages(kit: string, harnesses: string[], tag: string, from 
     const have = spawnSync('docker', ['image', 'inspect', '-f', '{{index .Config.Labels "harness-eval.sas-bin"}}', base], { encoding: 'utf8', env: ENV }).stdout.trim();
     if (have !== label) run(['docker', 'build', '-q', '-f', '-', '--label', 'harness-eval.sas-bin=' + label, '-t', base, join(kit, 'bin')], 'docker build ' + base,
       'FROM ' + PIN.bun_image + ' AS bun\nFROM harness-eval/' + h + ':' + from + '\nUSER root\nCOPY --from=bun /usr/local/bin/bun /usr/local/bin/bun\n' +
-      'RUN BUN_INSTALL=' + KIT_DIR + '/bun bun install -g github:' + PIN.repo + '#' + g.gbrain_tag + ' && test "$(' + KIT_DIR + '/bun/bin/gbrain --version)" = "gbrain ' + g.gbrain_version + '" && chmod -R a+rX ' + KIT_DIR + '/bun\n' +
+      'RUN BUN_INSTALL=' + KIT_DIR + '/bun bun install -g github:' + PIN.repo + '#' + g.gbrain_commit + ' && test "$(' + KIT_DIR + '/bun/bin/gbrain --version)" = "gbrain ' + g.gbrain_version + '" && chmod -R a+rX ' + KIT_DIR + '/bun\n' +
       'COPY . ' + KIT_DIR + '/bin/\n');
     const image = 'harness-eval/' + h + ':sas-' + tag;
-    run(['docker', 'build', '-q', '-f', '-', '-t', image, kit], 'docker build ' + image,
+    run(['docker', 'build', '-q', '-f', '-', '--label', CATALOG_LABEL + '=' + g.catalog_hash, '-t', image, kit], 'docker build ' + image,
       'FROM ' + base + '\nUSER root\nCOPY catalog ' + KIT_DIR + '/catalog/\nCOPY kit.json pins.json system-preamble.md ' + KIT_DIR + '/\nRUN chmod -R a+rX ' + KIT_DIR + '\n');
     images.push(image);
   }
@@ -131,8 +155,8 @@ if (import.meta.main) {
   const a = process.argv.slice(2);
   const v = (k: string) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : undefined; };
   const catalog = v('--catalog'), out = v('--out');
-  if (!catalog || !out) { console.error('usage: build-kit.ts --catalog <rung dir> --out <kit dir> [--pins <file>] [--gbrain <tag>] [--image <h,...> --tag <tag> [--from <image tag>]]'); process.exit(2); }
-  const kit = buildKit({ catalog: resolve(catalog), out: resolve(out), pins: v('--pins') ? resolve(v('--pins')!) : undefined, gbrain: v('--gbrain') });
+  if (!catalog || !out) { console.error('usage: build-kit.ts --catalog <rung dir> --out <kit dir> [--pins <file>] [--gbrain <tag> [--gbrain-commit <sha>]] [--image <h,...> --tag <tag> [--from <image tag>]]'); process.exit(2); }
+  const kit = buildKit({ catalog: resolve(catalog), out: resolve(out), pins: v('--pins') ? resolve(v('--pins')!) : undefined, gbrain: v('--gbrain'), gbrainCommit: v('--gbrain-commit') });
   console.log('KIT ' + resolve(out) + ' ' + JSON.stringify(kit));
   if (v('--image')) for (const i of buildImages(resolve(out), v('--image')!.split(','), v('--tag') ?? String(kit.skills), v('--from') ?? 'dev')) console.log('IMAGE ' + i);
 }

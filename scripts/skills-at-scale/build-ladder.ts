@@ -257,6 +257,7 @@ export function materialize(out: string, rung: number, dest: string): string {
   const packs = JSON.parse(readFileSync(join(out, 'packs.json'), 'utf8')) as Record<string, string>;
   const roles = JSON.parse(readFileSync(join(out, 'targets.json'), 'utf8')) as { targets: string[]; pins: string[] };
   const target = new Set(roles.targets), pin = new Set(roles.pins);
+  const original = JSON.parse(readFileSync(join(out, 'original-names.json'), 'utf8')) as Record<string, string>;
   rmSync(dest, { recursive: true, force: true });
   for (const name of names) for (const f of walkFiles(join(out, 'skills', name))) {
     const target = join(dest, 'skills', name, relative(join(out, 'skills', name), f));
@@ -266,7 +267,7 @@ export function materialize(out: string, rung: number, dest: string): string {
   const hash = catalogHashOf(dest);
   const skills = names.map((name) => {
     const md = readFileSync(join(dest, 'skills', name, 'SKILL.md'));
-    return { name, pack: packs[name]!, target: target.has(name), pin: pin.has(name), description: parseFrontmatter(md.toString('utf8')).description ?? '', skill_md_sha256: sha(md) };
+    return { name, original_name: original[name] ?? name, pack: packs[name]!, target: target.has(name), pin: pin.has(name), description: parseFrontmatter(md.toString('utf8')).description ?? '', skill_md_sha256: sha(md) };
   });
   writeFileSync(join(dest, 'manifest.json'), json({ schema_version: 1, catalog_hash: hash, skill_count: names.length, rung, skills }));
   return hash;
@@ -342,6 +343,7 @@ export function buildLadder(cfg: LadderConfig, corePacks: Pack[], dirs: Record<s
     const member = (s: LadderSkill, r: number) => (r === targetCount ? targetSet.has(s.name) : s.rung <= r);
     writeFileSync(join(out, 'packs.json'), json(Object.fromEntries(skills.map((s) => [s.name, s.pack] as const).sort(([a], [b]) => byCodePoint(a, b)))));
     writeFileSync(join(out, 'targets.json'), json({ targets: [...targetSet].sort(byCodePoint), pins }));
+    writeFileSync(join(out, 'original-names.json'), json(Object.fromEntries(skills.filter((s) => s.renamed).map((s) => [s.name, s.original_name] as const).sort(([a], [b]) => byCodePoint(a, b)))));
     mkdirSync(join(out, 'rungs'), { recursive: true });
     const rungHashes: Record<string, string> = {};
     const rungs: Record<string, { skills: number; catalog_hash: string }> = {};

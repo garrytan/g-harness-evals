@@ -8,9 +8,10 @@
 //
 // 300 skill-needing requests, 3 per target skill (the ladder's 100 rung), and 120 no-skill requests (#449's 30 everyday
 // topics, 4 variants each). The writer is Gemini 4 Carbon, a third family, so neither judge's family writes the requests.
-// For each target it sees the SKILL.md body with the name, the name's words and the description masked (gen-set-p.ts
-// maskBody), and writes one user message per style: low (everyday words), mid (a practitioner's common terms) and high (an
-// expert's precise terms), each a different situation from the ones already kept. Each answer gets #449's overlap measures
+// For each target it sees its SKILL.md body less a generated preamble it shares with another skill of its pack (ownBody), with
+// the name, the name's words and the description masked (gen-set-p.ts maskText) and cut to 6,000 characters, and writes one
+// user message per style:
+// low (everyday words), mid (a practitioner's common terms) and high (an expert's precise terms), each a different situation from the ones already kept. Each answer gets #449's overlap measures
 // (gen-set-p.ts overlap). It is kept when it does not name the target, its name-plus-description Jaccard is at most
 // MAX_ND_JACCARD and its text is new for that target; it is rewritten with feedback, up to MAX_ATTEMPTS, while it misses its
 // style, and on the last attempt it is kept in the stratum it measured. Preregistered strata by name-plus-description
@@ -18,7 +19,8 @@
 // MIN_STRATUM_SHARE of the kept skill-needing requests. A request whose exact text another request already has is dropped.
 //
 // The writer is a function (tests pass a fake). The CLI's writer reads <cache>/<key>.json ({"text": ...}, key = sha256 of
-// model, system and prompt); every miss is written to <cache>/pending.jsonl ({key, model, system, prompt}) and the run exits
+// model, system and prompt; {"blocked": "<the provider's reason>"} when the provider refuses the prompt itself, which drops
+// that request); every miss is written to <cache>/pending.jsonl ({key, model, system, prompt}) and the run exits
 // 3. Prompts and answers carry test-half requests, so the cache is refused inside the checkout or any git work tree.
 // The wave 1 operator sends those prompts to Carbon through the metering proxy, stores the answers in the cache and
 // reruns until nothing is pending: a rewrite's prompt depends on the earlier answer, so a request can take three rounds.
@@ -36,7 +38,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import type { Manifest } from '../skill-resolver/build-catalog.ts';
-import { NO_SKILL_TOPICS, maskBody, overlap } from '../skill-resolver/gen-set-p.ts';
+import { NO_SKILL_TOPICS, maskText, overlap } from '../skill-resolver/gen-set-p.ts';
 import { treeFiles } from '../seal-heldout.ts';
 
 export const SEED = 'harn-107-set-l-v1';
@@ -47,6 +49,8 @@ export const MAX_ND_JACCARD = 0.35;
 export const MAX_ATTEMPTS = 3;
 export const MIN_STRATUM_SHARE = 0.25;
 export const NO_SKILL_VARIANTS = 4;
+/** A body start at least this long that another skill of the same pack also has is a generated preamble, cut before masking. */
+export const SHARED_PREAMBLE_MIN = 1000;
 export const WRITER_SYSTEM = 'You write realistic messages that people send to an AI agent (a chat assistant or a coding agent). Output only the message text, with no quotes and no preamble.';
 const STYLE_ASK: Record<(typeof STYLES)[number], string> = {
   low: 'Write it in everyday words, the way someone who does not know this field would describe their problem. Use none of the technical terms the file uses.',
@@ -57,13 +61,32 @@ const ROOT = resolve(import.meta.dir, '..', '..');
 
 export type Style = (typeof STYLES)[number];
 export type WriteRequest = { key: string; model: string; system: string; prompt: string };
-export type Writer = (r: WriteRequest) => Promise<string | null>;
+/** The writer's answer: its text, null while it is pending, or the provider's refusal to answer the prompt at all. */
+export type Writer = (r: WriteRequest) => Promise<string | null | { blocked: string }>;
 export type SkillRow = { id: string; kind: 'skill'; target: string; pack: string; style: Style; stratum: Style; style_miss: boolean; request: string; overlap: ReturnType<typeof overlap>; attempts: number; half: string };
 export type NoneRow = { id: string; kind: 'none'; target: null; topic: string; request: string; half: string };
 export type Row = SkillRow | NoneRow;
 
 const h = (...parts: string[]) => createHash('sha256').update(parts.join('\u0000')).digest('hex');
 export const writeKey = (model: string, system: string, prompt: string) => createHash('sha256').update(JSON.stringify([model, system, prompt])).digest('hex');
+/** A body without the lines it shares at its start with another body of its pack, when those lines hold at least
+ *  SHARED_PREAMBLE_MIN characters: the writer sees 6,000 characters, and a pack's generated preamble can fill all of them.
+ *  Lines are compared with both skills' names and name words masked, since a preamble can name the skill it ships in. */
+export function ownBody(t: { name: string; body: string }, siblings: Array<{ name: string; body: string }>): { body: string; cut: number } {
+  const words = (n: string) => [n, ...n.split(/[-_]/).filter((w) => w.length >= 4)];
+  const lines = t.body.split('\n');
+  let shared = 0;
+  for (const s of siblings) {
+    const res = [...words(t.name), ...words(s.name)].sort((a, b) => b.length - a.length).map((w) => new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'));
+    const mask = (l: string) => res.reduce((x, re) => x.replace(re, '[skill]'), l);
+    const other = s.body.split('\n');
+    let i = 0;
+    while (i < lines.length - 1 && i < other.length && (lines[i] === other[i] || mask(lines[i]!) === mask(other[i]!))) i++;
+    shared = Math.max(shared, i);
+  }
+  const cut = lines.slice(0, shared).join('\n').length + 1;
+  return shared && cut >= SHARED_PREAMBLE_MIN && t.body.slice(cut).trim() ? { body: t.body.slice(cut), cut } : { body: t.body, cut: 0 };
+}
 const normal = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
 /** The preregistered stratum of a name-plus-description Jaccard, or null above MAX_ND_JACCARD. */
@@ -87,9 +110,9 @@ export const noSkillPrompt = (topic: string, variant: number) => 'Write ONE shor
 export function cacheWriter(cacheDir: string, pending: WriteRequest[]): Writer {
   return async (r) => {
     const f = join(cacheDir, r.key + '.json');
-    if (existsSync(f)) return String(JSON.parse(readFileSync(f, 'utf8')).text ?? '').trim();
-    pending.push(r);
-    return null;
+    if (!existsSync(f)) { pending.push(r); return null; }
+    const answer = JSON.parse(readFileSync(f, 'utf8')) as { text?: unknown; blocked?: unknown };
+    return typeof answer.blocked === 'string' ? { blocked: answer.blocked } : String(answer.text ?? '').trim();
   };
 }
 
@@ -109,14 +132,20 @@ export async function generate(o: { catalog: string; targets: string[]; writer: 
   const targets = [...o.targets].sort();
   const half = halves(targets.map((t) => ({ name: t, pack: skills.get(t)!.pack })));
   const rows: Row[] = [];
-  const drops: Array<{ id: string; target: string; style: Style; reason: string }> = [];
+  const drops: Array<{ id: string; target: string | null; style: Style | null; reason: string }> = [];
+  const blockedReason = (b: { blocked: string }) => 'the writer\'s provider refused the prompt (' + b.blocked + ')';
+  const bodies = new Map<string, string>();
+  const bodyOf = (n: string) => bodies.get(n) ?? bodies.set(n, readFileSync(join(o.catalog, 'skills', n, 'SKILL.md'), 'utf8').replace(/^---[\s\S]*?\n---\n?/, '')).get(n)!;
+  const preambleCut: Record<string, number> = {};
   let pending = 0;
   const ask = (prompt: string, system = WRITER_SYSTEM) => o.writer({ key: writeKey(WRITER_MODEL, system, prompt), model: WRITER_MODEL, system, prompt });
 
   const jobs = targets.map((t, i) => async () => {
     const s = skills.get(t)!;
-    const raw = readFileSync(join(o.catalog, 'skills', t, 'SKILL.md'), 'utf8').replace(/^---[\s\S]*?\n---\n?/, '');
-    const body = maskBody(raw, s.original_name, s.description);
+    const raw = bodyOf(t);
+    const own = ownBody({ name: s.original_name, body: raw }, m.skills.filter((x) => x.pack === s.pack && x.name !== t).map((x) => ({ name: x.original_name, body: bodyOf(x.name) })));
+    if (own.cut) preambleCut[t] = own.cut;
+    const body = maskText(own.body, s.original_name, s.description).slice(0, 6000);
     const kept: string[] = [];
     for (const [k, style] of STYLES.entries()) {
       const id = 'l-s-' + String(i + 1).padStart(3, '0') + '-' + (k + 1);
@@ -124,6 +153,7 @@ export async function generate(o: { catalog: string; targets: string[]; writer: 
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         const text = await ask(skillPrompt(body, style, kept, feedback));
         if (text === null) { pending++; return; }
+        if (typeof text !== 'string') { drops.push({ id, target: t, style, reason: blockedReason(text) }); break; }
         const ov = overlap(text, s.original_name, s.description, raw);
         const stratum = stratumOf(ov.nd_jaccard);
         const problem = ov.name_hit ? 'it names the job too directly; describe the situation instead.'
@@ -144,6 +174,7 @@ export async function generate(o: { catalog: string; targets: string[]; writer: 
   for (const x of noneIds) jobs.push(async () => {
     const text = await ask(noSkillPrompt(x.topic, x.variant));
     if (text === null) { pending++; return; }
+    if (typeof text !== 'string') { drops.push({ id: x.id, target: null, style: null, reason: blockedReason(text) }); return; }
     rows.push({ id: x.id, kind: 'none', target: null, topic: x.topic, request: text, half: noneHalf.get(x.id)! });
   });
   let next = 0;
@@ -160,7 +191,8 @@ export async function generate(o: { catalog: string; targets: string[]; writer: 
   const spread = Object.fromEntries(STYLES.map((s) => [s, skillRows.filter((r) => r.stratum === s).length]));
   const plan = {
     schema: 'he-skills-at-scale-set-l-plan/1', seed: SEED, writer_model: WRITER_MODEL, writer_system_sha256: h(WRITER_SYSTEM), catalog_hash: m.catalog_hash,
-    constants: { styles: STYLES, strata_upper: STRATA, max_nd_jaccard: MAX_ND_JACCARD, max_attempts: MAX_ATTEMPTS, min_stratum_share: MIN_STRATUM_SHARE, no_skill_variants: NO_SKILL_VARIANTS },
+    constants: { styles: STYLES, strata_upper: STRATA, max_nd_jaccard: MAX_ND_JACCARD, max_attempts: MAX_ATTEMPTS, min_stratum_share: MIN_STRATUM_SHARE, no_skill_variants: NO_SKILL_VARIANTS, shared_preamble_min: SHARED_PREAMBLE_MIN },
+    preamble_cut: preambleCut,
     targets, target_halves: Object.fromEntries(targets.map((t) => [t, half.get(t)])),
     counts: { skill: skillRows.length, none: unique.length - skillRows.length, dev: unique.filter((r) => r.half === 'dev').length, test: unique.filter((r) => r.half === 'test').length, style_miss: skillRows.filter((r) => r.style_miss).length },
     spread, spread_met: STYLES.every((s) => spread[s]! >= MIN_STRATUM_SHARE * skillRows.length), drops: drops.sort((a, b) => a.id.localeCompare(b.id)),

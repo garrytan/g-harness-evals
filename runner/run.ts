@@ -945,6 +945,16 @@ async function main(argv: string[]): Promise<number> {
       receipts[pairs.filter(([h]) => h === harness).length > 1 ? `${harness} ${image}` : harness] = p;
       console.log(`PROVENANCE: ${harness} image ${image} (${p.image_id.slice(0, 19)}) carries all ${p.files.length} files of harnesses/${harness}/provenance.json at the checkout's sha256; manifest digest ${p.digest}`);
     }
+    // Skills-at-scale: a cell scores against its catalog file, so its image must carry that same catalog (build-kit.ts labels it).
+    const { SAS_CONFIGS } = await import('../scripts/skills-at-scale/arm.ts');
+    const { CATALOG_LABEL, imageCatalogProblem } = await import('../scripts/skills-at-scale/build-kit.ts');
+    for (const c of dockerCells.filter((c) => c.catalog && SAS_CONFIGS.some((s) => c.config?.startsWith(s)))) {
+      const image = flag('--image') ?? skillArmImage(c) ?? `harness-eval/${c.harness}:dev`;
+      const label = (spawnSync('docker', ['image', 'inspect', '-f', `{{index .Config.Labels "${CATALOG_LABEL}"}}`, image], { encoding: 'utf8' }).stdout ?? '').trim().replace(/^<no value>$/, '');
+      const problem = imageCatalogProblem(image, label, c.catalog!);
+      if (problem) throw new RunnerError('HE-ADAPTER-005', `cell ${c.id}: ${problem}`);
+      console.log(`CATALOG: cell ${c.id} image ${image} carries the cell's catalog ${label.slice(0, 12)}`);
+    }
     if (Object.keys(receipts).length) writeFileSync(join(runDir, 'preflight-provenance.json'), JSON.stringify({ run_id: m.run_id, checked_at: new Date().toISOString(), harnesses: receipts }, null, 1) + '\n');
     // internal-task (H10): a slot route's bundle passes the host-side check (scripts/routes/slot-check.ts), and the byte copy the image
     // builds from, harnesses/<harness>/routes/slots/<id>/, has the same bundle_sha256 (HE-ADAPTER-007).

@@ -2,13 +2,13 @@
 // gbrain's installer route inside QM's core (internal-task-a, internal-task-b), keyless. QM embeds Pi, so the route a user would try is
 // gbrain setup pi --skill-loading resolve inside the core container. This builds harness-eval/qm:sas-gbrain-pi on the pinned,
 // unchanged harness-eval/qm:dev: Bun from oven/bun:<bun> (Alpine, musl), gbrain installed the way its README says (bun install
-// -g github:garrytan/gbrain#<tag>; a compiled musl build cannot set up Pi, since setup builds a Node library from gbrain's
+// -g github:garrytan/gbrain#<commit>; a compiled musl build cannot set up Pi, since setup builds a Node library from gbrain's
 // source), the rung's skills in /home/node/.pi/agent/skills (setup needs a Pi skill folder, and QM keeps its own skills in its
 // database), then gbrain setup pi and gbrain doctor --only skill_resolver at image build. Then one keyless QM cell through
 // scripts/skill-resolver/step0/qm/qm-listing.ts (OpenAI route, as qm-listing-map.ts) on that image with the rung as QM's catalog layer, and a search of every
 // captured model request for a gbrain block (<relevant_skills>, <pinned_skills>) or the extension's name.
 //
-//   bun scripts/skills-at-scale/qm-installer-check.ts --rung <rung dir> --out <dir> [--gbrain <tag>] [--musl-gbrain <compiled binary>]
+//   bun scripts/skills-at-scale/qm-installer-check.ts --rung <rung dir> --out <dir> [--gbrain <tag> [--gbrain-commit <sha>]] [--musl-gbrain <compiled binary>]
 //
 // --musl-gbrain also runs setup with a compiled musl gbrain (bun build --compile --target=bun-linux-x64-musl) and records
 // its answer. Writes <out>/qm-installer.json and <out>/cell/ (the qm-listing.ts cell). Exits 1 when setup or the cell fails.
@@ -26,9 +26,9 @@ const IMAGE = 'harness-eval/qm:sas-gbrain-pi';
 if (import.meta.main) {
   const a = process.argv.slice(2);
   const v = (k: string) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : undefined; };
-  if (!v('--rung') || !v('--out')) { console.error('usage: qm-installer-check.ts --rung <rung dir> --out <dir> [--gbrain <tag>] [--musl-gbrain <binary>]'); process.exit(2); }
+  if (!v('--rung') || !v('--out')) { console.error('usage: qm-installer-check.ts --rung <rung dir> --out <dir> [--gbrain <tag> [--gbrain-commit <sha>]] [--musl-gbrain <binary>]'); process.exit(2); }
   const rung = resolve(v('--rung')!), out = resolve(v('--out')!);
-  const g = gbrainRelease(v('--gbrain'));
+  const g = gbrainRelease(v('--gbrain'), v('--gbrain-commit'));
   rmSync(out, { recursive: true, force: true });
   const ctx = join(out, 'context');
   mkdirSync(ctx, { recursive: true });
@@ -42,7 +42,7 @@ if (import.meta.main) {
   }
   const df = 'FROM ' + PIN.bun_image + '-alpine AS bun\nFROM harness-eval/qm:dev\nUSER root\nCOPY --from=bun /usr/local/bin/bun /usr/local/bin/bun\nUSER node\n' +
     'COPY --chown=node:node skills /home/node/.pi/agent/skills\n' +
-    'RUN BUN_INSTALL=/home/node/.bun /usr/local/bin/bun install -g github:' + PIN.repo + '#' + g.tag + ' && /home/node/.bun/bin/gbrain --version\n' +
+    'RUN BUN_INSTALL=/home/node/.bun /usr/local/bin/bun install -g github:' + PIN.repo + '#' + g.commit + ' && test "$(/home/node/.bun/bin/gbrain --version)" = "gbrain ' + g.version + '"\n' +
     'ENV PATH=/home/node/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n' +
     'RUN gbrain setup pi --skill-loading resolve > /home/node/sas-setup.log 2>&1; echo "setup_exit=$?" >> /home/node/sas-setup.log; gbrain doctor --only skill_resolver --json > /home/node/sas-doctor.json 2>/dev/null; true\n';
   const b = sh(['docker', 'build', '-q', '-f', '-', '-t', IMAGE, ctx], df);

@@ -112,7 +112,7 @@ function main(argv: string[]): number {
   Object.assign(rec, parsed);
   let kitJson: Record<string, any>;
   try { kitJson = JSON.parse(readFileSync(join(kit, 'kit.json'), 'utf8')); } catch { return refuse('the kit at ' + kit + ' has no readable kit.json; fix: build it with scripts/skills-at-scale/build-kit.ts'); }
-  rec.kit_json = { gbrain_version: kitJson.gbrain_version, gbrain_sha256: kitJson.gbrain_sha256, catalog_sha256: kitJson.catalog_sha256, skills: kitJson.skills, pins_sha256: kitJson.pins_sha256 ?? null };
+  rec.kit_json = { gbrain_version: kitJson.gbrain_version, gbrain_commit: kitJson.gbrain_commit ?? null, gbrain_sha256: kitJson.gbrain_sha256, catalog_sha256: kitJson.catalog_sha256, skills: kitJson.skills, pins_sha256: kitJson.pins_sha256 ?? null };
   const src = join(kit, 'catalog', 'skills');
   if (!existsSync(src)) return refuse('the kit has no catalog/skills');
   const names = readdirSync(src).sort();

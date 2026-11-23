@@ -49,12 +49,15 @@ export function overlap(request: string, name: string, description: string, body
   };
 }
 
-export function maskBody(body: string, name: string, description: string): string {
+/** The body with the description withheld and the name and its words replaced by [skill]. */
+export function maskText(body: string, name: string, description: string): string {
   let out = body.replaceAll(description, '[description withheld]');
   const words = [name, ...name.split(/[-_]/).filter((w) => w.length >= 4)].sort((a, b) => b.length - a.length);
   for (const w of words) out = out.replace(new RegExp(w.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&'), 'gi'), '[skill]');
-  return out.slice(0, 6000);
+  return out;
 }
+
+export const maskBody = (body: string, name: string, description: string): string => maskText(body, name, description).slice(0, 6000);
 
 export function pickTargets(m: Manifest, n: number): string[] {
   const byPack = Object.groupBy(m.skills, (s) => s.pack);
