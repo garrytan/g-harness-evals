@@ -118,7 +118,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, the host-harness pilot, the Claude Code and Codex installer run, the shared-bot scope run and the shared-brain access run carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, the host-harness pilot, the Claude Code and Codex installer run, the shared-bot scope run, the shared-brain access run and the always-on week run carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -335,6 +335,16 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
           expect([{ surface: 'starter', brain: 'company' }, { surface: 'starter', brain: 'company', serves: 'several' }, { surface: 'starter', brain: 'company', scope: 'member', serves: 'several', labels: 'readers' }] as GbrainCellConfig[]).toContainEqual(c.gbrain);
           expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.gbrain-company.md');
         }
+      }
+      else if (p.run_id === 'always-on-week-2026-11') {
+        // The always-on week run at gbrain v0.60.763.0 (fe3dbef1), cap $300: Claude Code on Opus 5.5 with no memory, plain files and gbrain as a member brain with live
+        // ingestion, and QM native, on the ten week tasks at four repetitions. Only the gbrain cell carries gbrain.
+        expect(c.task_set).toBe('week'); expect(c.split).toBe('dev'); expect(c.repetitions).toBe(4); expect(c.model).toBe('anthropic:claude-opus-5-5'); expect(c.tasks).toHaveLength(10);
+        expect(p.spend_cap_usd).toBe(300); expect(p.gbrain_commit).toBe('fe3dbef1fa40ceaea0ab6644009b6816c32658c6');
+        expect(p.cells).toHaveLength(4); expect(buildManifest(p, sha256, '2026-11-22T00:00:00Z').trials).toHaveLength(160);
+        if (!c.gbrain) { expect(['tasks/multiuser/_shared/preamble.week.md', 'tasks/multiuser/_shared/preamble.week-files.md']).toContain(c.preamble!); continue; }
+        expect(c.harness).toBe('claude-code');
+        expect(c.gbrain).toEqual({ surface: 'starter', brain: 'member', scope: 'member-sources', channel_remember: 'conversation', ingest: 'live' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.week-gbrain.md');
       }
       else expect(c.gbrain).toBeUndefined();
     }

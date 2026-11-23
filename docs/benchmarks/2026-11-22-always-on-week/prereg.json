@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "run_id": "always-on-week-2026-11",
+  "question": "Always-on week (counted run): over a simulated working week of events (about 30 per task: messages, bursts and Slack-style retries, a harness restart, timers the agent sets on the simulation clock, a late approval, a planted instruction), does a memory layer let an always-on agent recall a fact said earlier in a different conversation, after a restart and after the fact has left the readable workspace? Arms: Claude Code on Opus 5.5 with no memory layer (R44), with a plain-Markdown-files memory, and with gbrain v0.60.763.0 as a member brain with live ingestion; and QM (main 77024e79) native. 10 dev tasks x 4 repetitions x 4 arms = 160 trials. No model judge. See PREREGISTRATION.md.",
+  "tasks": {},
+  "wall_clock_s": {
+    "multiuser": 3600
+  },
+  "spend_cap_usd": 300,
+  "drop_order": [],
+  "minimum_v01": [],
+  "gbrain_commit": "fe3dbef1fa40ceaea0ab6644009b6816c32658c6",
+  "cells": [
+    {
+      "id": "cc-opus-bare-week",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "week",
+      "repetitions": 4,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "network": "internal",
+      "preamble": "tasks/multiuser/_shared/preamble.week.md",
+      "tasks": [
+        "wk-01-quarrendon-call-moves",
+        "wk-02-tansley-cutover-week",
+        "wk-03-tamsin-handover",
+        "wk-04-marrow-qbr-week",
+        "wk-05-carrowmere-maintenance-week",
+        "wk-06-tansleigh-swap-week",
+        "wk-07-q4-kickoff-week",
+        "wk-08-thornbury-mill-week",
+        "wk-09-agrisupply-rollout-week",
+        "wk-10-brackenwater-cutover-week"
+      ]
+    },
+    {
+      "id": "cc-opus-files-week",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "week",
+      "repetitions": 4,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "network": "internal",
+      "preamble": "tasks/multiuser/_shared/preamble.week-files.md",
+      "tasks": [
+        "wk-01-quarrendon-call-moves",
+        "wk-02-tansley-cutover-week",
+        "wk-03-tamsin-handover",
+        "wk-04-marrow-qbr-week",
+        "wk-05-carrowmere-maintenance-week",
+        "wk-06-tansleigh-swap-week",
+        "wk-07-q4-kickoff-week",
+        "wk-08-thornbury-mill-week",
+        "wk-09-agrisupply-rollout-week",
+        "wk-10-brackenwater-cutover-week"
+      ]
+    },
+    {
+      "id": "cc-opus-gbrain-week",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "week",
+      "repetitions": 4,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "network": "internal",
+      "gbrain": {
+        "surface": "starter",
+        "brain": "member",
+        "scope": "member-sources",
+        "channel_remember": "conversation",
+        "ingest": "live"
+      },
+      "preamble": "tasks/multiuser/_shared/preamble.week-gbrain.md",
+      "tasks": [
+        "wk-01-quarrendon-call-moves",
+        "wk-02-tansley-cutover-week",
+        "wk-03-tamsin-handover",
+        "wk-04-marrow-qbr-week",
+        "wk-05-carrowmere-maintenance-week",
+        "wk-06-tansleigh-swap-week",
+        "wk-07-q4-kickoff-week",
+        "wk-08-thornbury-mill-week",
+        "wk-09-agrisupply-rollout-week",
+        "wk-10-brackenwater-cutover-week"
+      ]
+    },
+    {
+      "id": "qm-opus-native-week",
+      "harness": "qm",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "multiuser",
+      "split": "dev",
+      "task_set": "week",
+      "repetitions": 4,
+      "ceiling": {
+        "input_tokens": 30000,
+        "output_tokens": 2000
+      },
+      "config": "pi-probe",
+      "utility_models": [
+        "anthropic:claude-haiku-5-5",
+        "anthropic:claude-sonnet-5-5"
+      ],
+      "preamble": "tasks/multiuser/_shared/preamble.week.md",
+      "tasks": [
+        "wk-01-quarrendon-call-moves",
+        "wk-02-tansley-cutover-week",
+        "wk-03-tamsin-handover",
+        "wk-04-marrow-qbr-week",
+        "wk-05-carrowmere-maintenance-week",
+        "wk-06-tansleigh-swap-week",
+        "wk-07-q4-kickoff-week",
+        "wk-08-thornbury-mill-week",
+        "wk-09-agrisupply-rollout-week",
+        "wk-10-brackenwater-cutover-week"
+      ]
+    }
+  ],
+  "gbrain_surface_tools": {
+    "starter": 34
+  }
+}
