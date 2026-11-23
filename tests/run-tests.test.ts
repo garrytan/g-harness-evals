@@ -105,3 +105,62 @@ test('run-tests.sh runs the PROXY files that exist, skips the missing ones and s
   const none = spawnSync('bash', [join(dir, 'scripts/run-tests.sh')], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir, HE_TEST_PARALLEL: '2' } });
   expect({ status: none.status, ran: none.stdout.includes('phase 1'), message: none.stderr.includes('no PROXY file exists') }).toEqual({ status: 2, ran: false, message: true });
 });
+
+// Value: protects=a pull request's selected run keeps the four phases (builders first, PROXY files one at a time, serial
+// files alone) and runs nothing it was not given; fails_when=--only runs an unlisted file, drops a listed one, or runs a
+// PROXY or serial file in the parallel phase; why_new=PR test selection (scripts/ci/select-tests.ts); seam=a copy of the script over stub test
+// files in a temp dir; no_claim=the real suite's results.
+test('run-tests.sh --only runs just the listed files, each in its own phase', () => {
+  const dir = fixture();
+  const [builder] = phase('BUILDERS'), [proxy] = phase('PROXY'), [serial] = phase('SERIAL');
+  writeFileSync(join(dir, 'tests/unlisted.test.ts'), "import { test } from 'bun:test';\ntest('unlisted', () => { throw new Error('ran'); });\n");
+  writeFileSync(join(dir, 'list.txt'), ['./' + builder, proxy, 'tests/other.test.ts', serial, ''].join('\n'));
+  const out = join(dir, 'junit');
+  const r = spawnSync('bash', [join(dir, 'scripts/run-tests.sh'), '--only', join(dir, 'list.txt'), '--junit-dir', out], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir, HE_TEST_PARALLEL: '2' } });
+  expect(r.status).toBe(0);
+  expect(r.stdout).toContain('4 file(s): 1 builder(s), 1 proxy, 1 parallel, 1 serial');
+  const junit = (n: string) => readFileSync(join(out, n + '.xml'), 'utf8');
+  expect(junit('builders')).toContain(builder!.slice('tests/'.length));
+  expect(junit('proxy')).toContain(proxy!.slice('tests/'.length));
+  expect(junit('main')).not.toContain(proxy!.slice('tests/'.length));
+  expect(junit('main')).toContain('other.test.ts');
+  expect(junit('main')).not.toContain('unlisted');
+  expect(junit('serial')).toContain(serial!.slice('tests/'.length));
+  writeFileSync(join(dir, 'only-other.txt'), 'tests/other.test.ts\n');
+  const r2 = spawnSync('bash', [join(dir, 'scripts/run-tests.sh'), '--only', join(dir, 'only-other.txt')], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir, HE_TEST_PARALLEL: '2' } });
+  const ran = (n: number) => r2.stdout.includes('phase ' + n);
+  expect({ status: r2.status, p1: ran(1), p2: ran(2), p3: ran(3), p4: ran(4) }).toEqual({ status: 0, p1: false, p2: false, p3: true, p4: false });
+});
+
+// Value: protects=--only refuses a list it cannot honour instead of running less than it was given; fails_when=a
+// missing list, a path outside tests/ or a missing file is ignored; why_new=PR test selection; seam=a copy of the
+// script in a temp dir; no_claim=bun's flags.
+test('run-tests.sh --only refuses a missing list, a path outside tests/ and a missing file', () => {
+  const dir = fixture();
+  const run = (...args: string[]) => spawnSync('bash', [join(dir, 'scripts/run-tests.sh'), ...args], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: dir, HE_TEST_PARALLEL: '2' } });
+  writeFileSync(join(dir, 'outside.txt'), 'scripts/run-tests.sh\n');
+  writeFileSync(join(dir, 'gone.txt'), 'tests/gone.test.ts\n');
+  const cases: [string[], string][] = [
+    [['--only', join(dir, 'nope.txt')], 'does not exist'],
+    [['--only'], '--only needs a file'],
+    [['--only', join(dir, 'outside.txt')], 'not under tests/'],
+    [['--only', join(dir, 'gone.txt')], 'tests/gone.test.ts, which does not exist'],
+  ];
+  for (const [args, message] of cases) {
+    const r = run(...args);
+    expect({ args, status: r.status, message: r.stderr.includes(message) }).toEqual({ args, status: 2, message: true });
+  }
+});
+
+// Value: protects=main's ruleset requires only ci-result, so every other ci.yml job must feed it or its failure merges
+// unseen; fails_when=a job is added to ci.yml and not to ci-result's needs; why_new=the ci-result job (#547);
+// seam=the workflow's YAML; no_claim=GitHub's ruleset settings.
+test('ci-result needs every other ci.yml job', () => {
+  const ci = Bun.YAML.parse(readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')) as { jobs: Record<string, { needs?: string[] | string }> };
+  const leftOut: string[] = [];
+  const needs = ci.jobs['ci-result']?.needs;
+  expect(Array.isArray(needs)).toBe(true);
+  const others = Object.keys(ci.jobs).filter((j) => j !== 'ci-result' && !leftOut.includes(j)).sort();
+  expect([...(needs as string[])].sort()).toEqual(others);
+});
+

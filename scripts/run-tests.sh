@@ -24,7 +24,11 @@
 # exit status is the last failing phase's.
 # bunfig.toml's preload (tests/setup/default-timeout.ts) gives every file a 30 s default, serial or --parallel, and that
 # default overrides bun's --timeout flag, so phase 4's --timeout=30000 changes nothing; a test needing longer sets its own.
-# Usage: bash scripts/run-tests.sh [--junit-dir DIR]
+# --only FILE runs just the test files FILE lists, one per line (scripts/ci/select-tests.ts's selection on a pull request),
+# in the same four phases: the listed builders one at a time, then the listed PROXY files one at a time, then the other
+# listed files in parallel, then the listed serial files alone. A phase with no listed file is skipped, and an empty list
+# runs nothing. Every listed path must be an existing test file under tests/.
+# Usage: bash scripts/run-tests.sh [--junit-dir DIR] [--only FILE]
 #   (bun's JUnit reports: DIR/builders.xml, proxy.xml, main.xml, serial.xml)
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -71,6 +75,7 @@ SERIAL=(
   tests/sealed-publication.test.ts
 )
 junit_dir=""
+only=""
 while [ $# -gt 0 ]; do
   case $1 in
     --junit-dir)
@@ -78,7 +83,14 @@ while [ $# -gt 0 ]; do
       case ${2:-} in ''|-*) echo "run-tests: --junit-dir needs a directory" >&2; exit 2 ;; esac
       junit_dir=$2
       shift 2 ;;
-    *) echo "run-tests: unknown argument $1 (usage: bash scripts/run-tests.sh [--junit-dir DIR])" >&2; exit 2 ;;
+    --only)
+      [ -z "$only" ] || { echo "run-tests: --only is given twice" >&2; exit 2; }
+      case ${2:-} in ''|-*) echo "run-tests: --only needs a file listing test files" >&2; exit 2 ;; esac
+      [ -f "$2" ] || { echo "run-tests: --only list $2 does not exist" >&2; exit 2; }
+      [ -r "$2" ] || { echo "run-tests: --only list $2 cannot be read" >&2; exit 2; }
+      only=$2
+      shift 2 ;;
+    *) echo "run-tests: unknown argument $1 (usage: bash scripts/run-tests.sh [--junit-dir DIR] [--only FILE])" >&2; exit 2 ;;
   esac
 done
 for f in "${BUILDERS[@]}" "${SERIAL[@]}"; do [ -f "$f" ] || { echo "run-tests: $f is listed but does not exist" >&2; exit 2; }; done
@@ -93,6 +105,30 @@ parallel=(--parallel="${HE_TEST_PARALLEL:-$(nproc)}" --timings=tests/.timings.js
 one_at_a_time=(--parallel=1 --timings=tests/.timings.json)
 ignore=("${BUILDERS[@]/#/--path-ignore-patterns=}" "${PROXY[@]/#/--path-ignore-patterns=}" "${SERIAL[@]/#/--path-ignore-patterns=}")
 rc=0
+if [ -n "$only" ]; then
+  listed=()
+  while IFS= read -r f || [ -n "$f" ]; do
+    f=${f#./}
+    [ -n "$f" ] || continue
+    case $f in tests/*) ;; *) echo "run-tests: --only lists $f, which is not under tests/" >&2; exit 2 ;; esac
+    [ -f "$f" ] || { echo "run-tests: --only lists $f, which does not exist" >&2; exit 2; }
+    listed+=("$f")
+  done < "$only"
+  in_list() { local x; for x in "${listed[@]}"; do [ "$x" = "$1" ] && return 0; done; return 1; }
+  b=() px=() s=() p=()
+  for f in "${BUILDERS[@]}"; do in_list "$f" && b+=("$f"); done
+  for f in "${proxy[@]}"; do in_list "$f" && px+=("$f"); done
+  for f in "${SERIAL[@]}"; do in_list "$f" && s+=("$f"); done
+  for f in "${listed[@]}"; do
+    case " ${BUILDERS[*]} ${PROXY[*]} ${SERIAL[*]} " in *" $f "*) ;; *) p+=("$f") ;; esac
+  done
+  echo "run-tests: --only $only: ${#listed[@]} file(s): ${#b[@]} builder(s), ${#px[@]} proxy, ${#p[@]} parallel, ${#s[@]} serial"
+  if [ ${#b[@]} -gt 0 ]; then echo "run-tests: phase 1 (image builders, one at a time): ${b[*]}"; report builders; bun test "${b[@]/#/./}" "${one_at_a_time[@]}" "${reporter[@]}" || rc=$?; fi
+  if [ ${#px[@]} -gt 0 ]; then echo "run-tests: phase 2 (proxy files, one at a time): ${px[*]}"; report proxy; bun test "${px[@]/#/./}" "${one_at_a_time[@]}" "${reporter[@]}" || rc=$?; fi
+  if [ ${#p[@]} -gt 0 ]; then echo "run-tests: phase 3: ${#p[@]} selected file(s)"; report main; bun test "${p[@]/#/./}" "${parallel[@]}" "${reporter[@]}" || rc=$?; fi
+  if [ ${#s[@]} -gt 0 ]; then echo "run-tests: phase 4 (serial): ${s[*]}"; report serial; bun test "${s[@]/#/./}" --timeout=30000 "${reporter[@]}" || rc=$?; fi
+  exit "$rc"
+fi
 echo "run-tests: phase 1 (image builders, one at a time): ${BUILDERS[*]}"
 report builders
 bun test "${BUILDERS[@]/#/./}" "${one_at_a_time[@]}" "${reporter[@]}" || rc=$?

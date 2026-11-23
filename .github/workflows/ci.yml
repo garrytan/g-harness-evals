@@ -12,6 +12,17 @@
 # head is installed: every changed path is on its list of human-facing pages, none of them pinned) skips the checks
 # job's typecheck and tests and runs the docs checks instead (the two tests that read the README and every Markdown page,
 # the link and hub-fragment checks), and the job reports success, so every required check reports.
+# Test selection (pull requests only): the checks job runs only the test files the change can affect, picked by the base
+# commit's copy of scripts/ci/select-tests.ts from the runtime test map the nightly test-map workflow publishes on the
+# orphan branch ci-test-map (fetched from this repository, never from the pull request). It runs the full suite when the
+# map is missing, unreadable, over 3 days old or traced at a commit that is not an ancestor of the base, when a changed
+# path is package.json, bun.lock, bunfig.toml, tsconfig.json, .github/**, tests/setup/**, scripts/run-tests.sh or
+# scripts/ci/**, when a changed file of any kind is one the map ties to no test, or when the selection comes out empty.
+# It runs only in garrytan/harness-evals: selection is safe only because ubicloud/checks runs the full suite on every
+# pull request before it can merge, and the public copy has no such check; a selected run is a fast early signal, not the gate, and it
+# writes no tree.json, so gstack's CI carry never counts it as a full "bun test tests/" pass. A push to main always runs
+# everything. To force the full suite on a pull request, put [full tests] in the head commit's message or add the
+# full-tests label before the next push.
 # main's ruleset requires the ci-result job, which always runs and fails when any job above failed or was cancelled:
 # GitHub counts a skipped required job as passed, so docker-e2e (skipped when no gbrain path changed, and also when the
 # changes job fails) is never required by name.
@@ -81,6 +92,43 @@ jobs:
           u=${v#*:}
           echo "git $(git --version | cut -d' ' -f3) (archive $v), node $(node --version), $(docker --version), $(python3 --version)"
           [ "$(git --version)" = "git version ${u%%-*}" ]
+      # Pull requests only. The base copy of scripts/ci/select-tests.ts decides, with bun reading no bunfig.toml,
+      # tsconfig.json or .env from the head, from the map on this repository's ci-test-map branch. The base is the merge
+      # commit's first parent (the base branch tip GitHub merged into) and the head is the merge commit itself, so the list
+      # names files in the tree the tests run in; anything but a clean list means the full run.
+      - name: Test selection (pull requests)
+        id: select
+        if: github.repository == 'garrytan/harness-evals' && github.event_name == 'pull_request' && steps.docs.outputs.docs_only != 'true'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'full-tests') }}
+        run: |
+          d="$RUNNER_TEMP/select-tests"
+          mkdir -p "$d" && : > "$d/bunfig.toml" && echo '{}' > "$d/tsconfig.json"
+          echo all > "$d/selection.txt"
+          base=$(git rev-parse --verify -q HEAD^1 || true)
+          head=$(git rev-parse --verify -q HEAD^2 || true)
+          if [ "$FULL_LABEL" = true ]; then
+            echo "full run: the full-tests label"
+          elif [ "$HEAD_REF" = ci-test-map ]; then
+            echo "full run: the pull request's own branch is ci-test-map"
+          elif [ -z "$base" ] || [ -z "$head" ]; then
+            echo "full run: HEAD is not the pull request's merge commit"
+          elif git log -1 --format=%B "$head" | grep -qiF '[full tests]'; then
+            echo "full run: [full tests] in the head commit's message"
+          elif ! git show "$base:scripts/ci/select-tests.ts" > "$d/select-tests.ts" 2>/dev/null; then
+            echo "full run: the base has no scripts/ci/select-tests.ts"
+          elif ! git fetch -q --no-tags origin +refs/heads/ci-test-map:refs/ci-test-map/map 2>/dev/null; then
+            echo "full run: this repository has no ci-test-map branch"
+          else
+            bun --no-env-file --config="$d/bunfig.toml" --tsconfig-override="$d/tsconfig.json" "$d/select-tests.ts" --base "$base" --head HEAD --map-rev refs/ci-test-map/map > "$d/selection.txt" || echo all > "$d/selection.txt"
+          fi
+          if [ "$(head -n1 "$d/selection.txt")" = all ]; then
+            echo "selected=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "selected=true" >> "$GITHUB_OUTPUT"
+            { echo "Test selection: $(grep -c . "$d/selection.txt") test file(s) ran; ubicloud/checks runs the full suite before merge."; sed 's/^/- /' "$d/selection.txt"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
       # scripts/ci/docs-only.ts DOC_TESTS: the tests that read the README and every Markdown page.
@@ -91,13 +139,17 @@ jobs:
         if: steps.docs.outputs.docs_only != 'true'
         run: bunx tsc --noEmit
       - name: Tests (statistics kit, preregistration checker)
-        if: steps.docs.outputs.docs_only != 'true'
+        if: steps.docs.outputs.docs_only != 'true' && steps.select.outputs.selected != 'true'
         run: bash scripts/run-tests.sh --junit-dir "$RUNNER_TEMP/junit"
+      - name: Selected tests (pull request)
+        if: steps.docs.outputs.docs_only != 'true' && steps.select.outputs.selected == 'true'
+        run: bash scripts/run-tests.sh --only "$RUNNER_TEMP/select-tests/selection.txt"
       # gstack's CI carry (.gstack/pregate.json run_profiles "ci/checks", ship_lanes_from): this job's tested-tree record
       # lets /ship and gstack-pregate count the "bun test tests/" lane as passed at the identical tree instead of
-      # running it again. Written only after the tests pass.
+      # running it again. Written only after the tests pass, and only for a full run: a selected run writes no tree.json, so
+      # the carry never counts it as the whole lane.
       - name: Tested tree record (tree.json)
-        if: steps.docs.outputs.docs_only != 'true'
+        if: steps.docs.outputs.docs_only != 'true' && steps.select.outputs.selected != 'true'
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bun scripts/ci-tree-json.ts --junit "$RUNNER_TEMP/junit/builders.xml" --junit "$RUNNER_TEMP/junit/proxy.xml" --junit "$RUNNER_TEMP/junit/main.xml" --junit "$RUNNER_TEMP/junit/serial.xml" --out "$RUNNER_TEMP/checks-tree/tree.json"
@@ -109,10 +161,10 @@ jobs:
       # timestamp against the step's start and finish times, which GitHub reports to the second and which ran about 1.5 s
       # behind the log's stamps on a Ubicloud runner (run 44845717681), so 1 s before and 2 s after was refused.
       - name: Tested tree record in the log
-        if: steps.docs.outputs.docs_only != 'true'
+        if: steps.docs.outputs.docs_only != 'true' && steps.select.outputs.selected != 'true'
         run: sleep 3 && echo "GSTACK_TREE_JSON checks-tree $(base64 -w0 "$RUNNER_TEMP/checks-tree/tree.json")" && sleep 5
       - name: Upload the tested tree
-        if: steps.docs.outputs.docs_only != 'true'
+        if: steps.docs.outputs.docs_only != 'true' && steps.select.outputs.selected != 'true'
         continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
