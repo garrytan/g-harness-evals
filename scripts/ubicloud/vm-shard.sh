@@ -451,7 +451,7 @@ PY
       log "smoke failed (run-shard exit $rc, trials check $smoke_ok, sections check $sections_ok); the counted run does not start"
       finish 4
     fi
-    [ ${#sealed[@]} -gt 0 ] || build_flag=(--skip-build)
+    [ ${#sealed[@]} -gt 0 ] || [ "$smoke_first" -eq 1 ] || build_flag=(--skip-build)
   fi
 fi
 
