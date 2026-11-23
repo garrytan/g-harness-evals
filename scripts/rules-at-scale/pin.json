@@ -16,16 +16,16 @@
       "version_pattern": "^2\\.1\\.328 "
     },
     "codex": {
-      "version": "0.170.0",
+      "version": "0.171.0",
       "package": "@openai/codex",
-      "npm_integrity": "sha512-dwoughgqjiik++CFaNkjQ5y6pJO6LUzu5P1z8Hy4LUeJ+aIYcX/QO1P5rOQnHmBG4agOM7Y+hc4LtVo/a4GFiw==",
-      "source": "npm view @openai/codex dist-tags (latest 0.170.0; 0.171.0 and 0.172.0 exist only as alpha builds)",
-      "install": "Harbor Codex.install: npm install -g @openai/codex@0.170.0",
+      "npm_integrity": "sha512-1IOFzL2Xg86tLdw6kDo3GoKbkQENgQi7TI6rlEvN132R7ngSw7SNOIQoTcnKzSZZ8kf9N9GynCweSoaFbqk2Eg==",
+      "source": "npm view @openai/codex dist-tags.latest 0.171.0 and dist.integrity, read 2026-11-22 for the GPT-6.2 Sol amendment (0.170.0 was the 2026-11-19 pin)",
+      "install": "Harbor Codex.install: npm install -g @openai/codex@0.171.0",
       "version_command": "codex --version",
-      "version_pattern": "^codex-cli 0\\.170\\.0$",
+      "version_pattern": "^codex-cli 0\\.171\\.0$",
       "max_context_window": {
         "value": 872000,
-        "source": "codex-rs/models-manager/models.json at rust-v0.170.0: gpt-6.1-sol context_window 500000 (272000 at 0.165.0) and max_context_window 872000 (unchanged), so the window the frontier path sets (872000) still holds"
+        "source": "codex-rs/models-manager/models.json at rust-v0.171.0: gpt-6.2-sol context_window 500000 and max_context_window 872000, so the window the frontier path sets (872000) still holds"
       }
     },
     "hermes": {
@@ -88,5 +88,13 @@
     "Hermes's installer no longer takes a tag as --branch: it requires the commit on origin/<branch>, so the frontier path's --branch <tag> fails at v0.23.2 and RulesHermes passes --branch main with the tag's commit.",
     "OpenClaw (seen at 2026.11.5 through Harbor 0.24.0's class): openclaw setup --baseline --workspace . runs in /work/repo before Harbor copies the config that sets skipBootstrap, and writes OpenClaw's AGENTS.md, IDENTITY.md, SOUL.md and USER.md templates into the repository. RulesOpenClaw points that setup at a scratch workspace on rules jobs.",
     "Hermes v0.23.x installs its dependencies into an environment its own package manager keeps under HERMES_HOME, not into <checkout>/venv: the frontier path's uv sync into <checkout>/venv and its HERMES_HOME=/tmp/hermes then leave hermes refusing to start ('no dependency environment is committed for this install'). RulesHermes installs with --hermes-home /tmp/hermes and adds the anthropic extra through pm."
-  ]
+  ],
+  "models": {
+    "openai:gpt-6.2-sol": {
+      "provider": "openai",
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "source": "developers.openai.com/api/docs/models/gpt-6.2-sol, read 2026-11-22 (1,050,000 context window, 128,000 max output tokens). scripts/frontier-harbor/pin.json has no row for it, so rules_wiring.overlay_frontier_pin adds this one in memory"
+    }
+  }
 }

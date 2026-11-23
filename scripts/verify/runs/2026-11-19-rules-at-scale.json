@@ -1,0 +1,37 @@
+{
+  "run": "2026-11-19-rules-at-scale",
+  "about": "Rules files at scale: the interim look on the first half and the final analysis (ladder steps, repairs, pooled ladder and position readings per setup), rebuilt from the collected trial rows.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/rules-at-scale/analyze.ts",
+        "--trials",
+        "{run}/results/trials-first.jsonl",
+        "--look",
+        "interim",
+        "--out",
+        "{run}/results/look"
+      ],
+      "outputs": [
+        "results/look/interim.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/rules-at-scale/analyze.ts",
+        "--trials",
+        "{run}/results/trials.jsonl",
+        "--interim",
+        "{run}/results/look/interim.json",
+        "--out",
+        "{run}/results/analysis"
+      ],
+      "outputs": [
+        "results/analysis/analysis.json",
+        "results/analysis/analysis.md"
+      ]
+    }
+  ]
+}

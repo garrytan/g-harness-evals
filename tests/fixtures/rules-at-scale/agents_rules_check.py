@@ -31,8 +31,8 @@ import rules_wiring as rw  # noqa: E402
 
 agents.bind_slot = lambda broker, trial, harness, model, *a, **k: {"token": "trial-token:stub", "base_url": f"http://gw/{trial}/{model.split(':')[0]}"}
 TASK = "rs-map-stub-01"
-MODEL = {"codex": "openai/gpt-6.1-sol", "gemini-cli": "google/gemini-4-carbon"}
-VERSION_OUT = {"claude-code": "2.1.328 (Claude Code)", "codex": "codex-cli 0.170.0", "openclaw": "OpenClaw 2026.11.5", "pi": "1.5.2", "gemini-cli": "0.69.0",
+MODEL = {"codex": "openai/gpt-6.2-sol", "gemini-cli": "google/gemini-4-carbon"}
+VERSION_OUT = {"claude-code": "2.1.328 (Claude Code)", "codex": "codex-cli 0.171.0", "openclaw": "OpenClaw 2026.11.5", "pi": "1.5.2", "gemini-cli": "0.69.0",
                "hermes": rw.PIN["harnesses"]["hermes"]["commit"]}
 
 

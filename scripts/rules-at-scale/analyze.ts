@@ -36,6 +36,11 @@
 //     nothing. A timed-out trial with no captured request (infra TIMEOUT_NO_CAPTURE) scores no rule and is counted per arm.
 //   - Harness housekeeping calls (the collector's housekeeping entries: a harness's own utility model) are reported per
 //     setup and arm as their own row of requests and dollars, and decide nothing.
+//   - Completeness (amendment 1, 2026-11-22): every setup with at least one trial must have a row for each arm on each task
+//     of the design's order, or on the interim half alone for a cell the interim look stopped. Missing rows are listed
+//     (completeness.missing_rows, and missing_rows in interim.json for the look's half), and an analysis with any, at the
+//     look or at the end, is labelled "incomplete", never "final". The look with any missing row writes interim.json with
+//     status "incomplete", prints every missing row and exits 1. A setup with no trial at all is listed as not run here.
 //
 // The interim look (R113): with --look interim, only the first half of the design's task order is used. Each confirmatory
 // comparison gets z = delta / cluster-robust SE, oriented so the planned effect is positive (a drop for ladder steps, a
@@ -170,7 +175,19 @@ const repairsOf = (s: Setup) => REPAIR_ARMS.filter((a) => s.arms.includes(a));
 export const LOOK_MIN_PAIRS = 6;
 
 export interface InterimEntry { setup: string; comparison: string; a: string; b: string; z: number; conditional_power: number; decision: LookDecision; bounds: { interim: number; final: number }; alpha: number; n_pairs: number }
-export interface InterimRecord { look: 'interim'; fraction: number; tasks: string[]; comparisons: InterimEntry[]; cells_stopping: Array<{ setup: string; arm: string }> }
+export interface InterimRecord { look: 'interim'; fraction: number; tasks: string[]; comparisons: InterimEntry[]; cells_stopping: Array<{ setup: string; arm: string }>; missing_rows?: string[]; status?: string }
+
+/** Planned rows with no trial, as setup|arm|task: each arm of every setup that has a row, on each of the tasks, or on the
+ *  interim half alone for a cell the interim look stopped. A setup with no row at all did not run in these trials (its cells
+ *  come by amendment) and is listed apart, never as missing rows. */
+export function completeness(all: Trial[], design: Design, tasks: string[], interim: InterimRecord | null) {
+  const have = new Set(all.map((t) => t.setup + '|' + t.arm + '|' + t.task));
+  const ran = design.setups.filter((s) => all.some((t) => t.setup === s.id));
+  const stopped = new Set((interim?.cells_stopping ?? []).map((c) => c.setup + '|' + c.arm));
+  const missing: string[] = [];
+  for (const s of ran) for (const arm of s.arms) for (const task of stopped.has(s.id + '|' + arm) ? interim!.tasks : tasks) if (!have.has(s.id + '|' + arm + '|' + task)) missing.push(s.id + '|' + arm + '|' + task);
+  return { setups_with_rows: ran.map((s) => s.id), setups_without_rows: design.setups.filter((s) => !ran.includes(s)).map((s) => s.id), missing_rows: missing };
+}
 
 /** The comparisons a setup's run decides, with the arms each one feeds and its own alpha at the look. */
 function confirmatory(s: Setup, design: Design) {
@@ -208,7 +225,9 @@ export function interimLook(all: Trial[], design: Design): InterimRecord {
     };
     for (const arm of s.arms) if (stopped(arm)) cells_stopping.push({ setup: s.id, arm });
   }
-  return { look: 'interim', fraction: LOOKS.fraction, tasks: half, comparisons, cells_stopping };
+  const missing_rows = completeness(all, design, half, null).missing_rows;
+  return { look: 'interim', fraction: LOOKS.fraction, tasks: half, comparisons, cells_stopping, missing_rows,
+    status: missing_rows.length ? 'incomplete: ' + missing_rows.length + ' planned row(s) of the interim half have no trial (see missing_rows)' : 'complete' };
 }
 
 function meanCi(xs: number[], design: Design) {
@@ -234,7 +253,7 @@ export function analyze(all: Trial[], design: Design, interim: InterimRecord | n
       const states = Object.fromEntries(RULE_IDS.map((id) => [id, Object.fromEntries(RULE_STATES.map((st) => [st, ts.filter((t) => !t.contaminated && t.rules[id] === st).length]))]));
       const timeouts = ts.filter((t) => !t.contaminated && timedOut(t)).length, clean = ts.filter((t) => !t.contaminated).length;
       return [arm, { trials: ts.length, contaminated: ts.filter((t) => t.contaminated).length, infra: ts.filter((t) => t.infra).length,
-        timeouts, timeout_share: clean ? r4(timeouts / clean) : null, timeout_no_capture: ts.filter((t) => !t.contaminated && t.infra === 'TIMEOUT_NO_CAPTURE').length,
+        timeouts, timeout_share: clean ? r4(timeouts / clean) : null, timeout_no_capture: ts.filter((t) => !t.contaminated && t.infra === 'TIMEOUT_NO_CAPTURE').length, no_model_response: ts.filter((t) => !t.contaminated && t.infra === 'no_model_response').length,
         no_value: ts.filter((t) => !t.contaminated && followed(t) === null).length, rule_states: states }];
     }));
     const arms = Object.fromEntries(s.arms.map((arm) => {
@@ -333,8 +352,12 @@ export function analyze(all: Trial[], design: Design, interim: InterimRecord | n
   };
 
   const lookNamed = interim !== null;
+  const complete = { ...completeness(all, design, design.task_order, interim), missing_at_interim: interim?.missing_rows ?? null };
+  const gaps = complete.missing_rows.length + (complete.missing_at_interim?.length ?? 0);
   return {
-    status: lookNamed ? 'final' : 'provisional: the preregistered interim look has no record here (--interim)',
+    status: gaps ? 'incomplete: ' + complete.missing_rows.length + ' planned row(s) have no trial' + (complete.missing_at_interim?.length ? ', and the interim look was taken with ' + complete.missing_at_interim.length + ' missing' : '') + ' (see completeness)'
+      : lookNamed ? 'final' : 'provisional: the preregistered interim look has no record here (--interim)',
+    completeness: complete,
     design: { alpha: design.alpha, power: design.power, planned_effect: design.planned_effect, sd: design.sd, tasks: nTasks,
       final_level_two_sided: r4(level), bounds: { interim: r4(finalBounds.interim), final: r4(finalBounds.final) },
       smallest_detectable_fixed: r4(fixedMdd), smallest_detectable_with_look: r4(fixedMdd === null ? null : fixedMdd * inflation) },
@@ -347,10 +370,13 @@ const pts = (x: number | null | undefined) => (x === null || x === undefined ? '
 const ci = (c: [number, number] | null | undefined) => (c ? '[' + pts(c[0]) + ', ' + pts(c[1]) + ']' : '-');
 export function render(a: ReturnType<typeof analyze>): string {
   const out = ['# Rules at scale: analysis', '', 'Status: ' + a.status + '. Points are percentage points of rules followed; ranges are 95% task-clustered bootstrap ranges.', '',
+    'Completeness: ' + (a.completeness.missing_rows.length ? a.completeness.missing_rows.length + ' planned row(s) have no trial, first ' + a.completeness.missing_rows.slice(0, 5).join(', ') : 'every planned row of ' + (a.completeness.setups_with_rows.join(', ') || 'no setup') + ' is present')
+      + (a.completeness.missing_at_interim?.length ? '; the interim look was taken with ' + a.completeness.missing_at_interim.length + ' row(s) missing' : '')
+      + (a.completeness.setups_without_rows.length ? '; no trials for ' + a.completeness.setups_without_rows.join(', ') + ', not run here' : '') + '.', '',
     'Smallest detectable difference per setup and rung: ' + pts(a.design.smallest_detectable_fixed) + ' points (' + pts(a.design.smallest_detectable_with_look) + ' with the interim look), at SD ' + a.design.sd + ' over ' + a.design.tasks + ' tasks.', ''];
   for (const s of a.setups) {
     out.push('## ' + s.setup + ' (' + s.harness + ', ' + s.model + ')', '', 'Drop size: ' + (s.ladder.drop_size ?? 'no measured drop') + '. Safe size: ' + (s.ladder.safe_size ?? 'none (' + s.ladder.safe_note + ')') + '.', '',
-      'Timeout share by arm: ' + Object.entries(s.counts).map(([arm, c]) => arm + ' ' + pts(c.timeout_share) + '%' + (c.timeout_no_capture ? ' (' + c.timeout_no_capture + ' with no capture, unscored)' : '')).join(', ') + '.', '',
+      'Timeout share by arm: ' + Object.entries(s.counts).map(([arm, c]) => arm + ' ' + pts(c.timeout_share) + '%' + (c.timeout_no_capture ? ' (' + c.timeout_no_capture + ' with no capture, unscored)' : '') + (c.no_model_response ? ' (' + c.no_model_response + ' more with no answer from the cell model, unscored, timed out or not)' : '')).join(', ') + '.', '',
       'Harness housekeeping (metered, never scored) by arm: ' + Object.entries(s.housekeeping).map(([arm, h]) => arm + ' ' + (h.requests ? h.requests + ' calls on ' + h.models.join(', ') + ', ' + (h.usd === null ? 'unpriced' : '$' + h.usd.toFixed(2)) : 'none')).join('; ') + '.', '',
       '| step | short | rung | difference | range | p | n | status | without timeouts |', '|---|---|---|---|---|---|---|---|---|');
     for (const st of s.ladder.steps) out.push('| ' + [st.rung, pts(st.contrast?.mean_a), pts(st.contrast?.mean_b), pts(st.contrast?.delta), ci(st.contrast?.ci95), st.contrast?.p_two_sided ?? '-', st.contrast?.n_pairs ?? 0, st.status + (st.possibly_overstated ? ' (stopped early, possibly overstated)' : ''), pts(st.contrast_without_timeouts?.delta) + ' ' + ci(st.contrast_without_timeouts?.ci95)].join(' | ') + ' |');
@@ -375,7 +401,12 @@ if (import.meta.main) {
   const trials = validateTrials(rows, design);
   mkdirSync(outDir, { recursive: true });
   if (arg('look') === 'interim') {
-    writeFileSync(join(outDir, 'interim.json'), JSON.stringify(interimLook(trials, design), null, 2) + '\n');
+    const rec = interimLook(trials, design);
+    writeFileSync(join(outDir, 'interim.json'), JSON.stringify(rec, null, 2) + '\n');
+    if (rec.missing_rows?.length) {
+      console.error('analyze: the look is incomplete: ' + rec.missing_rows.length + ' planned row(s) of the interim half have no trial: ' + rec.missing_rows.join(', '));
+      process.exit(1);
+    }
   } else {
     const interimPath = arg('interim');
     const result = analyze(trials, design, interimPath ? JSON.parse(readFileSync(interimPath, 'utf8')) : null);

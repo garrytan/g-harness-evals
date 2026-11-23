@@ -95,7 +95,7 @@ out, rules, harnesses, arms, environment, materializer = sys.argv[1:7]
 sys.path.insert(0, rules)
 import rules_wiring as rw
 classes = {"claude-code": "RulesClaudeCode", "codex": "RulesCodex", "hermes": "RulesHermes", "openclaw": "RulesOpenClaw", "pi": "RulesPi", "gemini-cli": "RulesGeminiCli"}
-model = {"codex": "openai/gpt-6.1-sol", "gemini-cli": "google/gemini-4-carbon"}
+model = {"codex": "openai/gpt-6.2-sol", "gemini-cli": "google/gemini-4-carbon"}
 names = []
 for h in harnesses.split(","):
     for arm in arms.split(","):

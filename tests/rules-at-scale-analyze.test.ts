@@ -129,6 +129,44 @@ describe('rules-at-scale analysis', () => {
     expect(render(a)).toContain('possibly overstated');
   });
 
+  test('completeness: a missing planned row makes the analysis incomplete; a stopped cell needs only its interim half; a setup with no trials is listed as not run', () => {
+    const ts = world(0.05);
+    const rec = interimLook(ts, design);
+    expect(rec.missing_rows).toEqual([]);
+    const done = analyze(ts, design, rec);
+    expect(done.status).toBe('final');
+    expect(done.completeness).toMatchObject({ setups_with_rows: ['cc', 'cx'], setups_without_rows: [], missing_rows: [] });
+    const gap = analyze(ts.filter((t) => !(t.setup === 'cc' && t.arm === 'b8k' && t.task === TASKS[30])), design, rec);
+    expect(gap.status.startsWith('incomplete: 1 planned row(s) have no trial')).toBe(true);
+    expect(gap.completeness.missing_rows).toEqual(['cc|b8k|' + TASKS[30]]);
+    expect(render(gap)).toContain('Completeness: 1 planned row(s) have no trial, first cc|b8k|' + TASKS[30]);
+    const stopped = rec.cells_stopping.find((c) => c.setup === 'cc' && c.arm === 'hook')!;
+    const second = new Set(TASKS.slice(18));
+    expect(analyze(ts.filter((t) => !(t.setup === stopped.setup && t.arm === stopped.arm && second.has(t.task))), design, rec).status).toBe('final');
+    const ccOnly = ts.filter((t) => t.setup === 'cc');
+    const solo = analyze(ccOnly, design, interimLook(ccOnly, design));
+    expect(solo.status).toBe('final');
+    expect(solo.completeness.setups_without_rows).toEqual(['cx']);
+    const early = ts.filter((t) => !(t.setup === 'cx' && t.arm === 'short' && t.task === TASKS[2]));
+    const lookGap = interimLook(early, design);
+    expect(lookGap.missing_rows).toEqual(['cx|short|' + TASKS[2]]);
+    expect(lookGap.status).toBe('incomplete: 1 planned row(s) of the interim half have no trial (see missing_rows)');
+    expect(rec.status).toBe('complete');
+    const dir = mkdtempSync(join(tmpdir(), 'ras-look-'));
+    writeFileSync(join(dir, 'trials.jsonl'), early.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    writeFileSync(join(dir, 'design.json'), JSON.stringify(design));
+    const look = spawnSync('bun', [join(import.meta.dir, '..', 'scripts', 'rules-at-scale', 'analyze.ts'), '--trials', join(dir, 'trials.jsonl'), '--design', join(dir, 'design.json'), '--look', 'interim', '--out', join(dir, 'look')], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
+    expect(look.status).toBe(1);
+    expect(look.stderr).toContain('the look is incomplete: 1 planned row(s) of the interim half have no trial: cx|short|' + TASKS[2]);
+    expect(JSON.parse(readFileSync(join(dir, 'look', 'interim.json'), 'utf8')).status.startsWith('incomplete')).toBe(true);
+    const healed = analyze(ts, design, lookGap);
+    expect(healed.status).toBe('incomplete: 0 planned row(s) have no trial, and the interim look was taken with 1 missing (see completeness)');
+    expect(analyze(ts, design, null).status.startsWith('provisional')).toBe(true);
+    const unanswered = analyze(ts.map((t) => (t.setup === 'cc' && t.arm === 'b8k' && t.task === TASKS[3] ? { ...t, infra: 'no_model_response', rules: all('unscorable') } : t)), design, rec);
+    expect(unanswered.setups.find((s) => s.setup === 'cc')!.counts.b8k!.no_model_response).toBe(1);
+    expect(render(unanswered)).toContain('b8k 0.0% (1 more with no answer from the cell model, unscored, timed out or not)');
+  });
+
   test('timed-out trials count in every rate, and each arm reports its timeout share and the rates without them', () => {
     const ts = world();
     const hit = ts.filter((t) => t.setup === 'cc' && t.arm === 'b160k').slice(0, 9);

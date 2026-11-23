@@ -374,7 +374,8 @@ def version_matches(harness: str, output: str) -> bool:
 
 def overlay_frontier_pin() -> None:
     """Adds this file's versions to the frontier pin's in-memory release table, so the frontier classes accept them
-    (harness_pin, the Claude Code binary check). scripts/frontier-harbor/pin.json on disk is not touched."""
+    (harness_pin, the Claude Code binary check), and this file's models the frontier pin lacks (model_spec).
+    scripts/frontier-harbor/pin.json on disk is not touched."""
     for h, p in PIN["harnesses"].items():
         entry = fs.PIN["harnesses"].get(h)
         if entry is None or entry["version"] == p["version"]:
@@ -382,6 +383,8 @@ def overlay_frontier_pin() -> None:
         release = {k: p[k] for k in ("npm_integrity", "native_binary_sha256", "commit") if k in p}
         release["why"] = "rules-at-scale pin (scripts/rules-at-scale/pin.json), added in memory by rules_wiring.overlay_frontier_pin"
         entry.setdefault("releases", {})[p["version"]] = release
+    for model, spec in PIN.get("models", {}).items():
+        fs.PIN["models"].setdefault(model, spec)
 
 
 def materialize(tasks: str, harness: str, arm: str, out: str, materializer: str | None = None, ids: list[str] | None = None) -> list[str]:
@@ -408,7 +411,7 @@ def _cli(argv: list[str]) -> int:
         return 0
     if argv[:1] == ["plan"] and len(argv) in (4, 5):
         h, arm, files_dir = argv[1:4]
-        model = argv[4] if len(argv) == 5 else ("openai:gpt-6.1-sol" if h == "codex" else "google:gemini-4-carbon" if h == "gemini-cli" else "anthropic:claude-opus-5-5")
+        model = argv[4] if len(argv) == 5 else ("openai:gpt-6.2-sol" if h == "codex" else "google:gemini-4-carbon" if h == "gemini-cli" else "anthropic:claude-opus-5-5")
         try:
             r = resolve(h, {"arm": arm, "files_dir": files_dir}, model)
             p = plan(h, r, load_files(r, h, task_dir_for(r, "any__x") if r["files_dir"] else None), model)

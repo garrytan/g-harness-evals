@@ -1,0 +1,1234 @@
+{
+  "schema": "rules-at-scale-delivery-map/1",
+  "materializer": "/home/user/.capy/work/results/scripts/rules-at-scale/materialize.ts",
+  "pin": {
+    "claude-code": {
+      "version": "2.1.328",
+      "package": "@anthropic-ai/claude-code",
+      "npm_integrity": "sha512-QJTDDUhzx2Wtnoone+TULvhtxqX9KhUpgt4S96Y2eyohtZK41LWXwe7fWXcR1JnT0Ujs3AfpPTk5BZgwCyZ8pw==",
+      "native_binary_sha256": "a982d38030b97e750848add2cbb2df6d9a70d5544a22ca9b216a349ba25865e8",
+      "native_binary_bytes": 373019152,
+      "published": "2026-11-18T23:09:39Z",
+      "source": "npm view @anthropic-ai/claude-code (dist-tag latest 2.1.328) and downloads.claude.ai/claude-code-releases/2.1.328/manifest.json platforms.linux-x64.checksum (buildDate 2026-11-18T21:56:43Z)",
+      "install": "Harbor ClaudeCode.install (bootstrap.sh 2.1.328, the native binary); FrontierClaudeCode then requires the installed binary's sha256 to equal native_binary_sha256",
+      "version_command": "claude --version",
+      "version_pattern": "^2\\.1\\.328 "
+    },
+    "codex": {
+      "version": "0.171.0",
+      "package": "@openai/codex",
+      "npm_integrity": "sha512-1IOFzL2Xg86tLdw6kDo3GoKbkQENgQi7TI6rlEvN132R7ngSw7SNOIQoTcnKzSZZ8kf9N9GynCweSoaFbqk2Eg==",
+      "source": "npm view @openai/codex dist-tags.latest 0.171.0 and dist.integrity, read 2026-11-22 for the GPT-6.2 Sol amendment (0.170.0 was the 2026-11-19 pin)",
+      "install": "Harbor Codex.install: npm install -g @openai/codex@0.171.0",
+      "version_command": "codex --version",
+      "version_pattern": "^codex-cli 0\\.171\\.0$",
+      "max_context_window": {
+        "value": 872000,
+        "source": "codex-rs/models-manager/models.json at rust-v0.171.0: gpt-6.2-sol context_window 500000 and max_context_window 872000, so the window the frontier path sets (872000) still holds"
+      }
+    },
+    "hermes": {
+      "version": "v0.23.2",
+      "commit": "ae2a81ccc00e9b7c06301523e5bb09608397149c",
+      "tag_object": "28f57ed8e3dba4eceb67dfd3e3abda1a7604452d",
+      "published": "2026-11-16T20:59:18Z",
+      "repo": "https://github.com/NousResearch/hermes-agent",
+      "source": "api.github.com/repos/NousResearch/hermes-agent/releases/latest (v0.23.2) and git ls-remote refs/tags/v0.23.2^{}. Hermes moved from date tags (the newest, v2026.9.24, is the frontier pin) to v0.x tags; the v0.23.2+canary.* tags are pre-releases and are not used",
+      "python": "3.14 (pyproject.toml gates every core dependency on python_version >= '3.14'; .python-version and scripts/install.sh default to 3.14)",
+      "install": "agents_rules.py RulesHermes.install: the commit's own scripts/install.sh with --skip-setup --hermes-home /tmp/hermes --branch main --commit <commit> (the installer checks that the commit is an ancestor of origin/<branch>, so a tag name is refused with 'commit ... is not on branch v0.23.2'; the tag's commit is on main, GitHub compare behind_by 0 on 2026-11-19), then the anthropic extra through Hermes's own package manager (pm.ensure_import('anthropic')); the check reads anthropic from the environment pm committed",
+      "anthropic": {
+        "version": "0.125.0",
+        "source": "uv.lock and the anthropic optional extra in pyproject.toml at the commit; installed by pm.ensure_import, which the default install does not do"
+      },
+      "integrity": "the git commit sha (a tag can move; the commit cannot); the install refuses any other HEAD",
+      "version_command": "git -C $HOME/.hermes-src rev-parse HEAD",
+      "install_branch": "main"
+    },
+    "openclaw": {
+      "version": "2026.11.5",
+      "package": "openclaw",
+      "npm_integrity": "sha512-mqPlsGLOe8NS85BfP1vWW9YVwFXchsV75QTkEbyR4csylORxts+fmfZp9+qbD7aPbXQIctyjRk+CPL91fDvxBA==",
+      "published": "2026-11-17T09:59:33Z",
+      "source": "npm view openclaw (dist-tag latest 2026.11.5; 2026.10.33, published later, is a backport on the older line)",
+      "engines": "node >=24.16.0 <25 || >=26.1.0, so the frontier path's Node 24 still fits",
+      "install": "Harbor OpenClaw.install on Node 24 (FrontierOpenClaw): npm install -g openclaw@2026.11.5",
+      "version_command": "openclaw --version",
+      "version_pattern": "2026\\.11\\.5"
+    },
+    "pi": {
+      "version": "1.5.2",
+      "package": "@earendil-works/pi-coding-agent",
+      "npm_integrity": "sha512-mUWI04rqF1Vd/m1q+Ps1XeWsTXEVvRUnsmRa83I3Dzua0Tx5bYS93imeqtIfrXf7PkkaR6ERz+AuQhIJlom5yA==",
+      "published": "2026-11-10T12:24:55Z",
+      "source": "npm view @earendil-works/pi-coding-agent (dist-tag latest 1.5.2)",
+      "install": "Harbor Pi.install: npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.5.2",
+      "version_command": "pi --version",
+      "version_pattern": "1\\.5\\.2"
+    },
+    "gemini-cli": {
+      "version": "0.69.0",
+      "package": "@google/gemini-cli",
+      "npm_integrity": "sha512-KFSvSgQH4tVOsorU4V0bnyiL5z36v07roPvrxGW7qdvRqlZ577ivLLUQhOJBzGyaNunvXEuoVBvzKcQu0pOAqQ==",
+      "published": "2026-11-19T01:51:24Z",
+      "source": "npm view @google/gemini-cli (dist-tag latest 0.69.0)",
+      "role": "descriptive row of the keyless delivery map only; no paid cell (plan decision E)",
+      "install": "Harbor GeminiCli.install: npm install -g @google/gemini-cli@0.69.0",
+      "version_command": "gemini --version",
+      "version_pattern": "^0\\.69\\.0$"
+    }
+  },
+  "rules": {
+    "R1": "- Record every change in a new file under `changes/`, named in kebab-case after what it fixes (for example `changes/fix-date-parsing.md`), with one sentence describing the change.",
+    "R2": "- After your last edit, run `./scripts/precheck` and make sure it passes before you finish.",
+    "R3": "- Leave existing test files unchanged; put any new tests in a new file.",
+    "R4": "- Commit your finished work to the current branch with a sign-off line (`git commit -s`).",
+    "R5": "- Before your first edit, look up the module you will change with `./scripts/notes search <module>`.",
+    "R6": "- Before you commit, read the whole staged diff with `git diff --staged` (no path filter) and fix anything you did not mean to change."
+  },
+  "cells": {
+    "codex b160k": {
+      "trial": "rs-map-stub-01__6t2mXFe",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.171.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 8,
+        "path": "openai/v1/responses",
+        "bytes": 95406,
+        "sha256": "61dd9da7a98bbe47640d7f378f10443e1533d037ed0380f245a31bedb707f572",
+        "normalized_sha256": "64aa4cf1102a7c3e81a8da431bb964cd74d8b537a47140bfd057c964a9b459dc",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 10,
+        "path": "openai/v1/responses",
+        "bytes": 95992,
+        "sha256": "a2b2f3fd7d5f30ac1d378685a84cbb3d976ed65ba67dcee7b8158273ba54f86a",
+        "normalized_sha256": "7a95c90126654f0e955a7af7d1d79520e560f194b451ea4e2aae8b68a1dda1ce",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 81680,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 81752,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163602,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163703,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163838,
+          "chars": 162208
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8754"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Loaded only 32768 of 163838 bytes from `/work/repo/AGENTS.md` in environment `local` under the 32768-byte project instruction budget. Trim your project instructions to fit the budget. If you need to keep them all, increase `pro"
+      ]
+    },
+    "codex b28k": {
+      "trial": "rs-map-stub-01__v2GRWR4",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.171.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 11,
+        "path": "openai/v1/responses",
+        "bytes": 91183,
+        "sha256": "07e9c58e81bcb9732e24b3bed9f02e7b7d2d9874c07086de65ae1dfc9c4b7055",
+        "normalized_sha256": "8c0bf4d61432bea6a1e78ec64c06af2004d9650394c8f3b54c8f5bc37cc58163",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 12,
+        "path": "openai/v1/responses",
+        "bytes": 91768,
+        "sha256": "89e2bfbf633476713a8e096fb3221e6471431caf6718c3f9da5968c18b18e047",
+        "normalized_sha256": "2f7f86a7afdb4a03e7128386be67dcd8c26376512ba8c4d31b7fd1e021fe479a",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 14323,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 14395,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28436,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 28537,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 28672,
+          "chars": 28438
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8753"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex b80k": {
+      "trial": "rs-map-stub-01__wjDG4qS",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.171.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 7,
+        "path": "openai/v1/responses",
+        "bytes": 95406,
+        "sha256": "043fb621e3aa48d0c3197241a431ced0bd3a01f8f8924cbc9732cd8f9ad40613",
+        "normalized_sha256": "64aa4cf1102a7c3e81a8da431bb964cd74d8b537a47140bfd057c964a9b459dc",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 9,
+        "path": "openai/v1/responses",
+        "bytes": 95992,
+        "sha256": "8af1b7a658a003d6c6d934cb14655e2945173955fba2bc429910c9296712fae4",
+        "normalized_sha256": "818fff2e1ff935662a20bd501657ec30eb9b6bc1464d71891ee889819c44b672",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 40456,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 40528,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81683,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 81784,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 81919,
+          "chars": 80988
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8753"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": [
+        "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Loaded only 32768 of 81919 bytes from `/work/repo/AGENTS.md` in environment `local` under the 32768-byte project instruction budget. Trim your project instructions to fit the budget. If you need to keep them all, increase `proj"
+      ]
+    },
+    "codex b8k": {
+      "trial": "rs-map-stub-01__EpbrApe",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.171.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 5,
+        "path": "openai/v1/responses",
+        "bytes": 70112,
+        "sha256": "115491d8fa048e05d03eea885054cdf791fd211672b2bb3fb1207d22f40c17f7",
+        "normalized_sha256": "73eaa0f14c9bb1e9a21804241a6c9fb3de84a4daa3fbf51dc2901e6bf1a271a6",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 6,
+        "path": "openai/v1/responses",
+        "bytes": 70695,
+        "sha256": "e22ad96d5a58697ccdb34624b01ab11fe2cf8a78804a383c18239795a4e63078",
+        "normalized_sha256": "219b9bc40b4bcb3099f967ac24b1e0ce77ce4be349edfa2dfa91694157edca42",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4184,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 4256,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7936,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 8037,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 8172,
+          "chars": 8110
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8749"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex cutlift": {
+      "trial": "rs-map-stub-01__myboyYh",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.171.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 17,
+        "path": "openai/v1/responses",
+        "bytes": 230395,
+        "sha256": "3636c5ab69d7fbfa92d39a79f9561ec852a026390a0fd41f89e5ba8a9cf00206",
+        "normalized_sha256": "f77d1cd08b136fe6feb11c2796f385eb95d2488ea5dc15ac0a69831ae224e23f",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 18,
+        "path": "openai/v1/responses",
+        "bytes": 230981,
+        "sha256": "4f7a45e215b0de24439c3a4ec4bf836e9870ab8c77a3b82d578dd4eab1cc84d4",
+        "normalized_sha256": "75ffef96c595002b9fa277f369d5a7c8370e698c32e230cb2e7947c26cf247e8",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 81680,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 81752,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163602,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163703,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163838,
+          "chars": 162208
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8753"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": {
+        "project_doc_max_bytes": 262144
+      },
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex hook": {
+      "trial": "rs-map-stub-01__smbnvcS",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.171.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 15,
+        "path": "openai/v1/responses",
+        "bytes": 96212,
+        "sha256": "ac920df60b8e515aa049acce223e9a3679a0435657ad811570dc01dbf3ddab64",
+        "normalized_sha256": "d2e4b71159a1a4dc2ae0b3aa1d9e186bc9f2ec06cc9c5304d6b87cbc727c0c4f",
+        "markers": [],
+        "hook_copies": 1
+      },
+      "follow_up": {
+        "n": 16,
+        "path": "openai/v1/responses",
+        "bytes": 96797,
+        "sha256": "d1f00dec9f43ae8b4f1a43bd385256bfe194d4b4858337a7ec262a04fb086fdb",
+        "normalized_sha256": "9ba186436cd739bb834895d9b469b481ea8575c2c5db63344b3c5d985dbfd3f7",
+        "markers": [],
+        "hook_copies": 1
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.input[5].content[0].text",
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 2,
+          "where": [
+            "$.input[5].content[0].text",
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 81680,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 81752,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163602,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 163703,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[7].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 163838,
+          "chars": 162208
+        },
+        {
+          "path": "hooktext.md",
+          "bytes": 670,
+          "chars": 670
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8818"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": "$CODEX_HOME/hooks.json UserPromptSubmit: additionalContext recorded as a developer message before the first sampling request; run with --dangerously-bypass-hook-trust",
+      "agent_log_notes": [
+        "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"error\",\"message\":\"Loaded only 32768 of 163838 bytes from `/work/repo/AGENTS.md` in environment `local` under the 32768-byte project instruction budget. Trim your project instructions to fit the budget. If you need to keep them all, increase `pro"
+      ]
+    },
+    "codex none": {
+      "trial": "rs-map-stub-01__8Bw3FHG",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.171.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 1,
+        "path": "openai/v1/responses",
+        "bytes": 61593,
+        "sha256": "b504182226757f210ead379a39662c6ff12a0d9701a7f693d179dac4e97b1ca2",
+        "normalized_sha256": "2bbe466c9130be6afaf98d48c0f00d9d6cd42821e27a0c3cf296a5007f219af2",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 2,
+        "path": "openai/v1/responses",
+        "bytes": 62176,
+        "sha256": "34a9b3b7671ff16b4743b2fe5ef09cf209fc72690675b7f0cf385544738d8246",
+        "normalized_sha256": "78efa64a9bdbf6bee4d37872205b173addc9ffd18feadd0e7405d5d2127764ee",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R2": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R3": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R5": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": null,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        }
+      },
+      "files": [],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8718"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex short": {
+      "trial": "rs-map-stub-01__oAKCaWx",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.171.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 3,
+        "path": "openai/v1/responses",
+        "bytes": 62483,
+        "sha256": "e3b3dfa346f76ef757ff8b8a8181dd01a9ed8fcbe4fe26319e2c425f297c8e26",
+        "normalized_sha256": "2dfdb7a25f1796aa7b4a935233b590ee6f8125e7b907d6ee0ba1729ddda21cd2",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 4,
+        "path": "openai/v1/responses",
+        "bytes": 63066,
+        "sha256": "10f59d9e7c50c4395b14f61078db62579267bb5e1e540cbca6130c9789f70d8d",
+        "normalized_sha256": "15d379c81f4c559ffe8c9263898c650285a5101615201d26ed2533e5e3dbb6a1",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 345,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 417,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 530,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 631,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 766,
+          "chars": 766
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8756"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    },
+    "codex split": {
+      "trial": "rs-map-stub-01__A6HTDQd",
+      "exception": null,
+      "exception_message": null,
+      "installed_version": "codex-cli 0.171.0",
+      "requests": 2,
+      "agent_loop_requests": 2,
+      "first_request": {
+        "n": 13,
+        "path": "openai/v1/responses",
+        "bytes": 69937,
+        "sha256": "6040ca370f8a918cea7f2ed2afa3938b48834583beefeae4cdb0289c2d1745fe",
+        "normalized_sha256": "c61ccc5dc6e9437884d3ca1cd85d9fa1e922718d4825a98a99073166acfe8519",
+        "markers": [],
+        "hook_copies": null
+      },
+      "follow_up": {
+        "n": 14,
+        "path": "openai/v1/responses",
+        "bytes": 70523,
+        "sha256": "1dff2202473116ac556e7e3a55a1dac38d3bd5d6a321cdb429e5df5c56e50f70",
+        "normalized_sha256": "f63633d9d54b0600dd6be7c2ed8bf769a21b955f89ae5b4555503915617fb0ca",
+        "markers": [],
+        "hook_copies": null
+      },
+      "rules": {
+        "R1": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 49,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R2": {
+          "position": "top",
+          "file": "AGENTS.md",
+          "byte_offset": 229,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R3": {
+          "position": "folder",
+          "file": "tests/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R4": {
+          "position": "middle",
+          "file": "AGENTS.md",
+          "byte_offset": 3925,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        },
+        "R5": {
+          "position": "folder",
+          "file": "stubpkg/AGENTS.md",
+          "byte_offset": 45,
+          "first_request": "absent",
+          "copies": 0,
+          "where": [],
+          "follow_up": "absent"
+        },
+        "R6": {
+          "position": "end",
+          "file": "AGENTS.md",
+          "byte_offset": 7864,
+          "first_request": "whole",
+          "copies": 1,
+          "where": [
+            "$.input[5].content[0].text"
+          ],
+          "follow_up": "whole"
+        }
+      },
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 7999,
+          "chars": 7937
+        },
+        {
+          "path": "tests/AGENTS.md",
+          "bytes": 51944,
+          "chars": 51216
+        },
+        {
+          "path": "stubpkg/AGENTS.md",
+          "bytes": 51945,
+          "chars": 51669
+        },
+        {
+          "path": "docs/AGENTS.md",
+          "bytes": 51956,
+          "chars": 51392
+        }
+      ],
+      "checks_ok": true,
+      "watcher": [
+        "watching 8812"
+      ],
+      "clean_arm": {
+        "setup": {
+          "gstack": [],
+          "gbrain": []
+        },
+        "launch": {
+          "gstack": [],
+          "gbrain": []
+        }
+      },
+      "repo_before": ".git\nREADME.md\npyproject.toml\nscripts\nstubpkg\ntests",
+      "repo_at_launch": ".git\nAGENTS.md\nREADME.md\ndocs\npyproject.toml\nscripts\nstubpkg\ntests",
+      "named_settings": null,
+      "cutlift": false,
+      "hook": null,
+      "agent_log_notes": []
+    }
+  },
+  "byte_identical_first_requests": {
+    "codex": [
+      [
+        "b160k",
+        "b80k"
+      ],
+      [
+        "b28k"
+      ],
+      [
+        "b8k"
+      ],
+      [
+        "cutlift"
+      ],
+      [
+        "hook"
+      ],
+      [
+        "none"
+      ],
+      [
+        "short"
+      ],
+      [
+        "split"
+      ]
+    ]
+  },
+  "qm_predicted": {
+    "status": "predicted from a source read of yc-software/qm 90e4ced7, not captured: QM is a stub in this lane",
+    "where": "the SOUL, set by PUT /v1/admin/scopes/org:harness-eval/soul before the turn and shown in the system prompt under \"## Organization instructions\"",
+    "workspace_rules_file": "none read: QM loads no AGENTS.md or CLAUDE.md from the workspace, so the qm-repo arm's AGENTS.md reaches the model only if it opens the file itself",
+    "cells": {
+      "none": "QM's default SOUL; no rules",
+      "qm-repo": "b8k AGENTS.md in the repository, empty SOUL: predicted absent from the first request",
+      "short": "all 6 rules whole under the heading",
+      "b8k": "all 6 rules whole under the heading",
+      "b28k": "all 6 rules whole under the heading",
+      "b80k": "all 6 rules whole under the heading (about 80,000 characters, under the cap)",
+      "qm-top": "all 6 rules whole under the heading, at the top of the SOUL"
+    },
+    "cap": "100000 characters (MAX_SOUL_CHARS); a longer text fails the trial with HE-RULES-011 and is never cut, so b160k is not offered",
+    "not_offered": [
+      "b160k",
+      "split",
+      "hook",
+      "cutlift"
+    ],
+    "proof": "the captured first agent-loop request shows the text under the heading; the admin reply is not proof",
+    "carbon": "Carbon runs on QM only through OpenRouter; no Carbon cell is in QM's arms"
+  },
+  "cant_run": {
+    "claude-code cutlift": {
+      "code": "HE-RULES-003",
+      "why": "claude-code sends a 160 KB rules file whole at its default, so there is no cut to lift"
+    },
+    "pi hook": {
+      "code": "HE-RULES-003",
+      "why": "pi has no hook route here (plan, changes accepted at the gate: Pi drops out of the hook arm; Gemini CLI is a descriptive row)"
+    },
+    "pi cutlift": {
+      "code": "HE-RULES-003",
+      "why": "pi sends a 160 KB rules file whole at its default, so there is no cut to lift"
+    },
+    "gemini-cli hook": {
+      "code": "HE-RULES-003",
+      "why": "gemini-cli has no hook route here (plan, changes accepted at the gate: Pi drops out of the hook arm; Gemini CLI is a descriptive row)"
+    },
+    "gemini-cli cutlift": {
+      "code": "HE-RULES-003",
+      "why": "gemini-cli sends a 160 KB rules file whole at its default, so there is no cut to lift"
+    }
+  },
+  "all_ran": true
+}
