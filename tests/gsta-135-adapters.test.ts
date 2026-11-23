@@ -7,7 +7,7 @@
 // exists.
 import { describe, expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -371,11 +371,12 @@ describe('hermes chat-mode adapter', () => {
     const { db, d } = hermesStore(dir);
     d.run('drop table messages'); d.close();
     expect(complete(db)).toMatch(/^error: .*no such table: messages/);
-    const before = spawnSync('bash', ['-c', 'ls /tmp | wc -l'], { encoding: 'utf8' }).stdout.trim();
     const { db: ok, d: d2, ins } = hermesStore(join(dir, 'ok'));
     ins('user', null); ins('assistant', 'stop'); d2.close();
-    for (let i = 0; i < 3; i++) expect(complete(ok)).toBe('complete');
-    expect(spawnSync('bash', ['-c', 'ls /tmp | wc -l'], { encoding: 'utf8' }).stdout.trim()).toBe(before);
+    const ownTmp = tmp();
+    for (let i = 0; i < 3; i++) expect(withWatcher('chat_complete ' + JSON.stringify(ok), { TMPDIR: ownTmp }).stdout.trim()).toBe('complete');
+    expect(readdirSync(ownTmp)).toEqual([]);
+    expect(fn('chat_complete')).not.toContain('/tmp');
     expect(overlay).not.toContain('NamedTemporaryFile');
     expect(overlay).toContain('src.backup(db)');
   });

@@ -4,7 +4,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { PsError, runSync, spawnBounded } from './proc.ts';
+import { GNU_TIMEOUT, PsError, runSync, spawnBounded } from './proc.ts';
 
 export interface ToolPin {
   version: string;
@@ -96,13 +96,16 @@ export function gitleaks(tool: ReadyTool, dir: string, config: string, work: str
 
 // gitleaks() started in the background, so the caller can run other gates while it scans; awaiting the promise gives the
 // same result, and the same timeout error, as gitleaks(). The tool's process group is killed if this process exits or is
-// stopped by SIGINT or SIGTERM first.
+// stopped by SIGINT or SIGTERM first. Where GNU timeout exists, it keeps the deadline outside this process, because the
+// export's synchronous gates can hold the event loop past it: the tool is stopped on time and a late scan never exits 0.
+// Without it, the in-process timer alone keeps the deadline.
 export async function gitleaksInBackground(tool: ReadyTool, dir: string, config: string, work: string, env: Record<string, string>, timeoutMs = 30 * 60_000): Promise<{ ok: boolean; findings: ToolFinding[]; error?: string }> {
   mkdirSync(work, { recursive: true });
   const report = join(work, 'gitleaks-report-' + randomBytes(4).toString('hex') + '.json');
   const ignoreDir = join(work, 'no-gitleaksignore');
   mkdirSync(ignoreDir, { recursive: true });
-  const c = spawnBounded([...tool.argv, 'dir', dir, '--max-archive-depth', '4', ...glArgs(config, report, ignoreDir)], { op: 'gitleaks dir', timeoutMs, env });
+  const argv = [...tool.argv, 'dir', dir, '--max-archive-depth', '4', ...glArgs(config, report, ignoreDir)];
+  const c = spawnBounded(GNU_TIMEOUT ? [GNU_TIMEOUT, '--kill-after=2', Math.max(0.001, timeoutMs / 1000) + 's', ...argv] : argv, { op: 'gitleaks dir', timeoutMs, env });
   const onSignal = (s: NodeJS.Signals) => { c.kill(); process.kill(process.pid, s); };
   process.once('exit', c.kill);
   process.once('SIGINT', onSignal);
@@ -113,7 +116,7 @@ export async function gitleaksInBackground(tool: ReadyTool, dir: string, config:
     c.p.stdout.resume();
     c.p.stderr.resume();
     const status = await Promise.race([c.done, failed]);
-    if (c.timedOut()) throw c.timeoutError();
+    if (c.timedOut() || (GNU_TIMEOUT && status === 124)) throw c.timeoutError();
     if (status !== 0 || !existsSync(report)) return { ok: false, findings: [], error: 'gitleaks exited ' + status };
     const rows = JSON.parse(readFileSync(report, 'utf8')) as { RuleID: string; File: string; StartLine: number }[];
     return { ok: true, findings: rows.map((f) => ({ rule: f.RuleID, file: f.File, line: f.StartLine })) };

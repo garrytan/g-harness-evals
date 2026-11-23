@@ -8,7 +8,7 @@ export class PsError extends Error {
   constructor(public code: string, message: string) { super(message); }
 }
 
-const GNU_TIMEOUT = ['/usr/bin/timeout', '/bin/timeout'].find((p) => existsSync(p));
+export const GNU_TIMEOUT = ['/usr/bin/timeout', '/bin/timeout'].find((p) => existsSync(p));
 
 export interface RunOptions { op: string; timeoutMs: number; env: Record<string, string>; cwd?: string; input?: string | Buffer; maxBuffer?: number }
 export interface RunResult { status: number; stdout: Buffer; stderr: Buffer }

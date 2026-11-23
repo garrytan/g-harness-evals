@@ -165,3 +165,11 @@ describe('canary remote wrappers and Ubicloud capacity', () => {
     expect(readFileSync(join(t.out, 'canary.log'), 'utf8')).toMatch(/remote: WARNING: down ubirun-harn00-1700000000-stub1-t3 failed; run: UBI_OWNER=internal-task bash \S+\/scripts\/ubicloud\/ubi-runner\.sh down ubirun-harn00-1700000000-stub1-t3/);
   });
 });
+test('gbrain: the EXIT trap cleans up only in the wrapper\'s own shell, so a forked subshell that runs it keeps $scratch, and the trap is never unset', () => {
+  const src = readFileSync(join(ROOT, 'scripts/canary/gbrain/remote.sh'), 'utf8');
+  expect(src).not.toContain('trap - EXIT');
+  const def = src.match(/^cleanup\(\) \{.*\}$/m)![0];
+  const scratch = mkdtempSync(join(tmp, 'scratch-'));
+  const r = spawnSync('bash', ['-c', 'scratch=$1; rep_pid=\n' + def + '\n( cleanup ); [ -d "$scratch" ] && echo kept; cleanup; [ -d "$scratch" ] || echo removed', 'remote', scratch], { encoding: 'utf8' });
+  expect(r.stdout).toBe('kept\nremoved\n');
+});

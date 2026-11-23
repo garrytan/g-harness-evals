@@ -53,7 +53,9 @@ log() { printf '%s remote (gbrain canary): %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/canary-gbrain.XXXXXX")
 rep_pid=""
-cleanup() { [ -z "$rep_pid" ] || kill "$rep_pid" 2>/dev/null || true; rm -rf "$scratch"; }
+# Only the wrapper's own shell cleans up: a subshell killed in the moment after its fork, before bash resets the traps it
+# inherited, runs this EXIT trap too, and would delete $scratch while the try is still reading try.log.
+cleanup() { [ "${BASHPID:-$$}" = "$$" ] || return 0; [ -z "$rep_pid" ] || kill "$rep_pid" 2>/dev/null || true; rm -rf "$scratch"; }
 trap cleanup EXIT
 git clone -q --no-checkout "$root" "$scratch/harness-evals"
 git -C "$scratch/harness-evals" checkout -q --detach "$commit"
@@ -85,12 +87,8 @@ for loc in "${locations[@]}"; do
   echo "$vm" >> "$scratch/vms"
   log "VM $vm in $loc (TTL $ttl h) for $entry at $commit; keys: ${keys[*]+${keys[*]}}"
   jq --arg vm "$vm" --arg loc "$loc" '. + {vm: $vm, location: $loc}' "$out/remote.json" > "$out/remote.json.tmp" && mv "$out/remote.json.tmp" "$out/remote.json"
-  # A background subshell killed in the moment after its fork, before bash resets the traps it inherited, runs the EXIT
-  # trap itself and deleted $scratch while the try was still reading try.log, so the replica loop forks with no trap set.
-  trap - EXIT
   ( while sleep 600; do bash "$runner" pull "$vm" canary/out "$out/vm-replica" || true; done ) > /dev/null 2>&1 &
   rep_pid=$!
-  trap cleanup EXIT
   set +e
   bash "$runner" run -n "$vm" -l "$loc" --src "$scratch/harness-evals" --setup "$root/scripts/ubicloud/bootstrap.sh" ${pass[@]+"${pass[@]}"} --pull "canary/out:$out/vm" -- "$cmd" > "$scratch/try.log" 2>&1
   rc=$?
