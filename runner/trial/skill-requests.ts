@@ -43,7 +43,7 @@ export const REQUEST_HALVES = ['dev', 'test', 'all'] as const;
 export const PHASE_B_ACTOR = 'dana-okafor';
 
 /** What stays in a Phase B trial directory: the runner's own files and the resolver's status lines (analyze.ts reads them). */
-export const KEEP = ['usage.json', 'reconcile.json', 'got-skill.json', 'skill-flags.json', 'result.json', 'logs/ready', 'logs/adapter.log',
+export const KEEP = ['usage.json', 'reconcile.json', 'got-skill.json', 'skill-flags.json', 'saw-skill.json', 'result.json', 'logs/ready', 'logs/adapter.log',
   'logs/skill-resolver/status.ndjson', 'logs/skill-resolver.ndjson', 'logs/skill-resolver.infra.json'];
 
 /** The harness's own trace got-skill.ts reads, per harness: the event log of every turn under the trial directory, written by the

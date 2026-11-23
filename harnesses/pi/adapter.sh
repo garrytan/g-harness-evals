@@ -53,9 +53,13 @@ esac
 # Refusals before anything is written: each names a cell setting this adapter does not implement, so such a cell stops
 # here instead of running as a plain cell.
 if [ "${HE_SESSION_SCOPE:-conversation}" != conversation ]; then log "HE_SESSION_SCOPE=$HE_SESSION_SCOPE is not supported (only the openclaw adapter keys sessions per turn)"; exit 2; fi
+sas_config=''
 case "${HE_HARNESS_CONFIG:-default}" in
   default) ;;
-  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG: the pi adapter implements no config (unset, empty or default only)"; exit 2 ;;
+  skills-catalog|skills-gbrain-setup|skills-gbrain-pins)
+    [ "$entry" = serve ] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG is applied for the serve entry only (scripts/skills-at-scale/README.md)"; exit 2; }
+    sas_config=$HE_HARNESS_CONFIG ;;
+  *) log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$HE_HARNESS_CONFIG: the pi adapter implements the default config and the skills-at-scale arms skills-catalog, skills-gbrain-setup and skills-gbrain-pins only"; exit 2 ;;
 esac
 if [ -n "${HE_GBRAIN_INSTALL:-}" ]; then log "HE-ADAPTER-006 HE_GBRAIN_INSTALL=$HE_GBRAIN_INSTALL is not implemented for pi; fix: run this cell without gbrain.install"; exit 2; fi
 if [ -n "${HE_GBRAIN_MCP_URL:-}" ]; then log "HE_GBRAIN_MCP_URL is set: the pi adapter registers the world MCP server only; fix: run this cell without gbrain"; exit 2; fi
@@ -78,6 +82,8 @@ trap 'stopping=1' TERM INT
 # which Pi reads from its environment when it sends a request.
 export HOME="$HE_SESSION_STATE_DIR"
 export PI_CODING_AGENT_DIR="$HE_SESSION_STATE_DIR/pi/agent"
+# The skills-at-scale arms keep Pi's agent directory at /harness-state/pi, so its skills folder is /harness-state/pi/skills.
+[ -z "$sas_config" ] || export PI_CODING_AGENT_DIR="$HE_SESSION_STATE_DIR/pi"
 export TMPDIR="$HE_SESSION_STATE_DIR/tmp"
 session_dir="$HE_SESSION_STATE_DIR/pi/sessions"
 mkdir -p "$PI_CODING_AGENT_DIR" "$session_dir" "$TMPDIR"
@@ -101,6 +107,22 @@ pinned_version=$(node -e 'process.stdout.write(String(require(process.argv[1]).v
 pi_version=$(pi --version 2>/dev/null || true)
 log "pi $pi_version provider=$provider model=$HE_MODEL_NAME thinking=medium budget=${HE_TIME_BUDGET_S}s entry=$entry"
 if [ "$pi_version" != "$pinned_version" ]; then log "pi --version is '$pi_version', pin.json says $pinned_version"; exit 2; fi
+
+# The skills-at-scale arms (scripts/skills-at-scale/README.md), on HE_HARNESS_CONFIG skills-catalog, skills-gbrain-setup
+# or skills-gbrain-pins. The kit's bin/sas-arm (${HE_SAS_DIR:-/opt/skills-at-scale}, scripts/skills-at-scale/build-kit.ts)
+# installs the catalog in $PI_CODING_AGENT_DIR/skills and, on the gbrain arms, runs gbrain's own installer as a user would; it writes
+# $HE_LOG_DIR/sas-arm.json, and ready gains sas_arm. Any failure is HE-ADAPTER-007 and exit 2 before ready. Any other config:
+# nothing here runs and nothing is written.
+sas_arm_json=''
+if [ -n "$sas_config" ]; then
+  set +e
+  sas_line=$("${HE_SAS_DIR:-/opt/skills-at-scale}/bin/sas-arm" pi "$sas_config" --dest "$PI_CODING_AGENT_DIR/skills" 2>> "$HE_LOG_DIR/sas-arm.stderr.log")
+  sas_code=$?
+  set -e
+  log "skills-at-scale arm $sas_config: ${sas_line:-HE-ADAPTER-007 sas-arm printed nothing; see sas-arm.stderr.log}"
+  [ "$sas_code" -eq 0 ] || exit 2
+  sas_arm_json=",\"sas_arm\":${sas_line#ok }"
+fi
 
 cd "$HE_WORKSPACE_DIR"
 
@@ -256,8 +278,8 @@ fs.writeFileSync(resp + ".tmp", JSON.stringify(out));
 fs.renameSync(resp + ".tmp", resp);' "$@"
 }
 
-printf '{"harness":"pi","version":"%s","trial":"%s","ready_at":"%s","provider":"%s","session_keys":"pi --session-id UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","world_tools":%s,"adapter_sha256":"%s"}\n' \
-  "$pi_version" "$HE_TRIAL_ID" "$(now)" "$provider" "$mcp_servers" "$world_tools" "$adapter_sha256" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"pi","version":"%s","trial":"%s","ready_at":"%s","provider":"%s","session_keys":"pi --session-id UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","world_tools":%s,"adapter_sha256":"%s"%s}\n' \
+  "$pi_version" "$HE_TRIAL_ID" "$(now)" "$provider" "$mcp_servers" "$world_tools" "$adapter_sha256" "$sas_arm_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

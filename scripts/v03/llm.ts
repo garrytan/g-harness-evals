@@ -6,19 +6,29 @@
 //
 // Responses are cached by sha256 of (model, system, prompt, maxTokens); a cache hit makes no call. Tests inject a
 // transport instead of starting the proxy.
+//
+// Gemini 4 Carbon (google:gemini-4-carbon) goes through the proxy's google route, the one #469 meters Carbon on:
+// POST /<slot>/google/v1beta/models/gemini-4-carbon:generateContent, Google's own Gemini API (AI Studio's standard endpoint).
+// The client sends no key; the proxy adds GEMINI_API_KEY from its own environment as x-goog-api-key.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-export const ALLOWED_MODELS = ['openai:gpt-6.1-sol', 'anthropic:claude-opus-5-5', 'openai:gpt-6-astra'] as const;
+export const ALLOWED_MODELS = ['openai:gpt-6.1-sol', 'openai:gpt-6.2-sol', 'anthropic:claude-opus-5-5', 'openai:gpt-6-astra', 'openai:gpt-6.2-astra', 'google:gemini-4-carbon'] as const;
 export type ModelId = (typeof ALLOWED_MODELS)[number];
 
 /** cachePrefix, when set, must be the start of prompt: the transport marks it cacheable (Anthropic cache_control, an OpenAI
- * prompt_cache_key over it). It is not part of the response cache key, so the same prompt hits responses cached without it. */
+ * prompt_cache_key over it; Gemini caches a repeated prefix implicitly and takes no marker). It is not part of the response cache key, so the same prompt hits responses cached without it. */
 export interface CompleteRequest { model: ModelId; system: string; prompt: string; maxTokens: number; cachePrefix?: string }
 export type Transport = (req: CompleteRequest) => Promise<string>;
+export type Provider = 'openai' | 'anthropic' | 'google';
+const CLIENT_HEADERS: Record<Provider, Record<string, string>> = {
+  openai: { 'content-type': 'application/json', authorization: 'Bearer unauthenticated' },
+  anthropic: { 'content-type': 'application/json', 'x-api-key': 'unauthenticated', 'anthropic-version': '2023-06-01' },
+  google: { 'content-type': 'application/json' },
+};
 
 export interface LlmStats { calls: number; cache_hits: number; usd: number }
 
@@ -46,6 +56,8 @@ export interface ProxyOptions {
   ledger?: string;
   /** Output-token cap the lease was or is opened with (the proxy's --max-output-tokens); a lease is rejoined only with the same cap. */
   maxOutputTokens?: number;
+  /** Upstream base URLs by provider (the proxy's --upstream), for keyless tests against a fake endpoint. */
+  upstream?: Partial<Record<Provider, string>>;
 }
 
 export interface LlmOptions {
@@ -66,7 +78,8 @@ async function startProxy(o: ProxyOptions): Promise<Proxy> {
   const child = spawn('bun', [join(REPO_ROOT, 'runner/proxy/metering-proxy.ts'),
     '--listen', '127.0.0.1:0', '--budget-ledger', o.ledger ?? join(o.dir, 'ledger.sqlite'), '--lease-usd', String(o.leaseUsd), '--run-id', o.runId,
     '--allow-models', ALLOWED_MODELS.join(','), '--control-token', token, '--usage-log', join(o.dir, 'usage.ndjson'),
-    ...(o.maxOutputTokens ? ['--max-output-tokens', String(o.maxOutputTokens)] : [])],
+    ...(o.maxOutputTokens ? ['--max-output-tokens', String(o.maxOutputTokens)] : []),
+    ...Object.entries(o.upstream ?? {}).flatMap(([prov, base]) => ['--upstream', prov + '=' + base])],
   { cwd: REPO_ROOT, env: process.env, stdio: ['ignore', 'ignore', 'pipe'] });
   const port = await new Promise<number>((resolve, reject) => {
     let buf = '';
@@ -89,8 +102,10 @@ async function startProxy(o: ProxyOptions): Promise<Proxy> {
 
 /** The provider request body for one completion, the cachePrefix marked cacheable. The batch lane
  *  (scripts/skills-at-scale/batch.ts) sends the same bodies. */
-export function requestBody(req: CompleteRequest): { provider: 'openai' | 'anthropic'; path: string; body: Record<string, unknown> } {
-  const [provider, model] = req.model.split(':') as ['openai' | 'anthropic', string];
+export function requestBody(req: CompleteRequest): { provider: Provider; path: string; body: Record<string, unknown> } {
+  const [provider, model] = req.model.split(':') as [Provider, string];
+  if (provider === 'google') return { provider, path: '/v1beta/models/' + model + ':generateContent', body: { systemInstruction: { parts: [{ text: req.system }] },
+    contents: [{ role: 'user', parts: [{ text: req.prompt }] }], generationConfig: { maxOutputTokens: req.maxTokens } } };
   const prefix = req.cachePrefix && req.prompt.startsWith(req.cachePrefix) ? req.cachePrefix : '';
   if (provider === 'openai') return { provider, path: '/v1/chat/completions', body: { model, max_completion_tokens: req.maxTokens, reasoning_effort: 'low',
     ...(prefix ? { prompt_cache_key: createHash('sha256').update(JSON.stringify([model, req.system, prefix])).digest('hex').slice(0, 32), prompt_cache_options: { mode: 'explicit' } } : {}),
@@ -108,14 +123,14 @@ function proxyTransport(p: Proxy): Transport {
     const { provider, path, body } = requestBody(req);
     const res = await fetch(`${p.base}/${p.slot}/${provider}${path}`, {
       method: 'POST',
-      headers: provider === 'openai' ? { 'content-type': 'application/json', authorization: 'Bearer unauthenticated' } : { 'content-type': 'application/json', 'x-api-key': 'unauthenticated', 'anthropic-version': '2023-06-01' },
+      headers: CLIENT_HEADERS[provider],
       body: JSON.stringify(body),
     });
     if (res.status === 402) throw new LlmError('E_BUDGET');
     if (!res.ok) throw new LlmError(`E_HTTP_${res.status}`);
     const j = await res.json() as any;
-    const text = provider === 'openai'
-      ? j?.choices?.[0]?.message?.content
+    const text = provider === 'openai' ? j?.choices?.[0]?.message?.content
+      : provider === 'google' ? (j?.candidates?.[0]?.content?.parts ?? []).filter((c: any) => typeof c?.text === 'string' && !c.thought).map((c: any) => c.text).join('')
       : (j?.content ?? []).filter((c: any) => c?.type === 'text').map((c: any) => c.text).join('');
     if (typeof text !== 'string' || !text.trim()) throw new LlmError('E_EMPTY_RESPONSE');
     return text;

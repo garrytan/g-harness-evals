@@ -156,6 +156,16 @@ describe('skills-at-scale catalog ladder', () => {
     const second = buildLadder(f.cfg, f.corePacks, f.dirs, join(f.root, 'out2'));
     expect(second.records).toEqual(first.records);
     expect(materialize(out, 11, join(f.root, 'm11'))).toBe(first.rungHashes['11']!);
+    const m = JSON.parse(readFileSync(join(f.root, 'm11', 'manifest.json'), 'utf8'));
+    const names = readFileSync(join(out, 'rungs', '11.txt'), 'utf8').split('\n').filter(Boolean);
+    expect(m).toMatchObject({ catalog_hash: first.rungHashes['11'], skill_count: names.length, rung: 11 });
+    expect(m.skills.map((s: { name: string }) => s.name)).toEqual(names);
+    expect(m.skills.every((s: { target: unknown; pin: unknown }) => typeof s.target === 'boolean' && typeof s.pin === 'boolean' && (!s.pin || s.target))).toBe(true);
+    const manifest = JSON.parse(first.records['manifest.json']!) as { skills: Array<{ name: string; pack: string }> };
+    for (const s of m.skills) {
+      expect(s.pack).toBe(manifest.skills.find((x) => x.name === s.name)!.pack);
+      expect(s.description.length).toBeGreaterThan(0);
+    }
   });
 
   test('hashes.json pins the sha256 of the records that are not committed', () => {

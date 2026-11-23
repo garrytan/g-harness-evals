@@ -1,0 +1,513 @@
+{
+ "schema_version": 1,
+ "what": "internal-task Hermes trigger check by what the resolver ranks. Hermes passes only the user turn to its pre_llm_call hook (agent/turn_context.py _collect_pre_llm_call_context, user_message=original_user_message), and gbrain ranks extra.user_message (src/core/skills/resolver/hook-lane.ts:233 at v0.60.742.0), so the preamble the runner wraps around each message is part of the ranked text. Keyless: fake model, gbrain v0.60.742.0, Hermes v2026.9.24.",
+ "end_to_end": [
+  {
+   "variant": "full preamble in the user turn (the shipped runner)",
+   "size": 351,
+   "config": "skills-gbrain-setup",
+   "preamble": "tasks/multiuser/_shared/preamble.md",
+   "ok": false,
+   "pair": [
+    "api-zone-email",
+    "backup-prompt-build"
+   ],
+   "turn1_block": [
+    "email-inbox-triage",
+    "meeting-action-items",
+    "google-workspace",
+    "grounded-citations",
+    "product-price-monitor"
+   ],
+   "turn2_new_block": [
+    "box"
+   ],
+   "lanes": [
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 26.3
+    },
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 17.9
+    }
+   ],
+   "problems": [
+    "turn 1 carries no block naming api-zone-email (its block names email-inbox-triage, meeting-action-items, google-workspace, grounded-citations, product-price-monitor)",
+    "turn 2 carries no new block naming backup-prompt-build (its new block names box)"
+   ]
+  },
+  {
+   "variant": "message only",
+   "size": 351,
+   "config": "skills-gbrain-setup",
+   "preamble": "scripts/skills-at-scale/preamble.message-only.md",
+   "ok": true,
+   "pair": [
+    "api-zone-email",
+    "backup-prompt-build"
+   ],
+   "turn1_block": [
+    "api-zone-email",
+    "zone-csv-pricing",
+    "file-zone",
+    "notion",
+    "firewall-zone-ticket"
+   ],
+   "turn2_new_block": [
+    "backup-prompt-build",
+    "backup-pr-prompt-markdown",
+    "docs-index-backup",
+    "contract-backup",
+    "file-backup-package-chart"
+   ],
+   "lanes": [
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 44.3
+    },
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 25.3
+    }
+   ],
+   "problems": []
+  },
+  {
+   "variant": "preamble in the system prompt, header and message in the user turn",
+   "size": 351,
+   "config": "skills-gbrain-setup-system-preamble",
+   "preamble": "scripts/skills-at-scale/preamble.turn.md",
+   "ok": true,
+   "pair": [
+    "api-zone-email",
+    "backup-prompt-build"
+   ],
+   "turn1_block": [
+    "api-zone-email",
+    "apple-reminders",
+    "xurl",
+    "himalaya",
+    "email-inbox-triage"
+   ],
+   "turn2_new_block": [
+    "backup-prompt-build",
+    "teams-meeting-pipeline",
+    "imessage"
+   ],
+   "lanes": [
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 31.9
+    },
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 26.5
+    }
+   ],
+   "problems": []
+  },
+  {
+   "variant": "full preamble in the user turn (the shipped runner)",
+   "size": 1500,
+   "config": "skills-gbrain-setup",
+   "preamble": "tasks/multiuser/_shared/preamble.md",
+   "ok": false,
+   "pair": [
+    "api-zone-email",
+    "backup-prompt-build"
+   ],
+   "turn1_block": [
+    "email-inbox-triage",
+    "google-workspace",
+    "meeting-action-items",
+    "grounded-citations",
+    "box"
+   ],
+   "turn2_new_block": [],
+   "lanes": [
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 29.6
+    },
+    {
+     "outcome": "empty",
+     "code": null,
+     "ms": 33.4
+    }
+   ],
+   "problems": [
+    "turn 1 carries no block naming api-zone-email (its block names email-inbox-triage, google-workspace, meeting-action-items, grounded-citations, box)",
+    "turn 2 carries no new block naming backup-prompt-build (no new block: the lane delivered nothing for this message, or repeated an earlier block)"
+   ]
+  },
+  {
+   "variant": "message only",
+   "size": 1500,
+   "config": "skills-gbrain-setup",
+   "preamble": "scripts/skills-at-scale/preamble.message-only.md",
+   "ok": false,
+   "pair": [
+    "api-zone-email",
+    "backup-prompt-build"
+   ],
+   "turn1_block": [],
+   "turn2_new_block": [],
+   "lanes": [
+    {
+     "outcome": "timeout",
+     "code": "skill_resolve_timeout",
+     "ms": 51.2
+    },
+    {
+     "outcome": "timeout",
+     "code": "skill_resolve_timeout",
+     "ms": 51.3
+    }
+   ],
+   "problems": [
+    "turn 1 carries no block naming api-zone-email (no block at all)",
+    "turn 2 carries no new block naming backup-prompt-build (no new block: the lane delivered nothing for this message, or repeated an earlier block)"
+   ],
+   "note": "first try: both lanes passed the 50 ms deadline (51.2 and 51.3 ms) and delivered nothing; rerun once below"
+  },
+  {
+   "variant": "message only",
+   "size": 1500,
+   "config": "skills-gbrain-setup",
+   "preamble": "scripts/skills-at-scale/preamble.message-only.md",
+   "ok": true,
+   "pair": [
+    "api-zone-email",
+    "backup-prompt-build"
+   ],
+   "turn1_block": [
+    "api-zone-email",
+    "zone-api-backup",
+    "notion",
+    "airtable",
+    "zone-env"
+   ],
+   "turn2_new_block": [
+    "backup-prompt-build",
+    "backup-pr-prompt-markdown",
+    "apple-reminders",
+    "backup-calendar",
+    "backup"
+   ],
+   "lanes": [
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 40.5
+    },
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 45.3
+    }
+   ],
+   "problems": []
+  },
+  {
+   "variant": "preamble in the system prompt, header and message in the user turn",
+   "size": 1500,
+   "config": "skills-gbrain-setup-system-preamble",
+   "preamble": "scripts/skills-at-scale/preamble.turn.md",
+   "ok": true,
+   "pair": [
+    "api-zone-email",
+    "backup-prompt-build"
+   ],
+   "turn1_block": [
+    "apple-reminders",
+    "api-zone-email",
+    "xurl",
+    "himalaya",
+    "email-inbox-triage"
+   ],
+   "turn2_new_block": [
+    "backup-prompt-build",
+    "teams-meeting-pipeline",
+    "imessage"
+   ],
+   "lanes": [
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 38.8
+    },
+    {
+     "outcome": "delivered",
+     "code": null,
+     "ms": 35.2
+    }
+   ],
+   "problems": []
+  }
+ ],
+ "offline": {
+  "how": "gbrain skills resolve --catalog hermes-user --harness hermes --json --explain-target <target> on a copy of the message-only trial state, each turn's exact prompt as --text; no session, so no dedupe; the hook shows the top 5",
+  "ranks": [
+   {
+    "size": 351,
+    "variant": "full preamble in the user turn (the shipped runner)",
+    "turn": 1,
+    "ranked_chars": 3479,
+    "target": "api-zone-email",
+    "rank": 23,
+    "in_top5": false,
+    "top3": [
+     "email-inbox-triage",
+     "meeting-action-items",
+     "google-workspace"
+    ],
+    "top5": [
+     "email-inbox-triage",
+     "meeting-action-items",
+     "google-workspace",
+     "grounded-citations",
+     "product-price-monitor"
+    ]
+   },
+   {
+    "size": 351,
+    "variant": "full preamble in the user turn (the shipped runner)",
+    "turn": 2,
+    "ranked_chars": 3486,
+    "target": "backup-prompt-build",
+    "rank": 32,
+    "in_top5": false,
+    "top3": [
+     "email-inbox-triage",
+     "meeting-action-items",
+     "google-workspace"
+    ],
+    "top5": [
+     "email-inbox-triage",
+     "meeting-action-items",
+     "google-workspace",
+     "box",
+     "grounded-citations"
+    ]
+   },
+   {
+    "size": 351,
+    "variant": "preamble in the system prompt, header and message in the user turn",
+    "turn": 1,
+    "ranked_chars": 325,
+    "target": "api-zone-email",
+    "rank": 1,
+    "in_top5": true,
+    "top3": [
+     "api-zone-email",
+     "apple-reminders",
+     "xurl"
+    ],
+    "top5": [
+     "api-zone-email",
+     "apple-reminders",
+     "xurl",
+     "himalaya",
+     "email-inbox-triage"
+    ]
+   },
+   {
+    "size": 351,
+    "variant": "preamble in the system prompt, header and message in the user turn",
+    "turn": 2,
+    "ranked_chars": 332,
+    "target": "backup-prompt-build",
+    "rank": 2,
+    "in_top5": true,
+    "top3": [
+     "apple-reminders",
+     "backup-prompt-build",
+     "xurl"
+    ],
+    "top5": [
+     "apple-reminders",
+     "backup-prompt-build",
+     "xurl",
+     "teams-meeting-pipeline",
+     "imessage"
+    ]
+   },
+   {
+    "size": 351,
+    "variant": "message only",
+    "turn": 1,
+    "ranked_chars": 78,
+    "target": "api-zone-email",
+    "rank": 1,
+    "in_top5": true,
+    "top3": [
+     "api-zone-email",
+     "zone-csv-pricing",
+     "file-zone"
+    ],
+    "top5": [
+     "api-zone-email",
+     "zone-csv-pricing",
+     "file-zone",
+     "notion",
+     "firewall-zone-ticket"
+    ]
+   },
+   {
+    "size": 351,
+    "variant": "message only",
+    "turn": 2,
+    "ranked_chars": 85,
+    "target": "backup-prompt-build",
+    "rank": 1,
+    "in_top5": true,
+    "top3": [
+     "backup-prompt-build",
+     "backup-pr-prompt-markdown",
+     "docs-index-backup"
+    ],
+    "top5": [
+     "backup-prompt-build",
+     "backup-pr-prompt-markdown",
+     "docs-index-backup",
+     "contract-backup",
+     "file-backup-package-chart"
+    ]
+   },
+   {
+    "size": 1500,
+    "variant": "full preamble in the user turn (the shipped runner)",
+    "turn": 1,
+    "ranked_chars": 3479,
+    "target": "api-zone-email",
+    "rank": 28,
+    "in_top5": false,
+    "top3": [
+     "email-inbox-triage",
+     "google-workspace",
+     "meeting-action-items"
+    ],
+    "top5": [
+     "email-inbox-triage",
+     "google-workspace",
+     "meeting-action-items",
+     "grounded-citations",
+     "box"
+    ]
+   },
+   {
+    "size": 1500,
+    "variant": "full preamble in the user turn (the shipped runner)",
+    "turn": 2,
+    "ranked_chars": 3486,
+    "target": "backup-prompt-build",
+    "rank": 42,
+    "in_top5": false,
+    "top3": [
+     "email-inbox-triage",
+     "meeting-action-items",
+     "google-workspace"
+    ],
+    "top5": [
+     "email-inbox-triage",
+     "meeting-action-items",
+     "google-workspace",
+     "box",
+     "grounded-citations"
+    ]
+   },
+   {
+    "size": 1500,
+    "variant": "preamble in the system prompt, header and message in the user turn",
+    "turn": 1,
+    "ranked_chars": 325,
+    "target": "api-zone-email",
+    "rank": 2,
+    "in_top5": true,
+    "top3": [
+     "apple-reminders",
+     "api-zone-email",
+     "xurl"
+    ],
+    "top5": [
+     "apple-reminders",
+     "api-zone-email",
+     "xurl",
+     "himalaya",
+     "email-inbox-triage"
+    ]
+   },
+   {
+    "size": 1500,
+    "variant": "preamble in the system prompt, header and message in the user turn",
+    "turn": 2,
+    "ranked_chars": 332,
+    "target": "backup-prompt-build",
+    "rank": 2,
+    "in_top5": true,
+    "top3": [
+     "apple-reminders",
+     "backup-prompt-build",
+     "xurl"
+    ],
+    "top5": [
+     "apple-reminders",
+     "backup-prompt-build",
+     "xurl",
+     "teams-meeting-pipeline",
+     "imessage"
+    ]
+   },
+   {
+    "size": 1500,
+    "variant": "message only",
+    "turn": 1,
+    "ranked_chars": 78,
+    "target": "api-zone-email",
+    "rank": 1,
+    "in_top5": true,
+    "top3": [
+     "api-zone-email",
+     "zone-api-backup",
+     "notion"
+    ],
+    "top5": [
+     "api-zone-email",
+     "zone-api-backup",
+     "notion",
+     "airtable",
+     "zone-env"
+    ]
+   },
+   {
+    "size": 1500,
+    "variant": "message only",
+    "turn": 2,
+    "ranked_chars": 85,
+    "target": "backup-prompt-build",
+    "rank": 1,
+    "in_top5": true,
+    "top3": [
+     "backup-prompt-build",
+     "backup-pr-prompt-markdown",
+     "apple-reminders"
+    ],
+    "top5": [
+     "backup-prompt-build",
+     "backup-pr-prompt-markdown",
+     "apple-reminders",
+     "backup-calendar",
+     "backup"
+    ]
+   }
+  ]
+ }
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Labels set L for the skills-at-scale eval (internal-task plan, "Labels"; review F2 and F3), by running
-// scripts/skill-resolver/label-set.ts with two judges, GPT-6 Astra and Opus 5.5, over the 1,500-skill catalog.
+// scripts/skill-resolver/label-set.ts with two judges, GPT-6.2 Astra and Opus 5.5, over the 1,500-skill catalog.
 //
 //   bun scripts/skills-at-scale/label-l.ts --catalog <1,500-skill catalog dir> --set <setl-dev.jsonl> [--set <setl-test.jsonl>]
 //       --out <dir> [--lease-usd 120] [--run-id label-l-1] [--batch <dir>]
@@ -28,6 +28,8 @@ import { label } from '../skill-resolver/label-set.ts';
 import { batchCli } from './batch.ts';
 
 export const JUDGES = ['astra', 'opus'] as const;
+/** R116: GPT-6.2 Astra, where label-set.ts keeps #449's frozen GPT-6 Astra. */
+export const JUDGE_MODELS = { astra: 'openai:gpt-6.2-astra', opus: 'anthropic:claude-opus-5-5' } as const;
 const ROOT = resolve(import.meta.dir, '..', '..');
 type Core = { no_skill_needed: boolean; acceptable: string[]; candidates: string[] };
 type SetRow = { id: string; kind: 'skill' | 'none'; target: string | null; request: string; half: string };
@@ -43,7 +45,7 @@ export async function labelL(o: { catalog: string; sets: string[]; out: string; 
   mkdirSync(o.out, { recursive: true });
   const merged = join(o.out, 'set.jsonl');
   writeFileSync(merged, rows.map((r) => JSON.stringify({ id: r.id, request: r.request, half: r.half })).join('\n') + '\n');
-  const summary = await label({ catalog: o.catalog, set: merged, out: join(o.out, 'label-set'), judges: [...JUDGES], half: 'all', leaseUsd: o.leaseUsd, runId: o.runId, transport: o.transport });
+  const summary = await label({ catalog: o.catalog, set: merged, out: join(o.out, 'label-set'), judges: [...JUDGES], models: JUDGE_MODELS, half: 'all', leaseUsd: o.leaseUsd, runId: o.runId, transport: o.transport });
   const labelled = new Map((readJsonl(join(o.out, 'label-set', 'labels.jsonl')) as Array<{ id: string; judges: Record<string, Core>; final: unknown }>).map((l) => [l.id, l]));
   const out = rows.filter((r) => labelled.has(r.id)).sort((a, b) => a.id.localeCompare(b.id)).map((r) => {
     const l = labelled.get(r.id)!;

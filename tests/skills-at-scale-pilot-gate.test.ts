@@ -1,7 +1,7 @@
 // Keyless test of scripts/skills-at-scale/pilot-gate.ts, the R111 pilot gate: per arm, the part under test ran (native
-// listing captured, or a resolver block in a captured request), the judge passes R78 (kappa 0.6 on 40 outputs), the
+// listing captured, or a resolver block in a captured request), the judge passes R78 (kappa 0.6 on 100 outputs), the
 // requests were supplied at the planned rate and the pilot kept to a tenth of the budget; the separate judge stage when a
-// tenth cannot buy 40 labelled outputs; the 2% flag-rate limit per harness; and the command exits 1 naming the failing arm
+// tenth cannot buy 100 labelled outputs; the 2% flag-rate limit per harness; and the command exits 1 naming the failing arm
 // (internal-task).
 
 import { describe, expect, test } from 'bun:test';
@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import type { ScaleTrial } from '../scripts/skills-at-scale/analyze.ts';
 import { pilotGate } from '../scripts/skills-at-scale/pilot-gate.ts';
 
-const OPUS = 'anthropic:claude-opus-5-5', SOL = 'openai:gpt-6.1-sol';
+const OPUS = 'anthropic:claude-opus-5-5', SOL = 'openai:gpt-6.2-sol';
 const turn = (block: boolean) => ({ session: 's', turn: 1, block, block_tokens: block ? 50 : 0, injected: block, on: true, suggestions: [], phase: null, exhausted: false, code: '', infra: [] });
 function trials(cell: string, arm: string, model: string, n: number, o: { ran?: (i: number) => boolean; reached?: (i: number) => boolean; usd?: number } = {}): ScaleTrial[] {
   return Array.from({ length: n }, (_, i) => {
@@ -22,18 +22,18 @@ function trials(cell: string, arm: string, model: string, n: number, o: { ran?: 
       saw: arm === 'native' ? (ran ? { described: ['sk-a'], name_only: [] } : { described: [], name_only: [] }) : null } as ScaleTrial;
   });
 }
-const requests = Array.from({ length: 40 }, (_, i) => ({ id: (i % 4 === 3 ? 'l-n-' : 'l-s-') + i, kind: (i % 4 === 3 ? 'none' : 'skill') as 'none' | 'skill', target: i % 4 === 3 ? null : 'sk-a' }));
-const check = (astra: number, opus: number, n = 60) => ({ n_gold: n, sources: { 'openai:gpt-6-astra': { kappa: astra }, 'anthropic:claude-opus-5-5': { kappa: opus } } });
+const requests = Array.from({ length: 40 }, (_, i) => ({ id: (i % 4 === 3 ? 'l-n-' : 'l-s-') + i, kind: (i % 4 === 3 ? 'none' : 'skill') as 'none' | 'skill', target: i % 4 === 3 ? null : 'sk-a' })); // pregate-literal: R78_OUTPUTS=40 the fixture's 40 requests, not a label count
+const check = (astra: number, opus: number, n = 100) => ({ n_gold: n, sources: { 'openai:gpt-6.2-astra': { kappa: astra }, 'anthropic:claude-opus-5-5': { kappa: opus } } });
 
 describe('skills-at-scale pilot gate (R111)', () => {
   test('passing arms pass; each failing check names its arm', () => {
     const ts = [
-      ...trials('cc-native', 'native', OPUS, 40),
-      ...trials('cc-resolver', 'resolver', OPUS, 40, { ran: (i) => i % 4 === 3 ? false : true }),
-      ...trials('cc-broken', 'resolver', OPUS, 40, { ran: (i) => i % 2 === 0 }),
-      ...trials('cx-native', 'native', SOL, 40, { reached: (i) => i < 30 }),
+      ...trials('cc-native', 'native', OPUS, 40), // pregate-literal: R78_OUTPUTS=40 trials per arm in this fixture, not a label count
+      ...trials('cc-resolver', 'resolver', OPUS, 40, { ran: (i) => i % 4 === 3 ? false : true }), // pregate-literal: R78_OUTPUTS=40 trials per arm in this fixture, not a label count
+      ...trials('cc-broken', 'resolver', OPUS, 40, { ran: (i) => i % 2 === 0 }), // pregate-literal: R78_OUTPUTS=40 trials per arm in this fixture, not a label count
+      ...trials('cx-native', 'native', SOL, 40, { reached: (i) => i < 30 }), // pregate-literal: R78_OUTPUTS=40 trials per arm in this fixture, not a label count
     ];
-    const g = pilotGate({ trials: ts, planned: { 'cc-native': 40, 'cc-resolver': 40, 'cc-broken': 40, 'cx-native': 40 }, judgeCheck: check(0.7, 0.5), requests, flagged: [] });
+    const g = pilotGate({ trials: ts, planned: { 'cc-native': 40, 'cc-resolver': 40, 'cc-broken': 40, 'cx-native': 40 }, judgeCheck: check(0.7, 0.5), requests, flagged: [] }); // pregate-literal: R78_OUTPUTS=40 planned trials per arm, not a label count
     const by = Object.fromEntries(g.arms.map((a) => [a.arm, a]));
     expect(by['cc-native']!.pass).toBe(true);
     expect(by['cc-resolver']!.pass).toBe(true);
@@ -45,16 +45,16 @@ describe('skills-at-scale pilot gate (R111)', () => {
     expect(g.pass).toBe(false);
   });
 
-  test('the judge needs 40 labelled outputs, and a pilot over a tenth of the budget fails', () => {
-    const ts = trials('cc-native', 'native', OPUS, 40, { usd: 0.5 });
-    const g = pilotGate({ trials: ts, planned: { 'cc-native': 40 }, judgeCheck: check(0.9, 0.9, 30), armUsd: { 'cc-native': 150 }, judgeStage: 'pilot', flagged: [] });
+  test('the judge needs 100 labelled outputs, and a pilot over a tenth of the budget fails', () => {
+    const ts = trials('cc-native', 'native', OPUS, 40, { usd: 0.5 }); // pregate-literal: R78_OUTPUTS=40 trials per arm in this fixture, not a label count
+    const g = pilotGate({ trials: ts, planned: { 'cc-native': 40 }, judgeCheck: check(0.9, 0.9, 30), armUsd: { 'cc-native': 150 }, judgeStage: 'pilot', flagged: [] }); // pregate-literal: R78_OUTPUTS=40 planned trials per arm, not a label count
     expect(g.arms[0]!.failing).toEqual(['judge', 'pilot_tenth']);
     expect(g.arms[0]!.pilot_tenth!.detail).toBe('$20.00 spent of a $15.00 pilot tenth');
   });
 
-  test('when a tenth cannot buy 40 labelled outputs the judge is its own stage, and it blocks counted sessions until it passes', () => {
-    const ts = trials('cc-native', 'native', OPUS, 40);
-    const o = { trials: ts, planned: { 'cc-native': 40 }, armUsd: { 'cc-native': 10 }, judgeUsdPerOutput: 0.05, flagged: [] };
+  test('when a tenth cannot buy 100 labelled outputs the judge is its own stage, and it blocks counted sessions until it passes', () => {
+    const ts = trials('cc-native', 'native', OPUS, 40); // pregate-literal: R78_OUTPUTS=40 trials per arm in this fixture, not a label count
+    const o = { trials: ts, planned: { 'cc-native': 40 }, armUsd: { 'cc-native': 10 }, judgeUsdPerOutput: 0.05, flagged: [] }; // pregate-literal: R78_OUTPUTS=40 planned trials per arm, not a label count
     const waiting = pilotGate({ ...o, judgeCheck: null });
     expect(waiting.arms[0]!.judge).toBe('separate stage');
     expect(waiting.arms[0]!.pass).toBe(true);

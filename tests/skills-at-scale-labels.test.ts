@@ -26,10 +26,10 @@ const SET = [
   { id: 'l-n-002', kind: 'none', target: null, request: 'Weather tomorrow in Oslo', half: 'test' },
 ];
 const ANSWERS: Record<string, Record<string, string[]>> = {
-  'Please fix the invoice totals': { 'openai:gpt-6-astra': ['sk-a'], 'anthropic:claude-opus-5-5': ['sk-a', 'sk-b'] },
-  'Plan my garden beds': { 'openai:gpt-6-astra': ['sk-c'], 'anthropic:claude-opus-5-5': ['sk-c'] },
-  'What is 2 plus 2': { 'openai:gpt-6-astra': [], 'anthropic:claude-opus-5-5': [] },
-  'Weather tomorrow in Oslo': { 'openai:gpt-6-astra': ['sk-d'], 'anthropic:claude-opus-5-5': [] },
+  'Please fix the invoice totals': { 'openai:gpt-6.2-astra': ['sk-a'], 'anthropic:claude-opus-5-5': ['sk-a', 'sk-b'] },
+  'Plan my garden beds': { 'openai:gpt-6.2-astra': ['sk-c'], 'anthropic:claude-opus-5-5': ['sk-c'] },
+  'What is 2 plus 2': { 'openai:gpt-6.2-astra': [], 'anthropic:claude-opus-5-5': [] },
+  'Weather tomorrow in Oslo': { 'openai:gpt-6.2-astra': ['sk-d'], 'anthropic:claude-opus-5-5': [] },
 };
 function fakeJudges(calls: CompleteRequest[]) {
   return async (r: CompleteRequest) => {
@@ -62,7 +62,7 @@ describe('set L labels', () => {
     const pass1 = calls.filter((c) => c.prompt.includes('"candidates": [up to 8'));
     expect(pass1.length).toBe(8);
     expect(pass1.every((c) => SKILLS.every((n) => c.cachePrefix!.includes('- ' + n + ': does ' + n)))).toBe(true);
-    expect(new Set(calls.map((c) => c.model))).toEqual(new Set(['openai:gpt-6-astra', 'anthropic:claude-opus-5-5']));
+    expect(new Set(calls.map((c) => c.model))).toEqual(new Set(['openai:gpt-6.2-astra', 'anthropic:claude-opus-5-5']));
   });
 
   test('sealed rows are never labelled into the checkout', async () => {
@@ -106,7 +106,7 @@ describe('adjudication', () => {
 
   test('both graders must accept; a split is not acceptable; a failed grade stays pending', async () => {
     const queue = [{ item: 'q-1', request_id: 'r1', skill: 'sk-b' }, { item: 'q-2', request_id: 'n1', skill: 'sk-c' }, { item: 'q-3', request_id: 'r9', skill: 'sk-c' }];
-    const transport = async (r: CompleteRequest) => JSON.stringify({ correct: r.prompt.includes('Skill: sk-b') || (r.prompt.includes('Skill: sk-c') && r.model === 'openai:gpt-6-astra'), reason: 'r' });
+    const transport = async (r: CompleteRequest) => JSON.stringify({ correct: r.prompt.includes('Skill: sk-b') || (r.prompt.includes('Skill: sk-c') && r.model === 'openai:gpt-6.2-astra'), reason: 'r' });
     const out = mkdtempSync(join(tmpdir(), 'scale-adj-run-'));
     const s = await adjudicate({ queue, requests: new Map([['r1', 'fix invoices'], ['n1', 'hello']]), catalog: catalog(), out, leaseUsd: 1, runId: 't', transport });
     expect(s).toMatchObject({ queue: 3, adjudicated: 2, pending: 1, acceptable: 1, split: 1 });
@@ -114,19 +114,21 @@ describe('adjudication', () => {
     expect(rows.map((r) => [r.request_id, r.skill, r.acceptable, r.split])).toEqual([['r1', 'sk-b', true, false], ['n1', 'sk-c', false, true]]);
   });
 
-  test('gold: 60 rows, half near-duplicate at 1,500; kappa per judge gates the check', () => {
-    const gold: Gold[] = Array.from({ length: 60 }, (_, i) => ({ id: 'g' + i, skill: 'sk-a', good: i % 3 !== 0, near_duplicate: i < 30, rung: 1500, adjudicated_by: 'panel', reason: 'r' }));
+  test('gold: 100 rows, half near-duplicate at 1,500; kappa per judge gates the check', () => {
+    const gold: Gold[] = Array.from({ length: 100 }, (_, i) => ({ id: 'g' + i, skill: 'sk-a', good: i % 3 !== 0, near_duplicate: i < 50, rung: 1500, adjudicated_by: 'panel', reason: 'r' }));
     const lab = gold.map((g, i) => ({ id: g.id, judges: { astra: { no_skill_needed: false, acceptable: g.good ? ['sk-a'] : [] }, opus: { no_skill_needed: false, acceptable: i % 2 ? ['sk-a'] : [] } } }));
     const r = goldCheck(gold, lab);
     expect(r.problems).toEqual([]);
-    expect(r.sources['openai:gpt-6-astra']!.kappa).toBe(1);
+    expect(r.sources['openai:gpt-6.2-astra']!.kappa).toBe(1);
     expect(r.sources['anthropic:claude-opus-5-5']!.kappa!).toBeLessThan(0.6);
     expect(r.passed).toBe(false);
     expect(goldCheck(gold, lab.map((l) => ({ ...l, judges: { ...l.judges, opus: l.judges.astra } }))).passed).toBe(true);
-    expect(goldProblems(gold.slice(0, 59)).join()).toContain('at least 60');
+    expect(goldProblems(gold.slice(0, 99)).join()).toContain('at least 100');
     expect(goldProblems(gold.map((g, i) => ({ ...g, near_duplicate: i < 20 }))).join()).toContain('near-duplicate');
     expect(goldProblems([...gold, gold[0]!]).join()).toContain('appears twice');
     expect(goldCheck(gold.slice(0, 10), lab).n_gold).toBe(0);
+    const two = goldCheck(gold, lab.slice(0, 2).map((l) => ({ ...l, judges: { ...l.judges, opus: l.judges.astra } })));
+    expect([two.n_gold, two.passed]).toEqual([2, false]);
   });
 });
 

@@ -44,7 +44,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s codex[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 harness_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -64,7 +64,7 @@ case "${HE_MODEL_BASE_URL%/}" in
   *) log "HE_MODEL_BASE_URL $HE_MODEL_BASE_URL does not end in /openai: codex runs only on an openai cell (the proxy route <proxy>/<slot>/openai)"; exit 2 ;;
 esac
 
-# internal-task, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
+# GST-2715, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
 # from Codex's shipped defaults and keeps whatever the agent and gbrain write across sessions: config.toml is written once, before
 # the first turn, and never regenerated; it has no MCP server of ours, and the web_search and external_web_access disables and
 # plugins = false are left out so the shipped defaults apply. env_key stays HE_MODEL_API_KEY, but the variable is set only in each
@@ -98,9 +98,9 @@ if [ -n "${HE_GBRAIN_INSTALL:-}" ] && [ "$HE_GBRAIN_INSTALL" != gbrain-installer
   exit 2
 fi
 
-# H10 (internal-task): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
+# H10 (HARN-18): HE_HARNESS_CONFIG names the instruction route, [<driver>+]<route>[@<slot_id>] (docs/adapters.md, "Route config",
 # the grammar parseRouteConfig in runner/contracts.ts reads), applied below once config.toml is written. Unset, empty or default
-# changes nothing; official-minimal (internal-task, below) is no route.
+# changes nothing; official-minimal (HARN-20, below) is no route.
 # A driver prefix is claude-code's alone, and the slot routes run on Claude Code only in H10 (Codex takes a slot
 # bundle in a later run), so both stop here. A route beside HE_GBRAIN_INSTALL is refused too: the installer writes gbrain's own rule
 # into AGENTS.md and its own UserPromptSubmit hook, so the cell would carry two carriers. Every refusal is HE-ADAPTER-007, exit 2,
@@ -108,12 +108,15 @@ fi
 route_config=${HE_HARNESS_CONFIG:-} route=${HE_HARNESS_CONFIG:-default}
 refuse_route() { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$route_config $1"; exit 2; }
 [[ $route != *+* ]] || refuse_route "carries a driver prefix, which only claude-code takes (harness codex)"
-skill_arm=''
+skill_arm='' sas_config=''
 case "$route" in
   official-minimal) route=default ;;
   skills-native|skills-resolver|skills-names-only|skills-no-catalog)
     [ "$entry" = serve ] || refuse_route "is applied for the serve entry only (scripts/skill-resolver/ARMS.md)"
     skill_arm=${route#skills-} route=default ;;
+  skills-catalog|skills-gbrain-setup|skills-gbrain-pins)
+    [ "$entry" = serve ] || refuse_route "is applied for the serve entry only (scripts/skills-at-scale/README.md)"
+    sas_config=$route route=default ;;
   skills-usage-ordered) refuse_route "is OpenClaw's usage-ordered arm; codex has no such arm (scripts/skill-resolver/ARMS.md)" ;;
   default|route-tool|route-hook|route-once|route-system|route-startup|route-skill|route-told|route-placebo) ;;
   route-slot-told@*|route-slot-skill@*) refuse_route "is a slot route, which H10 runs on claude-code only; codex takes a slot bundle in a later run" ;;
@@ -137,7 +140,7 @@ version=$(cli_version)
 log "codex-cli ${version:-unknown} (pin.json $pin_version) model=he-proxy/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 [ "$version" = "$pin_version" ] || { log "codex-cli ${version:-unknown} is not the pinned $pin_version"; exit 2; }
 
-# internal-task: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
+# HARN-20: HE_HARNESS_CONFIG (the cell's config) official-minimal replaces Codex's own base instructions with one fixed text,
 # ablation/official-minimal.txt beside this file (/opt/harness/ablation in the image; a byte copy of
 # harnesses/ablation/official-minimal.txt, checked against pin.json official_minimal.sha256), named by model_instructions_file at
 # the top of config.toml. Unset, empty or default adds nothing, so config.toml is byte-identical to before; any other value is a
@@ -217,7 +220,7 @@ else
   log "config written to $CODEX_HOME/config.toml (mcp_servers $mcp_servers)"
 fi
 
-# internal-task, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
+# HARN-13, the installer rung (docs/gbrain-arm.md, "The install ladder"): under HE_GBRAIN_INSTALL=gbrain-installer the runner mounts
 # the exported view of what `gbrain setup codex --instructions-only` wrote at gbrain image build (gbrain#7989) read-only at
 # HE_GBRAIN_INSTALL_DIR. Setup ran there with HOME=/harness-state and CODEX_HOME=/harness-state/codex, so every path in it is this
 # container's: home/codex/AGENTS.md (the brain-first block, Codex's global instructions), home/codex/hooks.json (the
@@ -339,7 +342,7 @@ fi
 # The number of times gbrain's turn hook has run in this state dir: one heartbeat line per UserPromptSubmit.
 hook_runs() { cat "$hook_heartbeat" 2>/dev/null | grep -c '"event":"user-prompt"' || true; }
 
-# H10 (internal-task), the instruction routes (harnesses/routes/README.md, "Routes on four harnesses"). One instruction, routes/instruction.md
+# H10 (HARN-18), the instruction routes (harnesses/routes/README.md, "Routes on four harnesses"). One instruction, routes/instruction.md
 # beside this file (/opt/harness/routes in the image, a byte copy of harnesses/routes/instruction.md checked against the sha256 the
 # preregistration cites; routes/placebo.md likewise), reaches Codex through the route the config names:
 #   route-tool                  nothing written: the gbrain MCP tool descriptions stay the only carrier
@@ -426,7 +429,23 @@ JS
   route_json=$(printf ',"instruction_route":{"config":"%s","driver":"cli","route":"%s","bytes_sha256":"%s","files":%s,"hook":"%s"}' "$route_config" "$route" "$route_sha" "$route_files" "$route_hook")
 fi
 
-# internal-task, the skill-resolver arms (scripts/skill-resolver/ARMS.md). HE_HARNESS_CONFIG skills-<arm> reads the kit at
+# The skills-at-scale arms (scripts/skills-at-scale/README.md), on HE_HARNESS_CONFIG skills-catalog, skills-gbrain-setup
+# or skills-gbrain-pins. The kit's bin/sas-arm (${HE_SAS_DIR:-/opt/skills-at-scale}, scripts/skills-at-scale/build-kit.ts)
+# installs the catalog in $CODEX_HOME/skills and, on the gbrain arms, runs gbrain's own installer as a user would; it writes
+# $HE_LOG_DIR/sas-arm.json, and ready gains sas_arm. Any failure is HE-ADAPTER-007 and exit 2 before ready. Any other config:
+# nothing here runs and nothing is written.
+sas_arm_json=''
+if [ -n "$sas_config" ]; then
+  set +e
+  sas_line=$("${HE_SAS_DIR:-/opt/skills-at-scale}/bin/sas-arm" codex "$sas_config" --dest "$CODEX_HOME/skills" 2>> "$HE_LOG_DIR/sas-arm.stderr.log")
+  sas_code=$?
+  set -e
+  log "skills-at-scale arm $sas_config: ${sas_line:-HE-ADAPTER-007 sas-arm printed nothing; see sas-arm.stderr.log}"
+  [ "$sas_code" -eq 0 ] || exit 2
+  sas_arm_json=",\"sas_arm\":${sas_line#ok }"
+fi
+
+# HARN-52, the skill-resolver arms (scripts/skill-resolver/ARMS.md). HE_HARNESS_CONFIG skills-<arm> reads the kit at
 # ${HE_SKILL_KIT_DIR:-/opt/skill-resolver} (scripts/skill-resolver/build-kit.ts):
 #   skills-native      the catalog in $CODEX_HOME/skills; a UserPromptSubmit group of its own in hooks.json, trusted by its own
 #                      [hooks.state] table (trust-hash.cjs), runs the hook wrapper with the resolver in shadow mode each turn
@@ -689,7 +708,7 @@ mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 # Install mode: the watcher starts before ready and stops by itself once this process is gone.
 if [ "$install_mode" = 1 ]; then bash "$HE_INSTALL_DIR/probe.sh" watch codex "$HE_LOG_DIR/install-watch.ndjson" $$ > /dev/null 2>> "$HE_LOG_DIR/install-watch.stderr.log" & fi
 printf '{"harness":"codex","version":"%s","trial":"%s","ready_at":"%s","session_keys":"codex exec (first turn of a key) | codex exec resume <thread id>; dm:<member> | channel:<id>","mcp_servers":%s,"adapter_sha256":"%s"%s}\n' \
-  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$skill_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
+  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$skill_arm_json$sas_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

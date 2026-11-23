@@ -1,0 +1,45 @@
+{
+ "harness": "qm",
+ "qm_image": "harness-eval/qm:dev",
+ "qm_commit": "90e4ced75dba0f711e9737e5bb2f2d718870fb0f",
+ "gbrain": {
+  "tag": "v0.60.742.0",
+  "version": "0.60.742.0",
+  "pinned": true
+ },
+ "bun_image": "oven/bun:1.4.4-alpine",
+ "compiled_musl": {
+  "binary": "(local build, not committed)",
+  "out": [
+   "gbrain 0.60.742.0",
+   "Error [skill_resolver_setup_incomplete]: The skill resolver library could not be built (This gbrain is a compiled binary without its source, so it cannot build the Node library.). The catalog was built; the state file and the extension were not written.",
+   "Fix: gbrain setup pi --skill-loading resolve --dry-run",
+   "setup_exit=1"
+  ]
+ },
+ "setup": {
+  "exit": 0,
+  "lines": [
+   "  write    resolver catalog: pi-user: 351 skills from /home/node/.pi/agent/skills",
+   "  write    resolver library: /home/node/.gbrain/lib/9be4b5ac6ed32c74ad2583b1cf85e1e90ec70f2079e7817a4f08c7186a87a06c.mjs",
+   "  write    resolver state: /home/node/.gbrain/pi-skill-resolver.json",
+   "  write    resolver extension: /home/node/.pi/agent/extensions/gbrain-skill-resolver",
+   "  run      resolver self-test: one turn through the extension under /usr/local/bin/node: 3 suggestion(s) in 19 ms",
+   "  note     resolver no pi on PATH, so setup could not check that Pi loads the extension; `pi --help` lists --gbrain-skill-resolver once it does",
+   "  note     resolver Pi started with extensions off (pi --no-extensions, or a program that embeds Pi with noExtensions, as QM does) loads no extension, so those sessions get no suggestions"
+  ]
+ },
+ "doctor": {
+  "status": "ok",
+  "message": "Skill resolver: no hook harness on; pi extension present, 351 skills in pi-user, fresh, 0 pinned (partial: Pi started with extensions off (pi --no-extensions, or an embedder such as QM) gets no suggestions)."
+ },
+ "cell": {
+  "requests": 2,
+  "error": null,
+  "catalog_listed": 351,
+  "relevant_skills_blocks": 0,
+  "pinned_skills_blocks": 0,
+  "mentions_gbrain_skill_resolver": 0
+ },
+ "gbrain_compiled_musl_note": "bun build --compile --target=bun-linux-x64-musl on bun 1.4.4 at gbrain commit ae8201041c21101dc8c5127afc1be4a047049483"
+}

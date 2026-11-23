@@ -70,7 +70,7 @@ results/<run-id>/
     turns/                   turn-NNNN.request.json and .response.json
     snapshot.json            GET /admin/snapshot after the fence
     usage.json, reconcile.json   the proxy meter for trial-token:<id> (field meter_id) and its check against the usage lines
-    got-skill.json, skill-flags.json   skill-requests cells only: the skills the model got, and the tool calls flagged for a hand read (scripts/skills-at-scale/flags.ts); kept .json files are redacted value by value, so they still parse
+    got-skill.json, skill-flags.json, saw-skill.json   skill-requests cells only: the skills the model got, the tool calls flagged for a hand read (scripts/skills-at-scale/flags.ts), and the catalog skills the requests listed or a resolver block named (scripts/skills-at-scale/saw.ts, written only when the cell's catalog file gives every skill a description); kept .json files are redacted value by value, so they still parse
     grade.json               GradeResult
     workspace/, state/, logs/    the harness's mounts; logs/ready, adapter.log, docker.log or harness.std*.log
     harness-memory/          Hermes and OpenClaw only: their own memory files (*.md) copied before turn 1 and after each turn,
@@ -162,6 +162,10 @@ A `gbrain-install` cell asks a freshly set-up harness to install gbrain, then ch
 - **Tests.** `tests/gbrain-install-runner.test.ts` runs an oracle, a nop and a harness-memory decoy through the runner with a process-mode fixture adapter.
 
 ## Changelog
+
+### 2026-11-23: skill-requests trials keep saw-skill.json
+
+The trial directory listing names `saw-skill.json`, which a skill-requests trial now writes before the request scrub and keeps through it: the catalog skills its captured requests listed with a description or by name only, and the ones a gbrain resolver block named. Why: the skills-at-scale analysis reads it for "saw the right skill", and nothing wrote it, so that outcome had no value for any trial.
 
 ### 2026-11-21: the 2026-11-21 price table (internal-task)
 

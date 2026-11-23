@@ -131,9 +131,9 @@ describe('skills-at-scale analysis', () => {
 
   test('pins: a planted +20 on pinned targets with nothing lost elsewhere says pins help', () => {
     const pins = TARGETS.slice(0, 20);
-    const ts = trials('pi', [OPUS], [1500], { arm: 'resolver-pins', right: (i) => i < 60 && i % 2 === 1 && i % 6 !== 5 });
+    const ts = trials('pi', [OPUS], [1500], { arm: 'resolver-pins', right: (i) => i < 60 && i % 2 === 1 && i % 6 !== 5 }); // pregate-literal: MIN_GOLD=60 the 60 pinned-target pairs of this fixture, not a gold count
     const a = analyze({ ...base, places: placesFor('pi'), pins, trials: [...ts, ...trials('pi', [OPUS], [1500], {}).filter((t) => t.arm === 'resolver')] });
-    expect(a.pins.pinned_targets.n_pairs).toBe(60);
+    expect(a.pins.pinned_targets.n_pairs).toBe(60); // pregate-literal: MIN_GOLD=60 the 60 pinned-target pairs of this fixture, not a gold count
     expect(a.pins.pinned_targets.delta).toBeGreaterThanOrEqual(0.1);
     expect(a.pins.verdict).toContain('pins help');
   }, 120000);
@@ -159,7 +159,7 @@ describe('skills-at-scale analysis', () => {
 
   test('status: final only with a passing judge check and every adjudication done; adjudicated skills join the acceptable set', () => {
     const ts = trials('claude-code', [OPUS], [1500], { wrong: (i) => i === 1 });
-    const judgeCheck = { n_gold: 60, sources: { 'openai:gpt-6-astra': { kappa: 0.72 }, 'anthropic:claude-opus-5-5': { kappa: 0.65 } } };
+    const judgeCheck = { n_gold: 100, sources: { 'openai:gpt-6.2-astra': { kappa: 0.72 }, 'anthropic:claude-opus-5-5': { kappa: 0.65 } } };
     const queue = [{ request_id: SKILL_REQ[1]!.id, skill: 'd351-0' }];
     const pending = analyze({ ...base, places: placesFor('claude-code'), trials: ts, judgeCheck, queue });
     expect(pending.status.final).toBe(false);
@@ -175,13 +175,13 @@ describe('skills-at-scale analysis', () => {
     expect(done.status.final).toBe(true);
     expect(done.per_rung[0]!.outcomes.opened_wrong_skill.n_better).toBe(0);
     expect(done.per_rung[0]!.outcomes.opened_right_skill.n_better).toBe(1);
-    expect(analyze({ ...base, places: placesFor('claude-code'), trials: ts, queue, judgeCheck: { ...judgeCheck, n_gold: 59 } }).status.final).toBe(false);
+    expect(analyze({ ...base, places: placesFor('claude-code'), trials: ts, queue, judgeCheck: { ...judgeCheck, n_gold: 99 } }).status.final).toBe(false);
   }, 120000);
 
   test('flagged trials: unsettled ones block the final status; settled ones count with the readers\' verdicts and get their own line', () => {
     const ts = trials('claude-code', [OPUS], [1500], { wrong: (i) => i === 1 });
     const t = ts.find((x) => x.arm === 'resolver' && x.task === SKILL_REQ[1]!.id)!;
-    const judgeCheck = { n_gold: 60, sources: { 'openai:gpt-6-astra': { kappa: 0.72 }, 'anthropic:claude-opus-5-5': { kappa: 0.65 } } };
+    const judgeCheck = { n_gold: 100, sources: { 'openai:gpt-6.2-astra': { kappa: 0.72 }, 'anthropic:claude-opus-5-5': { kappa: 0.65 } } };
     const interim = interimLook({ ...base, places: placesFor('claude-code'), trials: ts });
     const flagged = [{ trial_id: t.id, cell: t.cell, arm: 'resolver', harness: 'claude-code', model: OPUS, rung: 1500, flags: ['cd-joined' as const], call_ids: ['toolu_1'], trace_paths: [], sources: [] }];
     const common = { ...base, places: placesFor('claude-code'), trials: ts, judgeCheck, queue: [], interim, flagged };

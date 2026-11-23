@@ -11,7 +11,7 @@
 // arms, rungs and setups. <out>/queue.jsonl carries only {item, request_id, skill}, in a seeded order, so whoever grades it
 // cannot tell which arm opened what; <out>/key.jsonl maps each item to the trials that opened it and stays with the
 // analysis until unblinding.
-// run: both graders (GPT-6 Astra and Opus 5.5, judge-check.ts grade: the request and that one SKILL.md) grade every item. An
+// run: both graders (GPT-6.2 Astra and Opus 5.5, judge-check.ts grade: the request and that one SKILL.md) grade every item. An
 // item is acceptable only when both say so; a split is not acceptable and is listed. <out>/adjudications.jsonl
 // ({item, request_id, skill, grades, acceptable, split}) is what analyze.ts --adjudications reads; an item whose grading
 // failed is left out and stays pending. --batch <dir> grades through the provider batch APIs (batch.ts), one round per run,
@@ -19,22 +19,24 @@
 // gold-check: R78's check of each judge against gold, adjudicated (request, skill) pairs. Gold file rows:
 //   {"id": "<request id>", "skill": "<skill>", "good": true|false, "near_duplicate": true|false, "rung": 1500,
 //    "adjudicated_by": "<who>", "reason": "<one sentence>"}
-// It needs at least 60 rows, at least half of them near-duplicate cases at the 1,500 rung, with no (id, skill) twice.
+// It needs at least 100 rows (R78 for preregistrations frozen from 2026-11-22), at least half of them near-duplicate cases at the 1,500 rung, with no (id, skill) twice.
 // Each judge's labels in labels-l.jsonl are scored against gold with judge-check.ts scoreSources (Cohen's kappa, catch
 // rate, false-fail rate), overall and on the near-duplicate half. Output: the shape analyze.ts --judge-check reads.
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { createLlm, LlmError, type Transport } from '../v03/llm.ts';
-import { GRADERS, grade, scoreSources, type Sources } from '../skill-resolver/judge-check.ts';
+import { createLlm, LlmError, type ModelId, type Transport } from '../v03/llm.ts';
+import { grade, scoreSources, type Sources } from '../skill-resolver/judge-check.ts';
 import { judgeFor, loadScaleTrials, type LabelRow } from './analyze.ts';
 import { batchCli } from './batch.ts';
 
 export const SEED = 'harn-107-adjudicate-v1';
-export const GOLD_MIN = 60;
-export const NEAR_DUPLICATE_MIN = 30;
-const JUDGE_SOURCE = { astra: 'openai:gpt-6-astra', opus: 'anthropic:claude-opus-5-5' } as const;
+export const GOLD_MIN = 100;
+export const NEAR_DUPLICATE_MIN = 50;
+const JUDGE_SOURCE = { astra: 'openai:gpt-6.2-astra', opus: 'anthropic:claude-opus-5-5' } as const;
+/** The two graders, the judges' own models (R116: GPT-6.2 Astra, not judge-check.ts's GPT-6 Astra, which #449 froze). */
+export const GRADERS: ModelId[] = [JUDGE_SOURCE.astra, JUDGE_SOURCE.opus];
 export type QueueItem = { item: string; request_id: string; skill: string };
 export type Gold = { id: string; skill: string; good: boolean; near_duplicate: boolean; rung: number; adjudicated_by: string; reason: string };
 
@@ -113,8 +115,9 @@ export function goldCheck(gold: Gold[], labels: LabelRow[]) {
   const pairs = gold.map((g) => ({ id: g.id, skill: g.skill, pool: g.near_duplicate ? 'near-duplicate' : 'other', good: g.good }));
   const scored = scoreSources(pairs, sources, {});
   const near = scoreSources(pairs.filter((g) => g.pool === 'near-duplicate'), sources, {});
-  const passed = !problems.length && Object.values(scored).every((s) => s.kappa !== null && s.kappa >= 0.6);
-  return { schema: 'he-skills-at-scale-judge-check/1', n_gold: problems.length ? 0 : gold.length, n_rows: gold.length, near_duplicate: gold.filter((g) => g.near_duplicate).length,
+  const matched = Math.min(...Object.values(scored).map((s) => s.n_bad + s.n_good));
+  const passed = !problems.length && matched >= GOLD_MIN && Object.values(scored).every((s) => s.kappa !== null && s.kappa >= 0.6);
+  return { schema: 'he-skills-at-scale-judge-check/1', n_gold: problems.length ? 0 : matched, n_rows: gold.length, near_duplicate: gold.filter((g) => g.near_duplicate).length,
     problems, sources: scored, sources_near_duplicate: near, passed };
 }
 

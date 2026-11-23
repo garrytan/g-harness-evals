@@ -19,7 +19,7 @@
 //   --requests: set L rows {id, kind: skill|none, target, stratum, half} (gen-set-l.ts). Requests cluster by target skill; a
 //     no-skill request is its own cluster.
 //   --labels: label-l.ts rows {id, judges: {astra: {no_skill_needed, acceptable}, opus: {...}}}. A trial is scored with the
-//     other family's judge (R78): Opus 5.5 labels score OpenAI models, GPT-6 Astra labels score every other model.
+//     other family's judge (R78): Opus 5.5 labels score OpenAI models, GPT-6.2 Astra labels score every other model.
 //   --ladder: {rungs: {"100": [skill], "351": [...], "700": [...], "1500": [...]}}, nested. A request's acceptable set at a
 //     rung is its 1,500-catalog set intersected with that rung's catalog.
 //   --places: the keyless listing map, {harnesses: {<harness>: {"<rung>": {described, name_only, omitted, not_loaded}}}},
@@ -30,7 +30,7 @@
 //     request's acceptable set for both judges. --queue: adjudicate.ts's queue; items with no adjudication are pending, and
 //     every decision is marked provisional while any are.
 //   --judge-check: adjudicate.ts gold-check output; the decision counts only when both judges reach kappa 0.6 on at least
-//     60 gold pairs.
+//     100 gold pairs (R78 for preregistrations frozen from 2026-11-22).
 //
 // Rules, from the plan: outcomes are resolver minus native, paired per request within a setup (harness and model) and rung,
 // clustered by target skill. Opened the right skill counts on all skill-needing requests (what a user gets); the reachable
@@ -91,9 +91,9 @@ export const PINS_BAR = 0.10;
 export const PINS_UNPINNED_FLOOR = -0.03;
 export const PINS_HARNESSES = ['hermes', 'openclaw', 'pi'];
 export const KAPPA_MIN = 0.6;
-export const MIN_GOLD = 60;
+export const MIN_GOLD = 100;
 export const PLAN_MARGINS = { one_model: { wrong_skill: 0.045, no_skill_open: 0.045 }, two_models: { wrong_skill: 0.03, no_skill_open: 0.03 } };
-export const JUDGES = { astra: 'openai:gpt-6-astra', opus: 'anthropic:claude-opus-5-5' } as const;
+export const JUDGES = { astra: 'openai:gpt-6.2-astra', opus: 'anthropic:claude-opus-5-5' } as const;
 export const PLANNED_EFFECT = { one_model: 0.089, two_models: 0.063 };
 export const INTERIM_SEED = 'harn-107-interim-v1';
 

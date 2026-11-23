@@ -6,6 +6,9 @@
 //   bun scripts/skills-at-scale/build-ladder.ts --src <src> --out <snapshot> [--record <dir>] [--check] [--gitleaks] [--leak-set <setR.jsonl>]
 //   bun scripts/skills-at-scale/build-ladder.ts --materialize <rung> --out <snapshot> --dest <dir>
 //
+// --materialize writes one rung as a catalog directory: <dest>/skills/<name>/ (hard links into the snapshot) and
+// <dest>/manifest.json ({catalog_hash, skill_count, rung, skills: [{name, pack, description, skill_md_sha256}]}, the
+// description read from each SKILL.md as the harness sees it), which gen-set-l.ts, label-l.ts and the trial runner read.
 // <src> holds one checkout per pack, named as in scripts/skill-resolver/packs.json and packs-ladder.json. The 351-skill
 // rung is the skill-resolver catalog, built by scripts/skill-resolver/build-catalog.ts and refused unless its hash is
 // the one packs-ladder.json pins. Each added pack is built on its own by the same builder, then screened: a skill drops
@@ -251,13 +254,22 @@ export function nearDuplicates(items: { name: string; description: string }[], t
 
 export function materialize(out: string, rung: number, dest: string): string {
   const names = readFileSync(join(out, 'rungs', rung + '.txt'), 'utf8').split('\n').filter(Boolean);
+  const packs = JSON.parse(readFileSync(join(out, 'packs.json'), 'utf8')) as Record<string, string>;
+  const roles = JSON.parse(readFileSync(join(out, 'targets.json'), 'utf8')) as { targets: string[]; pins: string[] };
+  const target = new Set(roles.targets), pin = new Set(roles.pins);
   rmSync(dest, { recursive: true, force: true });
   for (const name of names) for (const f of walkFiles(join(out, 'skills', name))) {
     const target = join(dest, 'skills', name, relative(join(out, 'skills', name), f));
     mkdirSync(dirname(target), { recursive: true });
     linkSync(f, target);
   }
-  return catalogHashOf(dest);
+  const hash = catalogHashOf(dest);
+  const skills = names.map((name) => {
+    const md = readFileSync(join(dest, 'skills', name, 'SKILL.md'));
+    return { name, pack: packs[name]!, target: target.has(name), pin: pin.has(name), description: parseFrontmatter(md.toString('utf8')).description ?? '', skill_md_sha256: sha(md) };
+  });
+  writeFileSync(join(dest, 'manifest.json'), json({ schema_version: 1, catalog_hash: hash, skill_count: names.length, rung, skills }));
+  return hash;
 }
 
 export type BuildResult = { records: Record<string, string>; rungHashes: Record<string, string> };
@@ -328,6 +340,8 @@ export function buildLadder(cfg: LadderConfig, corePacks: Pack[], dirs: Record<s
     const targetSet = new Set(targets.map((t) => t.name));
     const pins = [...targets].sort((a, b) => byCodePoint(seeded(cfg.seeds.pins, a.name), seeded(cfg.seeds.pins, b.name))).slice(0, cfg.pins).map((t) => t.name).sort(byCodePoint);
     const member = (s: LadderSkill, r: number) => (r === targetCount ? targetSet.has(s.name) : s.rung <= r);
+    writeFileSync(join(out, 'packs.json'), json(Object.fromEntries(skills.map((s) => [s.name, s.pack] as const).sort(([a], [b]) => byCodePoint(a, b)))));
+    writeFileSync(join(out, 'targets.json'), json({ targets: [...targetSet].sort(byCodePoint), pins }));
     mkdirSync(join(out, 'rungs'), { recursive: true });
     const rungHashes: Record<string, string> = {};
     const rungs: Record<string, { skills: number; catalog_hash: string }> = {};

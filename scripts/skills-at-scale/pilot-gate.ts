@@ -5,7 +5,7 @@
 //       on at least 95% of trials; resolver arms put a resolver block into a captured request on at least 95% of their
 //       skill-request trials (every trial when no --requests file is given);
 //   (b) its judge passes R78: the judge that scores the arm's model (Opus for OpenAI models, Astra for the rest) has a kappa
-//       of at least 0.6 on at least 40 labelled outputs, read from adjudicate.ts gold-check's file;
+//       of at least 0.6 on at least 100 labelled outputs (R78 for preregistrations frozen from 2026-11-22), read from adjudicate.ts gold-check's file;
 //   (c) the requests can be supplied: at least 95% of the planned pilot trials reached the model (no infra stop, usage
 //       recorded);
 //   and, when the arm's budget is given, the pilot spent no more than a tenth of it.
@@ -15,8 +15,8 @@
 // An arm is a cell (harness, model, skill arm, rung). A failing arm is named, and the gate exits 1; it is fixed or left out
 // and reported as left out (R111), never a dropped arm (R71).
 //
-// Separate judge stage (internal-task's reading, 2026-11-19): when a tenth of an arm's budget cannot buy R78's 40 labelled
-// outputs (--arm-usd / 10 < 40 x --judge-usd-per-output), or with --judge-stage separate, the arm's pilot checks only (a)
+// Separate judge stage (internal-task's reading, 2026-11-19): when a tenth of an arm's budget cannot buy R78's 100 labelled
+// outputs (--arm-usd / 10 < 100 x --judge-usd-per-output), or with --judge-stage separate, the arm's pilot checks only (a)
 // and (c), and the judge check is its own stage, sized to R78, read from its own file (--judge-check). That stage must pass
 // before any counted session: while it has not, the gate exits 1 naming judge-stage.
 //
@@ -31,7 +31,7 @@ import type { FlaggedRow } from './flags.ts';
 
 export const PART_RAN_MIN = 0.95;
 export const SUPPLY_MIN = 0.95;
-export const R78_OUTPUTS = 40;
+export const R78_OUTPUTS = 100;
 export const R78_KAPPA = 0.6;
 export const PILOT_SHARE = 0.1;
 export const FLAG_RATE_MAX = 0.02;

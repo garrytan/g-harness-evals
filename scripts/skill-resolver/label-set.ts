@@ -66,7 +66,8 @@ async function reconcile(llm: Llm, bodies: (n: string) => string, req: string, a
   return { no_skill_needed: r.no_skill_needed === true || !acceptable.length, acceptable: r.no_skill_needed === true ? [] : acceptable.sort(), candidates: pool, reason: String(r.reason ?? '').slice(0, 300) };
 }
 
-export async function label(o: { catalog: string; set: string; out: string; judges: string[]; half: string; leaseUsd: number; runId: string; transport?: Transport }) {
+export async function label(o: { catalog: string; set: string; out: string; judges: string[]; models?: Record<string, ModelId>; half: string; leaseUsd: number; runId: string; transport?: Transport }) {
+  const models = o.models ?? MODELS;
   const jsonl = o.catalog.endsWith('.jsonl');
   const m = jsonl
     ? { catalog_hash: createHash('sha256').update(readFileSync(o.catalog)).digest('hex'), skills: readFileSync(o.catalog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { name: string; description: string }) }
@@ -86,7 +87,7 @@ export async function label(o: { catalog: string; set: string; out: string; judg
     while (next < rows.length) {
       const r = rows[next++]!;
       try {
-        const v: Record<string, Verdict> = Object.fromEntries(await Promise.all(o.judges.map(async (j) => [j, await judge(llm, MODELS[j]!, listing, names, bodies, text(r))] as const)));
+        const v: Record<string, Verdict> = Object.fromEntries(await Promise.all(o.judges.map(async (j) => [j, await judge(llm, models[j]!, listing, names, bodies, text(r))] as const)));
         let final = v[o.judges[0]!]!; let agreement = null; let reconciled = false;
         if (o.judges.length === 2) {
           const [a, b] = [v[o.judges[0]!]!, v[o.judges[1]!]!];

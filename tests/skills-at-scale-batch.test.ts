@@ -51,6 +51,33 @@ describe('skills-at-scale batch lane', () => {
     expect(settled).toBeLessThan(l.log[0]![1]);
   });
 
+  test('a round that stopped after settling and before saving the journal settles nothing twice', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'b-')), cache = join(dir, 'cache');
+    const a = fake(), o = fake();
+    const settled = new Map<string, number>();
+    const strict = { reserve: () => 'r' + (settled.size + 1), settle: (id: string, c: { usd: number } | null) => {
+      if (settled.has(id)) throw new Error('budget reservation ' + id + ' already settled');
+      settled.set(id, c?.usd ?? -1);
+    } };
+    const round = () => batchRound({ dir, cacheDir: cache, lease: () => strict, apis: { anthropic: a.api, openai: o.api }, work: ask(REQ, cache) });
+    await round();
+    expect((await round()).done).toBe(true);
+    const path = join(dir, 'batches.json');
+    const j = JSON.parse(readFileSync(path, 'utf8')) as { intents: Intent[]; failures: Record<string, number> };
+    const first = settled.get(j.intents[0]!.reservation_id!);
+    journal(dir, j.intents.map((i) => ({ ...i, state: 'submitted', settled_usd: null })), j.failures);
+    const r = await round();
+    expect(r.done).toBe(true);
+    expect(r.result).toBe('yes');
+    expect(settled.size).toBe(1);
+    expect(settled.get(j.intents[0]!.reservation_id!)).toBe(first);
+    expect((JSON.parse(readFileSync(path, 'utf8')) as { intents: Intent[] }).intents[0]!.state).toBe('settled');
+    expect(a.made.length).toBe(1);
+    const other = { reserve: () => 'r1', settle: () => { throw new Error('ledger is locked'); } };
+    journal(dir, j.intents.map((i) => ({ ...i, state: 'submitted', settled_usd: null })), j.failures);
+    await expect(batchRound({ dir, cacheDir: cache, lease: () => other, apis: { anthropic: a.api, openai: o.api }, work: ask(REQ, cache) })).rejects.toThrow('ledger is locked');
+  });
+
   test('crash states: prepared is released; sending with none matching is unknown and never resubmitted; one match is adopted, and a result it lacks is sent once more', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'b-')), cache = join(dir, 'cache');
     journal(dir, [intent({ intent_id: 'i0', state: 'prepared' }), intent({ intent_id: 'i1' })]);

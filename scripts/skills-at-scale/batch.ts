@@ -14,7 +14,9 @@
 // at its reported usage times BATCH_FACTOR (both providers bill batches at half list). A succeeded answer with no usage is
 // charged its worst case; an errored or expired one is free. Intent states: prepared (released on reconcile, never sent),
 // sending (adopted when exactly one provider batch matches, else unknown: never resubmitted, reservation held), submitted,
-// settled. A request that fails in MAX_FAILURES batches is not sent again and fails with E_BATCH_FAILED.
+// settled. A request that fails in MAX_FAILURES batches is not sent again and fails with E_BATCH_FAILED. A reservation the
+// ledger already settled (the round stopped after settling and before the journal recorded it) keeps that first settlement:
+// the next round finds the batch ended again, the ledger refuses a second settle, and the journal catches up.
 // Batch calls bypass the metering proxy, which has no batch endpoints: the ledger lease is the meter.
 
 import { randomUUID } from 'node:crypto';
@@ -145,9 +147,15 @@ export async function batchRound<R>(o: { dir: string; cacheDir: string; lease: (
   const set = (i: Intent, fields: Partial<Intent>) => { Object.assign(i, fields); save(path, j); };
   let lease: Lease | null = null;
   const run = () => (lease ??= o.lease());
+  const settleOnce = (id: string, cost: MeasuredCost) => {
+    try { run().settle(id, cost); } catch (e) {
+      if (!/already settled/.test((e as Error).message)) throw e;
+      log('reconcile: reservation ' + id + ' was already settled before the journal recorded it; the ledger keeps its first settlement');
+    }
+  };
 
   for (const i of j.intents.filter((x) => x.state === 'prepared')) {
-    if (i.reservation_id) run().settle(i.reservation_id, { usd: 0, input_tokens: 0, output_tokens: 0 });
+    if (i.reservation_id) settleOnce(i.reservation_id, { usd: 0, input_tokens: 0, output_tokens: 0 });
     set(i, { state: 'abandoned', settled_usd: 0, note: 'stopped before sending; reservation released' });
     log('reconcile: intent ' + i.intent_id + ' never reached the provider; released');
   }
@@ -190,7 +198,7 @@ export async function batchRound<R>(o: { dir: string; cacheDir: string; lease: (
       if (cost) { usd += cost.usd * BATCH_FACTOR; input += cost.input_tokens; output += cost.output_tokens; }
       else usd += i.reserved_usd / i.custom_ids.length;
     }
-    run().settle(i.reservation_id!, { usd, input_tokens: input, output_tokens: output });
+    settleOnce(i.reservation_id!, { usd, input_tokens: input, output_tokens: output });
     set(i, { state: 'settled', settled_usd: Number(usd.toFixed(6)), failed, note: b.status });
     log('batch ' + i.batch_id + ' ended (' + b.status + '): ' + (i.custom_ids.length - failed.length) + ' answered, ' + failed.length + ' failed, $' + usd.toFixed(4));
   }
@@ -204,6 +212,7 @@ export async function batchRound<R>(o: { dir: string; cacheDir: string; lease: (
   const submitted: Intent[] = [];
   for (const [model, reqs] of [...groups].sort((a, b) => a[0].localeCompare(b[0]))) {
     const provider = model.split(':')[0] as Provider;
+    if (!(provider in HOST)) throw new LlmError('E_BATCH_PROVIDER');
     const items = reqs.map(([id, req]) => ({ custom_id: id, body: requestBody(req).body }));
     const reserved = items.reduce((s, x) => s + worstUsd(provider, x.body).usd, 0);
     const i: Intent = { intent_id: 'i' + randomUUID().replace(/-/g, '').slice(0, 12), provider, model, custom_ids: items.map((x) => x.custom_id), models: Object.fromEntries(reqs.map(([id, r]) => [id, r.model])),
