@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
 import { conversationSources, tokenMembers } from '../gbrain/build-brain.ts';
 import { leakCellLayoutProblem, loadPrereg, buildManifest, resolveGbrain, type Cell, type Prereg } from '../runner/run.ts';
 import { containerScope, sidecarLayout } from '../runner/trial/gbrain.ts';
-import { LEAK_CODES, LEAK_RECOVERY, layoutProblem, leakMessage, leakProblems, leakRecordProblem, leakScript, runLeakPreflight, writeCarryProblems, writeLeakRecord, type AskerObservation, type LeakPreflightRecord, type WriteCarry } from '../runner/trial/gbrain-leak-preflight.ts';
+import { LEAK_CODES, LEAK_PREFLIGHT_SIDECAR, LEAK_RECOVERY, channelCarryProblems, layoutProblem, leakLayout, leakMessage, leakProblems, leakRecordName, leakRecordProblem, leakScript, runLeakPreflight, writeCarryProblems, writeLeakRecord, type AskerObservation, type ChannelCarry, type LeakPreflightRecord, type WriteCarry } from '../runner/trial/gbrain-leak-preflight.ts';
 import { gbrainUpstream } from '../runner/trial/trial.ts';
 import { grantFor } from '../world/services/gbrain-tap.ts';
 import { world } from './world-helpers.ts';
@@ -192,6 +192,55 @@ describe('the leak preflight verdicts', () => {
   });
 });
 
+describe('always-on-week Amendment 1: the leak preflight under channel_remember "conversation"; the default is unchanged', () => {
+  test('the default record layout and file name are byte-identical to what the preflight wrote before the option existed', () => {
+    const before = { sidecar: sidecarLayout({ split: 'dev', ...LEAK_PREFLIGHT_SIDECAR }), manifest_sha256: 'm', ingest_tokens_sha256: 'i' };
+    expect(JSON.stringify(leakLayout('dev', 'm', 'i'))).toBe(JSON.stringify(before));
+    expect(JSON.stringify(leakLayout('dev', 'm', 'i', 'member'))).toBe(JSON.stringify(before));
+    expect(JSON.stringify(leakLayout('dev', 'm', 'i', 'conversation'))).toBe(JSON.stringify({ ...before, channel_remember: 'conversation' }));
+    for (const arm of ['open', 'member-sources'] as const) expect(leakRecordName(arm, 'dev')).toBe(`leak-preflight-${arm}-dev.json`);
+    expect(leakRecordName('member-sources', 'dev', 'member')).toBe('leak-preflight-member-sources-dev.json');
+    expect(leakRecordName('member-sources', 'dev', 'conversation')).toBe('leak-preflight-member-sources-dev-conversation.json');
+  });
+
+  test('leakCellLayoutProblem: a conversation rules cell is now checked, not refused; any other difference still is', async () => {
+    expect(await leakCellLayoutProblem([cell(RULES, 'b')])).toBeNull();
+    expect(await leakCellLayoutProblem([cell({ ...RULES, channel_remember: 'conversation' }, 'b')])).toBeNull();
+    expect(await leakCellLayoutProblem([cell({ ...RULES, channel_remember: 'conversation', surface: 'verbs' }, 'b')])).toMatch(/^cell b .*"HE_GBRAIN_SURFACE":"verbs".*"channel_remember":"conversation".*checks only .*"HE_GBRAIN_SURFACE":"starter".*"channel_remember":"conversation"/);
+    expect(await leakCellLayoutProblem([cell(OPEN, 'a'), cell({ ...RULES, channel_remember: 'conversation' }, 'b')])).toMatch(/open and member-sources cells of split dev would start different gbrain sidecars/);
+  });
+
+  test('run\'s gate wants the record of the cell\'s own channel remember', () => {
+    const rec = { schema_version: 1, arm: 'member-sources', split: 'dev', image: 'img', image_id: 'sha256:1', gbrain_commit: null, ok: true, layout: leakLayout('dev', 'm', 'i'), facts: [], asked: [], write_carry: null, informational: {}, problems: [], summary: { askers: 0, facts: 0, database_only: 0, calls: 0 } } as LeakPreflightRecord;
+    const member = join(tmp, leakRecordName('member-sources', 'dev'));
+    const conv = join(tmp, leakRecordName('member-sources', 'dev', 'conversation'));
+    writeLeakRecord(member, rec, []);
+    writeLeakRecord(conv, { ...rec, layout: leakLayout('dev', 'm', 'i', 'conversation') }, []);
+    expect(leakRecordProblem(member, 'member-sources', 'dev', 'img', 'sha256:1')).toBeNull();
+    expect(leakRecordProblem(conv, 'member-sources', 'dev', 'img', 'sha256:1', 'conversation')).toBeNull();
+    expect(leakRecordProblem(member, 'member-sources', 'dev', 'img', 'sha256:1', 'conversation')).toMatch(/checked channel remember member, the cell runs conversation.*rerun the preflight/);
+    expect(leakRecordProblem(conv, 'member-sources', 'dev', 'img', 'sha256:1')).toMatch(/checked channel remember conversation, the cell runs member/);
+  });
+
+  test('channelCarryProblems: the channel write reaches exactly its source\'s readers', () => {
+    const base: ChannelCarry = { writer: 'ana', writer_token: 'member-ana', channel: 'C1', source: 'channel-ops', readers: ['ana', 'ben'], write: { landed: true, landed_in: ['channel-ops'], pages: [{ slug: 'notes/ops', source_id: 'channel-ops' }], error: null, inconclusive: [] }, reads: [
+      { reader: 'ana', token: 'member-ana', tools: ['search', 'recall', 'get_page'], inconclusive: [] }, { reader: 'ben', token: 'member-ben', tools: ['search'], inconclusive: [] }, { reader: 'cal', token: 'member-cal', tools: [], inconclusive: [] }, { reader: 'public-only', token: 'public-only', tools: [], inconclusive: [] },
+    ] };
+    expect(channelCarryProblems(base)).toEqual([]);
+    const leak = channelCarryProblems({ ...base, reads: base.reads.map((r) => r.reader === 'cal' ? { ...r, tools: ['search', 'hot_memory'] } : r) });
+    expect(leak.map((p) => [p.check, p.member, p.tool])).toEqual([['write-carry', 'cal', 'search'], ['write-carry', 'cal', 'hot_memory']]);
+    expect(channelCarryProblems({ ...base, reads: base.reads.map((r) => r.reader === 'ben' ? { ...r, tools: [] } : r) }).map((p) => [p.check, p.member])).toEqual([['own-returned', 'ben']]);
+    const onlyPage = channelCarryProblems({ ...base, reads: base.reads.map((r) => r.reader === 'public-only' ? { ...r, tools: ['get_page'] } : r) });
+    expect(onlyPage.map((p) => [p.check, p.member, p.tool])).toEqual([['write-carry', 'public-only', 'get_page']]);
+    expect(channelCarryProblems({ ...base, write: { ...base.write, landed_in: ['private-ana'] } }).map((p) => p.what)).toEqual([expect.stringMatching(/landed in private-ana, not only in the channel's source channel-ops/)]);
+    expect(channelCarryProblems({ ...base, write: { ...base.write, landed_in: ['channel-ops', 'channel-ops-leads'] } }).map((p) => p.what)).toEqual([expect.stringMatching(/landed in channel-ops-leads/)]);
+    expect(channelCarryProblems({ ...base, write: { ...base.write, landed_in: [] } }).map((p) => p.what)).toEqual([expect.stringMatching(/in no source the unscoped token reads/)]);
+    expect(channelCarryProblems({ ...base, reads: base.reads.map((r) => r.reader === 'cal' ? { ...r, inconclusive: ['get_page'] } : r) }).map((p) => [p.check, p.member, p.tool])).toEqual([['probe', 'cal', 'get_page']]);
+    expect(channelCarryProblems({ ...base, write: { landed: false, landed_in: [], pages: [], error: 'permission_denied', inconclusive: [] } })).toHaveLength(1);
+    expect(channelCarryProblems({ ...base, write: { ...base.write, inconclusive: ['list_pages offset 0'] } }).map((p) => [p.check, p.token, p.what])).toEqual([['probe', 'unscoped', expect.stringMatching(/unscoped list_pages offset 0 call .* not fully known/)]]);
+  });
+});
+
 // ---- docker-gated: the real preflight on an image built from this checkout -------------------------------------------------
 const IMAGE = process.env.HE_GBRAIN_IMAGE;
 const haveImage = !!IMAGE && spawnSync('docker', ['image', 'inspect', IMAGE], { stdio: 'ignore' }).status === 0;
@@ -211,5 +260,18 @@ describe.skipIf(!haveImage)(`the leak preflight on ${IMAGE ?? '(HE_GBRAIN_IMAGE 
     // open: every member asker got every scripted fact back through search; rules: nobody got another member's DM.
     expect(records[0]!.asked.every((a) => a.returned.search.length >= records[0]!.facts.length - 1)).toBe(true);
     expect(records[1]!.write_carry!.reads.filter((r) => r.reader !== records[1]!.write_carry!.writer).every((r) => r.tools.length === 0)).toBe(true);
+    for (const r of records) { expect('channel_carry' in r).toBe(false); expect('channel_remember' in r.layout).toBe(false); }
+  }, 1_800_000);
+
+  test('the rules arm passes under channel_remember "conversation", with the channel write reaching only its readers', async () => {
+    const path = join(tmp, 'real-member-sources-conversation.json');
+    const { record, secrets } = await runLeakPreflight({ image: IMAGE!, split: 'dev', arm: 'member-sources', worldPath: join(ROOT, 'world', 'seed', 'world.json'), record: path, channelRemember: 'conversation' });
+    writeLeakRecord(path, record, secrets);
+    expect(record.problems).toEqual([]);
+    expect(record.layout.channel_remember).toBe('conversation');
+    const c = record.channel_carry!;
+    expect(c.write.landed_in).toEqual([c.source]);
+    expect(c.reads.filter((r) => c.readers.includes(r.reader)).every((r) => r.tools.includes('search'))).toBe(true);
+    expect(c.reads.filter((r) => !c.readers.includes(r.reader)).every((r) => r.tools.length === 0)).toBe(true);
   }, 1_800_000);
 });

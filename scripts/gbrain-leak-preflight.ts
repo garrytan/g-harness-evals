@@ -2,17 +2,17 @@
 // internal-task: the leak preflight of both live-ingestion arms on one split, outside a run (docs/gbrain-arm.md, "The leak preflight").
 //
 //   env -i PATH=$PATH HOME=$HOME bun scripts/gbrain-leak-preflight.ts --image <tag> [--split dev] [--arms open,member-sources]
-//       [--world world/seed/world.json] [--out <dir>]
+//       [--world world/seed/world.json] [--out <dir>] [--channel-remember member|conversation]
 //
 // Keyless: no model call, no key; the sidecar and the probe container get none. Runs runner/trial/gbrain-leak-preflight.ts per arm,
-// writes leak-preflight-<scope>-<split>.json (no token value) and leak-preflight-<split>.md under --out (default
+// writes leak-preflight-<scope>-<split>[-conversation].json (no token value) and leak-preflight-<split>.md under --out (default
 // ~/.capy/work/gbrain-leak-preflight), compares the two arms' brain layout, and exits 1 on any problem (the HE-GBRAIN line says
 // which), 0 when both arms pass. The informational write-carry probes are recorded, never counted.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { RunnerError } from '../runner/errors.ts';
-import { LEAK_CODES, layoutProblem, leakFix, leakMessage, runLeakPreflight, writeLeakRecord, type LeakArm, type LeakPreflightRecord } from '../runner/trial/gbrain-leak-preflight.ts';
+import { LEAK_CODES, layoutProblem, leakFix, leakMessage, leakRecordName, runLeakPreflight, writeLeakRecord, type LeakArm, type LeakChannelRemember, type LeakPreflightRecord } from '../runner/trial/gbrain-leak-preflight.ts';
 import { DEFAULT_WORLD_PATH } from '../runner/trial/world.ts';
 
 /** The receipt page: per arm the scripted facts, what each asker got per tool, T8 and the informational probes. */
@@ -30,6 +30,13 @@ export function renderLeakPreflight(records: LeakPreflightRecord[]): string {
       for (const x of r.write_carry.reads) out.push(`| ${x.reader} | ${x.write} | ${x.tools.join(', ') || 'none'} |`);
       out.push('');
     }
+    if (r.channel_carry) {
+      const c = r.channel_carry;
+      out.push(`Channel write (channel remember conversation): ${c.writer}'s remember in ${c.channel} ${c.write.landed ? `landed in ${c.write.landed_in.join(', ') || 'no source the unscoped token reads'} (${c.write.pages.length} page(s) hold it)` : `did not land (${c.write.error})`}; its source ${c.source} is read by ${c.readers.join(', ')}.`, '');
+      out.push('| Reader | Reads the source | Read tools that returned it | Inconclusive reads |', '|---|---|---|---|');
+      for (const x of c.reads) out.push(`| ${x.reader} | ${c.readers.includes(x.reader) ? 'yes' : 'no'} | ${x.tools.join(', ') || 'none'} | ${x.inconclusive.join(', ') || 'none'} |`);
+      out.push('');
+    }
     for (const [name, v] of Object.entries(r.informational).filter(([k]) => k.startsWith('write_carry_'))) {
       const p = v as { error?: string; writes?: Array<{ label: string; landed: boolean; error: string | null }>; crossed?: Record<string, string[]> };
       out.push(`Informational \`${name}\` (recorded, never a failure): ${p.error ? `error: ${p.error}` : (p.writes ?? []).map((w) => `${w.label} ${w.landed ? `landed, crossed to ${(p.crossed?.[w.label] ?? []).join(', ') || 'nobody'}` : `did not land (${w.error})`}`).join('; ')}.`, '');
@@ -44,13 +51,15 @@ if (import.meta.main) {
   const image = arg('image', 'harness-eval/gbrain:dev');
   const split = arg('split', 'dev') as 'dev' | 'heldout';
   const arms = arg('arms', 'open,member-sources').split(',') as LeakArm[];
+  const remember = arg('channel-remember', 'member') as LeakChannelRemember;
+  if (remember !== 'member' && remember !== 'conversation') { console.error(`--channel-remember must be member or conversation, not ${remember}`); process.exit(2); }
   const out = resolve(arg('out', join(homedir(), '.capy', 'work', 'gbrain-leak-preflight')));
   mkdirSync(out, { recursive: true });
   const records: LeakPreflightRecord[] = [];
   let failed: string | null = null;
   for (const arm of arms) {
-    const path = join(out, `leak-preflight-${arm}-${split}.json`);
-    const { record, secrets } = await runLeakPreflight({ image, split, arm, worldPath: arg('world', DEFAULT_WORLD_PATH), record: path, log: (l) => console.log(l) });
+    const path = join(out, leakRecordName(arm, split, remember));
+    const { record, secrets } = await runLeakPreflight({ image, split, arm, worldPath: arg('world', DEFAULT_WORLD_PATH), record: path, ...(remember === 'conversation' ? { channelRemember: remember } : {}), log: (l) => console.log(l) });
     writeLeakRecord(path, record, secrets);
     records.push(record);
     console.log(`LEAK: ${arm}/${split} ${record.ok ? 'ok' : 'FAIL'}: ${record.summary.facts} facts, ${record.summary.askers} askers, ${record.summary.calls} calls, ${record.problems.length} problem(s); ${path}`);

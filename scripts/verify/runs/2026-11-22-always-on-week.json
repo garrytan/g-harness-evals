@@ -1,0 +1,19 @@
+{
+  "run": "2026-11-22-always-on-week",
+  "about": "The always-on week run: the frozen analysis (scripts/week-analysis.py) and the audits (week-part-ran.py, week-gbrain-misses.py, week-qm-misses.py), run on the merged results directory with every trial folder.",
+  "steps": [],
+  "not_rebuilt": [
+    {
+      "what": "The merged trial list and per-shard records (results/merged/, results/shards/)",
+      "reason": "They were written by the run itself; verify uses them as this run's receipts."
+    },
+    {
+      "what": "The frozen analysis and audits (results/analysis/analysis.json, analysis.md, part-ran.json, gbrain-misses.json, qm-misses.json) and every number in report.md",
+      "reason": "The scripts read each trial's folder (turn transcripts, event logs, QM database dumps, harness ready records), which stay in the private raw archive raw-always-on-week-2026-11 (manifest sha256 e645e1026eaf4ae9ea1041a72b6c5b6ff45ed8f62527d623975063cdc89d4a1a), not in the repository. reproduce.md gives the commands."
+    },
+    {
+      "what": "The summarize-run and compare-run tables (results/analysis/summarize-run.md, compare-run.md)",
+      "reason": "Both scripts read the trial folders as well, and the committed summarize-run.md drops two internal labels from its section titles."
+    }
+  ]
+}

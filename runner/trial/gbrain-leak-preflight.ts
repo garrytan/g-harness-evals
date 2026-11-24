@@ -159,6 +159,44 @@ export function writeCarryProblems(w: WriteCarry): LeakProblem[] {
   return out;
 }
 
+/** Under channel_remember "conversation", the rules arm's channel write: a member's remember made in a shared channel, which the
+ *  tap sends under that channel source's ingest token, and who read it back. */
+export interface ChannelCarry {
+  writer: string;
+  writer_token: string;
+  channel: string;
+  /** The channel's source in the brain manifest, and its token-holding members: the readers the remember may reach. */
+  source: string;
+  readers: string[];
+  /** landed_in: every source the unscoped token finds the marker in, through recall and through the pages that hold it;
+   *  inconclusive: the unscoped recall, list_pages and get_page calls that got no reply or an error, so the inventory is incomplete. */
+  write: { landed: boolean; landed_in: string[]; pages: Array<{ slug: string; source_id: string }>; error: string | null; inconclusive: string[] };
+  /** Per asker (the writer first, then every other token member, then public-only): the read tools that returned the write, and
+   *  the reads that got no reply or an error other than a denial or a missing page (inconclusive). */
+  reads: Array<{ reader: string; token: string; tools: LeakReadTool[]; inconclusive: string[] }>;
+}
+
+/** The channel write's verdict: it landed in the channel's source and nowhere else, came back on search to every reader of that
+ *  source, the writer included, and no asker outside the source's readers got it through any tool; a read with no conclusive
+ *  answer fails closed. */
+export function channelCarryProblems(c: ChannelCarry): LeakProblem[] {
+  const out: LeakProblem[] = [];
+  const base = { member: c.writer, fact: 'channel-write', source: c.source };
+  if (!c.write.landed) return [{ check: 'write-carry', token: c.writer_token, tool: 'remember', ...base, what: `${c.writer}'s remember in ${c.channel} did not land (${c.write.error ?? 'no reply'}); with no write in the brain the channel check shows nothing` }];
+  if (!c.write.landed_in.length) out.push({ check: 'write-carry', token: c.writer_token, tool: 'remember', ...base, what: `${c.writer}'s remember in ${c.channel} is in no source the unscoped token reads, so where it landed is unknown` });
+  for (const call of c.write.inconclusive) out.push({ check: 'probe', token: 'unscoped', tool: 'remember', ...base, what: `the unscoped ${call} call for ${c.writer}'s remember in ${c.channel} got no reply or an error, so where the write landed is not fully known` });
+  for (const s of c.write.landed_in) if (s !== c.source) out.push({ check: 'write-carry', token: c.writer_token, tool: 'remember', ...base, what: `${c.writer}'s remember in ${c.channel} landed in ${s}, not only in the channel's source ${c.source}` });
+  for (const r of c.reads) {
+    for (const tool of r.inconclusive) out.push({ check: 'probe', token: r.token, member: r.reader, tool, fact: 'channel-write', source: c.source, what: `${r.reader}'s ${tool} read of the channel write got no reply or an unexpected error, so the check cannot say what ${r.reader} reads` });
+    if (c.readers.includes(r.reader)) {
+      if (!r.tools.includes('search')) out.push({ check: 'own-returned', token: r.token, member: r.reader, tool: 'search', fact: 'channel-write', source: c.source, what: `${c.writer}'s remember in ${c.channel}, in ${c.source}, which ${r.reader} reads, did not come back` });
+      continue;
+    }
+    for (const tool of r.tools) out.push({ check: 'write-carry', token: r.token, member: r.reader, tool, fact: 'channel-write', source: c.source, what: `${c.writer}'s remember in ${c.channel} (${c.source}) came back to ${r.reader}, who is not among its readers` });
+  }
+  return out;
+}
+
 /** The fix command for a problem: what to read on the brain, then the rebuild. */
 export function leakFix(arm: LeakArm | 'write_carry', o: { image: string; split: string; commit: string | null }): string {
   const brain = `docker run --rm --entrypoint sh ${o.image} -c 'GBRAIN_HOME=/brains/${o.split}-member bun /opt/gbrain/src/cli.ts auth list --json'`;
@@ -217,10 +255,12 @@ export interface LeakPreflightRecord {
   gbrain_commit: string | null;
   ok: boolean;
   /** The sidecar layout and the digests of the manifest and ingest tokens the sidecar copied: equal across the two arms. */
-  layout: { sidecar: Record<string, string>; manifest_sha256: string; ingest_tokens_sha256: string };
+  layout: { sidecar: Record<string, string>; manifest_sha256: string; ingest_tokens_sha256: string; channel_remember?: 'conversation' };
   facts: Array<Omit<ScriptedFact, 'text'> & { fact_id: string | number | null; landed_in: string | null; page: { slug: string; source_id: string } | null }>;
   asked: AskerObservation[];
   write_carry: WriteCarry | null;
+  /** Present only under channel_remember "conversation" (rules arm): the channel write check. */
+  channel_carry?: ChannelCarry;
   informational: Record<string, unknown>;
   problems: LeakProblem[];
   summary: { askers: number; facts: number; database_only: number; calls: number };
@@ -234,12 +274,13 @@ export function writeLeakRecord(path: string, record: LeakPreflightRecord, secre
 }
 
 /** run's gate: the record for this scope and split exists, passed, and was made on the image id the run is about to use. */
-export function leakRecordProblem(path: string, arm: LeakArm, split: string, image: string, imageId: string): string | null {
+export function leakRecordProblem(path: string, arm: LeakArm, split: string, image: string, imageId: string, channelRemember: LeakChannelRemember = 'member'): string | null {
   const fix = `fix: bun runner/run.ts preflight --manifest <manifest> --gbrain-image ${image}`;
   if (!existsSync(path)) return `no leak preflight record at ${path} for scope ${arm} split ${split}; ${fix}; ${LEAK_RECOVERY}`;
   let r: Partial<LeakPreflightRecord>;
   try { r = JSON.parse(readFileSync(path, 'utf8')) as Partial<LeakPreflightRecord>; } catch { return `the leak preflight record ${path} is not JSON; ${fix}; ${LEAK_RECOVERY}`; }
   if (r.arm !== arm || r.split !== split) return `the leak preflight record ${path} is for scope ${String(r.arm)} split ${String(r.split)}, not ${arm} ${split}; ${fix}; ${LEAK_RECOVERY}`;
+  if ((r.layout?.channel_remember ?? 'member') !== channelRemember) return `the leak preflight record ${path} checked channel remember ${r.layout?.channel_remember ?? 'member'}, the cell runs ${channelRemember}; ${fix}; ${LEAK_RECOVERY}`;
   if (r.ok !== true) return `the leak preflight record ${path} did not pass (${r.problems?.length ?? '?'} problem(s), gbrain ${r.gbrain_commit ?? 'unknown'}, image ${r.image_id ?? '?'}); read it and ${fix}; ${LEAK_RECOVERY}`;
   if (r.image_id !== imageId) return `the leak preflight passed on image id ${String(r.image_id)}, the run uses ${image} ${imageId || '(missing)'}; ${fix}; ${LEAK_RECOVERY}`;
   return null;
@@ -260,7 +301,23 @@ export function layoutProblem(open: Pick<LeakPreflightRecord, 'layout' | 'image'
  *  differs is refused before any trial (runner/run.ts leakCellLayoutProblem), because the preflight record would not describe it. */
 export const LEAK_PREFLIGHT_SIDECAR = { brain: 'member', ingest: 'live' } as const;
 
-type LeakPreflightOptions = { image: string; split: 'dev' | 'heldout'; arm: LeakArm; worldPath: string; record: string; log?: (l: string) => void };
+/** The channel remember a leak preflight runs under: "member" (the default; the run and its record are what they were before
+ *  this option existed) or "conversation" (internal-task), where a remember the bot makes in a shared channel goes out under that
+ *  channel source's ingest token. Under "conversation" the rules arm also runs the channel write check (channelCarryProblems). */
+export type LeakChannelRemember = 'member' | 'conversation';
+
+/** The record's file name for one scope, split and channel remember; "member" keeps the name it always had. */
+export function leakRecordName(arm: LeakArm, split: string, channelRemember: LeakChannelRemember = 'member'): string {
+  return `leak-preflight-${arm}-${split}${channelRemember === 'conversation' ? '-conversation' : ''}.json`;
+}
+
+/** The record's layout: the sidecar settings, the manifest and ingest-token digests and, only under "conversation", the channel
+ *  remember, so a "member" record is byte-for-byte what it was before the option existed. */
+export function leakLayout(split: 'dev' | 'heldout', manifestSha256: string, ingestTokensSha256: string, channelRemember: LeakChannelRemember = 'member'): LeakPreflightRecord['layout'] {
+  return { sidecar: sidecarLayout({ split, ...LEAK_PREFLIGHT_SIDECAR }), manifest_sha256: manifestSha256, ingest_tokens_sha256: ingestTokensSha256, ...(channelRemember === 'conversation' ? { channel_remember: 'conversation' as const } : {}) };
+}
+
+type LeakPreflightOptions = { image: string; split: 'dev' | 'heldout'; arm: LeakArm; worldPath: string; record: string; channelRemember?: LeakChannelRemember; log?: (l: string) => void };
 
 /** Runs one arm's leak preflight. The sidecar's files (its token, the member and ingest tokens, the manifest) live in a private
  *  temporary directory that is removed on every exit, never under the run or results directory. */
@@ -276,7 +333,8 @@ export async function runLeakPreflight(o: LeakPreflightOptions): Promise<{ recor
 async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ record: LeakPreflightRecord; secrets: string[] }> {
   const log = o.log ?? (() => undefined);
   const trialId = `leak-preflight-${o.arm}-${o.split}`;
-  const sidecar: GbrainSidecar = await startGbrainSidecar({ trialId, trialSlug: `${trialId}-${process.pid}`, split: o.split, outDir: join(out, 'gbrain'), image: o.image, ...LEAK_PREFLIGHT_SIDECAR, scope: o.arm === 'open' ? 'open' : 'member-sources' });
+  const conversation = o.channelRemember === 'conversation';
+  const sidecar: GbrainSidecar = await startGbrainSidecar({ trialId, trialSlug: `${trialId}-${process.pid}`, split: o.split, outDir: join(out, 'gbrain'), image: o.image, ...LEAK_PREFLIGHT_SIDECAR, scope: o.arm === 'open' ? 'open' : 'member-sources', ...(conversation ? { channelRemember: 'conversation' as const } : {}) });
   const commit = gbrainImageCommit(o.image);
   let world: TrialWorld | null = null;
   let calls = 0;
@@ -286,7 +344,7 @@ async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ 
     const grants = Object.fromEntries(grantList.map((g) => [g.member, g.sources]));
     const members = grantList.map((g) => g.member).filter((m) => m !== 'public-only').sort();
     const tokenName = (member: string | null) => o.arm === 'open' ? `trial-${trialId}` : grantList.find((g) => g.member === (member ?? 'public-only'))?.token_name ?? `member-${member}`;
-    const layout = { sidecar: sidecarLayout({ split: o.split, ...LEAK_PREFLIGHT_SIDECAR }), manifest_sha256: sha256(join(out, 'gbrain', 'manifest.json')), ingest_tokens_sha256: sha256(join(out, 'gbrain', 'ingest-tokens.json')) };
+    const layout = leakLayout(o.split, sha256(join(out, 'gbrain', 'manifest.json')), sha256(join(out, 'gbrain', 'ingest-tokens.json')), o.channelRemember);
     world = new TrialWorld({ trialId, split: o.split, actors: members, outDir: join(out, 'world'), worldPath: o.worldPath, reachableFromContainers: false });
     world.server.setGbrain(gbrainUpstream(sidecar));
     const seed = crypto.getRandomValues(new Uint32Array(1))[0]!.toString(36);
@@ -398,11 +456,54 @@ async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ 
       }
       problems.push(...writeCarryProblems(carry));
     }
+    // Rules arm under channel_remember "conversation": a remember in a shared channel reaches that channel's readers and no one else.
+    let channelCarry: ChannelCarry | null = null;
+    if (o.arm === 'member-sources' && conversation) {
+      const shared = facts.find((f) => f.kind === 'channel' && f.source !== 'public' && f.readers.length >= 2 && members.some((m) => !f.readers.includes(m)));
+      if (!shared) problems.push({ check: 'write-carry', token: '-', member: '-', tool: 'remember', fact: 'channel-write', source: '-', what: `split ${o.split} has no non-public channel with two or more token members and a token member outside it, so the channel write check cannot run` });
+      else {
+        const writer = shared.readers[0]!;
+        const w = { id: 'channel-write', query: `pfc${seed}w`, secret: `PFC${seed.toUpperCase()}WZ` };
+        await world.setGbrainRequester(writer, shared.channel);
+        const rem = replyParts(await tap('remember', { fact: `${writer} told the channel that the ${w.query} door code is ${w.secret}.`, provenance: 'harness-evals leak preflight (channel write)', request_id: crypto.randomUUID() }));
+        // Where it landed, under the unscoped token: every source recall shows beside the marker, and every page that holds it.
+        const unscoped: string[] = [];
+        const unscopedCall = async (name: string, args: Record<string, unknown>, label: string) => { calls++; const r = await rpc(direct, sidecar.token, name, args); if (replyParts(r).error) unscoped.push(label); return r; };
+        const recalled = replyParts(await unscopedCall('recall', { query: w.query, question: w.query }, 'recall')).rest;
+        const landedIn = new Set<string>();
+        for (const m of recalled.matchAll(new RegExp(`${w.secret}[^{}]*?source_id\\\\?":\\\\?"([a-z0-9-]+)|source_id\\\\?":\\\\?"([a-z0-9-]+)[^{}]*?${w.secret}`, 'g'))) { const s = m[1] ?? m[2]; if (s) landedIn.add(s); }
+        const after = await listPagesToEnd(async (offset) => pageRows(await unscopedCall('list_pages', { limit: 100, offset, sort: 'slug' }, `list_pages offset ${offset}`)) as unknown as Array<Record<string, unknown>>, (what) => new RunnerError(LEAK_CODES.write_carry, `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`)) as unknown as Array<{ slug: string; source_id: string }>;
+        const holders: Array<{ slug: string; source_id: string }> = [];
+        for (const p of after) if (replyParts(await unscopedCall('get_page', { slug: p.slug, source_id: p.source_id }, `get_page ${p.source_id}/${p.slug}`)).rest.includes(w.secret)) holders.push({ slug: p.slug, source_id: p.source_id });
+        for (const p of holders) landedIn.add(p.source_id);
+        channelCarry = { writer, writer_token: tokenName(writer), channel: shared.channel, source: shared.source, readers: shared.readers, write: { landed: !rem.error, landed_in: [...landedIn].sort(), pages: holders, error: rem.error ? (/code\\?":\\?"([a-z_]+)/.exec(rem.rest)?.[1] ?? 'tool_error') : null, inconclusive: unscoped }, reads: [] };
+        for (const reader of [writer, ...members.filter((m) => m !== writer), null]) {
+          await world.setGbrainRequester(reader);
+          const seen = Object.fromEntries(LEAK_READ_TOOLS.map((t) => [t, new Set<string>()])) as Record<LeakReadTool, Set<string>>;
+          const inconclusive = new Set<string>();
+          const ask = async (tool: LeakReadTool, name: string, args: Record<string, unknown>) => {
+            const r = await tap(name, args);
+            const parts = replyParts(r);
+            if (r === null || (parts.error && !/permission_denied|not_found/.test(parts.rest))) inconclusive.add(tool);
+            scan(seen, tool, r, [w]);
+            return { r, parts };
+          };
+          await ask('search', 'search', { query: w.query, limit: 20 });
+          await ask('query', 'query', { query: w.query, limit: 20 });
+          await ask('recall', 'recall', { query: w.query, question: w.query });
+          for (const p of holders) if (!(await ask('get_page', 'get_page', { slug: p.slug, source_id: p.source_id })).parts.error) seen.get_page.add(w.id);
+          const rows = await listPagesToEnd(async (offset) => pageRows((await ask('list_pages', 'list_pages', { limit: 100, offset, sort: 'slug' })).r) as unknown as Array<Record<string, unknown>>, (what) => new RunnerError(LEAK_CODES.write_carry, `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`)) as unknown as Array<{ slug: string; source_id: string }>;
+          if (holders.some((p) => rows.some((x) => x.slug === p.slug && x.source_id === p.source_id))) seen.list_pages.add(w.id);
+          channelCarry.reads.push({ reader: reader ?? 'public-only', token: tokenName(reader), tools: LEAK_READ_TOOLS.filter((t) => seen[t].has(w.id)), inconclusive: [...inconclusive].sort() });
+        }
+        problems.push(...channelCarryProblems(channelCarry));
+      }
+    }
     log(`leak preflight ${o.arm}/${o.split}: ${facts.length} scripted facts, ${members.length + 1} askers, ${calls} calls, ${problems.length} problem(s); running the informational write-carry probes`);
     const informational = probeWriteCarryShapes(o.image);
     const tokensFile = join(out, 'gbrain', 'tokens.json');
     const secrets = [sidecar.token, ...Object.values(sidecar.ingest?.tokens.sources ?? {}), ...(existsSync(tokensFile) ? (() => { const t = JSON.parse(readFileSync(tokensFile, 'utf8')) as { members?: Record<string, string>; public_only?: string }; return [...Object.values(t.members ?? {}), t.public_only ?? '']; })() : [])];
-    const record: LeakPreflightRecord = { schema_version: 1, arm: o.arm, split: o.split, image: o.image, image_id: sidecar.image_id, gbrain_commit: commit, ok: problems.length === 0, layout, facts: factRows, asked, write_carry: carry, informational, problems, summary: { askers: asked.length, facts: facts.length, database_only: Object.values(pages).filter((p) => p === null).length, calls } };
+    const record: LeakPreflightRecord = { schema_version: 1, arm: o.arm, split: o.split, image: o.image, image_id: sidecar.image_id, gbrain_commit: commit, ok: problems.length === 0, layout, facts: factRows, asked, write_carry: carry, ...(channelCarry ? { channel_carry: channelCarry } : {}), informational, problems, summary: { askers: asked.length, facts: facts.length, database_only: Object.values(pages).filter((p) => p === null).length, calls } };
     return { record, secrets };
   } finally {
     world?.closeGbrainIngest();
