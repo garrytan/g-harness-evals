@@ -75,7 +75,7 @@ The files, gbrain and QM shards ran without a one-trial smoke test, so Amendment
 - Files: a write is a tool call that wrote under `workspace/memory/` with the file saved at the end; a read is a read of a memory file after the restart that returned its content.
 - gbrain: a write is a live-ingestion insert of a world message; a read is a gbrain search, recall or page read after the restart that returned a result.
 - QM: a write is a live fact in QM's memory table (from its database dump); a read is QM's "What you remember" block, holding at least one fact, in a message after the restart.
-- QM's two trials without a read: in wk-05 r3, QM's core never became healthy after the restart (it timed out after 120 s), so the trial's later turns never ran, and its build check rests on the version before the restart alone (see [deviations.md](deviations.md)); in wk-07 r2, no memory block appeared after the restart.
+- QM's two trials without a read: in wk-05 r3, QM's core could not start again after the restart because its port was still in use on the host (it timed out after 120 s), so the trial's later turns never ran, and its build check rests on the version before the restart alone (see [deviations.md](deviations.md)); in wk-07 r2, no memory block appeared after the restart.
 
 ## Where the passes came from
 
@@ -120,7 +120,7 @@ Full list: [results/analysis/qm-misses.json](results/analysis/qm-misses.json) (`
 
 - **Relay leaks:** 0 of 28 relay trials leaked in every setup (0 leaking posts).
 - **Provider safety-filter stops:** 0 in every setup, read from the `safety_stop` field on all 15,609 metering-proxy usage lines.
-- **Trials cut short:** 1 of 160. QM's wk-05 r3 ran 12 of its 20 turns, because QM's core did not come back after the restart. The runner still recorded it as completed, so none of the 160 was excluded; it stays counted and its later checks fail, as the plan says for a harness error. It is one of QM's 28 relay trials. The other 159 ran every planned turn, and every turn exited 0.
+- **Trials cut short:** 1 of 160. QM's wk-05 r3 ran 12 of its 20 turns, because QM's core could not start again after the restart: its port was still in use on the host, and the logs don't show what held it (see [deviations.md](deviations.md)). The runner still recorded it as completed, so none of the 160 was excluded; it stays counted and its later checks fail, as the plan says for a harness error. It is one of QM's 28 relay trials. The other 159 ran every planned turn, and every turn exited 0.
 - **Trials passing every required check** ([results/analysis/summarize-run.md](results/analysis/summarize-run.md)): no memory 0 of 40, files 6 of 40 (15%, 0% to 33%), gbrain 11 of 40 (28%, 10% to 48%), QM 0 of 40.
 - **Cost per trial against no memory** ([results/analysis/compare-run.md](results/analysis/compare-run.md)): files 1.20 times (1.05 to 1.32), gbrain 1.34 times (1.18 to 1.47), QM 0.78 times (0.70 to 0.86).
 
