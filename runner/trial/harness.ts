@@ -45,7 +45,8 @@ export function clearReady(logs: string, n: number): void {
 }
 
 export class HarnessGone extends Error {
-  constructor(readonly exit: number | null, message: string) { super(message); }
+  /** fromDocker: exit is a docker CLI status (a failed docker run or compose call), not the harness's own exit code. */
+  constructor(readonly exit: number | null, message: string, readonly fromDocker = false) { super(message); }
 }
 
 export const requestFile = (turn: number) => `turn-${String(turn).padStart(4, '0')}.request.json`;

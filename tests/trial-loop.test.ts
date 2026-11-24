@@ -306,6 +306,15 @@ describe('classification and refusals', () => {
     expect(classify([0, 2], null, null, true)).toBe('harness_error');
     expect(classify([], null, 'exam_fault', false)).toBe('exam_fault');
   });
+  test('a failed restart is charged where the turn loop says: the harness, the model, or a docker CLI failure as infra', () => {
+    expect(classify([0, 0], null, 'harness_gone', false)).toBe('harness_error');
+    expect(classify([0, 0], null, 'harness_gone', true, 'harness')).toBe('harness_error');
+    expect(classify([], null, 'harness_gone', false, 'harness')).toBe('harness_error');
+    expect(classify([0, 0], null, 'harness_gone', false, 'model')).toBe('model_error');
+    expect(classify([0, 0], null, 'harness_gone', false, 'infra')).toBe('infra_error');
+    expect(classify([0, 3], null, 'harness_gone', false)).toBe('model_error');
+    expect(classify([0, 124], null, 'harness_gone', false)).toBe('timeout');
+  });
   test('a preamble with an unknown placeholder is refused with HE-TASK-003; a missing one with HE-TASK-002', () => {
     const bad = join(tmp, 'bad-preamble.md');
     writeFileSync(bad, 'Hello {{requester_name}}, {{secret_notes}}');

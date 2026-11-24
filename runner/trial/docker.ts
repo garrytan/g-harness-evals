@@ -165,7 +165,7 @@ export async function startDockerHarness(opts: DockerHarnessOptions): Promise<Ha
       await collect(`docker.before-restart-${n}.log`);
       clearReady(opts.dirs.logs, n);
       const again = await sh(dockerRunArgs(opts, name), opts.secretEnv ? { env: opts.secretEnv } : {});
-      if (again.status !== 0) throw new HarnessGone(again.status, `docker run failed on restart ${n}: ${(again.stderr || again.stdout).trim().slice(0, 400)}`);
+      if (again.status !== 0) throw new HarnessGone(again.status, `docker run failed on restart ${n}: ${(again.stderr || again.stdout).trim().slice(0, 400)}`, true);
       await pollReady(opts.dirs.logs, readyTimeoutMs, exited);
     },
   };
@@ -270,12 +270,12 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
       writeFileSync(join(opts.dirs.logs, `docker.before-restart-${n}.log`), `${task.stdout}\n${task.stderr}`);
       clearReady(opts.dirs.logs, n);
       const config = await sh([...compose, 'config', '--format', 'json'], { env });
-      if (config.status !== 0) throw new HarnessGone(config.status, `docker compose config failed on restart ${n}: ${config.stderr.trim().slice(0, 400)}`);
+      if (config.status !== 0) throw new HarnessGone(config.status, `docker compose config failed on restart ${n}: ${config.stderr.trim().slice(0, 400)}`, true);
       const services = (JSON.parse(config.stdout) as { services: Record<string, { labels?: Record<string, string> }> }).services;
       const withTask = Object.keys(services).filter((s) => services[s]!.labels?.['harness-eval.restart'] === 'with-task');
       if (withTask.length) {
         const stop = await sh([...compose, 'stop', '-t', String(Math.ceil(graceMs / 1000)), ...withTask], { env, timeoutMs: graceMs + 120_000 });
-        if (stop.status !== 0) throw new HarnessGone(stop.status, `docker compose stop of ${withTask.join(', ')} failed on restart ${n}: ${stop.stderr.trim().slice(0, 400)}`);
+        if (stop.status !== 0) throw new HarnessGone(stop.status, `docker compose stop of ${withTask.join(', ')} failed on restart ${n}: ${stop.stderr.trim().slice(0, 400)}`, true);
         for (const s of withTask) {
           const label = services[s]!.labels?.['harness-eval.restart-port'];
           if (label === undefined) continue;
@@ -288,10 +288,10 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
           throw new HarnessGone(null, `port ${port} of ${s} was still in use ${RESTART_PORT_WAIT_MS / 1000} s after ${s} stopped on restart ${n}; the listener is in ${holder}`);
         }
         const r = await sh([...compose, 'start', ...withTask], { env, timeoutMs: 120_000 });
-        if (r.status !== 0) throw new HarnessGone(r.status, `docker compose start of ${withTask.join(', ')} failed on restart ${n}: ${r.stderr.trim().slice(0, 400)}`);
+        if (r.status !== 0) throw new HarnessGone(r.status, `docker compose start of ${withTask.join(', ')} failed on restart ${n}: ${r.stderr.trim().slice(0, 400)}`, true);
       }
       const again = await sh([...compose, 'up', '-d', '--no-color', '--no-deps', '--force-recreate', 'task'], { env, timeoutMs: (opts.timeBudgetS + 180) * 1000 });
-      if (again.status !== 0) throw new HarnessGone(again.status, `docker compose up of the task service failed on restart ${n}: ${again.stderr.trim().slice(0, 400)}`);
+      if (again.status !== 0) throw new HarnessGone(again.status, `docker compose up of the task service failed on restart ${n}: ${again.stderr.trim().slice(0, 400)}`, true);
       await pollReady(opts.dirs.logs, readyTimeoutMs, exited);
     },
   };

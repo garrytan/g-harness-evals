@@ -145,13 +145,14 @@ export async function loadGrader(): Promise<GradeFn> {
   return mod.gradeTrial;
 }
 
-export function classify(exits: number[], readyFailure: HarnessGone | null, endedEarly: string | null, approvalStop: boolean): Termination {
+export function classify(exits: number[], readyFailure: HarnessGone | null, endedEarly: string | null, approvalStop: boolean, restartFailure?: TurnLoopResult['restart_failure']): Termination {
   if (readyFailure) return readyFailure.exit === 2 ? 'harness_error' : readyFailure.exit === 3 ? 'model_error' : 'infra_error';
   if (endedEarly === 'exam_fault') return 'exam_fault';
   if (exits.some((e) => e === 124)) return 'timeout';
   if (exits.some((e) => e === 3)) return 'model_error';
   if (exits.some((e) => e === 2)) return 'harness_error';
   if (exits.some((e) => e !== 0)) return 'infra_error';
+  if (endedEarly === 'harness_gone') return restartFailure === 'infra' ? 'infra_error' : restartFailure === 'model' ? 'model_error' : 'harness_error';
   return approvalStop ? 'approval_stop' : 'completed';
 }
 
@@ -316,6 +317,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let timerWindows: TimerTurnWindow[] = [];
   let week: Pick<TurnLoopResult, 'redelivery_windows' | 'restarts' | 'burst_messages'> = { redelivery_windows: [], restarts: [], burst_messages: 0 };
   let endedEarly: string | null = null;
+  let restartFailure: TurnLoopResult['restart_failure'];
   const answeredHook: { turn_runs: Array<number | null>; turns: number[] } = { turn_runs: [], turns: [] };
   let error: string | undefined;
   let grade: GradeResult = EMPTY_GRADE;
@@ -371,6 +373,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       timerWindows = loop.timer_windows;
       week = { redelivery_windows: loop.redelivery_windows, restarts: loop.restarts, burst_messages: loop.burst_messages };
       endedEarly = loop.ended_early;
+      restartFailure = loop.restart_failure;
       if (loop.error) error = loop.error;
     }
     if (world.gbrainScoped) await world.setGbrainRequester(null);
@@ -438,7 +441,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   if (semanticError) { error = semanticError; log(semanticError); }
 
   const exits = windows.map((w) => w.exit);
-  const decided = trialTermination({ cellModel: cell.model, fromExits: classify([...exits, ...timerWindows.map((w) => w.exit), ...week.redelivery_windows.map((w) => w.exit)], readyFailure, endedEarly, grade.approval_stop), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) });
+  const decided = trialTermination({ cellModel: cell.model, fromExits: classify([...exits, ...timerWindows.map((w) => w.exit), ...week.redelivery_windows.map((w) => w.exit)], readyFailure, endedEarly, grade.approval_stop, restartFailure), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) });
   if (decided.note) { log(decided.note); error = error ? `${error}; ${decided.note}` : decided.note; }
   const termination = decided.termination;
   const ended = Date.now();

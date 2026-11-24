@@ -48,6 +48,8 @@ export interface TurnLoopResult {
   /** Why the loop ended before the last turn, if it did. */
   ended_early: 'timeout' | 'harness_gone' | 'exam_fault' | null;
   error?: string;
+  /** Who a failed restart is charged to (it records no turn): a docker CLI failure is infra, the harness's own exit 3 is model, anything else is harness. */
+  restart_failure?: 'harness' | 'model' | 'infra';
   /** Week events; empty or 0 on any other task. */
   redelivery_windows: RedeliveryTurnWindow[];
   restarts: Array<{ before_turn: number; wall_ms: number }>;
@@ -231,7 +233,7 @@ async function turnLoop(o: TurnLoopOptions, week: WeekCounts): Promise<LoopEnd> 
       if (!o.harness.restart || !o.restart) return exam(windows, timerWindows, `turn ${n} restarts the harness, and this ${o.harness.kind} harness cannot be restarted here`);
       const t0 = Date.now();
       try { await o.harness.restart(o.restart.graceMs, o.restart.readyTimeoutMs); }
-      catch (e) { if (!(e instanceof HarnessGone)) throw e; o.log(`turn ${n}: the restart failed: ${e.message}`); return done('harness_gone', e.message); }
+      catch (e) { if (!(e instanceof HarnessGone)) throw e; o.log(`turn ${n}: the restart failed: ${e.message}`); return { ...done('harness_gone', e.message), restart_failure: e.fromDocker ? 'infra' : e.exit === 3 ? 'model' : 'harness' }; }
       week.restarts.push({ before_turn: n, wall_ms: Date.now() - t0 });
       o.log(`turn ${n}: harness restarted on the same workspace and state (${Date.now() - t0} ms)`);
     }
