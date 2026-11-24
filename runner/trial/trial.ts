@@ -146,7 +146,7 @@ export async function loadGrader(): Promise<GradeFn> {
 }
 
 export function classify(exits: number[], readyFailure: HarnessGone | null, endedEarly: string | null, approvalStop: boolean, restartFailure?: TurnLoopResult['restart_failure']): Termination {
-  if (readyFailure) return readyFailure.exit === 2 ? 'harness_error' : readyFailure.exit === 3 ? 'model_error' : 'infra_error';
+  if (readyFailure) return readyFailure.fromDocker ? 'infra_error' : readyFailure.exit === 2 ? 'harness_error' : readyFailure.exit === 3 ? 'model_error' : 'infra_error';
   if (endedEarly === 'exam_fault') return 'exam_fault';
   if (exits.some((e) => e === 124)) return 'timeout';
   if (exits.some((e) => e === 3)) return 'model_error';
@@ -173,6 +173,12 @@ export function foreignModels(cellModel: string, byModel: Record<string, unknown
   for (const k of Object.keys(byModel)) if (!own.has(k.toLowerCase())) seen.add(k);
   for (const l of lines) if (l.outcome === 'refused' && l.model && !own.has(`${l.provider}:${l.model}`.toLowerCase())) seen.add(`${l.provider}:${l.model}`);
   return [...seen].sort();
+}
+
+/** A docker CLI call failed while the runner waited for the harness to be ready, at first start or after a restart. It is
+ *  infra, so trialTermination gets it as its infra flag and internal-task plan decision 12 never turns it into model_error. */
+export function dockerFailure(readyFailure: HarnessGone | null, restartFailure?: TurnLoopResult['restart_failure']): boolean {
+  return !!readyFailure?.fromDocker || restartFailure === 'infra';
 }
 
 /** The codes of a Particle 400 that plan decision 12 counts as a model error (the request is one the model refuses, not a harness bug). */
@@ -441,7 +447,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   if (semanticError) { error = semanticError; log(semanticError); }
 
   const exits = windows.map((w) => w.exit);
-  const decided = trialTermination({ cellModel: cell.model, fromExits: classify([...exits, ...timerWindows.map((w) => w.exit), ...week.redelivery_windows.map((w) => w.exit)], readyFailure, endedEarly, grade.approval_stop, restartFailure), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) });
+  const decided = trialTermination({ cellModel: cell.model, fromExits: classify([...exits, ...timerWindows.map((w) => w.exit), ...week.redelivery_windows.map((w) => w.exit)], readyFailure, endedEarly, grade.approval_stop, restartFailure), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) || dockerFailure(readyFailure, restartFailure) });
   if (decided.note) { log(decided.note); error = error ? `${error}; ${decided.note}` : decided.note; }
   const termination = decided.termination;
   const ended = Date.now();

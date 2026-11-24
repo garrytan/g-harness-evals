@@ -9,7 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BudgetRun, closeLedgers } from '../runner/ledger/budget-ledger.ts';
 import { MeteringProxy, type UsageLine } from '../runner/proxy/metering-proxy.ts';
-import { classify, trialTermination } from '../runner/trial/trial.ts';
+import { HarnessGone } from '../runner/trial/harness.ts';
+import { classify, dockerFailure, trialTermination } from '../runner/trial/trial.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'particle-errors-'));
 afterAll(() => { closeLedgers(); rmSync(tmp, { recursive: true, force: true }); });
@@ -190,6 +191,16 @@ describe('trialTermination: plan decision 12 from the proxy record', () => {
     expect(decide(PARTICLE, [err(402, 'insufficient_credits', before), ok], [0, 0, 0])).toEqual({ termination: 'completed' });
     expect(decide(PARTICLE, [err(400, 'context_length_exceeded', before)], [3])).toEqual({ termination: 'model_error' });
     expect(decide(PARTICLE, [err(400, 'invalid_value', SINCE)], [0]).termination).toBe('model_error');
+  });
+
+  test('a docker failure stays infra_error, even after a Particle answer that decision 12 counts as a model error', () => {
+    const gone = new HarnessGone(1, 'docker inspect of he-x failed', true);
+    const atStart = classify([0], gone, null, false);
+    expect(trialTermination({ cellModel: PARTICLE, fromExits: atStart, since: SINCE, lines: [err(400, 'invalid_value'), ok] as never, infra: dockerFailure(gone) })).toEqual({ termination: 'infra_error' });
+    const onRestart = classify([0], null, 'harness_gone', false, 'infra');
+    expect(trialTermination({ cellModel: PARTICLE, fromExits: onRestart, since: SINCE, lines: [err(402)] as never, infra: dockerFailure(null, 'infra') })).toEqual({ termination: 'infra_error' });
+    expect(dockerFailure(new HarnessGone(1, 'the harness exited 1 before writing ready'), 'harness')).toBe(false);
+    expect(decide(PARTICLE, [err(402)], [0, 1]).termination).toBe('model_error');
   });
 
   test('an exam_fault stays exam_fault', () => {

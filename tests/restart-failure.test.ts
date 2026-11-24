@@ -3,7 +3,7 @@
 // harness, its exit 3 against the model, and only a failed docker CLI call is infra. Keyless: an in-process world and a host
 // harness stub whose restart() throws.
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { TurnRequest } from '../runner/contracts.ts';
@@ -13,6 +13,7 @@ import { classify } from '../runner/trial/trial.ts';
 import { runTurns } from '../runner/trial/turns.ts';
 import { TrialWorld } from '../runner/trial/world.ts';
 
+const ROOT = resolve(import.meta.dir, '..');
 const TASK = resolve(import.meta.dir, 'fixtures', 'timer-tasks', 'fx-01-timers');
 
 async function failedRestart(gone: HarnessGone) {
@@ -48,5 +49,34 @@ describe('a failed restart', () => {
   test('a failed docker CLI call on restart is an infra error, whatever its status', async () => {
     expect((await failedRestart(new HarnessGone(1, 'docker compose start of core failed on restart 1', true))).termination).toBe('infra_error');
     expect((await failedRestart(new HarnessGone(2, 'docker run failed on restart 1', true))).termination).toBe('infra_error');
+  });
+});
+
+describe('a docker status check that fails while waiting for ready', () => {
+  test('docker inspect failing is a docker failure, so a first start is infra_error and a restart infra', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'he-ready-docker-'));
+    try {
+      const bin = join(tmp, 'bin');
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'docker'), '#!/bin/bash\nif [ "$1" = inspect ]; then echo "Cannot connect to the Docker daemon" >&2; exit 1; fi\nexit 0\n');
+      chmodSync(join(bin, 'docker'), 0o755);
+      const code = [
+        `import { startDockerHarness } from ${JSON.stringify(join(ROOT, 'runner', 'trial', 'docker.ts'))};`,
+        `import { makeTrialDirs } from ${JSON.stringify(join(ROOT, 'runner', 'trial', 'harness.ts'))};`,
+        `const h = await startDockerHarness({ harness: '_fixture', image: 'harness-eval/fixture:dev', trialSlug: 'ready-1', dirs: makeTrialDirs(${JSON.stringify(join(tmp, 'trial'))}), env: {} });`,
+        "try { await h.waitReady(2000); console.log('READY'); } catch (e) { console.log(JSON.stringify({ fromDocker: e.fromDocker, exit: e.exit, message: e.message })); }",
+      ].join('\n');
+      const p = Bun.spawnSync([process.execPath, '-e', code], { cwd: ROOT, env: { PATH: `${bin}:${process.env.PATH}`, HOME: tmp }, stdout: 'pipe', stderr: 'pipe' });
+      const gone = JSON.parse(p.stdout.toString().trim()) as { fromDocker: boolean; exit: number; message: string };
+      expect(gone).toMatchObject({ fromDocker: true, exit: 1 });
+      expect(gone.message).toContain('docker inspect of he-ready-1 failed: Cannot connect to the Docker daemon');
+      const asGone = new HarnessGone(gone.exit, gone.message, gone.fromDocker);
+      expect(classify([], asGone, null, false)).toBe('infra_error');
+      expect(classify([], new HarnessGone(2, 'the harness exited 2 before writing ready'), null, false)).toBe('harness_error');
+    } finally { rmSync(tmp, { recursive: true, force: true }); }
+  });
+
+  test('a restart whose ready wait hits that docker failure is infra', async () => {
+    expect((await failedRestart(new HarnessGone(1, 'docker inspect of he-x failed', true))).termination).toBe('infra_error');
   });
 });

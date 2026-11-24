@@ -135,7 +135,7 @@ export async function startDockerHarness(opts: DockerHarnessOptions): Promise<Ha
   }
   const exited = async (): Promise<number | null> => {
     const r = await sh(['docker', 'inspect', '-f', '{{.State.Status}} {{.State.ExitCode}}', name]);
-    if (r.status !== 0) return 1;
+    if (r.status !== 0) throw new HarnessGone(r.status, `docker inspect of ${name} failed: ${(r.stderr || r.stdout).trim().slice(0, 400)}`, true);
     const [status, code] = r.stdout.trim().split(' ');
     return status === 'running' || status === 'created' ? null : Number(code);
   };
@@ -227,7 +227,7 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
   const exited = async (): Promise<number | null> => {
     const r = await sh([...compose, 'ps', '-a', '--format', 'json', 'task'], { env });
     const line = r.stdout.trim().split('\n').find((l) => l.startsWith('{'));
-    if (!line) return 1;
+    if (!line) throw new HarnessGone(r.status || 1, `docker compose ps of the task service returned no container: ${(r.stderr || r.stdout).trim().slice(0, 400)}`, true);
     const ps = JSON.parse(line) as { State?: string; ExitCode?: number };
     return ps.State === 'running' ? null : Number(ps.ExitCode ?? 1);
   };
