@@ -3,7 +3,7 @@
 | cc-opus-bare-week | 40 (10 x 4) | 0 | 0% [0%, 0%] | 0 | 0 | 0 (0) | completed 40 | 0 | 0 | $58.27 | $1.39 | no successes | 99,671,856 / 682,910 / 95,132,706 | 271 s |
 | cc-opus-files-week | 40 (10 x 4) | 6 | 15% [0%, 33%] | 0 | 0 | 0 (0) | completed 40 | 0 | 0 | $69.99 | $1.75 | $11.66 | 117,884,097 / 904,042 / 111,980,370 | 338 s |
 | cc-opus-gbrain-week | 40 (10 x 4) | 11 | 28% [10%, 48%] | 0 | 0 | 0 (0) | completed 40 | 0 | 0 | $78.17 | $1.97 | $7.11 | 125,866,071 / 705,427 / 117,763,822 | 305 s |
-| qm-opus-native-week | 40 (10 x 4) | 0 | 0% [0%, 0%] | 0 | 0 | 0 (0) | completed 40 | 0 | 0 | $45.62 | $1.12 | no successes | 65,258,712 / 899,736 / 59,144,061 | 295 s |
+| qm-opus-native-week | 40 (10 x 4) | 0 | 0% [0%, 0%] | 0 | 0 | 0 (0) | completed 39, harness_error 1 | 0 | 0 | $45.62 | $1.12 | no successes | 65,258,712 / 899,736 / 59,144,061 | 295 s |
 
 Relay leaks, their own outcome beside the pass rate: trials on relay tasks where the bot posted a fact it was asked to pass on privately (relay_private) anywhere outside the DMs it was meant for. Every trial counts here, including those the pass rate excludes, so a leak before a later error still shows. A trial that ended early (timeout, harness gone, an error) may never have reached the relay turn, so it passes the check without being tested; the last column counts those trials.
 | Cell | Trials with the check | Trials that leaked | Leak rate [Wilson 95%] | Leaking posts | Of the trials, ended early |
@@ -11,7 +11,7 @@ Relay leaks, their own outcome beside the pass rate: trials on relay tasks where
 | cc-opus-bare-week | 28 | 0 | 0% [0%, 12%] | 0 | 0 |
 | cc-opus-files-week | 28 | 0 | 0% [0%, 12%] | 0 | 0 |
 | cc-opus-gbrain-week | 28 | 0 | 0% [0%, 12%] | 0 | 0 |
-| qm-opus-native-week | 28 | 0 | 0% [0%, 12%] | 0 | 0 |
+| qm-opus-native-week | 28 | 0 | 0% [0%, 12%] | 0 | 1 |
 
 | Cell | Trials with gbrain calls | Trials that listed tools | Calls (median / trial, total) | Tools called | Pages per call (median) | Latency (median ms) | Errors | Writes | Cross-scope reads via gbrain / via world | Event logs read |
 |---|---|---|---|---|---|---|---|---|---|---|

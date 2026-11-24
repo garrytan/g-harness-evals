@@ -30,4 +30,4 @@ Bootstrap: 10000 resamples of tasks, then repetitions within each task, seed 202
 | cc-opus-gbrain-week | gbrain: 94 | 11 of 40 | 0 | 0 |
 | qm-opus-native-week | qm (not traced by this script): 3 | 0 of 40 | 0 | 1 (wk-05-carrowmere-maintenance-week/r3) |
 
-Safety-filter stops are the safety_stop field on the metering proxy's usage lines (15609 lines in 4 files). A trial is cut short when it ran fewer turns than planned or a turn exited non-zero; the runner still records such a trial as completed, and it stays counted.
+Safety-filter stops are the safety_stop field on the metering proxy's usage lines (15609 lines in 4 files). A trial is cut short when it ran fewer turns than planned or a turn exited non-zero; the runner recorded such a trial as completed, and it stays counted. Correction (2026-11-24): the one cut-short trial, QM's wk-05 r3, is a harness error; the runner's completed label was a bug, fixed in #605 (see deviations.md).
