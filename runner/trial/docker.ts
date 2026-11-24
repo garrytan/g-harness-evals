@@ -14,6 +14,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { RunnerError } from '../errors.ts';
 import { type Harness, type TrialDirs, clearReady, HarnessGone, pollReady } from './harness.ts';
@@ -23,6 +24,30 @@ import { isHostAddress } from './world.ts';
  *  not-started.jsonl instead of trials.jsonl and goes on to the next trial; --resume retries it (docs/errors.md, HE-RUN-006). */
 export class HarnessNotStarted extends RunnerError {
   constructor(message: string) { super('HE-RUN-006', message); }
+}
+
+/** Whether a new listener could bind this port on this host: probe binds on every IPv6 and every IPv4 address (the IPv6 one
+ *  skipped when the host has no IPv6), each closed as soon as it listens, without waiting for a connection it accepted. */
+export function portFree(port: number): Promise<boolean> {
+  const probe = (host: string) => new Promise<string | null>((done) => {
+    const s = createServer((c) => c.destroy());
+    s.once('error', (e: NodeJS.ErrnoException) => done(e.code ?? 'error'));
+    s.listen({ port, host, exclusive: true }, () => { s.close(); done(null); });
+  });
+  return probe('::').then((e) => (e === 'EADDRINUSE' ? false : probe('0.0.0.0').then((e4) => e4 === null)));
+}
+
+/** How long a restarted service's host port may stay busy after the service stopped. */
+export const RESTART_PORT_WAIT_MS = 60_000;
+
+/** Polls until the port is free or timeoutMs has passed; true when it is free. */
+export async function waitPortFree(port: number, timeoutMs: number, free: (port: number) => Promise<boolean> = portFree): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await free(port)) return true;
+    if (Date.now() >= deadline) return false;
+    await Bun.sleep(250);
+  }
 }
 
 export function dockerAvailable(): boolean {
@@ -235,6 +260,9 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
     async kill() { await sh([...compose, 'kill', 'task'], { env }); },
     // The task service and every service labelled harness-eval.restart=with-task (QM core, which runs the agent) restart; the
     // other services and the volumes (QM's database) stay up, as when the agent's process crashed on a host whose database survived.
+    // A service that binds a host port (QM core on host networking) names it in harness-eval.restart-port: the runner stops it,
+    // waits until that port is free, and only then starts it, so a port still held on the host fails the restart with the holder
+    // logged instead of the new start exiting on EADDRINUSE (always-on week, QM wk-05 r3).
     async restart(graceMs, readyTimeoutMs) {
       const n = (restarts += 1);
       await halt(graceMs);
@@ -246,8 +274,21 @@ export async function startComposeHarness(opts: ComposeHarnessOptions): Promise<
       const services = (JSON.parse(config.stdout) as { services: Record<string, { labels?: Record<string, string> }> }).services;
       const withTask = Object.keys(services).filter((s) => services[s]!.labels?.['harness-eval.restart'] === 'with-task');
       if (withTask.length) {
-        const r = await sh([...compose, 'restart', '-t', String(Math.ceil(graceMs / 1000)), ...withTask], { env, timeoutMs: graceMs + 120_000 });
-        if (r.status !== 0) throw new HarnessGone(r.status, `docker compose restart of ${withTask.join(', ')} failed on restart ${n}: ${r.stderr.trim().slice(0, 400)}`);
+        const stop = await sh([...compose, 'stop', '-t', String(Math.ceil(graceMs / 1000)), ...withTask], { env, timeoutMs: graceMs + 120_000 });
+        if (stop.status !== 0) throw new HarnessGone(stop.status, `docker compose stop of ${withTask.join(', ')} failed on restart ${n}: ${stop.stderr.trim().slice(0, 400)}`);
+        for (const s of withTask) {
+          const label = services[s]!.labels?.['harness-eval.restart-port'];
+          if (label === undefined) continue;
+          const port = Number(label);
+          if (!Number.isInteger(port) || port < 1 || port > 65535) throw new HarnessGone(null, `${s} has harness-eval.restart-port "${label}", not a port, on restart ${n}`);
+          if (await waitPortFree(port, RESTART_PORT_WAIT_MS)) continue;
+          const holder = `restart-${n}-port-${port}.log`;
+          const ss = await sh(['ss', '-ltnp', `sport = :${port}`]).catch((e: Error) => ({ status: null, stdout: '', stderr: `ss could not run: ${e.message}` }));
+          try { writeFileSync(join(opts.dirs.logs, holder), `${ss.stdout}\n${ss.stderr}`, { flag: 'wx' }); } catch {}
+          throw new HarnessGone(null, `port ${port} of ${s} was still in use ${RESTART_PORT_WAIT_MS / 1000} s after ${s} stopped on restart ${n}; the listener is in ${holder}`);
+        }
+        const r = await sh([...compose, 'start', ...withTask], { env, timeoutMs: 120_000 });
+        if (r.status !== 0) throw new HarnessGone(r.status, `docker compose start of ${withTask.join(', ')} failed on restart ${n}: ${r.stderr.trim().slice(0, 400)}`);
       }
       const again = await sh([...compose, 'up', '-d', '--no-color', '--no-deps', '--force-recreate', 'task'], { env, timeoutMs: (opts.timeBudgetS + 180) * 1000 });
       if (again.status !== 0) throw new HarnessGone(again.status, `docker compose up of the task service failed on restart ${n}: ${again.stderr.trim().slice(0, 400)}`);
