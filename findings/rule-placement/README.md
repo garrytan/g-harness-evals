@@ -12,12 +12,15 @@
 - **Naming the skill fixed it on Claude Code.** With "Use the brain-first skill." in the prompt, Claude Code checked gbrain in 30 of 30 turns, against 18 for the unmentioned skill and 17 for no rule.
 - **Said once, it fades.** On repeat turns inside a session, a copy given once was followed in 2 of 10 turns on Hermes and 4 of 10 on OpenClaw, against 10 of 10 for the per-turn hook. Pooled over four harnesses that is -38.9 points [-50.0, -27.8].
 
-**Main caveat:** every number is dev: 10 public tasks, one repetition, at the pinned versions. One model per harness, so a harness difference is a harness-and-model difference. The Claude Code and one-time-copy results are descriptive: Opus already checked gbrain in 17 to 18 of 30 turns with no rule, and the one-time-copy contrast could only detect a 39-point gap. The brain had no per-member access rules, so a rule that drives more gbrain search also drives more cross-scope reads (12 trials here); see [A shared brain needs per-person access rules](../shared-brain-access/README.md).
+- **It held on gbrain's newest release.** Re-run on gbrain v0.60.766.0, with GPT-6.2 Sol in place of GPT-6.1 Sol and gbrain's own per-harness rule text, the per-turn hook reached 30 of 30 turns on Codex, Hermes and OpenClaw (0 to 4 of 30 with no rule). The system prompt reached 30 of 30 on Codex and Hermes and 29 of 30 on Claude Code, and the startup file 29 or 30 of 30 everywhere. The unmentioned skill again worked on Codex (30 of 30) and OpenClaw (27 of 30, mostly without opening it) and not on Hermes (4 of 30) or Claude Code (12 and 14 of 30, against 14 with no rule, all of those memory calls with no search); naming it reached 30 of 30 on Claude Code. A copy given once fell to 0 of 10 repeat turns on Hermes and 3 of 10 on OpenClaw ([re-run report](../../docs/benchmarks/2026-11-20-h10-rule-placement-rerun/report.md)).
+
+**Main caveat:** every number is dev: 10 public tasks, one repetition, at the pinned versions. One model per harness, so a harness difference is a harness-and-model difference. The Claude Code and one-time-copy results are descriptive: Opus already checked gbrain in 17 to 18 of 30 turns with no rule, and the one-time-copy contrast could only detect a 39-point gap. The brain had no per-member access rules, so a rule that drives more gbrain search also drives more cross-scope reads (12 trials here, and 35 of 360 in the re-run, a rise the re-run can't explain); see [A shared brain needs per-person access rules](../shared-brain-access/README.md).
 
 ## More
 
 - [Addendum: details, cost, verdicts and how to recheck](addendum-details.md)
 - [Full report](../../docs/benchmarks/2026-11-07-h10-instruction-placement/report.md)
+- [Re-run on gbrain v0.60.766.0](../../docs/benchmarks/2026-11-20-h10-rule-placement-rerun/report.md)
 
 ## Disclosures
 

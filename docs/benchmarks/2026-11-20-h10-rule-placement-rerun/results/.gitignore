@@ -1,0 +1,24 @@
+# Evaluator-owned receipts are committed; harness state, workspaces, raw harness logs and per-trial tokens are not (matrix-mu-2026-11's rules).
+trials/*/*/*/state/
+trials/*/*/*/workspace/
+trials/*/*/*/logs/*
+trials/*/*/*/trial.json
+trials/*/*/*/compose.serve.yaml
+*.sqlite-shm
+*.sqlite-wal
+# Kept from logs/: the adapter's route record and per-turn route and security status, which scripts/instruction-followed-h10.ts reads (cross-checks, Hermes approval cards and Tirith blocks). They hold no token.
+!trials/*/*/*/logs/instruction-route.json
+!trials/*/*/*/logs/turns/
+trials/*/*/*/logs/turns/*
+!trials/*/*/*/logs/turns/*.route.json
+!trials/*/*/*/logs/turns/*.security.json
+# The gbrain sidecar's per-trial token and logs, and every preflight's token and sidecar logs, stay out of the repository.
+trials/*/*/*/gbrain/
+*preflight-gbrain-starter/
+**/ingest-tokens.json
+**/tokens.json
+# The preflight and clean-arm preflight logs of each shard are receipts this run's report cites (the repository's root rule ignores *.log).
+!*.run.log
+!*.proxy.log
+!*.preflight.log
+!*.clean-arm-preflight.log

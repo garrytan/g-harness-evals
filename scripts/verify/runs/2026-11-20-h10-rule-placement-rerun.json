@@ -1,0 +1,75 @@
+{
+  "run": "2026-11-20-h10-rule-placement-rerun",
+  "about": "h10-rule-placement-rerun-2026-11: the rule-placement run re-measured on gbrain v0.60.766.0 with GPT-6.2 Sol, on Claude Code (CLI and Agent SDK), Codex, Hermes, OpenClaw and QM; the instruction-followed endpoints and the report's extra figures (spend, intervals, cost per turn, the original run's counts).",
+  "requires": [
+    "tasks/multiuser/v0.3.1/dev",
+    "docs/benchmarks/2026-11-07-h10-instruction-placement/results",
+    "scripts/instruction-followed.ts",
+    "runner/stats/paired.ts",
+    "docs/benchmarks/2026-11-20-h10-rule-placement-rerun/results/cx.ledger.sqlite",
+    "docs/benchmarks/2026-11-20-h10-rule-placement-rerun/results/cx.proxy-usage.ndjson",
+    "docs/benchmarks/2026-11-20-h10-rule-placement-rerun/results/cx.shard-vm.json",
+    "docs/benchmarks/2026-11-20-h10-rule-placement-rerun/pilot/codex.ledger.sqlite"
+  ],
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/instruction-followed-h10.ts",
+        "--results",
+        "{run}/results",
+        "--prereg",
+        "{run}/prereg.json",
+        "--out",
+        "{run}/results"
+      ],
+      "outputs": [
+        "results/instruction-followed-h10.json",
+        "results/instruction-followed-h10.md"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "-c",
+        "import os, subprocess, sys\nrun, src, where, *cmd = sys.argv[1:]\ntmp, name = os.path.split(run)\norig = os.path.join(os.path.dirname(src), '2026-11-07-h10-instruction-placement')\ndef link(target, path):\n    if not os.path.lexists(path):\n        os.symlink(target, path)\nfake = os.path.join(tmp, 'root', 'docs', 'benchmarks')\nos.makedirs(fake, exist_ok=True)\nlink(run, os.path.join(fake, name))\nlink(orig, os.path.join(fake, '2026-11-07-h10-instruction-placement'))\nsys.exit(subprocess.call(cmd, cwd=os.path.join(tmp, 'root') if where == 'fake-root' else None))\n",
+        "{run}",
+        "{src}",
+        "fake-root",
+        "bun",
+        "--no-env-file",
+        "{run}/report-extras.ts"
+      ],
+      "outputs": [
+        "results/report-extras.json",
+        "results/spend.json"
+      ],
+      "stdout": {
+        "file": "results/report-extras.out"
+      },
+      "note": "The script reads the original run's committed instruction-followed-h10.json by a fixed path, so this builds a folder tree whose docs/benchmarks/ points at the scratch copy and at the original run's committed folder (read only), then runs the script there."
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The clean-arm audit",
+      "file": "results/clean-arm-audit.json",
+      "reason": "It is a text search over each shard's full trial folders, including harness state, workspaces and raw harness logs; those files stayed off the repository (they hold per-trial gbrain tokens), so the search has nothing to run on. They are in the private raw archive."
+    },
+    {
+      "what": "The cap-stop filter's printed lines",
+      "file": "results/cap-stop-filter.out",
+      "reason": "A one-line filter printed them while reading each shard's own results folder before the merge; those per-shard folders are not committed, only the merged results/ is."
+    },
+    {
+      "what": "The scorer's printed line",
+      "file": "results/instruction-followed-h10.out",
+      "reason": "Its one line names the output folder's path on the run machine; the counts it prints are in instruction-followed-h10.json, which is rebuilt."
+    },
+    {
+      "what": "The startup rules file size captures",
+      "file": "startup-sizes/",
+      "reason": "They are keyless captures from running the harness images against a fake model endpoint in Docker; verify runs no Docker."
+    }
+  ]
+}
