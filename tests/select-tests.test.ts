@@ -331,7 +331,8 @@ describe('select-tests --profile export', () => {
 });
 
 // Value: protects=the step script both CI jobs run turns every unclear case into the full run: the label, [full tests],
-// an empty selection, and a base whose selector predates the export profile; fails_when=one of those yields
+// an empty selection, a base whose selector predates the export profile, and any argument but --profile export (a
+// mistyped profile would give the export job the checks job's rules); fails_when=one of those yields
 // selected=true, or a clean list is not passed through; why_new=the step moved out of ci.yml so the public-export job can
 // share it, and #558's final review found an empty list read as a selection (ci.yml:126); seam=scripts/ci/select-step.sh
 // on a temp repository with a merge commit and a stub base selector; no_claim=the real selector (tested above).
@@ -366,4 +367,7 @@ test('select-step.sh runs everything unless the base selector prints a clean lis
   merge('', 'change');
   expect(step({ STUB_OUT: 'tests/a.test.ts' })).toMatchObject({ output: 'selected=true' });
   expect(step({ STUB_OUT: 'tests/a.test.ts' }, '--profile', 'export')).toMatchObject({ output: 'selected=false', log: "full run: the base's scripts/ci/select-tests.ts has no export profile\n" });
+  for (const args of [['--profile'], ['--profile=export'], ['--profile', 'nope'], ['--profile', 'export', 'extra'], ['export']]) {
+    expect({ args, ...step({ STUB_OUT: 'tests/a.test.ts' }, ...args) }).toMatchObject({ args, output: 'selected=false', list: 'all', log: 'full run: select-step.sh takes <dir> and optionally --profile export, not: ' + args.join(' ') + '\n' });
+  }
 });

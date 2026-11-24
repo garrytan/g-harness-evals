@@ -7,16 +7,20 @@
 # the tree the tests run in. Anything but a clean list means the full run: the full-tests label (FULL_LABEL=true), a pull
 # request whose own branch is ci-test-map (HEAD_REF), a HEAD that is not a merge commit, [full tests] in the head commit's
 # message, a base with no selector (or, for --profile export, one that predates the profile), no map branch, or an error.
+# Any other arguments mean the full run, so a mistyped profile never selects with the wrong rules.
 # Usage: bash scripts/ci/select-step.sh <dir> [--profile export]
 set -uo pipefail
 d=$1
 profile=()
-[ "$#" -ge 3 ] && [ "$2" = --profile ] && profile=(--profile "$3")
+args=ok
+if [ "$#" -eq 3 ] && [ "$2" = --profile ] && [ "$3" = export ]; then profile=(--profile export); elif [ "$#" -ne 1 ]; then args=bad; fi
 mkdir -p "$d" && : > "$d/bunfig.toml" && echo '{}' > "$d/tsconfig.json"
 echo all > "$d/selection.txt"
 base=$(git rev-parse --verify -q HEAD^1 || true)
 head=$(git rev-parse --verify -q HEAD^2 || true)
-if [ "${FULL_LABEL:-}" = true ]; then
+if [ "$args" = bad ]; then
+  echo "full run: select-step.sh takes <dir> and optionally --profile export, not: ${*:2}"
+elif [ "${FULL_LABEL:-}" = true ]; then
   echo "full run: the full-tests label"
 elif [ "${HEAD_REF:-}" = ci-test-map ]; then
   echo "full run: the pull request's own branch is ci-test-map"
