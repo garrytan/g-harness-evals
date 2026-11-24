@@ -145,6 +145,15 @@ describe('skills-at-scale analysis', () => {
     expect(decision(a, 'claude-code').S).toBe(1500);
   }, 120000);
 
+  test('the no-skill block rate reads saw-skill.json block_requests when no status turns exist, and leaves out trials with no record', () => {
+    const ts = trials('claude-code', [OPUS], [1500], { right: (i) => i % 10 === 1, block: (j) => j % 2 === 0 }).map((t) => t.arm !== 'resolver' ? t : { ...t, turns: [], saw: { ...t.saw!, resolver: [], block_requests: t.turns.some((u) => u.block) ? 1 : 0, requests: 1 } });
+    const a = analyze({ ...base, places: placesFor('claude-code'), trials: ts });
+    expect(a.per_rung[0]!.no_skill_block_rate[0]!.no_skill_requests_with_block.rate).toBeCloseTo(0.5, 6);
+    const none = ts.map((t) => t.arm === 'resolver' && t.saw!.block_requests === 0 ? { ...t, saw: null } : t);
+    const b = analyze({ ...base, places: placesFor('claude-code'), trials: none });
+    expect(b.per_rung[0]!.no_skill_block_rate[0]!.no_skill_requests_with_block.rate).toBeCloseTo(1, 6);
+  }, 120000);
+
   test('set T success wholly below 0 blocks the rung', () => {
     const setT = (arm: string, task: string, success: boolean): ScaleTrial => ({ id: 'run/t-' + arm + '/' + task + '/r1', cell: 't-' + arm, harness: 'claude-code', model: OPUS, arm, task, termination: 'completed', opened: [], got_skill_file: true, turns: [], infra: [], task_phase: true,
       set_t: { task, target: 'sk-000', pack: 'x', skill_md_sha256: 'x', arm, request_sha256: 'x', success, used_it: success, instruction_md: 'seeded', checks: [] } as any, rung: 1500, usage: null, saw: null });
@@ -286,12 +295,13 @@ describe('skills-at-scale analysis', () => {
       const d = join(dir, 'trials', c.id, 'l-s-000-a', 'r1');
       mkdirSync(d, { recursive: true });
       writeFileSync(join(d, 'got-skill.json'), JSON.stringify({ catalog_opened: ['sk-000'] }));
-      if (c.skill_arm === 'resolver') writeFileSync(join(d, 'saw-skill.json'), JSON.stringify({ described: ['sk-000'], name_only: [] }));
+      if (c.skill_arm === 'resolver') writeFileSync(join(d, 'saw-skill.json'), JSON.stringify({ described: ['sk-000'], name_only: [], resolver: ['sk-000'], block_requests: 1 }));
       return JSON.stringify({ trial_id: 'run/' + c.id + '/l-s-000-a/r1', cell: c.id, task: 'l-s-000-a', harness: c.harness, model: c.model, termination: 'completed', usage: { input_tokens: 1234, usd: 0.01 } });
     });
     writeFileSync(join(dir, 'trials.jsonl'), rows.join('\n') + '\n');
     const loaded = loadScaleTrials(dir);
     expect(loaded.map((t) => [t.arm, t.rung, t.opened, t.usage?.input_tokens, t.saw?.described ?? null])).toEqual([['native', 1500, ['sk-000'], 1234, null], ['resolver', 1500, ['sk-000'], 1234, ['sk-000']]]);
+    expect(loaded.map((t) => t.saw?.block_requests ?? null)).toEqual([null, 1]);
     writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ run_id: 'run', cells: [{ ...cells[0], rung: 200 }, cells[1]] }));
     expect(() => loadScaleTrials(dir)).toThrow('HE-SCALE-001');
   });

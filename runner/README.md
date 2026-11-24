@@ -165,7 +165,7 @@ A `gbrain-install` cell asks a freshly set-up harness to install gbrain, then ch
 
 ### 2026-11-23: skill-requests trials keep saw-skill.json
 
-The trial directory listing names `saw-skill.json`, which a skill-requests trial now writes before the request scrub and keeps through it: the catalog skills its captured requests listed with a description or by name only, and the ones a gbrain resolver block named. Why: the skills-at-scale analysis reads it for "saw the right skill", and nothing wrote it, so that outcome had no value for any trial.
+The trial directory listing names `saw-skill.json`, which a skill-requests trial now writes before the request scrub and keeps through it: the catalog skills its captured requests listed with a description or by name only, the ones a gbrain resolver block named (`resolver`), and how many requests carried a closed resolver block naming a catalog skill (`block_requests`). A skill-arm cell can also set `rung`, the catalog's skill count, which the runner passes to the manifest without reading it (HE-PREREG-007 when it is not a positive whole number or sits on a cell with no `skill_arm`). Why: the skills-at-scale analysis reads it for "saw the right skill", and nothing wrote it, so that outcome had no value for any trial.
 
 ### 2026-11-21: the 2026-11-21 price table (internal-task)
 

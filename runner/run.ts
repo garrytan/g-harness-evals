@@ -226,6 +226,9 @@ export interface Cell {
   /** internal-task, skill-tasks cells only: the skill-loading arm's name (native, resolver-on, no-catalog, ...), defined by the arm
    *  configs. The runner does not interpret it: it reaches the adapter as HE_SKILL_ARM and the trial record as set_t.arm. */
   skill_arm?: string;
+  /** internal-task, skill-arm cells only: the catalog size the cell runs at (skills-at-scale's 100, 351, 700 or 1,500 rung). The
+   *  runner does not interpret it; it reaches the manifest, where scripts/skills-at-scale/analyze.ts reads each cell's rung. */
+  rung?: number;
   /** internal-task Phase B, skill-requests cells only. requests: the set file (JSON lines {id, request} or {id, text, prev_user_text},
    *  each with an optional half); each row is a task named by its id. request_set: the set's name for the record (P, R).
    *  half: dev, test or all (the default) rows. catalog: the catalog's manifest.json (or a names file) got-skill.json counts
@@ -242,7 +245,7 @@ export interface Cell {
   install?: InstallCellConfig;
 }
 
-const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap', 'install']);
+const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'rung', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap', 'install']);
 export const DEFAULT_TASK_SET = 'v0.1';
 
 /** The cells whose harness pin has no `transport` entry (model_particle, model_openrouter), the declaration an adapter makes
@@ -485,6 +488,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (c.utility_models !== undefined && (!Array.isArray(c.utility_models) || !c.utility_models.length || c.utility_models.some((m) => typeof m !== 'string' || !/^[a-z]+:[A-Za-z0-9._-]+$/.test(m)))) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: utility_models must be a non-empty list of provider:model ids (got ${JSON.stringify(c.utility_models)})`);
     if (c.log_sections !== undefined && typeof c.log_sections !== 'boolean') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections must be true, false or absent (got ${JSON.stringify(c.log_sections)})`);
     if (c.skill_arm !== undefined && ((c.slice !== SET_T_SLICE && c.slice !== SKILL_REQUESTS_SLICE) || typeof c.skill_arm !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(c.skill_arm))) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: skill_arm is a lowercase name such as "native" on a ${SET_T_SLICE} or ${SKILL_REQUESTS_SLICE} cell only (got ${JSON.stringify(c.skill_arm)} on slice ${c.slice})`);
+    if (c.rung !== undefined && (c.skill_arm === undefined || !Number.isSafeInteger(c.rung) || c.rung < 1)) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: rung is the catalog's skill count, a positive whole number on a skill-arm cell only (got ${JSON.stringify(c.rung)}${c.skill_arm === undefined ? ' on a cell with no skill_arm' : ''})`);
     checkSkillRequestsCell(c);
     if (c.log_sections === true && c.split === 'heldout') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections cannot run on a held-out split; its unsalted digests would let a published usage log confirm held-out content. fix: drop log_sections from the cell`);
     if (c.log_sections === true && c.harness_mode === 'scripted') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections needs a cell that calls a model; a scripted cell calls none. fix: drop log_sections from the cell`);

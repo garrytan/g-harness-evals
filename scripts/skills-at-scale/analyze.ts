@@ -13,8 +13,9 @@
 //   <results>/manifest.json and trials.jsonl, shaped like #449's results/merged (runner/run.ts, scripts/merge-shards.ts). Every
 //     cell carries skill_arm (native, resolver or resolver-pins) and rung (100, 351, 700 or 1500); a set T cell also carries
 //     slice skill-tasks. Each trial directory holds got-skill.json (what the agent opened) and, for outcome 1,
-//     saw-skill.json ({described: [skill], name_only: [skill]}: skills found in the model's captured request with at least
-//     40 characters of description or a resolver line, or by name only). A trial with no saw-skill.json has no value for
+//     saw-skill.json ({described: [skill], name_only: [skill], block_requests}: skills found in the model's captured request
+//     with at least 40 characters of description or a resolver line, or by name only, and how many requests carried a
+//     resolver block, which the no-skill block rate reads). A trial with no saw-skill.json has no value for
 //     outcome 1 and is counted under "no value".
 //   --requests: set L rows {id, kind: skill|none, target, stratum, half} (gen-set-l.ts). Requests cluster by target skill; a
 //     no-skill request is its own cluster.
@@ -105,7 +106,11 @@ export type Ladder = Record<number, Set<string>>;
 export type Places = Record<string, Record<string, Partial<Record<Place, string[]>>>>;
 export type Margins = Record<string, { wrong_skill: number; no_skill_open: number }>;
 export type Adjudication = { request_id: string; skill: string; acceptable: boolean };
-export type ScaleTrial = Trial & { rung: number; usage: { input_tokens: number; usd: number } | null; saw: { described: string[]; name_only: string[] } | null };
+export type ScaleTrial = Trial & { rung: number; usage: { input_tokens: number; usd: number } | null; saw: { described: string[]; name_only: string[]; block_requests?: number } | null };
+
+/** Whether a captured request carried a gbrain resolver block (saw-skill.json block_requests). gbrain's own hooks write no
+ *  status log of ours, so this is the record of a block on a skills-at-scale trial; #449-style status turns still count too. */
+export const sawBlock = (t: ScaleTrial): boolean => (t.saw?.block_requests ?? 0) > 0;
 export type GoldCheck = { n_gold: number; sources: Record<string, { kappa: number | null }> };
 type Contrast = ReturnType<typeof contrast>;
 
@@ -126,7 +131,7 @@ export function loadScaleTrials(results: string): ScaleTrial[] {
   return loadTrials(results).map((t) => {
     const f = join(results, 'trials', ...t.id.split('/').slice(1), 'saw-skill.json');
     const s = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null;
-    return { ...t, rung: rung.get(t.cell)!, usage: usage.get(t.id) ?? null, saw: s ? { described: strList(s.described), name_only: strList(s.name_only) } : null };
+    return { ...t, rung: rung.get(t.cell)!, usage: usage.get(t.id) ?? null, saw: s ? { described: strList(s.described), name_only: strList(s.name_only), ...(typeof s.block_requests === 'number' ? { block_requests: s.block_requests } : {}) } : null };
   });
 }
 
@@ -317,8 +322,8 @@ export function analyze(o: { trials: ScaleTrial[]; requests: Request[]; labels: 
     const byPlace: Record<string, Record<string, ReturnType<typeof strip>>> = Object.fromEntries([...PLACES, 'unknown'].map((p) => [p, Object.fromEntries(PLACE_OUTCOMES
       .map((k) => [k, strip(run(c, ts.filter((t) => c.targetPlace(t) === p && c.req.get(t.task)?.kind === 'skill'), k))]))]).filter(([, v]) => Object.values(v).some((x) => x.n_pairs)));
     const block = models.map((m) => {
-      const side = ts.filter((t) => t.model === m && t.arm === 'resolver' && !t.contaminated && !c.noSkill(t));
-      const i = interval(side.filter((t) => t.turns.some((u) => u.block)).length, side.length);
+      const side = ts.filter((t) => t.model === m && t.arm === 'resolver' && !t.contaminated && !c.noSkill(t) && (t.saw || t.turns.length));
+      const i = interval(side.filter((t) => t.turns.some((u) => u.block) || sawBlock(t)).length, side.length);
       return { model: m, no_skill_requests_with_block: i, over_bar: i.rate !== null && i.rate > NO_SKILL_BLOCK_BAR };
     });
     const disc = Object.fromEntries(models.map((m) => [m, Object.fromEntries(['opened_right_skill', 'opened_wrong_skill', 'no_skill_opened_any']

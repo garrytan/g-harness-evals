@@ -123,6 +123,13 @@ describe('skill-tasks cells', () => {
     expect(() => loadPrereg(prereg({ skill_arm: 'Native Arm' }))).toThrow(/skill_arm/);
     expect(() => loadPrereg(prereg({ slice: 'hello', skill_arm: 'native' }))).toThrow(/skill_arm/);
   });
+
+  test('rung is a positive whole number on a skill-arm cell only, and reaches the cell unchanged', () => {
+    expect(loadPrereg(prereg({ skill_arm: 'native', rung: 1500 })).prereg.cells[0]!.rung).toBe(1500);
+    expect(() => loadPrereg(prereg({ skill_arm: 'native', rung: 0 }))).toThrow(/rung/);
+    expect(() => loadPrereg(prereg({ skill_arm: 'native', rung: '351' }))).toThrow(/rung/);
+    expect(() => loadPrereg(prereg({ rung: 351 }))).toThrow(/rung/);
+  });
 });
 
 /** A docker stand-in: logs its arguments, and for run copies $STUB_ATTEMPT_DIR into the directory mounted at /workspace. */

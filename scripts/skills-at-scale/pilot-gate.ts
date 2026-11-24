@@ -26,7 +26,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { JUDGES, judgeFor, loadScaleTrials, type GoldCheck, type Request, type ScaleTrial } from './analyze.ts';
+import { JUDGES, judgeFor, loadScaleTrials, sawBlock, type GoldCheck, type Request, type ScaleTrial } from './analyze.ts';
 import type { FlaggedRow } from './flags.ts';
 
 export const PART_RAN_MIN = 0.95;
@@ -64,7 +64,7 @@ export function pilotGate(o: { trials: ScaleTrial[]; planned: Record<string, num
       part = { pass: share(n, ts.length) >= PART_RAN_MIN, detail: 'native listing captured on ' + n + ' of ' + ts.length + ' trials (' + pct(share(n, ts.length)) + ')' };
     } else {
       const side = o.requests ? ts.filter((t) => kind.get(t.task) === 'skill') : ts;
-      const n = side.filter((t) => t.turns.some((u) => u.block && u.injected)).length;
+      const n = side.filter((t) => t.turns.some((u) => u.block && u.injected) || sawBlock(t)).length;
       part = { pass: side.length > 0 && share(n, side.length) >= PART_RAN_MIN, detail: 'resolver block in a captured request on ' + n + ' of ' + side.length + (o.requests ? ' skill-request' : '') + ' trials (' + pct(share(n, side.length)) + ')' };
     }
     const planned = o.planned[cell] ?? 0;

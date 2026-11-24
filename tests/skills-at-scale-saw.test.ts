@@ -15,21 +15,28 @@ const block = (...ids: string[]) => '<relevant_skills>\nSkills that may fit this
 describe('skills-at-scale saw-skill record', () => {
   test('a listing with 40 characters of the description is described; a shorter one is name only; skills not in the catalog are ignored', () => {
     const r = sawSkill({ harness: 'claude-code', catalog, requests: [claude(['- hiring-report: ' + LONG, '- pipeline-review: Review the', '- update-config: Use this skill to configure the harness itself, nothing else.'])] });
-    expect(r).toEqual({ described: ['hiring-report'], name_only: ['pipeline-review'], requests: 1 });
+    expect(r).toEqual({ described: ['hiring-report'], name_only: ['pipeline-review'], resolver: [], block_requests: 0, requests: 1 });
   });
 
   test('a resolver block names a skill as described, over every request, and lifts it out of name only', () => {
     const r = sawSkill({ harness: 'claude-code', catalog, requests: [claude(['- pipeline-review: Review the']), { messages: [{ role: 'user', content: [{ type: 'text', text: block('pipeline-review', 'offsite-plan', 'not-in-catalog') + '\nplan our offsite' }] }] }] });
-    expect(r).toEqual({ described: ['offsite-plan', 'pipeline-review'], name_only: [], requests: 2 });
+    expect(r).toEqual({ described: ['offsite-plan', 'pipeline-review'], name_only: [], resolver: ['offsite-plan', 'pipeline-review'], block_requests: 1, requests: 2 });
+  });
+
+  test('text that only quotes the tag, or a block naming no catalog skill, is not a resolver block', () => {
+    const quoted = { messages: [{ role: 'user', content: [{ type: 'tool_result', content: 'the hook prints only the <relevant_skills> block' }] }] };
+    const r = sawSkill({ harness: 'claude-code', catalog, requests: [quoted, { prompt: block('not-in-catalog') }] });
+    expect(r.block_requests).toBe(0);
+    expect(r.resolver).toEqual([]);
   });
 
   test('QM: the Skills block is read as qm-listing.ts reads it', () => {
     const body = { input: [{ role: 'system', content: 'You are QM.\n\n## Skills\nUse a skill when it fits.\n- hiring-report — ' + LONG + '\n- offsite-plan\n\n## Tools\nnone' }] };
-    expect(sawSkill({ harness: 'qm', catalog, requests: [body] })).toEqual({ described: ['hiring-report'], name_only: ['offsite-plan'], requests: 1 });
+    expect(sawSkill({ harness: 'qm', catalog, requests: [body] })).toEqual({ described: ['hiring-report'], name_only: ['offsite-plan'], resolver: [], block_requests: 0, requests: 1 });
   });
 
   test('no request means nothing seen; a harness with no listing parser still counts resolver blocks', () => {
-    expect(sawSkill({ harness: 'codex', catalog, requests: [] })).toEqual({ described: [], name_only: [], requests: 0 });
+    expect(sawSkill({ harness: 'codex', catalog, requests: [] })).toEqual({ described: [], name_only: [], resolver: [], block_requests: 0, requests: 0 });
     expect(sawSkill({ harness: 'other', catalog, requests: [{ prompt: block('hiring-report') }] }).described).toEqual(['hiring-report']);
   });
 

@@ -45,6 +45,14 @@ describe('skills-at-scale pilot gate (R111)', () => {
     expect(g.pass).toBe(false);
   });
 
+  test('a resolver block in a captured request (saw-skill.json block_requests) shows the part ran when no status log exists', () => {
+    const seen = (n: number, blocks: (i: number) => number) => trials('he-resolver', 'resolver', OPUS, n).map((t, i) => ({ ...t, turns: [], saw: { described: [], name_only: [], block_requests: blocks(i) } }));
+    const pass = pilotGate({ trials: seen(8, () => 1), planned: { 'he-resolver': 8 }, judgeCheck: check(0.9, 0.9), requests, flagged: [] });
+    expect(pass.arms[0]!.part_ran).toEqual({ pass: true, detail: 'resolver block in a captured request on 6 of 6 skill-request trials (100.0%)' });
+    const fail = pilotGate({ trials: seen(8, (i) => (i === 0 ? 0 : 1)), planned: { 'he-resolver': 8 }, judgeCheck: check(0.9, 0.9), requests, flagged: [] });
+    expect(fail.arms[0]!.failing).toEqual(['part_ran']);
+  });
+
   test('the judge needs 100 labelled outputs, and a pilot over a tenth of the budget fails', () => {
     const ts = trials('cc-native', 'native', OPUS, 40, { usd: 0.5 }); // pregate-literal: R78_OUTPUTS=40 trials per arm in this fixture, not a label count
     const g = pilotGate({ trials: ts, planned: { 'cc-native': 40 }, judgeCheck: check(0.9, 0.9, 30), armUsd: { 'cc-native': 150 }, judgeStage: 'pilot', flagged: [] }); // pregate-literal: R78_OUTPUTS=40 planned trials per arm, not a label count
