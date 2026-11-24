@@ -1,0 +1,56 @@
+{
+  "run": "2026-11-mcp-at-scale",
+  "about": "MCP tools at scale: the final analysis (slip and holding per harness, set T, search against sending everything, gbrain surfaces) rebuilt from the merged trials, the three request sets and the interim look's state, plus the exploratory gbrain lists.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/mcp-at-scale/analysis/analyze.ts",
+        "--trials",
+        "{run}/results/trials.jsonl",
+        "--sets",
+        "{run}/results/sets/set-r.jsonl",
+        "{run}/results/sets/set-t.jsonl",
+        "{run}/results/sets/set-g.jsonl",
+        "--interim-state",
+        "{run}/results/look/interim-state.json",
+        "--margins",
+        "{run}/margins.json",
+        "--out",
+        "{run}/results/analysis"
+      ],
+      "outputs": [
+        "results/analysis/analysis.json",
+        "results/analysis/analysis.md"
+      ],
+      "timeout_s": 1800
+    },
+    {
+      "cmd": [
+        "python3",
+        "{run}/results/exploratory/gbrain-extra.py"
+      ],
+      "outputs": [
+        "results/exploratory/gbrain-confirmable/confirmable.json",
+        "results/exploratory/widening.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "the interim look",
+      "file": "results/look/interim.json",
+      "reason": "its input is the phase 1 index, the phase 1 rows of results/trials.jsonl with shard-relative paths; that file's sha256 is in results/look/phase-1-index.json and it is in the raw archive. interim.ts look records itself and refuses a second call, and the final analysis checks the look's decisions and trial digest against interim-state.json."
+    },
+    {
+      "what": "the exploratory gbrain analysis on the 65 passable requests",
+      "file": "results/exploratory/gbrain-confirmable/analysis.json",
+      "reason": "it reads the filtered trials and set G that gbrain-extra.py writes with --inputs <dir>, outside the run folder; then analyze.ts --exploratory with --sets results/sets/set-r.jsonl results/sets/set-t.jsonl <dir>/set-g-confirmable.jsonl rebuilds it"
+    },
+    {
+      "what": "the dead-request classes",
+      "file": "results/exploratory/gbrain-confirmable/dead-items.json",
+      "reason": "the class comes from gbrain's refusal messages in each trial's gbrain-calls.jsonl, which are in the raw archive, not in this folder"
+    }
+  ]
+}

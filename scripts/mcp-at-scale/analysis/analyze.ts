@@ -4,7 +4,7 @@
 // (scripts/mcp-at-scale/grade.py), and decisions 1 to 4 as the plan words them. Keyless and offline.
 //
 //   bun scripts/mcp-at-scale/analysis/analyze.ts --trials <trials.jsonl> --sets <set-r.jsonl> [<set-t.jsonl> <set-g.jsonl> ...]
-//       (--interim-state <state.json> | --exploratory) [--places <places.json>] [--margins <margins.json>] --out <dir>
+//       (--interim-state <state.json> [--interim-record <interim.json>] | --exploratory) [--places <places.json>] [--margins <margins.json>] --out <dir>
 //
 // Inputs: the trial index (stats.ts), the set files (requests/sets.ts shapes; the public and sealed halves together),
 // --places {<harness>: {"<rung>": {"<server>/<tool>": "full_schema" | "description" | "name_only" | "server_only" | "absent"}}}
@@ -43,12 +43,12 @@
 //      half is below 70%, pooled or on any harness.
 // Writes <out>/analysis.json and <out>/analysis.md.
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { Item, TItem } from '../requests/sets.ts';
 import { lookTrials } from './interim.ts';
 import { gbrainMargin } from './power.ts';
-import { RUNGS, contrastOf, hasTranscript, isInfra, isOpus, loadTrials, paired, rate, readJsonl, requestIndex, setup, setupItemRep, taskSuccess, trialsDigest, VALUES, type Contrast, type Requests, type Trial } from './stats.ts';
+import { RUNGS, hasTranscript, isInfra, isOpus, loadTrials, paired, rate, readJsonl, requestIndex, setup, setupItemRep, taskSuccess, trialsDigest, VALUES, type Contrast, type Requests, type Trial } from './stats.ts';
 
 export const SLIP_BAR = 0.05;
 export const HOLD_BOUND = -0.07;
@@ -61,6 +61,7 @@ export const MECH_NI_MARGIN = 0.07;
 export const FIX_METHOD_CEILING = 0.70;
 export const FINAL_BOUND = 1.977;
 export const STOPPED_NOTE = 'stopped early, estimate possibly overstated';
+export const DESCRIPTIVE_NOTE = 'descriptive, stopped early';
 export const TEST_ORDER = [300, 150, 75] as const;
 export const OPUS_HARNESSES = ['claude-code', 'hermes', 'openclaw', 'pi', 'qm'];
 export const SURFACES = ['full', 'starter', 'verbs', 'registered'] as const;
@@ -72,10 +73,13 @@ export const MECHANISM_PAIRS: Array<{ harness: string; search: string; send_ever
 
 type InterimDecision = 'continue' | 'no data at the look' | 'stop_efficacy' | 'stop_opposite' | 'stop_futility';
 type InterimDecisions = Record<string, InterimDecision>;
+/** One comparison as the interim look recorded it (interim.ts decide), the verdict a stopped comparison keeps. */
+export interface LookRecord { decision: InterimDecision; z: number | null; conditional_power: number | null; contrast: { delta: number | null; ci95: [number, number] | null; n_pairs: number }; note: string }
+type InterimLook = Record<string, LookRecord>;
 const isStopped = (decision: InterimDecision) => decision.startsWith('stop_');
 const stopNote = (decision: InterimDecision) => STOPPED_NOTE + (decision === 'stop_futility' ? ' (futility)' : '');
 
-function loadInterimDecisions(path: string, sets: string[], margin: number, trials: Trial[], items: Item[]): InterimDecisions {
+function loadInterim(path: string, recordPath: string, sets: string[], margin: number, trials: Trial[], items: Item[]): { decisions: InterimDecisions; look: InterimLook } {
   const designFile = join(import.meta.dir, 'interim-design.json');
   const sha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
   const design = JSON.parse(readFileSync(designFile, 'utf8')) as { comparisons: { id: string }[]; seed: string; fraction: number };
@@ -97,13 +101,20 @@ function loadInterimDecisions(path: string, sets: string[], margin: number, tria
     ['continue', 'no data at the look', 'stop_efficacy', 'stop_opposite', 'stop_futility'].includes(decisions[id] ?? ''))) {
     throw new Error('interim state is missing valid decisions for the frozen comparisons');
   }
-  return decisions;
+  if (!existsSync(recordPath)) throw new Error('final analysis needs the interim look\'s record (interim.json): ' + recordPath);
+  const record = JSON.parse(readFileSync(recordPath, 'utf8')) as { trials_digest?: string; results?: Array<LookRecord & { id: string }> };
+  const look: InterimLook = Object.fromEntries((record.results ?? []).map(({ id, decision, z, conditional_power, contrast, note }) =>
+    [id, { decision, z, conditional_power, contrast: { delta: contrast?.delta ?? null, ci95: contrast?.ci95 ?? null, n_pairs: contrast?.n_pairs ?? 0 }, note }]));
+  if (record.trials_digest !== state.trials_digest || Object.keys(look).length !== design.comparisons.length || !design.comparisons.every(({ id }) => look[id]?.decision === decisions[id])) {
+    throw new Error('the interim record does not match the interim state');
+  }
+  return { decisions, look };
 }
 
-export interface Ctx { trials: Trial[]; req: Requests; tItems: Map<string, TItem>; cl: (t: Trial) => string; interimDecisions?: InterimDecisions }
-export function context(trials: Trial[], items: Item[], interimDecisions?: InterimDecisions): Ctx {
+export interface Ctx { trials: Trial[]; req: Requests; tItems: Map<string, TItem>; cl: (t: Trial) => string; interimDecisions?: InterimDecisions; interimLook?: InterimLook }
+export function context(trials: Trial[], items: Item[], interimDecisions?: InterimDecisions, interimLook?: InterimLook): Ctx {
   const req = requestIndex(items);
-  return { trials, req, tItems: new Map(items.filter((i) => i.set === 'T').map((i) => [i.id, i as TItem])), cl: (t) => req.cluster(t.request), interimDecisions };
+  return { trials, req, tItems: new Map(items.filter((i) => i.set === 'T').map((i) => [i.id, i as TItem])), cl: (t) => req.cluster(t.request), interimDecisions, interimLook };
 }
 
 const passesBoundary = (distance: number, x: Contrast) => !!x.se_cluster && distance / x.se_cluster >= FINAL_BOUND;
@@ -115,7 +126,7 @@ function finalLook(c: Ctx, id: string, x: Contrast, direction: 1 | -1, sides: 1 
   const stopped = isStopped(interim_decision);
   const z = !stopped && x.delta !== null && x.se_cluster ? (direction * x.delta + shift) / x.se_cluster : null;
   return { interim_decision, z, boundary: FINAL_BOUND, boundary_crossed: z === null ? null : (sides === 2 ? Math.abs(z) : z) >= FINAL_BOUND,
-    note: stopped ? stopNote(interim_decision) : null };
+    note: stopped ? stopNote(interim_decision) : null, look: stopped ? c.interimLook?.[id] ?? null : null, label: stopped ? DESCRIPTIVE_NOTE : null };
 }
 
 const where = (c: Ctx, f: Partial<Pick<Trial, 'harness' | 'model' | 'arm' | 'set' | 'rung'>>) =>
@@ -133,7 +144,7 @@ export function slipTest(c: Ctx, harness: string) {
   let slipPoint: number | null = null;
   for (const r of TEST_ORDER) {
     const id = 'slip:' + harness;
-    const x = r === 300 && stoppedAtInterim(c, id) ? contrastOf([]) : rungContrast(c, harness, r);
+    const x = rungContrast(c, harness, r);
     const final_look = r === 300 ? finalLook(c, id, x, -1, 2) : null;
     const slips = final_look?.note ? null : x.delta !== null && x.delta <= -SLIP_BAR && !!x.ci95 && x.ci95[1] < 0 && (!final_look || (final_look.z ?? 0) >= FINAL_BOUND);
     steps.push({ rung: r, contrast: x, slips, final_look });
@@ -244,8 +255,8 @@ export function decision4(c: Ctx) {
     const id = 'mechanism:' + (p.harness === 'pi' ? p.search === 'native' ? 'pi-native' : 'pi-deferred' : p.harness);
     const rungs = RUNGS.map((r) => {
       const stopped = r === 300 && stoppedAtInterim(c, id);
-      const acc = stopped ? contrastOf([]) : mechanismContrast(c, p, r);
-      const cost = stopped ? contrastOf([]) : mechanismContrast(c, p, r, VALUES.usd);
+      const acc = mechanismContrast(c, p, r);
+      const cost = mechanismContrast(c, p, r, VALUES.usd);
       const final_look = r === 300 ? finalLook(c, id, acc, 1, 2) : null;
       const beats = stopped ? null : acc.delta !== null && acc.delta >= MECH_BAR && !!acc.ci95 && acc.ci95[0] > 0 && (!final_look || (final_look.z ?? 0) >= FINAL_BOUND);
       const nonInferior = stopped ? null : !!acc.ci95 && acc.ci95[1] < MECH_NI_MARGIN && (!final_look || passesBoundary(MECH_NI_MARGIN - acc.delta!, acc));
@@ -274,7 +285,7 @@ export function decision1(c: Ctx, margin: number, provisional: boolean) {
       if (s === 'full') return { half: h, reachable: true, contrast: null, pass: true, note: 'reference', final_look: null };
       const id = 'gbrain:' + s + ':' + h;
       const stopped = stoppedAtInterim(c, id);
-      const x = stopped ? contrastOf([]) : paired(half(g('full'), h), half(g(s), h), VALUES.right_tool, setupItemRep, c.cl);
+      const x = paired(half(g('full'), h), half(g(s), h), VALUES.right_tool, setupItemRep, c.cl);
       const final_look = finalLook(c, id, x, 1, 1, margin);
       return { half: h, reachable: true, contrast: x, pass: stopped ? null : ni(x) && (!final_look || (final_look.z ?? 0) >= FINAL_BOUND), final_look };
     });
@@ -321,14 +332,14 @@ export function places(c: Ctx, map: Record<string, Record<string, Record<string,
   return out;
 }
 
-export function analyze(o: { trials: Trial[]; items: Item[]; places?: Record<string, Record<string, Record<string, string>>> | null; margin?: number | null; interimDecisions?: InterimDecisions }) {
-  const c = context(o.trials, o.items, o.interimDecisions);
+export function analyze(o: { trials: Trial[]; items: Item[]; places?: Record<string, Record<string, Record<string, string>>> | null; margin?: number | null; interimDecisions?: InterimDecisions; interimLook?: InterimLook }) {
+  const c = context(o.trials, o.items, o.interimDecisions, o.interimLook);
   const setups = [...new Set(o.trials.map(setup))].sort();
   const arms = [...new Set(o.trials.map((t) => t.arm))].sort();
   return {
     schema: 'he-mcp-at-scale-analysis/1',
     analysis_mode: o.interimDecisions ? 'final' : 'exploratory',
-    interim_stops: Object.entries(o.interimDecisions ?? {}).filter(([, decision]) => isStopped(decision)).map(([comparison, decision]) => ({ comparison, decision, note: stopNote(decision) })),
+    interim_stops: Object.entries(o.interimDecisions ?? {}).filter(([, decision]) => isStopped(decision)).map(([comparison, decision]) => ({ comparison, decision, note: stopNote(decision), look: o.interimLook?.[comparison] ?? null })),
     constants: { SLIP_BAR, HOLD_BOUND, ADVICE_BAR, COST_RATIO, MECH_BAR, MECH_NI_MARGIN, FIX_METHOD_CEILING, TEST_ORDER },
     counts: { trials: o.trials.length, infra: o.trials.filter(isInfra).length, scored: o.trials.filter((t) => !isInfra(t)).length },
     infra: infraTable(c),
@@ -343,21 +354,23 @@ export function analyze(o: { trials: Trial[]; items: Item[]; places?: Record<str
 
 const pts = (x: number | null | undefined) => (x === null || x === undefined ? '-' : (100 * x).toFixed(1));
 const range = (x: { ci95: [number, number] | null } | null | undefined) => (x?.ci95 ? '[' + pts(x.ci95[0]) + ', ' + pts(x.ci95[1]) + ']' : '-');
+const atLook = (l: LookRecord | null | undefined) => (l ? 'look ' + pts(l.contrast.delta) + ' ' + range(l.contrast) + (l.z !== null ? ', z ' + l.z : '') : 'look record not given');
+const stoppedCell = (f: { interim_decision: string; look: LookRecord | null }, x: Contrast) => f.interim_decision + ' at the interim look (' + atLook(f.look) + '); all data ' + pts(x.delta) + ' ' + range(x) + ', ' + DESCRIPTIVE_NOTE;
 export function render(a: ReturnType<typeof analyze>): string {
   const out = ['# MCP at scale: analysis', '', a.counts.trials + ' trials, ' + a.counts.scored + ' scored, ' + a.counts.infra + ' INFRA (counted, never scored). Differences in points with 95% ranges, clustered by core tool.', '',
     a.analysis_mode === 'final' ? 'Final look: registered comparisons that continued use the z boundary ' + FINAL_BOUND + ' in addition to the 95% ranges.' : 'Exploratory analysis without an interim receipt. These are not counted decisions.', ''];
   if (a.interim_stops.length) {
-    out.push('## Comparisons stopped at the interim look', '', ...a.interim_stops.map((s) => '- ' + s.comparison + ': ' + s.decision + ' (' + s.note + '). No final decision.'), '');
+    out.push('## Comparisons stopped at the interim look', '', ...a.interim_stops.map((s) => '- ' + s.comparison + ': ' + s.decision + ' (' + s.note + '; ' + atLook(s.look) + '). The look\'s verdict stands; the numbers below that use phase 2 are ' + DESCRIPTIVE_NOTE + '.'), '');
   }
   out.push('## Decision 2 and 3: slip point, holding, prune advice', '', '| harness | label | 300-30 | 150-30 | 75-30 | result | vs Opus mean at 300 | named | $/request 30, 150, 300 | advice |', '|---|---|---|---|---|---|---|---|---|---|');
   for (const h of a.decision2_3) {
-    const step = (r: number) => { const s = h.sequence.find((x) => x.rung === r); return !s ? 'not tested' : s.final_look?.note ? 'stopped at interim' : pts(s.contrast.delta) + ' ' + range(s.contrast) + (s.slips ? ' slips' : ''); };
+    const step = (r: number) => { const s = h.sequence.find((x) => x.rung === r); return !s ? 'not tested' : s.final_look?.note ? stoppedCell(s.final_look, s.contrast) : pts(s.contrast.delta) + ' ' + range(s.contrast) + (s.slips ? ' slips' : ''); };
     out.push('| ' + [h.harness, h.label, step(300), step(150), step(75), h.result, h.vs_opus_mean ? pts(h.vs_opus_mean[300]?.delta) + ' ' + range(h.vs_opus_mean[300]) : '-', h.named === null ? '-' : h.named ? 'yes' : 'no',
       [30, 150, 300].map((r) => h.cost_per_request[r as 30]?.mean?.toFixed(4) ?? '-').join(', '), h.prune_advice.text].join(' | ') + ' |');
   }
   out.push('', '## Set T: task success, 300 against 30, setups pooled', '', 'Difference ' + pts(a.set_t.pooled_300_vs_30.delta) + ' ' + range(a.set_t.pooled_300_vs_30) + ' over ' + a.set_t.pooled_300_vs_30.n_pairs + ' pairs (' + a.set_t.pooled_300_vs_30.infra_excluded + ' with an INFRA side left out).');
   out.push('', '## Decision 4: mechanism', '');
-  for (const m of a.decision4) out.push('- ' + m.harness + ', ' + m.send_everything + ' against ' + m.search + ': ' + m.finding + '. ' + m.rungs.map((r) => r.rung + ': ' + (r.final_look?.note ? 'stopped at interim' : pts(r.send_everything_minus_search.delta) + ' ' + range(r.send_everything_minus_search))).join('; '));
+  for (const m of a.decision4) out.push('- ' + m.harness + ', ' + m.send_everything + ' against ' + m.search + ': ' + m.finding + '. ' + m.rungs.map((r) => r.rung + ': ' + (r.final_look?.note ? stoppedCell(r.final_look, r.send_everything_minus_search) : pts(r.send_everything_minus_search.delta) + ' ' + range(r.send_everything_minus_search))).join('; '));
   if (!a.decision4.length) out.push('No mechanism arm in these trials.');
   out.push('', '## Decision 1: gbrain surface', '');
   if (!a.decision1) out.push('No gbrain arm in these trials.');
@@ -365,7 +378,7 @@ export function render(a: ReturnType<typeof analyze>): string {
     out.push('Margin ' + pts(a.decision1.margin) + ' points' + (a.decision1.margin_provisional ? ' (provisional: power.ts at the plan\'s assumptions; the prereg freezes it)' : '') + '. Decision: ' + a.decision1.decision.text + '. request_tools: ' + a.decision1.request_tools.verdict + '.', '',
       '| surface | starter half vs full | full-only half vs full | cost to other requests | passes |', '|---|---|---|---|---|');
     for (const s of a.decision1.surfaces) {
-      const hv = (h: string) => { const x = s.halves.find((y) => y.half === h)!; return !x.reachable ? 'cannot reach' : x.final_look?.note ? 'stopped at interim' : x.contrast ? pts(x.contrast.delta) + ' ' + range(x.contrast) : 'reference'; };
+      const hv = (h: string) => { const x = s.halves.find((y) => y.half === h)!; return !x.reachable ? 'cannot reach' : x.final_look?.note && x.contrast ? stoppedCell(x.final_look, x.contrast) : x.contrast ? pts(x.contrast.delta) + ' ' + range(x.contrast) : 'reference'; };
       out.push('| ' + [s.surface, hv('starter'), hv('full_only'), pts(s.cost_to_other_requests.delta) + ' ' + range(s.cost_to_other_requests), s.pass === null ? 'not decided' : s.pass ? 'yes' : 'no'].join(' | ') + ' |');
     }
     if (a.decision1.per_harness_overrides.length) out.push('', 'Per-harness overrides flagged: ' + a.decision1.per_harness_overrides.map((x) => x.harness + ' (' + x.half + ')').join(', '));
@@ -381,14 +394,15 @@ if (import.meta.main) {
   const end = after.findIndex((x) => x.startsWith('--'));
   const sets = end < 0 ? after : after.slice(0, end);
   const trials = flag('--trials'), out = flag('--out'), interim = flag('--interim-state');
+  const record = flag('--interim-record') ?? (interim ? join(dirname(interim), 'interim.json') : undefined);
   if (!trials || !out || !sets.length || Boolean(interim) === argv.includes('--exploratory')) {
-    console.error('usage: analyze.ts --trials <trials.jsonl> --sets <set.jsonl>... (--interim-state <state.json> | --exploratory) [--places <json>] [--margins <json>] --out <dir>');
+    console.error('usage: analyze.ts --trials <trials.jsonl> --sets <set.jsonl>... (--interim-state <state.json> [--interim-record <interim.json>] | --exploratory) [--places <json>] [--margins <json>] --out <dir>');
     process.exit(2);
   }
   const margins = flag('--margins') ? JSON.parse(readFileSync(flag('--margins')!, 'utf8')) as { gbrain?: number } : null;
   const rows = loadTrials(trials), items = sets.flatMap((f) => readJsonl<Item>(f));
-  const interimDecisions = interim ? loadInterimDecisions(interim, sets, margins?.gbrain ?? gbrainMargin(), rows, items) : undefined;
-  const a = analyze({ trials: rows, items, places: flag('--places') ? JSON.parse(readFileSync(flag('--places')!, 'utf8')) : null, margin: margins?.gbrain ?? null, interimDecisions });
+  const loaded = interim ? loadInterim(interim, record!, sets, margins?.gbrain ?? gbrainMargin(), rows, items) : undefined;
+  const a = analyze({ trials: rows, items, places: flag('--places') ? JSON.parse(readFileSync(flag('--places')!, 'utf8')) : null, margin: margins?.gbrain ?? null, interimDecisions: loaded?.decisions, interimLook: loaded?.look });
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'analysis.json'), JSON.stringify(a, null, 1) + '\n');
   writeFileSync(join(out, 'analysis.md'), render(a));

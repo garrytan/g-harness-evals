@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { analyze, cell, context, decision1, decision4, FIX_METHOD_CEILING, rungContrast } from '../scripts/mcp-at-scale/analysis/analyze.ts';
+import { analyze, cell, context, decision1, decision4, DESCRIPTIVE_NOTE, FIX_METHOD_CEILING, rungContrast } from '../scripts/mcp-at-scale/analysis/analyze.ts';
 import { dryGate, gate, surfaceRan, type Arm, type ArmsFile } from '../scripts/mcp-at-scale/analysis/pilot-gates.ts';
 import { conditionalPower, decide, interimUnits, look, obfBounds, STOPPED_NOTE, type Design } from '../scripts/mcp-at-scale/analysis/interim.ts';
 import { COMPARISONS, gbrainMargin, gbrainNiPower, pilotEstimates, sdd, table } from '../scripts/mcp-at-scale/analysis/power.ts';
@@ -222,11 +222,13 @@ describe('interim look (R113)', () => {
       'gbrain:verbs:full_only': 'stop_futility',
     });
     const m = decision4(c)[0]!.rungs.find((r) => r.rung === 300)!;
-    expect(m).toMatchObject({ search_non_inferior: null, send_everything_beats_search: null, final_look: { interim_decision: 'stop_opposite', z: null, note: STOPPED_NOTE } });
+    expect(m).toMatchObject({ search_non_inferior: null, send_everything_beats_search: null, final_look: { interim_decision: 'stop_opposite', z: null, note: STOPPED_NOTE, label: DESCRIPTIVE_NOTE } });
+    expect(m.send_everything_minus_search.n_pairs).toBeGreaterThan(0);
     const g = decision1(c, gbrainMargin(), false)!;
     const verbs = g.surfaces.find((s) => s.surface === 'verbs')!;
     expect(verbs.pass).toBeNull();
-    expect(verbs.halves.find((h) => h.half === 'full_only')).toMatchObject({ pass: null, final_look: { interim_decision: 'stop_futility', z: null } });
+    expect(verbs.halves.find((h) => h.half === 'full_only')).toMatchObject({ pass: null, final_look: { interim_decision: 'stop_futility', z: null, label: DESCRIPTIVE_NOTE } });
+    expect(verbs.halves.find((h) => h.half === 'full_only')!.contrast!.n_pairs).toBeGreaterThan(0);
     expect(g.decision.pick).toBeNull();
     expect(g.request_tools.verdict).toContain('no final decision');
   });
@@ -396,9 +398,28 @@ describe('end to end on synthetic outcomes (2 harnesses x 4 rungs)', () => {
     expect(first.out).toContain('slip:hermes: stop_efficacy');
     expect(first.out).toContain(STOPPED_NOTE);
     expect(JSON.parse(readFileSync(state, 'utf8')).status).toBe('complete');
-    const fin = run([...analysisArgs, '--interim-state', state, '--out', join(dir, 'final')]);
+    const noRecord = run([...analysisArgs, '--interim-state', state, '--out', join(dir, 'no-record')]);
+    expect(noRecord.code).not.toBe(0);
+    expect(noRecord.err).toContain('needs the interim look\'s record');
+    const record = join(dir, 'interim', 'interim.json');
+    const editedRecord = join(dir, 'edited-interim.json');
+    const rec = JSON.parse(readFileSync(record, 'utf8'));
+    writeFileSync(editedRecord, JSON.stringify({ ...rec, results: rec.results.map((x: { id: string }) => (x.id === 'slip:hermes' ? { ...x, decision: 'continue' } : x)) }));
+    const edited = run([...analysisArgs, '--interim-state', state, '--interim-record', editedRecord, '--out', join(dir, 'edited')]);
+    expect(edited.code).not.toBe(0);
+    expect(edited.err).toContain('the interim record does not match the interim state');
+    for (const [name, changed] of [['other-digest', { ...rec, trials_digest: 'x' }], ['short', { ...rec, results: rec.results.slice(1) }]] as const) {
+      const p = join(dir, name + '-interim.json');
+      writeFileSync(p, JSON.stringify(changed));
+      const refused = run([...analysisArgs, '--interim-state', state, '--interim-record', p, '--out', join(dir, name)]);
+      expect(refused.code).not.toBe(0);
+      expect(refused.err).toContain('the interim record does not match the interim state');
+    }
+    const fin = run([...analysisArgs, '--interim-state', state, '--interim-record', record, '--out', join(dir, 'final')]);
     expect(fin.code).toBe(0);
     expect(fin.out).toContain(STOPPED_NOTE);
+    expect(fin.out).toContain('slip:hermes: stop_efficacy (' + STOPPED_NOTE + '; look ');
+    expect(fin.out).toContain(DESCRIPTIVE_NOTE);
     const changedMargin = join(dir, 'changed-margin.json');
     writeFileSync(changedMargin, JSON.stringify({ gbrain: 0.5 }));
     const marginRefused = run([...analysisArgs, '--interim-state', state, '--margins', changedMargin, '--out', join(dir, 'refused-margin')]);
@@ -411,7 +432,10 @@ describe('end to end on synthetic outcomes (2 harnesses x 4 rungs)', () => {
     expect(hermes.holds_through_300).toBeNull();
     expect(hermes.sequence).toHaveLength(1);
     expect(hermes.sequence[0].slips).toBeNull();
-    expect(hermes.sequence[0].final_look).toMatchObject({ interim_decision: 'stop_efficacy', z: null, boundary_crossed: null, note: STOPPED_NOTE });
+    expect(hermes.sequence[0].final_look).toMatchObject({ interim_decision: 'stop_efficacy', z: null, boundary_crossed: null, note: STOPPED_NOTE, label: DESCRIPTIVE_NOTE,
+      look: { decision: 'stop_efficacy', z: rec.results.find((x: { id: string }) => x.id === 'slip:hermes').z } });
+    expect(hermes.sequence[0].contrast.n_pairs).toBeGreaterThan(0);
+    expect(f.interim_stops.find((x: { comparison: string }) => x.comparison === 'slip:hermes').look.decision).toBe('stop_efficacy');
     const otherDir = join(dir, 'other');
     mkdirSync(otherDir);
     const other = readFileSync(join(dir, 'trials.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).map((t) => (t.outcomes ? { ...t, outcomes: { ...t.outcomes, invalid_calls: 1 } } : t));
