@@ -44,7 +44,7 @@ test('parse.py turns one strace log into repo paths, listings and git calls', ()
 
 // Value: protects=the map applies the exact reading: path-scoped git calls become paths or trees (git archive <rev>
 // harnesses/<h> included), only whole-tree git readers and whole-tree scans go to always, docker contexts and the images
-// a test runs become trees, and listings stay apart; fails_when=a scoped git read turns a test into ALWAYS or a whole-tree
+// a test runs or inspects become trees, and listings stay apart; fails_when=a scoped git read turns a test into ALWAYS or a whole-tree
 // read is mapped as scoped; why_new=the nightly test map (internal-task); seam=build-map.py over synthetic parse records;
 // no_claim=the real suite's traces.
 test('build-map.py writes a schema 1 map with paths, listings, trees, always and weights', () => {
@@ -60,6 +60,7 @@ test('build-map.py writes a schema 1 map with paths, listings, trees, always and
     'tests__status.test.ts': rec(['tests/status.test.ts'], [git(root, 'status', '--porcelain', '--', 'runner/stats'), git('/tmp/elsewhere', 'ls-files')], ['data']),
     'tests__build.test.ts': rec(['tests/build.test.ts'], [docker('build', '-t', 'img:dev', '-f', 'harnesses/h/Dockerfile', 'harnesses/h')]),
     'tests__use.test.ts': rec(['tests/use.test.ts'], [docker('run', '--rm', '-v', root + '/world:/w:ro', 'img:dev', 'true')]),
+    'tests__probe.test.ts': rec(['tests/probe.test.ts'], [docker('image', 'inspect', 'img:dev'), docker('inspect', '-f', '{{.Id}}', 'other:dev')]),
     'tests__scan.test.ts': rec(Array.from({ length: 50_001 }, (_, i) => 'docs/f' + i + '.md')),
     'tests__sub.test.ts': rec(['tests/sub.test.ts'], [git(root, '-C', 'runner', 'ls-files', '--', 'stats'), git(root + '/scripts', 'grep', 'x', '--', 'ci/*.ts'), git(root + '/harnesses', 'show', 'abc:./h/pin.json')]),
     'tests__fail.test.ts': rec(['tests/fail.test.ts']),
@@ -77,6 +78,7 @@ test('build-map.py writes a schema 1 map with paths, listings, trees, always and
   expect(m.tests['tests/build.test.ts'].trees).toEqual(['harnesses/h']);
   expect(m.tests['tests/build.test.ts'].paths).toContain('harnesses/h/Dockerfile');
   expect(m.tests['tests/use.test.ts'].trees).toEqual(['harnesses/h', 'world']);
+  expect(m.tests['tests/probe.test.ts'].trees).toEqual(['harnesses/h']);
   expect(m.tests['tests/scan.test.ts']).toEqual({ paths: [], dirs: [], trees: [] });
   expect(m.tests['tests/__snap__.test.ts']).toEqual({ paths: ['tests/__snap__.test.ts'], dirs: [], trees: [] });
   expect(m.tests['tests/sub.test.ts']).toEqual({ paths: ['harnesses/h/pin.json', 'tests/sub.test.ts'], dirs: [], trees: ['runner/stats', 'scripts/ci'] });

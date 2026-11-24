@@ -225,17 +225,24 @@ describe('select-tests and what the trace cannot see', () => {
 });
 
 // Value: protects=a selected docker test never runs without the phase-1 builder that makes its image, also when its trace
-// ties it to one builder and a new case needs another, and the selector's BUILDERS list matches run-tests.sh's;
-// fails_when=a test that runs a built image is selected alone (it skips on a clean runner), a docker test the map ties to
-// the claude-code builder gets only that builder, or the two lists drift; why_new=the /ship review of #558 (second-model
-// findings at select-tests.ts:107 and :117, internal-task's round grant and the export-selection follow-up);
-// seam=the CLI over a temp repository; no_claim=docker itself.
-test('select-tests adds the image builders a selected docker test needs', () => {
+// ties it to one builder and a new case names another, while a docker test that names none of their images pulls in no
+// builder, and the selector's BUILDERS list matches run-tests.sh's; fails_when=a test that runs a built image is selected
+// without its builder (it skips on a clean runner), a named image's builder or the '_fake' directory's is left out, a test
+// that templates an image gets fewer than all three, a docker test using other images still pulls in all three, or the
+// two lists drift; why_new=the /ship review of #558 (second-model findings at select-tests.ts:107 and :117) and the
+// builder-floor follow-up (internal-task, 2026-11-24); seam=the CLI over a temp repository; no_claim=docker itself.
+test('select-tests adds the image builders a selected docker test needs, and only those', () => {
   const { dir } = repo();
   put(dir, {
     'tests/adapter-conformance.test.ts': 'b\n', 'tests/claude-code-adapter.test.ts': 'b\n', 'tests/codex-adapter.test.ts': 'b\n',
-    'tests/sdk.test.ts': "spawnSync('docker', ['run', IMAGE]);\n", 'tests/plain.test.ts': "spawnSync('docker', ['run', 'x']);\n",
+    'tests/sdk.test.ts': "spawnSync('docker', ['run', 'harness-eval/codex:dev']);\n", 'tests/plain.test.ts': "spawnSync('docker', ['run', 'x']);\n",
+    'tests/list.test.ts': "const HS = ['fake', 'claude-code'];\nfor (const h of HS) spawnSync('docker', ['run', `harness-eval/${h}:dev`]);\n",
+    'tests/other.test.ts': "for (const h of ['openclaw']) spawnSync('docker', ['run', 'harness-eval/' + h + ':dev']);\n",
+    'tests/unknown.test.ts': "import { HS } from './hs.ts';\nfor (const h of HS) spawnSync('docker', ['run', 'harness-eval/' + h + ':dev']);\n",
+    'tests/dir.test.ts': "runTrial({ harness: '_fake', harness_mode: 'docker' });\n",
+    'harnesses/openclaw/Dockerfile': 'FROM x\n',
     'tests/ctx.test.ts': "readFileSync('harnesses/cc/Dockerfile');\n", 'harnesses/cc/Dockerfile': 'FROM x\n', 'src/s.ts': 's\n', 'src/p.ts': 'p\n', 'src/c.ts': 'c\n',
+    'src/l.ts': 'l\n', 'src/o.ts': 'o\n', 'src/u.ts': 'u\n', 'src/d.ts': 'd\n',
   });
   sh(dir, 'add', '-A');
   sh(dir, 'commit', '-q', '-m', 'builders');
@@ -248,6 +255,10 @@ test('select-tests adds the image builders a selected docker test needs', () => 
     'tests/sdk.test.ts': { paths: ['src/s.ts', 'tests/sdk.test.ts'], dirs: [], trees: ['harnesses/cc'] },
     'tests/plain.test.ts': { paths: ['src/p.ts', 'tests/plain.test.ts'], dirs: [], trees: [] },
     'tests/ctx.test.ts': { paths: ['src/c.ts', 'tests/ctx.test.ts'], dirs: [], trees: ['harnesses/cc'] },
+    'tests/list.test.ts': { paths: ['src/l.ts', 'tests/list.test.ts'], dirs: [], trees: [] },
+    'tests/other.test.ts': { paths: ['src/o.ts', 'tests/other.test.ts'], dirs: [], trees: [] },
+    'tests/unknown.test.ts': { paths: ['src/u.ts', 'tests/unknown.test.ts'], dirs: [], trees: [] },
+    'tests/dir.test.ts': { paths: ['src/d.ts', 'tests/dir.test.ts'], dirs: [], trees: [] },
   });
   const file = join(dir, '..', 'map.json.gz');
   writeFileSync(file, Bun.gzipSync(new TextEncoder().encode(JSON.stringify(m))));
@@ -258,11 +269,17 @@ test('select-tests adds the image builders a selected docker test needs', () => 
     return cli(dir, base, sh(dir, 'rev-parse', 'HEAD'), file);
   };
   const all = ['tests/adapter-conformance.test.ts', 'tests/claude-code-adapter.test.ts', 'tests/codex-adapter.test.ts'];
-  expect(pick('src/s.ts').out).toEqual([...all, 'tests/sdk.test.ts', 'tests/x.test.ts']);
+  const s = pick('src/s.ts');
+  expect(s.out).toEqual(['tests/claude-code-adapter.test.ts', 'tests/codex-adapter.test.ts', 'tests/sdk.test.ts', 'tests/x.test.ts']);
+  expect(s.why).toContain('plus 2 image builder(s)');
   expect(pick('src/c.ts').out).toEqual(['tests/claude-code-adapter.test.ts', 'tests/ctx.test.ts', 'tests/x.test.ts']);
-  const r = pick('src/p.ts');
-  expect(r.out).toEqual(['tests/adapter-conformance.test.ts', 'tests/claude-code-adapter.test.ts', 'tests/codex-adapter.test.ts', 'tests/plain.test.ts', 'tests/x.test.ts']);
-  expect(r.why).toContain('plus 3 image builder(s)');
+  expect(pick('src/l.ts').out).toEqual([...all, 'tests/list.test.ts', 'tests/x.test.ts']);
+  expect(pick('src/d.ts').out).toEqual(['tests/adapter-conformance.test.ts', 'tests/dir.test.ts', 'tests/x.test.ts']);
+  const p = pick('src/p.ts');
+  expect(p.out).toEqual(['tests/plain.test.ts', 'tests/x.test.ts']);
+  expect(p.why).not.toContain('image builder');
+  expect(pick('src/o.ts').out).toEqual([...all, 'tests/other.test.ts', 'tests/x.test.ts']);
+  expect(pick('src/u.ts').out).toEqual([...all, 'tests/unknown.test.ts', 'tests/x.test.ts']);
   const runTests = readFileSync(join(ROOT, 'scripts/run-tests.sh'), 'utf8');
   expect(runTests.match(/^BUILDERS=\(\n([^)]*)\)/m)![1]!.trim().split(/\s+/)).toEqual([...BUILDERS]);
 });

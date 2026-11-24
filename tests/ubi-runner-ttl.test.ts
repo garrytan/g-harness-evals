@@ -67,10 +67,16 @@ function reset(rows: string[] = [], ghosts = false) {
   api.ghosts = ghosts;
 }
 
-// Runs ubi-runner.sh asynchronously (the fake API answers on this process's event loop) with a scrubbed environment.
+// Runs ubi-runner.sh asynchronously (the fake API answers on this process's event loop) with a scrubbed environment, from
+// a one-file checkout: run fingerprints its --src (default .) with git add -A, which on this repository reads every file.
 async function runner(args: string[], env: Record<string, string | undefined> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'ubi-runner-ttl-'));
   try {
+    const src = join(dir, 'src');
+    mkdirSync(src);
+    writeFileSync(join(src, 'README.md'), 'fixture\n');
+    const g = (...a: string[]) => execFileSync('git', a, { cwd: src, stdio: 'pipe', env: { PATH: process.env.PATH ?? '', HOME: dir, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } });
+    g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't'); g('add', '.'); g('commit', '-q', '-m', 'fixture');
     const base: Record<string, string> = {
       PATH: process.env.PATH ?? '',
       HOME: dir,
@@ -83,7 +89,7 @@ async function runner(args: string[], env: Record<string, string | undefined> = 
       UBI_CREATE_GRACE: '0',
     };
     for (const [k, v] of Object.entries(env)) if (v === undefined) delete base[k]; else base[k] = v;
-    const p = Bun.spawn(['bash', RUNNER, ...args], { env: base, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
+    const p = Bun.spawn(['bash', RUNNER, ...args], { cwd: src, env: base, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
     const [stdout, stderr, exit] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
     return { stdout, stderr, exit, lines: stderr.trimEnd().split('\n') };
   } finally {
@@ -144,7 +150,7 @@ describe('ubi-runner.sh TTL', () => {
     const legacy = VM + 'harn7-1793380000-ab12cd34';
     reset([`eu-central-h1 ${legacy}`, 'eu-central-h1 ' + VM + 'harn14-1793383503-08522507', 'eu-central-h1 ' + VM + 'gsta30-1793360524-154fa95a-t14']);
     const before = Math.floor(Date.now() / 1000);
-    const r = await runner(['run', '--src', ROOT, '--', 'true'], { UBI_OWNER: OWNER, UBI_TTL_HOURS: '12.1' });
+    const r = await runner(['run', '--', 'true'], { UBI_OWNER: OWNER, UBI_TTL_HOURS: '12.1' });
     const after = Math.ceil(Date.now() / 1000);
     expect(r.exit).toBe(1);
     const creates = api.calls.filter((c) => c[2] === 'create').map((c) => c[1].split('/')[1]);
@@ -164,7 +170,7 @@ describe('ubi-runner.sh TTL', () => {
 
   test('a create the API refuses made no VM, even when a VM by that name is listed afterwards: run fails with left=0', async () => {
     reset([], true);
-    const r = await runner(['run', '--src', ROOT, '--', 'true'], { UBI_OWNER: OWNER });
+    const r = await runner(['run', '--', 'true'], { UBI_OWNER: OWNER });
     const vm = api.calls.find((c) => c[2] === 'create')![1].split('/')[1];
     expect(vm).toMatch(/^ubirun-harn7-\d{10}-[0-9a-f]{8}-t3$/);
     expect(r.exit).toBe(1);

@@ -24,10 +24,11 @@
  *     says nothing about its reads);
  *   - the same for what the base changed after the traced commit, so a test whose reads changed with the base is picked by
  *     the files it read when traced (those changes alone never force a full run, since the base's own full run passed);
- *   - the image builders (BUILDERS, run-tests.sh's phase 1) a selected test needs: every builder when a selected test
- *     mentions docker (its old trace may not name an image a new case runs), else each builder that shares a tree with it
- *     (the map gives a test that runs an image the build context of that image), so a docker test never skips for want
- *     of its image.
+ *   - the image builders (BUILDERS, run-tests.sh's phase 1) a selected test needs: each builder that shares a tree with it
+ *     (the map gives a test that runs an image the build context of that image), plus, for a test whose source mentions
+ *     docker, each builder whose image it names at --head (harness-eval/<name>:..., or the harness name or its harness
+ *     directory in quotes, such as '_fake'), so a new case its old trace never ran still gets its image; a test that
+ *     templates a harness-eval image gets every builder, since its source does not say which images the template makes.
  * CI passes the pull request's merge commit as --head, so the list names files in the tree the tests run in.
  * CI runs the base commit's copy of this file with no bunfig.toml, tsconfig.json or .env from the head, so a pull request
  * cannot change its own selection, and it imports nothing from the repository. Selection is safe only because
@@ -41,6 +42,7 @@ export const FULL_RUN_DIRS: readonly string[] = ['.github/', 'tests/setup/', 'sc
 export const EXPORT_FULL_RUN: readonly string[] = ['publication/', 'scripts/public-export/', 'scripts/public-safety/', 'scripts/prereg-ledger.ts', 'runner/prereg/', 'docs/benchmarks/'];
 export const MAX_AGE_HOURS = 72;
 export const BUILDERS: readonly string[] = ['tests/adapter-conformance.test.ts', 'tests/claude-code-adapter.test.ts', 'tests/codex-adapter.test.ts'];
+export const BUILDER_IMAGES: Readonly<Record<string, string>> = { 'tests/adapter-conformance.test.ts': 'fake', 'tests/claude-code-adapter.test.ts': 'claude-code', 'tests/codex-adapter.test.ts': 'codex' };
 export const TEST_FILE = /^tests\/.*[._](test|spec)\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 export interface TestDeps { paths: string[]; dirs: string[]; trees: string[] }
@@ -114,14 +116,21 @@ export function select(map: TestMap, changes: readonly Change[], headTests: Read
   return { all: false, files, why: files.length + ' of ' + headTests.size + ' test files selected for ' + (changes.length - drifted) + ' changed path(s)' + (drifted ? ' and ' + drifted + ' path(s) the base changed after the traced commit' : '') };
 }
 
-/** files plus the builders they need; dockerTests are the selected files whose source mentions docker. */
-export function addBuilders(map: TestMap, files: readonly string[], headTests: ReadonlySet<string>, dockerTests: ReadonlySet<string>): string[] {
+/** The builders a docker test's source names; a templated harness-eval image names all of them. */
+export function buildersNamed(src: string): string[] {
+  if (/harness-eval\/\$\{|['"`]harness-eval\/['"`]\s*\+/.test(src)) return [...BUILDERS];
+  const quoted = (n: string) => ['\'', '"', '`'].some((q) => src.includes(q + n + q));
+  return BUILDERS.filter((b) => src.includes('harness-eval/' + BUILDER_IMAGES[b] + ':') || quoted(BUILDER_IMAGES[b]!) || quoted('_' + BUILDER_IMAGES[b]));
+}
+
+/** files plus the builders they need; named gives the builders a selected docker test's source names. */
+export function addBuilders(map: TestMap, files: readonly string[], headTests: ReadonlySet<string>, named: ReadonlyMap<string, readonly string[]>): string[] {
   const out = new Set(files);
   for (const t of files) {
     if (BUILDERS.includes(t)) continue;
     const trees = map.tests[t]?.trees ?? [];
-    const named = BUILDERS.filter((b) => (map.tests[b]?.trees ?? []).some((x) => trees.includes(x)));
-    for (const b of dockerTests.has(t) ? BUILDERS : named) out.add(b);
+    for (const b of BUILDERS) if ((map.tests[b]?.trees ?? []).some((x) => trees.includes(x))) out.add(b);
+    for (const b of named.get(t) ?? []) out.add(b);
   }
   return [...out].filter((t) => headTests.has(t)).sort();
 }
@@ -165,8 +174,10 @@ export function decide(bytes: Uint8Array | null, base: string, head: string, now
   if (v.all) return v;
   const picked = v.files;
   const users = picked.filter((t) => !BUILDERS.includes(t));
-  const docker = new Set(users.length ? git(['grep', '-l', '-F', 'docker', head, '--', ...users], undefined, [0, 1]).out.toString().split('\n').filter(Boolean).map((l) => l.slice(head.length + 1)) : []);
-  const files = addBuilders(map, picked, headTests, docker);
+  const docker = users.length ? git(['grep', '-l', '-F', 'docker', head, '--', ...users], undefined, [0, 1]).out.toString().split('\n').filter(Boolean).map((l) => l.slice(head.length + 1)) : [];
+  const named = new Map<string, string[]>();
+  for (const t of docker) named.set(t, buildersNamed(git(['show', head + ':' + t]).out.toString()));
+  const files = addBuilders(map, picked, headTests, named);
   const builders = files.length - picked.length;
   return { all: false, files, why: v.why + (builders ? ', plus ' + builders + ' image builder(s)' : '') };
 }

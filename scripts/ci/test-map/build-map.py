@@ -10,7 +10,8 @@ The map (schema 1), which scripts/ci/select-tests.ts reads from the ci-test-map 
   tests[file].dirs        directories it listed with getdents: the selector matches these only when a change adds or
                           removes an entry in them;
   tests[file].trees       directories it depends on whole: a docker build context or bind-mount source, the context of
-                          an image another test file built and this one runs, and the pathspec of a git call that reads
+                          an image another test file built and this one runs or inspects (a test that skips its docker
+                          cases when the image is missing still inspects it), and the pathspec of a git call that reads
                           content below it (git archive <rev> harnesses/<h>, status/log/ls-files/grep -- <path>);
   always[file]            the git calls that read the whole tree (cat-file --batch, unscoped ls-files, ls-tree, status,
                           grep, archive or log --name-only, diff, diff-tree, check-ignore, add, a clone of the repository),
@@ -213,6 +214,8 @@ def docker_call(e):
         pos = [x for x in rest if not x.startswith('-')]
         if pos and ':' not in pos[0]:
             d['deps'].append(('trees', res(cwd, pos[0])))
+    elif sub == 'inspect' or (sub == 'image' and rest[:1] == ['inspect']):
+        d['probes'] = opts(rest[1:] if sub == 'image' else rest, {'-f', '--format', '--type'}, False)[1]
     return d
 
 
@@ -255,8 +258,8 @@ for fp in sorted(glob.glob(os.path.join(A.json, '*.json'))):
                     dep[kind].add(r)
                     for tg in dc['tags']:
                         built[tag(tg)][kind].add(r)
-            if dc['image']:
-                runs[t].add(tag(dc['image']))
+            for i in ([dc['image']] if dc['image'] else []) + dc.get('probes', []):
+                runs[t].add(tag(i))
     tests[t] = dep
 for t, imgs in runs.items():
     for i in imgs:
