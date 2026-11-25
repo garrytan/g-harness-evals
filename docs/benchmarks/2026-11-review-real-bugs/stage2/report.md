@@ -8,7 +8,7 @@
 
 - **C2's judge check failed.** Claude Opus 5.5, the judge for the Sol runs, scored kappa 0.523 against fix-aware labels, under the 0.6 bar. So C2's false-blocker numbers are descriptive only. C2's "no gain" doesn't depend on them, because it comes from any-severity recall.
 - **Plain-8 is noisy.** It writes 1.00 false alarm per clean (decoy) PR against /review's 0.07, and 0.27 false blockers per bug PR against 0.06. Read with plain-8 as the variant, its excess on decoys is +0.93 (0.00 to +2.60), over the +0.5 limit the preregistration sets for any variant.
-- **Stage 1's re-judge passed narrowly.** Its judge check passed at kappa 0.611 against a 0.6 bar, and the code-reading judge called 15 of 28 findings on clean decoy PRs real defects. The re-judge shows no sign that /review's extra blockers are noise, but it doesn't prove they're precise. Details are in [the stage 1 report](../report.md#stage-1-re-judge).
+- **Stage 1's re-judge passed narrowly.** Its judge check passed at kappa 0.611 against a 0.6 bar, and the code-reading judge called 15 of 28 findings on clean decoy PRs real defects. The re-judge shows no sign that /review's extra blockers are noise, but it doesn't prove they're precise. Details are in [the stage 1 report](../report.md#stage-1-re-judge). **Corrected 2026-11-25:** the re-judge fails a third-model check (kappa 0.37 against Gemini 4 Neon), so it no longer backs the false-blocker numbers ([correction](../../../corrections/2026-11-25/README.md)).
 - **A tie is not "no difference".** The smallest difference this run can reliably detect is 18 points. Every interval below allows real effects smaller than that.
 - **Missing sessions were scored both ways.** The preregistration doesn't say what to do with them, so every comparison was scored with them dropped and with them counted as misses. All four readings give the same verdicts.
 
@@ -40,7 +40,7 @@ The outcome map was fixed before the run (see the [preregistration](PREREGISTRAT
 3. **The ship-panel doesn't lose to plain-8,** so that row's cut candidate doesn't trigger.
 4. **C2 Sol: no gain.** /review's value is Claude-only for now, and gstack's maintainers get Sol's specifics (below).
 5. **C3 particle-1 in OpenClaw: no gain.** gstack's maintainers hear that this /review adds nothing on OpenClaw as it runs today, and particle-1 lanes don't rely on it.
-6. **Stage 1's re-judge: mostly real.** Stage 1's verdict becomes a full KEEP, and /review stays as it is against a single plain pass.
+6. **Stage 1's re-judge: mostly real.** Stage 1's verdict becomes a full KEEP, and /review stays as it is against a single plain pass. **Corrected 2026-11-25:** the re-judge fails a third-model check, so stage 1's verdict is KEEP on recall only and /review still stays as it is ([correction](../../../corrections/2026-11-25/README.md)).
 
 Items 1 and 6 don't conflict. /review clearly beats one plain pass. It doesn't beat eight plain passes that cost about the same.
 
@@ -106,6 +106,8 @@ C3 would fail the gate if gaps counted as failures. The preregistration says an 
 | C3 (particle-1 reviews) | GPT-6 Astra | 0.706 | 80 | pass | | |
 
 C2's two labellers agreed with each other at only 0.190, so the labels themselves were weak. Astra scored 0.821 as the second judge on the same items, but the preregistration keeps a judge from another model family than the one under test, so Opus stays primary for a GPT run and C2's false blockers on bug PRs are descriptive.
+
+**Added 2026-11-25: the matching checks, and a third-model check (R126).** C2's matching judge (Claude Opus 5.5) was checked as the preregistration promised, but the result was never published here: kappa 0.982 between Opus's matching and 112 agreed labels from 120 items, a pass (the Astra and Opus labellers agreed with each other at 0.965; $16.93; file grading/labels-c2/label-score.json in the raw grading archive). C1 and C3 are matched by GPT-6 Astra, the judge stage 1's matching check passed at 1.00. Gemini 4 Neon, labelling stage 1's and C2's matching items blind, agrees with both matchers at kappa 0.98, so every recall number here stands. It does not agree with the adjudication judges: C1's Astra scores 0.29, C2's Opus 0.26 and C3's Astra 0.46 against Neon, all under 0.6, so plain-8's 0.27 false blockers per bug PR against /review's 0.06, and C3's false blockers, are descriptive too. No verdict above changes, because none is a KEEP. Details: [the correction](../../../corrections/2026-11-25/README.md).
 
 **Blinding check.** GPT-6 Astra guessed the arm from 20 packets per comparison, and more than 70% correct fails. ship vs /review 11/20 (AUC 0.665), ship vs plain-8 12/20 (0.885), /review vs plain-8 13/20 (0.915), C2 11/20 (0.565), C3 10/20 (0.725). None failed. The high AUCs come from finding counts, which blinding can't hide (7.2 against 2.7 findings per packet in /review vs plain-8). File: [results/blinding.json](results/blinding.json).
 

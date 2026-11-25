@@ -1,0 +1,500 @@
+{
+  "labeller": "google:gemini-4-neon, thinkingLevel medium, through runner/proxy/metering-proxy.ts",
+  "anchors": {
+    "match": {
+      "right": 20,
+      "of": 20,
+      "by_side": {
+        "match": {
+          "right": 10,
+          "of": 10
+        },
+        "no-match": {
+          "right": 10,
+          "of": 10
+        }
+      },
+      "pass": true,
+      "bar": "at least 18 of 20 right and at least 8 of 10 on each side",
+      "wrong": []
+    },
+    "adjudicate": {
+      "right": 20,
+      "of": 20,
+      "by_side": {
+        "defect": {
+          "right": 10,
+          "of": 10
+        },
+        "not-defect": {
+          "right": 10,
+          "of": 10
+        }
+      },
+      "pass": true,
+      "bar": "at least 18 of 20 right and at least 8 of 10 on each side",
+      "wrong": []
+    }
+  },
+  "match": {
+    "stage1": {
+      "match": {
+        "abstention": {
+          "items": 120,
+          "decided": 114,
+          "unsure": 1,
+          "no_label": 5,
+          "abstain_share": 0.05
+        },
+        "judge": {
+          "name": "stage 1 matcher (openai:gpt-6-astra)",
+          "n": 114,
+          "agree": 113,
+          "kappa": 0.9824,
+          "range95": [
+            0.9456,
+            1
+          ],
+          "kappa_without_reference_cant_tell": 0.9824,
+          "n_without_reference_cant_tell": 114,
+          "kappa_reference_cant_tell_as_defect": 0.9824,
+          "table_reference_vs_third": {
+            "match | match": 54,
+            "match | no-match": 1,
+            "no-match | no-match": 59
+          }
+        },
+        "agreed_labels_vs_third": {
+          "n": 107,
+          "agree": 106,
+          "kappa": 0.9813,
+          "range95": [
+            0.9427,
+            1
+          ],
+          "kappa_without_reference_cant_tell": 0.9813,
+          "n_without_reference_cant_tell": 107,
+          "kappa_reference_cant_tell_as_defect": 0.9813,
+          "table_reference_vs_third": {
+            "no-match | no-match": 56,
+            "match | match": 50,
+            "match | no-match": 1
+          }
+        },
+        "published_check_reproduced": {
+          "n": 111,
+          "kappa_judge_vs_agreed_labels": 1
+        }
+      },
+      "adjudicate": {
+        "abstention": {
+          "items": 120,
+          "decided": 80,
+          "unsure": 36,
+          "no_label": 4,
+          "abstain_share": 0.3333
+        },
+        "judge": {
+          "name": "stage 1 blind adjudication judge, whose check failed (kappa 0.012) and was replaced by the re-judge",
+          "n": 80,
+          "agree": 12,
+          "kappa": -0.0119,
+          "range95": [
+            -0.0727,
+            0.0255
+          ],
+          "kappa_without_reference_cant_tell": -0.0119,
+          "n_without_reference_cant_tell": 80,
+          "kappa_reference_cant_tell_as_defect": -0.0119,
+          "table_reference_vs_third": {
+            "not-defect | defect": 67,
+            "not-defect | not-defect": 7,
+            "defect | defect": 5,
+            "defect | not-defect": 1
+          }
+        },
+        "agreed_labels_vs_third": {
+          "n": 46,
+          "agree": 45,
+          "kappa": 0.8456,
+          "range95": [
+            0,
+            1
+          ],
+          "kappa_without_reference_cant_tell": 0.8456,
+          "n_without_reference_cant_tell": 46,
+          "kappa_reference_cant_tell_as_defect": 0.8456,
+          "table_reference_vs_third": {
+            "defect | defect": 42,
+            "not-defect | not-defect": 3,
+            "not-defect | defect": 1
+          }
+        },
+        "published_check_reproduced": {
+          "n": 48,
+          "kappa_judge_vs_agreed_labels": 0.012
+        }
+      }
+    },
+    "c2": {
+      "match": {
+        "abstention": {
+          "items": 120,
+          "decided": 119,
+          "unsure": 1,
+          "no_label": 0,
+          "abstain_share": 0.0083
+        },
+        "judge": {
+          "name": "C2 matcher (anthropic:claude-opus-5-5)",
+          "n": 119,
+          "agree": 118,
+          "kappa": 0.9832,
+          "range95": [
+            0.9489,
+            1
+          ],
+          "kappa_without_reference_cant_tell": 0.9832,
+          "n_without_reference_cant_tell": 119,
+          "kappa_reference_cant_tell_as_defect": 0.9832,
+          "table_reference_vs_third": {
+            "match | match": 58,
+            "match | no-match": 1,
+            "no-match | no-match": 60
+          }
+        },
+        "agreed_labels_vs_third": {
+          "n": 112,
+          "agree": 112,
+          "kappa": 1,
+          "range95": [
+            1,
+            1
+          ],
+          "kappa_without_reference_cant_tell": 1,
+          "n_without_reference_cant_tell": 112,
+          "kappa_reference_cant_tell_as_defect": 1,
+          "table_reference_vs_third": {
+            "match | match": 55,
+            "no-match | no-match": 57
+          }
+        },
+        "published_check_reproduced": {
+          "n": 112,
+          "kappa_judge_vs_agreed_labels": 0.9821
+        }
+      }
+    }
+  },
+  "adjudicate": {
+    "rejudge": {
+      "items": 100,
+      "abstention": {
+        "items": 100,
+        "decided": 99,
+        "unsure": 1,
+        "no_label": 0,
+        "abstain_share": 0.01
+      },
+      "primary": "openai:gpt-6-astra",
+      "judges": {
+        "anthropic:claude-opus-5-5": {
+          "n": 99,
+          "agree": 81,
+          "kappa": 0.4851,
+          "range95": [
+            0.2791,
+            0.6615
+          ],
+          "kappa_without_reference_cant_tell": 0.6819,
+          "n_without_reference_cant_tell": 89,
+          "kappa_reference_cant_tell_as_defect": 0.6574,
+          "table_reference_vs_third": {
+            "cant-tell | defect": 9,
+            "not-defect | defect": 7,
+            "defect | defect": 70,
+            "not-defect | not-defect": 11,
+            "defect | not-defect": 1,
+            "cant-tell | not-defect": 1
+          },
+          "published_check_on_sample": {
+            "n": 76,
+            "kappa_judge_vs_agreed_labels": 0.6998
+          }
+        },
+        "openai:gpt-6-astra": {
+          "n": 99,
+          "agree": 79,
+          "kappa": 0.3658,
+          "range95": [
+            0.1517,
+            0.5647
+          ],
+          "kappa_without_reference_cant_tell": 0.6138,
+          "n_without_reference_cant_tell": 87,
+          "kappa_reference_cant_tell_as_defect": 0.6211,
+          "table_reference_vs_third": {
+            "cant-tell | defect": 12,
+            "defect | defect": 71,
+            "not-defect | not-defect": 8,
+            "not-defect | defect": 3,
+            "defect | not-defect": 5
+          },
+          "published_check_on_sample": {
+            "n": 76,
+            "kappa_judge_vs_agreed_labels": 0.588
+          }
+        }
+      },
+      "agreed_labels_vs_third": {
+        "n": 75,
+        "agree": 72,
+        "kappa": 0.8018,
+        "range95": [
+          0.5174,
+          1
+        ],
+        "kappa_without_reference_cant_tell": 0.8018,
+        "n_without_reference_cant_tell": 75,
+        "kappa_reference_cant_tell_as_defect": 0.8018,
+        "table_reference_vs_third": {
+          "defect | defect": 65,
+          "not-defect | defect": 3,
+          "not-defect | not-defect": 7
+        }
+      }
+    },
+    "c1": {
+      "items": 100,
+      "abstention": {
+        "items": 100,
+        "decided": 98,
+        "unsure": 2,
+        "no_label": 0,
+        "abstain_share": 0.02
+      },
+      "primary": "openai:gpt-6-astra",
+      "judges": {
+        "anthropic:claude-opus-5-5": {
+          "n": 98,
+          "agree": 76,
+          "kappa": 0.2522,
+          "range95": [
+            0.0521,
+            0.446
+          ],
+          "kappa_without_reference_cant_tell": 0.3597,
+          "n_without_reference_cant_tell": 89,
+          "kappa_reference_cant_tell_as_defect": 0.341,
+          "table_reference_vs_third": {
+            "defect | defect": 71,
+            "not-defect | defect": 10,
+            "cant-tell | defect": 8,
+            "not-defect | not-defect": 5,
+            "defect | not-defect": 3,
+            "cant-tell | not-defect": 1
+          },
+          "published_check_on_sample": {
+            "n": 79,
+            "kappa_judge_vs_agreed_labels": 0.5121
+          }
+        },
+        "openai:gpt-6-astra": {
+          "n": 98,
+          "agree": 78,
+          "kappa": 0.2896,
+          "range95": [
+            0.0755,
+            0.4993
+          ],
+          "kappa_without_reference_cant_tell": 0.5427,
+          "n_without_reference_cant_tell": 85,
+          "kappa_reference_cant_tell_as_defect": 0.5106,
+          "table_reference_vs_third": {
+            "defect | defect": 73,
+            "cant-tell | defect": 12,
+            "not-defect | not-defect": 5,
+            "not-defect | defect": 4,
+            "defect | not-defect": 3,
+            "cant-tell | not-defect": 1
+          },
+          "published_check_on_sample": {
+            "n": 79,
+            "kappa_judge_vs_agreed_labels": 0.6578
+          }
+        }
+      },
+      "agreed_labels_vs_third": {
+        "n": 79,
+        "agree": 71,
+        "kappa": 0.5108,
+        "range95": [
+          0.1813,
+          0.7642
+        ],
+        "kappa_without_reference_cant_tell": 0.5108,
+        "n_without_reference_cant_tell": 79,
+        "kappa_reference_cant_tell_as_defect": 0.5108,
+        "table_reference_vs_third": {
+          "not-defect | defect": 8,
+          "defect | defect": 66,
+          "not-defect | not-defect": 5
+        }
+      }
+    },
+    "c2": {
+      "items": 100,
+      "abstention": {
+        "items": 100,
+        "decided": 98,
+        "unsure": 2,
+        "no_label": 0,
+        "abstain_share": 0.02
+      },
+      "primary": "anthropic:claude-opus-5-5",
+      "judges": {
+        "anthropic:claude-opus-5-5": {
+          "n": 98,
+          "agree": 68,
+          "kappa": 0.2622,
+          "range95": [
+            0.1219,
+            0.4237
+          ],
+          "kappa_without_reference_cant_tell": 0.3144,
+          "n_without_reference_cant_tell": 91,
+          "kappa_reference_cant_tell_as_defect": 0.3004,
+          "table_reference_vs_third": {
+            "not-defect | defect": 23,
+            "defect | defect": 60,
+            "not-defect | not-defect": 8,
+            "cant-tell | defect": 6,
+            "cant-tell | not-defect": 1
+          },
+          "published_check_on_sample": {
+            "n": 58,
+            "kappa_judge_vs_agreed_labels": 0.7393
+          }
+        },
+        "openai:gpt-6-astra": {
+          "n": 98,
+          "agree": 91,
+          "kappa": 0.5986,
+          "range95": [
+            0.2636,
+            0.8353
+          ],
+          "kappa_without_reference_cant_tell": 0.7274,
+          "n_without_reference_cant_tell": 95,
+          "kappa_reference_cant_tell_as_defect": 0.7282,
+          "table_reference_vs_third": {
+            "defect | defect": 85,
+            "not-defect | not-defect": 6,
+            "cant-tell | defect": 3,
+            "not-defect | defect": 1,
+            "defect | not-defect": 3
+          },
+          "published_check_on_sample": {
+            "n": 58,
+            "kappa_judge_vs_agreed_labels": 0.9242
+          }
+        }
+      },
+      "agreed_labels_vs_third": {
+        "n": 58,
+        "agree": 57,
+        "kappa": 0.9134,
+        "range95": [
+          0.6588,
+          1
+        ],
+        "kappa_without_reference_cant_tell": 0.9134,
+        "n_without_reference_cant_tell": 58,
+        "kappa_reference_cant_tell_as_defect": 0.9134,
+        "table_reference_vs_third": {
+          "defect | defect": 51,
+          "not-defect | not-defect": 6,
+          "not-defect | defect": 1
+        }
+      }
+    },
+    "c3": {
+      "items": 99,
+      "abstention": {
+        "items": 99,
+        "decided": 96,
+        "unsure": 3,
+        "no_label": 0,
+        "abstain_share": 0.0303
+      },
+      "primary": "openai:gpt-6-astra",
+      "judges": {
+        "anthropic:claude-opus-5-5": {
+          "n": 96,
+          "agree": 76,
+          "kappa": 0.5039,
+          "range95": [
+            0.3421,
+            0.6753
+          ],
+          "kappa_without_reference_cant_tell": 0.642,
+          "n_without_reference_cant_tell": 87,
+          "kappa_reference_cant_tell_as_defect": 0.5758,
+          "table_reference_vs_third": {
+            "cant-tell | defect": 6,
+            "defect | defect": 62,
+            "not-defect | not-defect": 14,
+            "not-defect | defect": 10,
+            "cant-tell | not-defect": 3,
+            "defect | not-defect": 1
+          },
+          "published_check_on_sample": {
+            "n": 80,
+            "kappa_judge_vs_agreed_labels": 0.6667
+          }
+        },
+        "openai:gpt-6-astra": {
+          "n": 96,
+          "agree": 77,
+          "kappa": 0.4591,
+          "range95": [
+            0.2583,
+            0.6386
+          ],
+          "kappa_without_reference_cant_tell": 0.5898,
+          "n_without_reference_cant_tell": 88,
+          "kappa_reference_cant_tell_as_defect": 0.5459,
+          "table_reference_vs_third": {
+            "cant-tell | defect": 6,
+            "defect | defect": 66,
+            "not-defect | not-defect": 11,
+            "cant-tell | not-defect": 2,
+            "not-defect | defect": 6,
+            "defect | not-defect": 5
+          },
+          "published_check_on_sample": {
+            "n": 80,
+            "kappa_judge_vs_agreed_labels": 0.7062
+          }
+        }
+      },
+      "agreed_labels_vs_third": {
+        "n": 79,
+        "agree": 77,
+        "kappa": 0.9019,
+        "range95": [
+          0.735,
+          1
+        ],
+        "kappa_without_reference_cant_tell": 0.9019,
+        "n_without_reference_cant_tell": 79,
+        "kappa_reference_cant_tell_as_defect": 0.9019,
+        "table_reference_vs_third": {
+          "defect | defect": 66,
+          "not-defect | not-defect": 11,
+          "not-defect | defect": 2
+        }
+      }
+    }
+  }
+}

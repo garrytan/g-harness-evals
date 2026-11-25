@@ -8,7 +8,7 @@ The [report](report.md) was published before reports had a Next time section, an
 
 - Test the exposure check on real /review session logs before the preregistration freezes, because the pinned rule never saw the skill open and read 0 of 178 passes as exposed, so it had to be widened by amendment.
 - Make the trial image able to run /review's second-model reader, because the image had no bubblewrap, so that reader never ran in any of the 178 review passes and /review was tested without it.
-- Let stage 1's judges read the repository from the start, because the blind judges' rulings disagreed with fix-aware labels (kappa 0.012) and false blockers stayed unmeasured until stage 2 re-judged them.
+- Let stage 1's judges read the repository from the start, because the blind judges' rulings disagreed with fix-aware labels (kappa 0.012) and false blockers stayed unmeasured until stage 2 re-judged them (corrected 2026-11-25: false blockers on bug PRs are unmeasured again, because the re-judge fails a third-model check; see [the correction](../../corrections/2026-11-25/README.md)).
 
 ### Ideas to improve the eval
 
