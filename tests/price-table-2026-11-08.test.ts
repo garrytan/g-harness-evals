@@ -22,7 +22,8 @@ describe('prices-2026-11-08', () => {
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-16.json this test accepts the table it covers and the tables that replaced it
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-17.json this test accepts the table it covers and the table that replaced it
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-20.json this test accepts the table it covers and the table that replaced it
-    expect(['prices-2026-11-08.json', 'prices-2026-11-10.json', 'prices-2026-11-15.json', 'prices-2026-11-16.json', 'prices-2026-11-17.json', 'prices-2026-11-20.json', 'prices-2026-11-21.json']).toContain(PRICE_TABLE_FILE); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json this test accepts the table it covers and the tables that replaced it
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-21.json this test accepts every table that has replaced the one it covers
+    expect(['prices-2026-11-08.json', 'prices-2026-11-10.json', 'prices-2026-11-15.json', 'prices-2026-11-16.json', 'prices-2026-11-17.json', 'prices-2026-11-20.json', 'prices-2026-11-21.json', 'prices-2026-11-25.json']).toContain(PRICE_TABLE_FILE); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-10.json this test accepts the table it covers and the tables that replaced it
     const before = read('prices-2026-11-07.json'), now = read('prices-2026-11-08.json');
     expect(now.date).toBe('2026-11-08');
     const added = now.rows.filter(r => !before.rows.some(b => b.provider === r.provider && b.model === r.model));

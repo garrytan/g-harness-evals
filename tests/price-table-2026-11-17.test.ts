@@ -28,7 +28,8 @@ describe('prices-2026-11-17', () => {
   test('is the table model-pricing.ts reads: every prices-2026-11-16 row unchanged but the cache_write and note of the four Gemini rows on OpenRouter, the source date of the three moved to Google AI Studio, and the note and source date of GLM 5.3 on Baidu', () => {
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-17.json this test accepts the table it covers and the table that replaced it
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-20.json this test accepts the table it covers and the table that replaced it
-    expect(['prices-2026-11-17.json', 'prices-2026-11-20.json', 'prices-2026-11-21.json']).toContain(PRICE_TABLE_FILE);
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-21.json this test accepts every table that has replaced the one it covers
+    expect(['prices-2026-11-17.json', 'prices-2026-11-20.json', 'prices-2026-11-21.json', 'prices-2026-11-25.json']).toContain(PRICE_TABLE_FILE);
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-16.json the new table is checked against the table it replaces
     const before = read('prices-2026-11-16.json'), now = read('prices-2026-11-17.json'); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-17.json this test reads its own historical table
     const { date: _was, rows: _wasRows, ...beforeRest } = before;

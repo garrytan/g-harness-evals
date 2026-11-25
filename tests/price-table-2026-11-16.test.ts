@@ -31,7 +31,8 @@ describe('prices-2026-11-16', () => {
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-16.json this test accepts the table it covers and the table that replaced it
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-17.json this test accepts the table it covers and the table that replaced it
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-20.json this test accepts the table it covers and the table that replaced it
-    expect(['prices-2026-11-16.json', 'prices-2026-11-17.json', 'prices-2026-11-20.json', 'prices-2026-11-21.json']).toContain(PRICE_TABLE_FILE);
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-21.json this test accepts every table that has replaced the one it covers
+    expect(['prices-2026-11-16.json', 'prices-2026-11-17.json', 'prices-2026-11-20.json', 'prices-2026-11-21.json', 'prices-2026-11-25.json']).toContain(PRICE_TABLE_FILE);
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-15.json the new table is checked against the table it replaces
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-16.json this test reads the table it covers by name
     const before = read('prices-2026-11-15.json'), now = read('prices-2026-11-16.json');
