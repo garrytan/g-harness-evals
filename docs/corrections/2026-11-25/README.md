@@ -46,3 +46,5 @@ This correction is about the review-real-bugs run ([stage 1 report](../../benchm
 `bash scripts/corrections/reproduce-2026-11-25.sh <unpacked archive> <scratch dir> --check` rescores the committed labels in [third-model/](third-model/) against the judges' rulings and the labellers' answers, and compares the result with [sensitivity.json](sensitivity.json). Those rulings and answers are in the run's private raw archive `raw-review-real-bugs-2026-11-stage2-grading` ([docs/archive/index.json](../../archive/index.json)), so the rebuild needs it unpacked. No model is called.
 
 The Neon labels themselves are committed: one row per read with its ruling, tool calls, tokens and cost (`adjudicate-*.jsonl`, `anchors-adjudicate.jsonl`), and one row per packet with its labels (`match-*.jsonl`). Their prompts hold findings and repository text from the private archive, so they are not.
+
+For the Neon labeller's run records and sessions, see the [private Neon archive](../../benchmarks/2026-11-review-real-bugs/reproduce.md#data-archive).
