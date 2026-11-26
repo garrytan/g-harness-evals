@@ -7,8 +7,11 @@ const read = (file: string) => JSON.parse(readFileSync(new URL(`../runner/pricin
 
 describe('prices-2026-11-25', () => {
   test('keeps the previous header and rows except for the date and the Gemini 4 Neon row after Gemini 4 Carbon', () => {
-    expect(PRICE_TABLE_FILE).toBe('prices-2026-11-25.json');
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-26.json this test accepts every table that has replaced the one it covers
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-25.json this test covers that table and accepts the table that replaced it
+    expect(['prices-2026-11-25.json', 'prices-2026-11-26.json']).toContain(PRICE_TABLE_FILE);
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-21.json the new table is checked against the table it replaces
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-25.json the table this test covers, read by name
     const before = read('prices-2026-11-21.json'), now = read('prices-2026-11-25.json');
     const { date: _was, rows: beforeRows, ...beforeHeader } = before;
     const { date, rows, ...header } = now;

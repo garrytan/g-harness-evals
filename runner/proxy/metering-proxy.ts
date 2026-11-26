@@ -123,7 +123,16 @@
  * streamUsageCost) and counts as unfinished until a candidate reports a finishReason. A stream request without alt=sse is
  * refused (HE-PROXY-013). countTokens is answered by a local estimate (countTokensEstimate), never forwarded or charged,
  * and logged with the outcome `estimated`, which no reader counts as a model request or response. Gemini CLI reaches
- * Gemini this way by default (scripts/frontier-harbor/vm-run.sh). `/<slot>/xai/v1/chat/completions` and `/v1/responses` go to api.x.ai with XAI_API_KEY as a
+ * Gemini this way by default (scripts/frontier-harbor/vm-run.sh), and so do Hermes, OpenClaw and Pi on Gemini 4 Carbon and
+ * Hydrogen (amendment 2 of frontier-shootout-2026-11). The google route also takes GOOGLE_HOST_SEGMENT, exactly once, in
+ * front of the API version (`/<slot>/google/generativelanguage.googleapis.com/v1beta/...`) and drops it: Hermes v0.23.1
+ * uses its native Gemini client only for a base URL that contains that host name.
+ *
+ * Every forwarded line records the answer's finish reason (`finish_reason`, stops.ts finishReason), and a line whose
+ * answer was not 2xx records its Retry-After header and its error body (`retry_after`, `error_body` or `error_text`,
+ * errorFacts), every credential masked: logging only, on every route (amendment 2, rulings B and C).
+ *
+ * `/<slot>/xai/v1/chat/completions` and `/v1/responses` go to api.x.ai with XAI_API_KEY as a
  * Bearer; reasoning tokens bill as output beside completion tokens, and each forwarded line records xAI's own
  * `usage.cost_in_usd_ticks` (1e-10 USD) when the answer carries it. A Responses request is sent with `store: false`,
  * and one naming `previous_response_id` is refused (HE-PROXY-013). On both routes a provider-hosted tool (grounding,
@@ -175,7 +184,7 @@ import type { AblationBinding, AblationReceipt, AblationSpec } from './ablate.ts
 import { requestSections, responseExtras, sectionRoute, type RequestSections } from './sections.ts';
 import { effortFields } from './effort.ts';
 import { hostedWebTools, unpricedWebTools, webToolAllowance, webToolUse } from './hosted-tools.ts';
-import { safetyStop } from './stops.ts';
+import { finishReason, safetyStop } from './stops.ts';
 import { countTokensEstimate, fromChat, GeminiStream, geminiError, SignatureStore, toChat, TranslationRefused, VIA_OPENROUTER } from './gemini-openrouter.ts';
 import { BodyCapture, CAPTURE_FILE, DEFAULT_CAPTURE_MAX_BYTES } from './capture.ts';
 import { canonicalLookup, priceOnDate } from '../pricing/model-pricing.ts';
@@ -249,6 +258,10 @@ export const COUNT_TOKENS_ROUTE = '/v1/messages/count_tokens';
 
 /** The Gemini generation routes; the model is the path segment before the method. */
 const GOOGLE_ROUTE = /^\/v1(beta)?\/models\/([A-Za-z0-9._-]+):(generateContent|streamGenerateContent)$/;
+/** The one path segment the google route takes in front of the API version and drops (amendment 2 of frontier-shootout-2026-11):
+ *  Hermes v0.23.1 picks its native Gemini client only when its base URL contains this host name
+ *  (agent/gemini_native_adapter.py is_native_gemini_base_url, a substring test), so its base URL is <slot>/google/<this>/v1beta. */
+export const GOOGLE_HOST_SEGMENT = '/generativelanguage.googleapis.com/';
 /** Gemini's token counter, answered by the proxy itself on the google route (countTokensEstimate) and never forwarded. */
 const GOOGLE_COUNT_ROUTE = /^\/v1(beta)?\/models\/([A-Za-z0-9._-]+):countTokens$/;
 
@@ -381,8 +394,15 @@ export interface UsageLine {
   /** On a request whose usage is unknown (charged_reservation): the lease holds actual_usd, and reported_usd is what the
    *  provider's usage did report (a cut stream's partial usage, else 0). Real spend lies between the two. */
   usage_unknown?: true; reported_usd?: number;
-  /** Particle only, on a non-2xx answer: its JSON `error.code` and `error.type` when each is a short token. Nothing else from the body is logged. runner/trial/trial.ts `trialTermination` reads `error_code` (internal-task plan decision 12); `error_type` is for the reader of the log. */
+  /** Particle only, on a non-2xx answer: its JSON `error.code` and `error.type` when each is a short token; the body itself goes only to error_body or error_text (ruling C of amendment 2). runner/trial/trial.ts `trialTermination` reads `error_code` (internal-task plan decision 12); `error_type` is for the reader of the log. */
   error_code?: string; error_type?: string;
+  /** Amendment 2 of frontier-shootout-2026-11 (ruling B), on forwarded lines: the answer's finish reason as the provider
+   *  spells it (Gemini finishReason, Chat Completions finish_reason, Anthropic stop_reason, Responses status or
+   *  incomplete_details.reason), the last one a stream reported (stops.ts finishReason). */
+  finish_reason?: string;
+  /** Same amendment (ruling C), on a forwarded line whose answer was not 2xx: its Retry-After header, and its body, parsed when
+   *  it is JSON (error_body) or else cut text (error_text), with every credential masked (errorFacts). Logging only. */
+  retry_after?: string; error_body?: unknown; error_text?: string;
   /** internal-task, the google route in the via-OpenRouter mode (Gemini CLI's fallback route): on every google line, forwarded,
    *  failed, refused or estimated; a forwarded request went to OpenRouter's Chat Completions, translated
    *  (runner/proxy/gemini-openrouter.ts); `translation_dropped` names request fields with no Chat Completions counterpart
@@ -597,6 +617,23 @@ function upstreamError(body: unknown): Pick<UsageLine, 'error_code' | 'error_typ
   return { ...(token(code) ? { error_code: code as string } : {}), ...(token(type) ? { error_type: type as string } : {}) };
 }
 
+/** Anything in an error body shaped like a credential: a Google, OpenAI-style, xAI or OpenRouter key, a per-trial token, a bearer. */
+const KEY_SHAPED = /AIza[0-9A-Za-z_-]{20,}|\b(?:sk|xai)-[A-Za-z0-9_-]{16,}|trial-token:[A-Za-z0-9._:-]+|Bearer\s+[A-Za-z0-9._~+/=-]{8,}/g;
+const ERROR_BODY_MAX = 8_000;
+/** Amendment 2 of frontier-shootout-2026-11, ruling C: what a usage line keeps of a non-2xx answer. Its Retry-After header, and
+ *  its body (Google's error.code, error.message, error.status and error.details with the quota and retry details; OpenRouter's
+ *  error.message and error.metadata with provider_name and raw), parsed when it is JSON and no longer than 8,000 characters,
+ *  else as text cut there. The provider key, the slot's token and anything shaped like a key are masked first. Logging only. */
+export function errorFacts(retryAfter: string | null, text: string, secrets: ReadonlyArray<string | null | undefined>): Pick<UsageLine, 'retry_after' | 'error_body' | 'error_text'> {
+  let masked = text;
+  for (const s of secrets) if (s && s.length >= 8) masked = masked.split(s).join('[masked]');
+  masked = masked.replace(KEY_SHAPED, '[masked]');
+  const retry = retryAfter !== null && /^[\x20-\x7e]{1,64}$/.test(retryAfter) ? { retry_after: retryAfter } : {};
+  const body = masked.length <= ERROR_BODY_MAX ? jsonOrNull(masked) : null;
+  if (body !== null && typeof body === 'object') return { ...retry, error_body: body };
+  return { ...retry, ...(masked.trim() ? { error_text: masked.slice(0, ERROR_BODY_MAX) } : {}) };
+}
+
 /** 0.0.0.0, ::, [::], *, an empty host, or any spelling the URL parser canonicalizes to one of them (0, 0.0, 00.0.0.0, ::0,
  *  0:0:0:0:0:0:0:0): every interface, which the proxy never listens on. A host the parser rejects counts as one too. */
 export const isWildcardHost = (host: string) => {
@@ -718,7 +755,8 @@ export class MeteringProxy {
         if (url.pathname === '/muse-code/models' && req.method === 'GET') return Response.json(MUSE_CODE_CATALOG);
         const m = url.pathname.match(/^\/(?:([^/]+)\/)?(anthropic|openai|voyage|particle|openrouter|google|xai)(\/.*)$/);
         if (!m) return json(404, 'invalid_request', `no provider route ${url.pathname}`);
-        const [, slot = 'default', prov, rest] = m as unknown as [string, string | undefined, ProviderName, string];
+        const [, slot = 'default', prov, path] = m as unknown as [string, string | undefined, ProviderName, string];
+        const rest = prov === 'google' && path.startsWith(GOOGLE_HOST_SEGMENT) ? path.slice(GOOGLE_HOST_SEGMENT.length - 1) : path;
         const binding = this.bindings.get(slot);
         const key = binding?.key ?? `slot:${slot}`;
         let install: InstallTag | undefined;
@@ -1079,7 +1117,7 @@ export class MeteringProxy {
       this.log({ at, key, provider: prov, route, model: named, outcome: 'forwarded', ...(why ? { reason: why } : {}), status, reserved_usd: reserved, actual_usd: usd,
         input_tokens: cost?.input_tokens, output_tokens: cost?.output_tokens, ...(cost && cached !== undefined ? { cached_tokens: cached } : {}), charged_reservation: charged,
         ...(charged ? { usage_unknown: true as const, reported_usd: cost?.usd ?? 0 } : {}), streamed: isStream, ...knobs,
-        ...facts, ...(cost?.reported_usd !== undefined ? { openrouter_cost_usd: cost.reported_usd } : {}), ...safetyStop(response), ...lineExtrasFor(upProv, upRoute, response, request), ...web }, install);
+        ...facts, ...(cost?.reported_usd !== undefined ? { openrouter_cost_usd: cost.reported_usd } : {}), ...safetyStop(response), ...finishReason(response), ...lineExtrasFor(upProv, upRoute, response, request), ...web }, install);
     };
     // The upstream never answered, or its non-streamed body broke off: usage is unknown, so the reservation is charged.
     const failed = (message: string) => {
@@ -1103,9 +1141,11 @@ export class MeteringProxy {
     catch (e) { return failed((e as Error).message); }
     const out = new Headers(res.headers);
     for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
-    if ((res.headers.get('content-type') ?? '').includes('event-stream') && res.body) {
+    const streamAnswer = (res.headers.get('content-type') ?? '').includes('event-stream') && !!res.body;
+    const answerFacts = (text: string) => ({ ...responseFacts(upProv, upModel, text, streamAnswer, res.ok, upRoute), ...(res.ok ? {} : errorFacts(res.headers.get('retry-after'), text, [realKey, binding?.token])) });
+    if (streamAnswer) {
       const done = beginStream();
-      const [upstreamClient, meterBranch] = res.body.tee();
+      const [upstreamClient, meterBranch] = res.body!.tee();
       const client = translated && res.ok ? geminiEvents(upstreamClient, new GeminiStream(model ?? '', translated.includeThoughts, this.signatures)) : upstreamClient;
       this.observe(key, res.status);
       void readBody(meterBranch).then(
@@ -1116,14 +1156,14 @@ export class MeteringProxy {
           const cost = !bounded ? null : google ? streamUsageCost(bounded, text) : u ? usageCost(bounded, { usage: u }) : null;
           const unbilled = bounded && !cost && !error ? unbilledAnswer(upProv, res.status, jsonOrNull(text), text) : null;
           if (unbilled) {
-            settle(NOTHING_USED, res.status, true, text, undefined, unbilledReason(res.status, unbilled.type), false, responseFacts(upProv, upModel, text, true, res.ok, upRoute));
+            settle(NOTHING_USED, res.status, true, text, undefined, unbilledReason(res.status, unbilled.type), false, answerFacts(text));
             return;
           }
           const unfinished = error ? `the stream failed before its final usage: ${error.message.slice(0, 200)}` : google ? geminiStreamIncomplete(text) : sseIncomplete(text);
           const over = !!unfinished && !!cost && cost.usd > reserved;
           const reason = !bounded || (cost && !unfinished) ? undefined
             : `${unfinished ?? 'the stream carried no usage'}${over ? '; charged its partial usage, which cost more than the reservation' : ''}`;
-          settle(cost, res.status, true, text, cachedTokens(google ? lastUsageMetadata(text) : u), reason, !!unfinished, responseFacts(upProv, upModel, text, true, res.ok, upRoute));
+          settle(cost, res.status, true, text, cachedTokens(google ? lastUsageMetadata(text) : u), reason, !!unfinished, answerFacts(text));
         },
       ).finally(done);
       return new Response(client, { status: res.status, headers: out });
@@ -1142,7 +1182,7 @@ export class MeteringProxy {
       cost = NOTHING_USED;
       reason = unbilledReason(res.status, unbilled.type);
     } else if (!cost && bounded) reason = 'the response carried no usage';
-    settle(cost, res.status, false, parsedBody, cachedTokens(prov === 'google' && !via ? parsedBody?.usageMetadata : parsedBody?.usage), reason, false, responseFacts(upProv, upModel, text, false, res.ok, upRoute));
+    settle(cost, res.status, false, parsedBody, cachedTokens(prov === 'google' && !via ? parsedBody?.usageMetadata : parsedBody?.usage), reason, false, answerFacts(text));
     if (!translated) return new Response(text, { status: res.status, headers: out });
     out.set('content-type', 'application/json');
     const answer = res.ok && parsedBody ? fromChat(parsedBody as Record<string, any>, model ?? '', translated.includeThoughts, this.signatures) : geminiError(res.ok ? 502 : res.status, text);

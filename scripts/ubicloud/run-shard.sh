@@ -749,6 +749,7 @@ else
   # the Cursor check again, now that the preregistration is resolved at the commit (it may have needed the fetch above)
   if [ -n "$scratch_prereg" ]; then prereg_text=$(cat "$scratch_prereg"); else prereg_text=$(git -C "$root" show "$commit:$prereg"); fi
   shard_harnesses=$(printf '%s' "$prereg_text" | python3 -c 'import json,sys; p=json.load(sys.stdin); want=set(sys.argv[1].split(",")); print(" ".join(sorted({c["harness"] for c in p.get("cells", []) if c.get("id") in want and c.get("harness") != "scripted"})))' "$cells") || { echo "run-shard (ubicloud): the preregistration's cells could not be read" >&2; exit 2; }
+  shard_models=$(printf '%s' "$prereg_text" | python3 -c 'import json,sys; p=json.load(sys.stdin); want=set(sys.argv[1].split(",")); print(" ".join(sorted({str(c.get("model")) for c in p.get("cells", []) if c.get("id") in want and c.get("harness") != "scripted"})))' "$cells") || { echo "run-shard (ubicloud): the preregistration's cells could not be read" >&2; exit 2; }
   [ "$install_check" -eq 1 ] || cursor_check
   [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "run-shard (ubicloud): ANTHROPIC_API_KEY is not set in this shell; the metering proxy on the VM needs it" >&2; exit 2; }
   # The zero-data-retention gate (--zdr-gate, above): every OpenAI cell of a frontier-harbor shard, before any VM.
@@ -878,11 +879,11 @@ else
   # reaches the VM, which gets the opened plaintext and never decrypts.
   # The frontier Harbor install check is keyless: the file is written empty.
   # A Cursor shard (only ever the keyless rehearsal, step 5) gets no key either, and CURSOR_API_KEY goes to no VM.
-  # GEMINI_API_KEY goes only to a shard with a gemini-cli cell on Gemini CLI's native route (shard_keys; the route is
+  # GEMINI_API_KEY goes only to a shard with a google: cell model on the native google route (shard_keys; the route is
   # vm-run.sh's --gemini-cli-route after --, native unless it says openrouter-fallback).
   gemini_route=native
   for i in "${!extra[@]}"; do [ "${extra[$i]}" != --gemini-cli-route ] || gemini_route=${extra[$((i + 1))]:-}; done
-  { [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || for k in $(shard_keys "$shard_harnesses" "$gemini_route"); do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
+  { [ "$install_check" -eq 1 ] || [ "$shard_harnesses" = cursor ] || for k in $(shard_keys "$shard_models" "$gemini_route"); do if [ -n "${!k:-}" ]; then printf 'export %s=%q\n' "$k" "${!k}"; fi; done; } | vssh 'umask 077 && cat > ~/.ubirun-env'
 
   if [ "$resume" -eq 1 ]; then
     log "resume: uploading $dest/results (without harness state and workspaces) to the VM"

@@ -2,7 +2,7 @@
 // Builds docs/scoreboard.md and the README's ranking tables from docs/scoreboard/entries/*.json and the committed results
 // files each entry points at, and docs/reports-index.md from docs/scoreboard/reports.json.
 // Every number comes from a results file; nothing is typed. Each README ranking table sits between a
-// <!-- ranking:<run id>:<model> ... --> marker and <!-- ranking:end -->, one per main entry and model.
+// <!-- ranking:<run id>:<model> ... --> marker and <!-- ranking:end -->, one per main entry and model with more than one cell.
 // A harness's rank is 1 plus the number of same-model harnesses whose paired cost-per-solved-task ratio against it has a
 // 95% range wholly below 1, computed here from the run's per-task cost table, docs/scoreboard/paired-cost/<run id>.json,
 // which scripts/scoreboard/paired-cost.ts derives from the run's trial records.
@@ -49,6 +49,13 @@ export function getPath(obj: unknown, path: string): unknown {
     for (const v of cur) {
       if (tok.startsWith('[')) {
         const inner = tok.slice(1, -1);
+        const filter = /^\?([^!=]+)(!?=)(.*)$/.exec(inner);
+        if (filter) {
+          const [, k, op, want] = filter;
+          if (v && typeof v === 'object' && (String((v as Record<string, unknown>)[k!]) === want) === (op === '=')) next.push(v);
+          continue;
+        }
+        if (inner === '*' && v && typeof v === 'object' && !Array.isArray(v)) { next.push(...Object.values(v)); spread = true; continue; }
         if (!Array.isArray(v)) throw new Error(`${path}: ${tok} applied to a non-list`);
         if (inner === '*') { next.push(...v); spread = true; }
         else if (/^\d+$/.test(inner)) next.push(v[Number(inner)]);
@@ -85,10 +92,13 @@ export function callPhrase(verdict: string, side: 'a' | 'b'): string {
   return `${verdict}:`;
 }
 
-export function callFor(cell: string, modelOf: Map<string, string>, harnessOf: Map<string, string>, primary: Comparison[], secondary: Comparison[]): string {
-  const sameModel = (c: Comparison) => (c.a === cell || c.b === cell) && modelOf.get(c.a) === modelOf.get(c.b);
-  const other = (c: Comparison) => harnessOf.get(c.a === cell ? c.b : c.a) ?? (c.a === cell ? c.b : c.a);
-  const mine = primary.filter(sameModel);
+/** A cell's calls from its family: by default each pair is two harnesses on the same model, named by the other harness;
+ *  with between 'models', two models in the same harness, named by the other model. */
+export function callFor(cell: string, modelOf: Map<string, string>, harnessOf: Map<string, string>, primary: Comparison[], secondary: Comparison[], between: 'harnesses' | 'models' = 'harnesses'): string {
+  const [groupOf, nameOf] = between === 'models' ? [harnessOf, modelOf] : [modelOf, harnessOf];
+  const sameGroup = (c: Comparison) => (c.a === cell || c.b === cell) && groupOf.get(c.a) === groupOf.get(c.b);
+  const other = (c: Comparison) => nameOf.get(c.a === cell ? c.b : c.a) ?? (c.a === cell ? c.b : c.a);
+  const mine = primary.filter(sameGroup);
   if (mine.length) {
     const byPhrase = new Map<string, string[]>();
     for (const c of mine) {
@@ -97,7 +107,7 @@ export function callFor(cell: string, modelOf: Map<string, string>, harnessOf: M
     }
     return [...byPhrase].map(([phrase, names]) => `${phrase} ${names.join(', ')}`).join('; ');
   }
-  const untested = secondary.filter((c) => sameModel(c) && !c.tested);
+  const untested = secondary.filter((c) => sameGroup(c) && !c.tested);
   if (untested.length) return `interval only, not tested (vs ${untested.map(other).join(', ')})`;
   return 'not compared';
 }
@@ -118,15 +128,18 @@ export function costCallFor(cell: string, harnessOf: Map<string, string>, contra
   return [...byPhrase].map(([phrase, names]) => `${phrase} ${names.join(', ')}`).join('; ');
 }
 
-export function modelLines(cells: { id: string; model: string }[], primary: Comparison[]): string[] {
+/** One line per model. By default it counts the model's same-model pairs; with between 'models', the pairs where the
+ *  model is side a, against the model on side b in the same harness, and a model that is never side a gets no line. */
+export function modelLines(cells: { id: string; model: string }[], primary: Comparison[], between: 'harnesses' | 'models' = 'harnesses'): string[] {
   const modelOf = new Map(cells.map((c) => [c.id, c.model]));
   const models = [...new Set(cells.map((c) => c.model))];
-  return models.map((m) => {
-    const pairs = primary.filter((c) => modelOf.get(c.a) === m && modelOf.get(c.b) === m);
-    if (!pairs.length) return `**${m}:** no preregistered pairs.`;
+  return models.flatMap((m) => {
+    const pairs = primary.filter((c) => modelOf.get(c.a) === m && (between === 'models' ? modelOf.get(c.b) !== m : modelOf.get(c.b) === m));
+    if (!pairs.length) return between === 'models' ? [] : [`**${m}:** no preregistered pairs.`];
     const counts = new Map<string, number>();
     for (const c of pairs) counts.set(verdictOf(c), (counts.get(verdictOf(c)) ?? 0) + 1);
-    return `**${m}:** ${pairs.length} preregistered pairs: ${[...counts].map(([v, n]) => `${n} ${v}`).join(', ')}.`;
+    const against = between === 'models' ? ` against ${[...new Set(pairs.map((c) => modelOf.get(c.b)))].join(', ')} in the same harness` : '';
+    return [`**${m}:** ${pairs.length} preregistered pairs${against}: ${[...counts].map(([v, n]) => `${n} ${v}`).join(', ')}.`];
   });
 }
 
@@ -146,19 +159,21 @@ export function buildTable(entry: Entry, readJson: (path: string) => unknown): T
   const missing = DISCLOSURE_SUBJECTS.filter(([re, s]) => [...entry.cells, ...(entry.cant_run ?? [])].some((c) => re.test(`${c.harness} ${c.model}`)) && !entry.disclosures.includes(s)).map(([, s]) => s);
   if (missing.length) throw new Error(`${entry.run_id}: disclosures must list ${missing.join(', ')}`);
   const family = list(read(entry.family), entry.family.path) as Record<string, unknown>[];
+  const modelOf = new Map(entry.cells.map((c) => [c.id, c.model]));
+  const harnessOf = new Map(entry.cells.map((c) => [c.id, c.harness]));
   const costFamily = entry.family.kind === 'cost_per_trial';
-  const { a: aKey = 'a', b: bKey = 'b', verdict: verdictSrc, words } = entry.family;
+  const { a: aKey = 'a', b: bKey = 'b', between = 'harnesses', verdict_key: verdictKey = 'verdict', verdict: verdictSrc, words } = entry.family;
+  const idOf = (c: Record<string, unknown>, key: string) => (key.includes('{') ? key.replace(/\{([^}]+)\}/g, (_, p: string) => String(getPath(c, p))) : c[key]);
   const primary: Comparison[] = costFamily ? [] : family.map((c) => {
-    const [a, b] = [c[aKey], c[bKey]];
+    const [a, b] = [idOf(c, aKey), idOf(c, bKey)];
     if (typeof a !== 'string' || typeof b !== 'string') throw new Error(`${entry.run_id}: a comparison in ${entry.family.path} has no string ${aKey} and ${bKey}`);
-    const raw = verdictSrc ? read(verdictSrc, a) : c.verdict;
+    if (!modelOf.has(a) || !modelOf.has(b)) throw new Error(`${entry.run_id}: ${a} vs ${b} in ${entry.family.path} names a cell the entry does not list`);
+    const raw = verdictSrc ? read(verdictSrc, a) : c[verdictKey];
     const verdict = words && typeof raw === 'string' ? words[raw] : raw;
     if (words && verdict === undefined && c.tested !== false) throw new Error(`${entry.run_id}: ${a} vs ${b}: verdict ${JSON.stringify(raw)} has no call word in family.words`);
     return { a, b, verdict: verdict as string | null | undefined, tested: c.tested as boolean | null | undefined };
   });
   const secondary = entry.secondary ? (read(entry.secondary) as Comparison[]) : [];
-  const modelOf = new Map(entry.cells.map((c) => [c.id, c.model]));
-  const harnessOf = new Map(entry.cells.map((c) => [c.id, c.harness]));
   const rows: Row[] = entry.cells.map((c) => {
     const src = (f: string) => (c.overrides as Record<string, Source> | undefined)?.[f] ?? (entry.fields as Record<string, Source>)[f];
     const v = Object.fromEntries(CELL_FIELDS.map((f) => [f, read(src(f)!, c.id)]));
@@ -173,12 +188,15 @@ export function buildTable(entry: Entry, readJson: (path: string) => unknown): T
       usd_per_solved_ci95: v.usd_per_solved_ci95 === null ? null : pair(v.usd_per_solved_ci95, 'usd_per_solved_ci95'),
       ...(basis ? { usd_per_solved_interval_basis: num(read(basis, c.id), 'usd_per_solved_interval_basis') } : {}),
       usd_per_trial: num(v.usd_per_trial, 'usd_per_trial'), wall_median_s: num(v.wall_median_s, 'wall_median_s'),
-      call: costFamily ? costCallFor(c.id, harnessOf, family, entry.family.interval!) : callFor(c.id, modelOf, harnessOf, primary, secondary),
+      call: costFamily ? costCallFor(c.id, harnessOf, family, entry.family.interval!) : callFor(c.id, modelOf, harnessOf, primary, secondary, between),
     };
   });
   if (entry.role === 'other') return { entry, rows, pairs: [], basis: {}, n_tasks: null, same_everywhere: null, mdd: null, mdd_holm: null, model_lines: [], lead: entry.lead_note, saturated: false };
   const n_tasks = num(read(entry.tasks!), 'tasks');
-  const same_everywhere = entry.same_everywhere!.reduce((n, s) => n + list(read(s), s.path).length, 0);
+  const pc = entry.paired_cost!;
+  const costs = readJson(pairedCostPath(entry.run_id)) as { schema?: string; run_id?: string; cells?: TaskCosts };
+  if (costs.schema !== PAIRED_COST_SCHEMA || costs.run_id !== entry.run_id || !costs.cells) throw new Error(`${entry.run_id}: ${pairedCostPath(entry.run_id)} is not this run's per-task cost table (run bun scripts/scoreboard/paired-cost.ts)`);
+  const same_everywhere = entry.same_everywhere ? entry.same_everywhere.reduce((n, s) => n + list(read(s), s.path).length, 0) : sameEverywhere(entry.cells, costs.cells);
   const spread = (s: Source): [number, number] => { const xs = list(read(s), s.path, true).map((x) => num(x, s.path)); return [Math.min(...xs), Math.max(...xs)]; };
   const mdd = spread(entry.mdd!);
   const mdd_holm = entry.mdd_holm ? spread(entry.mdd_holm) : null;
@@ -190,16 +208,13 @@ export function buildTable(entry: Entry, readJson: (path: string) => unknown): T
     allNull ? `On these tasks pass rate can't separate the harnesses: ${same_everywhere} of ${n_tasks} tasks scored the same in every cell, and ${power}.` : `${same_everywhere} of ${n_tasks} tasks scored the same in every cell; ${power}.`,
     entry.lead_note,
   ].filter(Boolean).join(' ');
-  const pc = entry.paired_cost!;
-  const costs = readJson(pairedCostPath(entry.run_id)) as { schema?: string; run_id?: string; cells?: TaskCosts };
-  if (costs.schema !== PAIRED_COST_SCHEMA || costs.run_id !== entry.run_id || !costs.cells) throw new Error(`${entry.run_id}: ${pairedCostPath(entry.run_id)} is not this run's per-task cost table (run bun scripts/scoreboard/paired-cost.ts)`);
   const pairs = pairedCostRatios(entry.cells, costs.cells, { seed: num(read(pc.seed), 'paired_cost.seed'), draws: num(read(pc.draws), 'paired_cost.draws') });
   const basis = Object.fromEntries(entry.cells.map((c) => {
     const tasks = Object.values(costs.cells![c.id] ?? {});
     const solves = tasks.reduce((n, s) => n + s.solves, 0);
     return [c.id, solves === 0 ? null : tasks.reduce((n, s) => n + s.usd, 0) / solves];
   }));
-  return { entry, rows, pairs, basis, n_tasks, same_everywhere, mdd, mdd_holm, model_lines: modelLines(entry.cells, primary), lead, saturated };
+  return { entry, rows, pairs, basis, n_tasks, same_everywhere, mdd, mdd_holm, model_lines: modelLines(entry.cells, primary, between), lead, saturated };
 }
 
 export const PAIRED_COST_SCHEMA = 'harness-evals/paired-cost@1';
@@ -209,7 +224,7 @@ export const pairedCostPath = (runId: string) => `docs/scoreboard/paired-cost/${
 export type TaskCosts = Record<string, Record<string, { usd: number; solves: number; scored: number }>>;
 
 /** Each task's recorded spend (usage.usd less usage.usd_reserved, plus the extra fields) and scored passes per cell, from the trial records. A
- *  trial in lookups is a fail whatever its grade, as in the run's analysis, and a lookup id with no trial record is
+ *  trial in lookups is a fail whatever was recorded, a trial left out as infra included, as in the run's analysis, and a lookup id with no trial record is
  *  refused, as there. */
 export function perTaskCosts(cells: { id: string }[], records: TrialRecord[], lookups: Set<string>, extraUsd: string[]): TaskCosts {
   const recordIds = new Set(records.map((t) => t.trial_id));
@@ -220,14 +235,22 @@ export function perTaskCosts(cells: { id: string }[], records: TrialRecord[], lo
     const tasks = per[t.cell];
     if (!tasks) continue;
     const s = tasks[t.task] ?? { usd: 0, solves: 0, scored: 0 };
-    s.usd += (t.usage?.usd ?? 0) - (t.usage?.usd_reserved ?? 0) + extraUsd.reduce((sum, f) => { const v = f.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), t); return sum + (typeof v === 'number' ? v : 0); }, 0);
-    const v = trialValue(t);
-    if (v !== null) { s.scored += 1; s.solves += v === 1 && lookups.has(t.trial_id) ? 0 : v; }
+    s.usd += (t.usage?.usd ?? 0) - (t.usage?.usd_reserved ?? 0) + extraUsd.reduce((sum, f) => { const v = f.replace(/^-/, '').split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), t); return sum + (typeof v === 'number' ? (f.startsWith('-') ? -v : v) : 0); }, 0);
+    const v = lookups.has(t.trial_id) ? 0 : trialValue(t);
+    if (v !== null) { s.scored += 1; s.solves += v; }
     tasks[t.task] = s;
   }
   const empty = cells.filter((c) => Object.keys(per[c.id]!).length === 0).map((c) => c.id);
   if (empty.length) throw new Error(`paired_cost.trials holds no trial record for ${empty.join(', ')}`);
   return per;
+}
+
+/** Tasks that every cell scored and passed on every scored try, or failed on every one, from the per-task cost table:
+ *  what a main entry with no same_everywhere source counts. */
+export function sameEverywhere(cells: { id: string }[], costs: TaskCosts): number {
+  const tasks = new Set(cells.flatMap((c) => Object.keys(costs[c.id] ?? {})));
+  const every = (task: string, ok: (s: { solves: number; scored: number }) => boolean) => cells.every((c) => { const s = costs[c.id]?.[task]; return s !== undefined && s.scored > 0 && ok(s); });
+  return [...tasks].filter((t) => every(t, (s) => s.solves === s.scored) || every(t, (s) => s.solves === 0)).length;
 }
 
 /** Every same-model pair of cells, once, in entry order, on the tasks both cells scored, through
@@ -397,14 +420,17 @@ export function renderRankingBlock(t: Table, model: string): string {
   const basis = ranked.filter(otherBasis);
   const correction = t.entry.paired_cost?.correction;
   if (behind.length || basis.length) out.push('');
-  out.push(...behind.map((r) => `†${r.row.harness} is behind ${behindOf(r.row).join(' and ')} on pass rate in the run's preregistered test. Its rank is on cost only.`));
+  out.push(...behind.map((r) => t.entry.family.between === 'models'
+    ? `†${model} in ${r.row.harness} is behind ${behindOf(r.row).join(' and ')} in the same harness on pass rate in the run's preregistered test. Its rank is on cost only.`
+    : `†${r.row.harness} is behind ${behindOf(r.row).join(' and ')} on pass rate in the run's preregistered test. Its rank is on cost only.`));
   if (basis.length) out.push(`‡Ranks and ratios use each trial record's own cost${correction ? ` after the [${correction.label}](${correction.link})${correction.cut ? ` and the [${correction.cut.label}](${correction.cut.link})` : ''}` : ''}, which comes to ${basis.map((r) => `${usd(r.cost!)} per solved task for ${r.row.harness} (shown: ${usd(r.row.usd_per_solved!)})`).join(', ')}.`);
   out.push('', RANKING_END);
   return out.join('\n');
 }
 
 /** The README with every ranking table regenerated. Refuses a marker with no end, an unknown or repeated run and model, a
- *  main entry's model with no table, and a Rank table outside the markers, so a hand-edited rank cannot pass --check. */
+ *  main entry's model with more than one cell and no table, and a Rank table outside the markers, so a hand-edited rank
+ *  cannot pass --check. A model with one cell has nothing to rank, so it needs no table. */
 export function renderReadme(current: string, tables: Table[]): string {
   const mains = tables.filter((t) => t.entry.role === 'main');
   const lines = current.split('\n');
@@ -430,7 +456,7 @@ export function renderReadme(current: string, tables: Table[]): string {
     out.push(renderRankingBlock(t, model!));
     i = end;
   }
-  const missing = mains.flatMap((t) => [...new Set(t.entry.cells.map((c) => c.model))].map((model) => `${t.entry.run_id}:${model}`)).filter((k) => !seen.has(k));
+  const missing = mains.flatMap((t) => [...new Set(t.entry.cells.map((c) => c.model))].filter((model) => t.entry.cells.filter((c) => c.model === model).length > 1).map((model) => `${t.entry.run_id}:${model}`)).filter((k) => !seen.has(k));
   if (missing.length) throw new Error(`README.md has no ranking table for ${missing.join(', ')}; add ${rankingStart('<run id>', '<model>')} ... ${RANKING_END}`);
   return out.join('\n');
 }

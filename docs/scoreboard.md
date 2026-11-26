@@ -42,6 +42,109 @@ Grouped by use case (codegen, personal brain, company brain), then one section p
 
 **Receipts:** [report](benchmarks/2026-11-07-frontier-harness/report.md) · [analysis.json](benchmarks/2026-11-07-frontier-harness/results/analysis/analysis.json) · results PR #337 · claim check: claim-check reader, Opus 5.5, round 2 (HIGH findings fixed before merge), then the /ship fix-check on the cost fix (3 informational findings, no number changed) on #337
 
+### 107 SWE-rebench July 2026 tasks (frontier-shootout-2026-11-fresh, dev, public)
+
+**Saturated task set.** 56 of 107 tasks scored the same in every cell; this run had less than an 80% chance to detect a gap smaller than 8.4 to 9.8 points (8.4 to 9.8 at the first Holm step). Each model is compared only with Claude Opus 5.5 in Pi, the one harness on this set; each cell is 2 tries at each of 107 GitHub issues from July 2026.
+
+- **Gemini 4 Carbon:** 1 preregistered pairs against Claude Opus 5.5 in the same harness: 1 within 10 points.
+- **Claude Fable 5.2:** 1 preregistered pairs against Claude Opus 5.5 in the same harness: 1 within 10 points.
+- **Grok 4.7:** 1 preregistered pairs against Claude Opus 5.5 in the same harness: 1 within 10 points.
+- **Muse Wonder:** 1 preregistered pairs against Claude Opus 5.5 in the same harness: 1 within 10 points.
+
+| Harness | Version | Model | Pass rate [95% range] | Passes / scored | Cost per solved task [95% range] | Cost per trial | Median time per trial | Preregistered call |
+|---|---|---|---|---|---|---|---|---|
+| Pi | 1.5.0 | Gemini 4 Carbon | 65.9% [57.5%, 74.3%] | 141 / 214 | $5.01 [$4.21, $6.02] | $3.302 | 2352.0 s | within 10 points of Claude Opus 5.5 |
+| Pi | 1.5.0 | Claude Opus 5.5 | 64.5% [56.1%, 72.9%] | 138 / 214 | $1.50 [$1.14, $1.96] | $0.970 | 660.0 s | at most 10 points ahead of Claude Fable 5.2, Gemini 4 Carbon, Grok 4.7, Muse Wonder |
+| Pi | 1.5.0 | Claude Fable 5.2 | 69.2% [60.7%, 77.1%] | 144 / 209 | $4.33 [$3.34, $5.68] | $2.913 | 804.0 s | within 10 points of Claude Opus 5.5 |
+| Pi | 1.5.0 | Grok 4.7 | 63.6% [55.1%, 72.0%] | 136 / 214 | $7.17 [$5.73, $9.04] | $4.555 | 1086.0 s | within 10 points of Claude Opus 5.5 |
+| Pi | 1.5.0 | Muse Wonder | 65.4% [57.0%, 73.8%] | 140 / 214 | $3.16 [$2.59, $3.86] | $2.067 | 720.0 s | within 10 points of Claude Opus 5.5 |
+
+**Caveats:**
+
+- Public tasks: the 107 SWE-rebench July 2026 issues that fable-diagnosis-2026-11 counted, so a result here is not a held-out confirmation.
+- Settings: every model ran at its maker's high effort.
+- Trials ran 4 at a time per VM, so time per trial is contended. Median time per trial is the analysis's median in minutes, rounded to a tenth of a minute, shown here in seconds.
+- "Within 10 points" here is the run's "within 10 points, no measurable difference": the non-inferiority test at a 10-point margin passed and the difference test found no gap.
+- A provider safety-filter stop counts as a fail; no trial on this set had one.
+- Gemini 4 Carbon's list price doubles from 2026-12-01, which doubles its cost per solved task; the analysis gives its figure at the new rate.
+- GPT-6 Astra did not run on this set.
+- Every cell is a plain harness: no gstack, no gbrain.
+- Cost per solved task is the cell's recorded spend at list price through our metering proxy (reservation charges for streams that never finished left out, the first run of a rerun added back), divided by its scored passes. Cost per trial divides the same spend by the cell's recorded trials.
+- Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking.
+
+**Receipts:** [report](benchmarks/2026-11-16-frontier-shootout/README.md) · [analysis.json](benchmarks/2026-11-16-frontier-shootout/results/analysis/analysis.json) · results PR #619 · no claim check on record
+
+### 52 public Terminal-Bench 2.1 dev tasks (frontier-shootout-2026-11-tb, dev, public)
+
+0 of 52 tasks scored the same in every cell; this run had less than an 80% chance to detect a gap smaller than 6.7 to 19.9 points (7.8 to 23.0 at the first Holm step). Each model is compared only with Claude Opus 5.5 in the same harness: Hermes Agent, OpenClaw and Pi for the frontier models, Pi and one other harness for the rest. The own-harness rows (Claude Code, Codex, Gemini CLI, Grok Build, Muse Code) are descriptive.
+
+- **Gemini 4 Carbon:** 3 preregistered pairs against Claude Opus 5.5 in the same harness: 3 behind.
+- **Claude Fable 5.2:** 3 preregistered pairs against Claude Opus 5.5 in the same harness: 1 behind, 1 can't tell apart, 1 within 10 points.
+- **GPT-6 Astra:** 3 preregistered pairs against Claude Opus 5.5 in the same harness: 3 within 10 points.
+- **GPT-6.1 Sol:** 2 preregistered pairs against Claude Opus 5.5 in the same harness: 2 within 10 points.
+- **Grok 4.7:** 3 preregistered pairs against Claude Opus 5.5 in the same harness: 3 can't tell apart.
+- **Muse Wonder:** 3 preregistered pairs against Claude Opus 5.5 in the same harness: 2 within 10 points, 1 can't tell apart.
+- **Gemini 4 Hydrogen:** 2 preregistered pairs against Claude Opus 5.5 in the same harness: 2 can't tell apart.
+- **DeepSeek V4.1 Flash 1017:** 2 preregistered pairs against Claude Opus 5.5 in the same harness: 2 can't tell apart.
+- **Kimi K3.1 Pro:** 2 preregistered pairs against Claude Opus 5.5 in the same harness: 2 can't tell apart.
+- **GLM 5.3 on Novita fp8 host:** 2 preregistered pairs against Claude Opus 5.5 in the same harness: 2 behind.
+
+| Harness | Version | Model | Pass rate [95% range] | Passes / scored | Cost per solved task [95% range] | Cost per trial | Median time per trial | Preregistered call |
+|---|---|---|---|---|---|---|---|---|
+| Hermes Agent | v0.23.1 | Gemini 4 Carbon | 46.8% [35.9%, 57.7%] | 73 / 156 | $1.72 [$1.32, $2.28] | $0.805 | 1224.0 s | behind Claude Opus 5.5 |
+| OpenClaw | 2026.10.6 | Gemini 4 Carbon | 41.0% [29.5%, 52.6%] | 64 / 156 | $2.27 [$1.69, $3.18] | $0.932 | 1038.0 s | behind Claude Opus 5.5 |
+| Pi | 1.5.0 | Gemini 4 Carbon | 57.1% [45.5%, 68.6%] | 89 / 156 | $1.59 [$1.26, $2.02] | $0.906 | 960.0 s | behind Claude Opus 5.5 |
+| Gemini CLI | 0.68.0 | Gemini 4 Carbon | 57.1% [46.2%, 67.9%] | 89 / 156 | $1.59 [$1.25, $2.05] | $0.908 | 948.0 s | not compared |
+| Claude Code | 2.1.312 | Claude Opus 5.5 | 85.3% [76.3%, 92.9%] | 133 / 156 | $0.62 [$0.41, $0.90] | $0.532 | 246.0 s | not compared |
+| Hermes Agent | v0.23.1 | Claude Opus 5.5 | 82.1% [72.4%, 90.4%] | 128 / 156 | $0.69 [$0.43, $1.09] | $0.566 | 474.0 s | ahead of Claude Fable 5.2, Gemini 4 Carbon; at most 10 points ahead of GPT-6 Astra, Muse Wonder, GPT-6.1 Sol; can't tell apart from Grok 4.7, DeepSeek V4.1 Flash 1017 |
+| OpenClaw | 2026.10.6 | Claude Opus 5.5 | 75.6% [64.7%, 85.9%] | 118 / 156 | $0.85 [$0.57, $1.22] | $0.641 | 306.0 s | can't tell apart from Claude Fable 5.2, Grok 4.7, Muse Wonder, Kimi K3.1 Pro, Gemini 4 Hydrogen; at most 10 points ahead of GPT-6 Astra; ahead of Gemini 4 Carbon, GLM 5.3 on Novita fp8 host |
+| Pi | 1.5.0 | Claude Opus 5.5 | 80.1% [69.9%, 89.1%] | 125 / 156 | $0.55 [$0.33, $0.85] | $0.437 | 198.0 s | at most 10 points ahead of Claude Fable 5.2, GPT-6 Astra, Muse Wonder, GPT-6.1 Sol; ahead of Gemini 4 Carbon, GLM 5.3 on Novita fp8 host; can't tell apart from Grok 4.7, DeepSeek V4.1 Flash 1017, Kimi K3.1 Pro, Gemini 4 Hydrogen |
+| Hermes Agent | v0.23.1 | Claude Fable 5.2 | 73.7% [62.8%, 83.3%] | 115 / 156 | $2.56 [$1.66, $3.78] | $1.887 | 534.0 s | behind Claude Opus 5.5 |
+| OpenClaw | 2026.10.6 | Claude Fable 5.2 | 66.7% [55.1%, 77.6%] | 104 / 156 | $2.48 [$1.70, $3.57] | $1.656 | 426.0 s | can't tell apart from Claude Opus 5.5 |
+| Pi | 1.5.0 | Claude Fable 5.2 | 77.6% [67.3%, 87.2%] | 121 / 156 | $1.71 [$1.09, $2.50] | $1.329 | 294.0 s | within 10 points of Claude Opus 5.5 |
+| Codex | 0.165.0 | GPT-6 Astra | 85.9% [77.6%, 93.6%] | 134 / 156 | $1.66 [$1.26, $2.15] | $1.423 | 282.0 s | not compared |
+| Hermes Agent | v0.23.1 | GPT-6 Astra | 87.2% [78.8%, 94.9%] | 136 / 156 | $2.44 [$1.87, $3.13] | $2.124 | 522.0 s | within 10 points of Claude Opus 5.5 |
+| OpenClaw | 2026.10.6 | GPT-6 Astra | 80.8% [70.5%, 90.4%] | 126 / 156 | $2.85 [$2.11, $3.89] | $2.305 | 342.0 s | within 10 points of Claude Opus 5.5 |
+| Pi | 1.5.0 | GPT-6 Astra | 87.8% [79.5%, 94.9%] | 137 / 156 | $1.17 [$0.85, $1.58] | $1.024 | 258.0 s | within 10 points of Claude Opus 5.5 |
+| Hermes Agent | v0.23.1 | GPT-6.1 Sol | 84.0% [75.0%, 91.7%] | 131 / 156 | $0.41 [$0.31, $0.53] | $0.343 | 594.0 s | within 10 points of Claude Opus 5.5 |
+| Pi | 1.5.0 | GPT-6.1 Sol | 85.3% [76.9%, 92.3%] | 133 / 156 | $0.21 [$0.16, $0.27] | $0.176 | 210.0 s | within 10 points of Claude Opus 5.5 |
+| Grok Build | 1.0.77 | Grok 4.7 | 67.6% [57.2%, 77.8%] | 102 / 150 | $2.66 [$1.92, $3.62] | $1.741 | 936.0 s | not compared |
+| Hermes Agent | v0.23.1 | Grok 4.7 | 70.5% [60.3%, 80.1%] | 109 / 153 | $2.23 [$1.66, $2.99] | $1.561 | 1062.0 s | can't tell apart from Claude Opus 5.5 |
+| OpenClaw | 2026.10.6 | Grok 4.7 | 65.4% [54.5%, 75.6%] | 97 / 147 | $3.59 [$2.55, $5.01] | $2.234 | 954.0 s | can't tell apart from Claude Opus 5.5 |
+| Pi | 1.5.0 | Grok 4.7 | 66.0% [54.8%, 76.6%] | 94 / 143 | $2.08 [$1.52, $2.81] | $1.251 | 810.0 s | can't tell apart from Claude Opus 5.5 |
+| Muse Code | 1.4.20-R8619.1 | Muse Wonder | 85.3% [76.9%, 92.3%] | 126 / 146 | $1.95 [$1.55, $2.46] | $1.576 | 390.0 s | not compared |
+| Hermes Agent | v0.23.1 | Muse Wonder | 84.0% [75.0%, 91.7%] | 128 / 153 | $1.59 [$1.18, $2.17] | $1.302 | 606.0 s | within 10 points of Claude Opus 5.5 |
+| OpenClaw | 2026.10.6 | Muse Wonder | 67.3% [55.8%, 78.2%] | 105 / 156 | $2.31 [$1.49, $3.48] | $1.554 | 444.0 s | can't tell apart from Claude Opus 5.5 |
+| Pi | 1.5.0 | Muse Wonder | 84.3% [76.0%, 91.7%] | 125 / 148 | $1.51 [$1.16, $1.95] | $1.207 | 438.0 s | within 10 points of Claude Opus 5.5 |
+| OpenClaw | 2026.10.6 | Gemini 4 Hydrogen | 67.9% [55.8%, 79.5%] | 106 / 156 | $0.95 [$0.66, $1.35] | $0.642 | 438.0 s | can't tell apart from Claude Opus 5.5 |
+| Pi | 1.5.0 | Gemini 4 Hydrogen | 78.8% [68.6%, 88.5%] | 123 / 156 | $0.57 [$0.44, $0.75] | $0.452 | 324.0 s | can't tell apart from Claude Opus 5.5 |
+| Hermes Agent | v0.23.1 | DeepSeek V4.1 Flash 1017 | 72.1% [62.8%, 81.1%] | 108 / 151 | $0.14 [$0.10, $0.19] | $0.099 | 786.0 s | can't tell apart from Claude Opus 5.5 |
+| Pi | 1.5.0 | DeepSeek V4.1 Flash 1017 | 76.3% [66.7%, 84.6%] | 119 / 156 | $0.07 [$0.06, $0.09] | $0.057 | 384.0 s | can't tell apart from Claude Opus 5.5 |
+| OpenClaw | 2026.10.6 | Kimi K3.1 Pro | 71.8% [61.5%, 81.4%] | 112 / 156 | $0.76 [$0.54, $1.07] | $0.547 | 588.0 s | can't tell apart from Claude Opus 5.5 |
+| Pi | 1.5.0 | Kimi K3.1 Pro | 77.6% [67.9%, 86.5%] | 121 / 156 | $0.30 [$0.22, $0.41] | $0.235 | 402.0 s | can't tell apart from Claude Opus 5.5 |
+| OpenClaw | 2026.10.6 | GLM 5.3 on Novita fp8 host | 54.5% [42.9%, 66.0%] | 72 / 136 | $1.42 [$0.97, $2.06] | $0.655 | 972.0 s | behind Claude Opus 5.5 |
+| Pi | 1.5.0 | GLM 5.3 on Novita fp8 host | 54.5% [44.2%, 64.7%] | 85 / 156 | $0.83 [$0.54, $1.24] | $0.454 | 894.0 s | behind Claude Opus 5.5 |
+
+**Caveats:**
+
+- Dev tasks at public pins: the 52 public Terminal-Bench 2.1 tasks of frontier-harness-2026-11, so a result here is not a held-out confirmation.
+- Settings: every model ran at its maker's high effort.
+- Trials ran 4 at a time per VM, so time per trial is contended. Median time per trial is the analysis's median in minutes, rounded to a tenth of a minute, shown here in seconds.
+- "Within 10 points" here is the run's "within 10 points, no measurable difference": the non-inferiority test at a 10-point margin passed and the difference test found no gap.
+- A provider safety-filter stop counts as a fail. Stops hit more than 5% of trials in every Claude Opus 5.5, Claude Fable 5.2, Gemini 4 Carbon and Gemini 4 Hydrogen cell (6.4% to 16.7%).
+- The calls lean on that rule. With stopped trials left out, 14 of the 29 calls here change: 7 go from within 10 points to can't tell apart (GPT-6 Astra in all three harnesses, Muse Wonder in Hermes Agent and Pi, GPT-6.1 Sol in Pi and Hermes Agent), 6 go from can't tell apart to behind (Grok 4.7 in all three, Muse Wonder in OpenClaw, DeepSeek V4.1 Flash 1017 in Pi and Hermes Agent), and Claude Fable 5.2 in Hermes Agent goes from behind to within 10 points. The analysis gives every call both ways.
+- GLM 5.3 ran on Novita's fp8 host through OpenRouter, not Z.ai's own endpoint. The preregistered Baidu fp8 host is reported as provider endpoint unavailable (host delisted 2026-11-24 23:26Z), amendment 25.
+- Ranks and cost ratios score the 3 Gemini 4 Carbon trials in Hermes Agent that amendment 6 rescored by the original rule, as infra errors left out of their pair; pass rates and costs per solve score them by amendment 6. With them scored, no rank or shown ratio changes.
+- Gemini 4 Carbon's list price doubles from 2026-12-01, which doubles its cost per solved task; the analysis gives each Carbon cell's figure at the new rate.
+- Own-harness rows (Claude Code, Codex, Gemini CLI, Grok Build, Muse Code) are descriptive: each runs only its own lab's model, so it is in no comparison.
+- Claude Sonnet 5.5 ran in Pi and OpenClaw as a one-run exception. This page shows no appendix-grade model, so its two cells and their two calls are in the run's analysis only.
+- Trials with a model error or an infra error are left out of scoring, so some rows score fewer than 156 trials.
+- Every cell is a plain harness: no gstack, no gbrain.
+- Cost per solved task is the cell's recorded spend at list price through our metering proxy (reservation charges for streams that never finished left out, the first run of a rerun added back), divided by its scored passes. Cost per trial divides the same spend by the cell's recorded trials.
+- Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking.
+
+**Receipts:** [report](benchmarks/2026-11-16-frontier-shootout/README.md) · [analysis.json](benchmarks/2026-11-16-frontier-shootout/results/analysis/analysis.json) · results PR #619 · no claim check on record
+
 ## Personal brain
 
 No results yet.

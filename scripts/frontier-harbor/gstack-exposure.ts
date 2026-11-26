@@ -54,7 +54,9 @@
 //                        render.rs). The name is the frontmatter name (review), so entries map by path (gstack-review).
 //   Hermes v2026.9.24    the system prompt's "## Skills" block, <available_skills> with "  <category>: <description>" and
 //                        "    - <name>: <description>" lines, or "  <category> [names only]: a, b" for a demoted category
-//                        (agent/prompt_builder.py _render_skills_index).
+//                        (agent/prompt_builder.py _render_skills_index). v0.23.1 prints "  <category>:" with no description,
+//                        and a category holding one skill as a single top-level row "  - <name>: <description>" with no
+//                        category line; a one-shot run puts the same <available_skills> block after its own guidance.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -109,13 +111,17 @@ export function readCapture(file: string): { requests: CapturedRequest[]; trunca
 export const readCaptureFile = (file: string): CapturedRequest[] | null => readCapture(file)?.requests ?? null;
 
 /** Agent-loop requests: on the cell model, not a count_tokens call, declaring at least one tool (every cell-model request
- *  when none declares a tool). A Gemini cell's capture holds the proxy's OpenRouter translation, whose model is google/<model>.
+ *  when none declares a tool). A Gemini cell's capture holds Google's own body, which names no model, so it is matched by its
+ *  route (/v1beta/models/<model>:generateContent or :streamGenerateContent), or on the named fallback the proxy's OpenRouter
+ *  translation, whose model is google/<model>.
  *  Muse Code's reminder observers call the cell model with tools too; its requests carry prompt_cache_key tbh:<role>:..., so
  *  when any does, only tbh:main: requests count. */
 export function agentLoopRequests(requests: CapturedRequest[], cellModel: string): Array<{ route?: string; body: Body }> {
   const name = cellModel.split(':').slice(1).join(':');
   const names = cellModel.startsWith('google:') ? [name, 'google/' + name] : [name];
-  const onModel = requests.filter((r): r is { route?: string; body: Body; bytes: number } => r.body !== null && !r.route?.endsWith('/count_tokens') && names.includes(r.body.model));
+  const gemini = cellModel.startsWith('google:') ? new RegExp('^/v1(beta)?/models/' + name.replaceAll('.', '\\.') + ':(generateContent|streamGenerateContent)$') : null;
+  const onModel = requests.filter((r): r is { route?: string; body: Body; bytes: number } => r.body !== null && !r.route?.endsWith('/count_tokens')
+    && (names.includes(r.body.model) || (gemini !== null && gemini.test(r.route ?? ''))));
   const withTools = onModel.filter((r) => Array.isArray(r.body.tools) && r.body.tools.length > 0);
   const roles = withTools.filter((r) => typeof r.body.prompt_cache_key === 'string' && r.body.prompt_cache_key.startsWith('tbh:'));
   const loop = roles.length ? roles.filter((r) => (r.body.prompt_cache_key as string).startsWith('tbh:main:')) : withTools;
@@ -232,6 +238,8 @@ function hermesEntries(text: string): ListingEntry[] {
     for (const line of block[1]!.split('\n')) {
       const entry = /^ {4}- (\S+?)(?:: |$)/.exec(line);
       if (entry) { out.push({ name: entry[1]!, path: null, text: line + '\n', category }); continue; }
+      const single = /^ {2}- (\S+?)(?:: |$)/.exec(line);
+      if (single) { out.push({ name: single[1]!, path: null, text: line + '\n', category: '' }); continue; }
       const names = /^ {2}(\S[^\n]*?) \[names only\]: (.+)$/.exec(line);
       if (names) { for (const n of names[2]!.split(', ')) out.push({ name: n.trim(), path: null, text: n.trim() + ', ', category: names[1]!.trim() }); continue; }
       const cat = /^ {2}(\S[^:\n]*):/.exec(line);

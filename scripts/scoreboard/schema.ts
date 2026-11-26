@@ -22,16 +22,20 @@ export interface EntryCell {
 export const USE_CASES = [['codegen', 'Codegen'], ['personal-brain', 'Personal brain'], ['company-brain', 'Company brain']] as const;
 export type UseCase = (typeof USE_CASES)[number][0];
 export interface CantRun { harness: string; model: string; reason: string }
-// Where a main entry's paired cost ratios come from: the run's committed trial records (one JSON object per line), the
+// Where a main entry's paired cost ratios come from: the run's committed trial records (one JSON object per line, in one
+// file or in several, such as one per shard), the
 // optional list of trial ids scored as fails whatever their grade, extra spend fields added to each record's usage.usd,
 // and the bootstrap seed and draw count, read from the run's own analysis file so the entry holds no numbers.
 // scripts/scoreboard/paired-cost.ts reads the trial records into docs/scoreboard/paired-cost/<run id>.json; build.ts reads that.
 // correction names a published correction the costs are taken after: regrade reruns scripts/corrections/regrade-sensitivity.ts
 // with that rule, and reservations reruns scripts/corrections/reservation-cost.ts in that layout so each record's
 // usage.usd_reserved is left out. cut names a later correction that reruns scripts/corrections/harbor-cut.ts on the run, so
-// the charges of requests the egress sidecar cut at 15 s come off each record's spend.
+// the charges of requests the egress sidecar cut at 15 s come off each record's spend. analysis names the run's analysis
+// cells (each with id, cost.unrecorded_usd and safety_stops.trial_ids): their safety-stopped trials are scored as fails,
+// and the metered spend no trial record holds, which the analysis counts in the cell's cost, is spread over the cell's
+// tasks in proportion to their recorded spend. An extra_usd field written -name is taken off instead of added.
 export interface PairedCostCorrection { label: string; link: string; regrade?: 'withhold' | 'v031' | 'both'; reservations?: 'harbor' | 'matrix'; cut?: { label: string; link: string } }
-export interface PairedCostSource { trials: string; lookup_fails?: string; extra_usd?: string[]; correction?: PairedCostCorrection; seed: Source; draws: Source }
+export interface PairedCostSource { trials: string | string[]; lookup_fails?: string; extra_usd?: string[]; correction?: PairedCostCorrection; analysis?: Source; seed: Source; draws: Source }
 
 export interface Entry {
   schema: 'harness-evals/scoreboard-entry@1';
@@ -44,10 +48,15 @@ export interface Entry {
   use_case: UseCase;
   cant_run?: CantRun[];
   tasks?: Source;
+  /** When absent, a main entry counts these tasks from its per-task cost table (build.ts sameEverywhere). */
   same_everywhere?: Source[];
   mdd?: Source;
   mdd_holm?: Source;
-  family: Source & { label: string; kind?: 'verdict' | 'cost_per_trial'; interval?: string; a?: string; b?: string; verdict?: Source; words?: Record<string, string> };
+  // family.a and family.b name each comparison's cell id fields, or build it from them as a template such as
+  // "{model}-{harnesses[0]}". between: 'models' marks a family that compares models in the same harness (each model
+  // against one comparator model), so calls name the other model instead of the other harness. verdict_key names the
+  // comparison's own verdict field when it is not "verdict".
+  family: Source & { label: string; kind?: 'verdict' | 'cost_per_trial'; interval?: string; a?: string; b?: string; between?: 'harnesses' | 'models'; verdict_key?: string; verdict?: Source; words?: Record<string, string> };
   secondary?: Source;
   paired_cost?: PairedCostSource;
   lead_note: string;
@@ -73,13 +82,15 @@ export function validateEntry(e: unknown, where: string): Entry {
   if (x?.role !== 'main' && x?.role !== 'other') errors.push(`${where}: role must be main or other`);
   if (!USE_CASES.some(([id]) => id === x?.use_case)) errors.push(`${where}: use_case must be one of ${USE_CASES.map(([id]) => id).join(', ')}`);
   if (x?.cant_run !== undefined && (!Array.isArray(x.cant_run) || x.cant_run.some((c) => ['harness', 'model', 'reason'].some((k) => typeof (c as unknown as Record<string, unknown>)?.[k] !== 'string' || !(c as unknown as Record<string, string>)[k])))) errors.push(`${where}: cant_run must be a list of { harness, model, reason } strings`);
-  if (x?.role === 'main') for (const k of ['tasks', 'same_everywhere', 'mdd', 'paired_cost'] as const) if (!x[k]) errors.push(`${where}: a main entry needs ${k}`);
+  if (x?.role === 'main') for (const k of ['tasks', 'mdd', 'paired_cost'] as const) if (!x[k]) errors.push(`${where}: a main entry needs ${k}`);
   const pc = x?.paired_cost;
   if (pc) {
     const inRun = (f: unknown) => typeof f === 'string' && f !== '' && !f.startsWith('/') && !f.split('/').includes('..');
-    if (!inRun(pc.trials)) errors.push(`${where}: paired_cost.trials must name the run's trial records file, inside the run folder`);
+    if (!(Array.isArray(pc.trials) ? pc.trials.length > 0 && pc.trials.every(inRun) : inRun(pc.trials))) errors.push(`${where}: paired_cost.trials must name the run's trial records file, inside the run folder, or a list of such files`);
+    if (Array.isArray(pc.trials) && pc.correction) errors.push(`${where}: paired_cost.correction needs a single trials file`);
     if (pc.lookup_fails !== undefined && !inRun(pc.lookup_fails)) errors.push(`${where}: paired_cost.lookup_fails must name a file inside the run folder`);
-    if (pc.extra_usd !== undefined && (!Array.isArray(pc.extra_usd) || !pc.extra_usd.every((f) => typeof f === 'string' && /^[a-z_]+(\.[a-z_]+)*$/.test(f)))) errors.push(`${where}: paired_cost.extra_usd must be a list of dotted field names`);
+    if (pc.extra_usd !== undefined && (!Array.isArray(pc.extra_usd) || !pc.extra_usd.every((f) => typeof f === 'string' && /^-?[a-z_]+(\.[a-z_]+)*$/.test(f)))) errors.push(`${where}: paired_cost.extra_usd must be a list of dotted field names, each optionally after -`);
+    if (pc.analysis !== undefined && (!pc.analysis?.file || !pc.analysis?.path || !inRun(pc.analysis.file))) errors.push(`${where}: paired_cost.analysis needs file and path, inside the run folder`);
     for (const k of ['seed', 'draws'] as const) if (!pc[k]?.file || !pc[k]?.path) errors.push(`${where}: paired_cost.${k} needs file and path`);
     const c = pc.correction;
     if (c !== undefined && (typeof c?.label !== 'string' || !c.label || typeof c.link !== 'string' || !c.link.startsWith('docs/corrections/') || c.link.split('/').includes('..')
@@ -89,6 +100,7 @@ export function validateEntry(e: unknown, where: string): Entry {
   }
   if (x?.role === 'other' && x.verdict) errors.push(`${where}: only a main entry carries a verdict`);
   if (x?.family?.kind !== undefined && x.family.kind !== 'verdict' && x.family.kind !== 'cost_per_trial') errors.push(`${where}: family.kind must be verdict or cost_per_trial`);
+  if (x?.family?.between !== undefined && x.family.between !== 'harnesses' && x.family.between !== 'models') errors.push(`${where}: family.between must be harnesses or models`);
   if (x?.family?.kind === 'cost_per_trial' && !x.family.interval) errors.push(`${where}: a cost_per_trial family needs interval, the path to each contrast's 95% range`);
   if (x?.family?.verdict && (!x.family.verdict.file || !x.family.verdict.path)) errors.push(`${where}: family.verdict needs file and path`);
   for (const [k, w] of Object.entries(x?.family?.words ?? {})) if (!CALL_WORD.test(w)) errors.push(`${where}: family.words.${k} is ${JSON.stringify(w)}, not a call word from docs/glossary.md`);

@@ -246,15 +246,18 @@ export function unpinnedReason(body: Record<string, any>): string | null {
 
 /** OpenRouter's Chat Completions for a google/ model, the way OpenRouter's Google AI Studio endpoint answers (provider Google AI Studio):
  *  reasoning and a google-gemini-v1 reasoning_details entry, and on a tool turn one call whose thought signature rides in a
- *  reasoning.encrypted entry keyed to the call id. Two tool turns, then text; a replayed tool-call turn whose entry is
- *  missing or changed gets OpenRouter's 400; SAFETY_MARKER gets a content_filter finish with native reason SAFETY. */
+ *  reasoning.encrypted entry keyed to the call id. Two tool turns, then text. A replayed tool-call turn that carries a
+ *  google-gemini-v1 signature this fake never issued gets the 400 Google returns for an invalid signature. A turn replayed
+ *  with no signature, or with its tool call ids rewritten, is answered: the real route answered both with 200 (amendment 4:
+ *  Hermes dropped every reasoning_details entry in s01, OpenClaw rewrote call_N to callN in s02). SAFETY_MARKER gets a
+ *  content_filter finish with native reason SAFETY. */
 function openrouterGeminiReply(body: Record<string, any>, n: number, stream: boolean): Response {
   const messages: any[] = Array.isArray(body.messages) ? body.messages : [];
   for (const m of messages) {
     if (m?.role !== 'assistant' || !Array.isArray(m.tool_calls) || !m.tool_calls.length) continue;
-    const first = m.tool_calls[0].id;
-    const signed = (m.reasoning_details ?? []).some((d: any) => d?.type === 'reasoning.encrypted' && d.format === 'google-gemini-v1' && d.id === first && d.data === signatureFor(first));
-    if (!signed) return Response.json(errorBody(400, OPENROUTER_GEMINI_SIGNATURE_ERROR), { status: 400 });
+    const changed = (m.reasoning_details ?? []).some((d: any) => d?.type === 'reasoning.encrypted' && d.format === 'google-gemini-v1'
+      && !(typeof d.data === 'string' && Buffer.from(d.data, 'base64').toString().startsWith('fake-gemini-thought-signature:')));
+    if (changed) return Response.json(errorBody(400, OPENROUTER_GEMINI_SIGNATURE_ERROR), { status: 400 });
   }
   const id = 'gen-gemini-' + n;
   const turn = messages.filter((m) => m?.role === 'tool').length;
@@ -329,18 +332,16 @@ export const MUSE_SHELL = 'bash';
 export const MUSE_TOOL_TURNS = 2;
 export const MUSE_PROBE = (turn: number) => 'echo he-muse-probe-' + turn + '-$((6*7))';
 export const museEncrypted = (callId: string) => Buffer.from('fake-meta-encrypted-reasoning:' + callId).toString('base64');
-export const MUSE_REPLAY_ERROR = 'fake upstream: a replayed function_call has no reasoning item with its encrypted_content before it';
 
 /** A meta/ model on <this>/openrouter/v1/responses, for Muse Code (internal-task): the shape of OpenRouter's Responses API as its
  *  docs show it (no provider field, usage with cost). Muse declares its tools as one namespace tool whose tools include
  *  MUSE_SHELL; a request declaring that gets MUSE_TOOL_TURNS calls of it, each after a reasoning item with encrypted_content
  *  keyed to the call, then text. A request declaring a reminder_decision tool (Muse's reminder observers, on the cell model)
- *  gets one call of it deciding none. A replayed function_call without its reasoning item and encrypted_content is refused
- *  with a 400 so a harness that drops it fails here; whether OpenRouter refuses it the same way is not known. */
+ *  gets one call of it deciding none. A replayed function_call without its reasoning item is answered like any other turn:
+ *  neither Meta nor OpenRouter documents a refusal for it, and Meta answered Hermes's dropped replays with 200 in s29
+ *  (amendment 4), so the fake refuses only what a provider documents or was seen to refuse. */
 function museReply(body: Record<string, any>, n: number, stream: boolean): Response {
   const items = inputItems(body);
-  const dropped = items.some((it, i) => it.type === 'function_call' && !(items[i - 1]?.type === 'reasoning' && items[i - 1].encrypted_content === museEncrypted(it.call_id)));
-  if (dropped) return Response.json({ error: { code: 400, message: MUSE_REPLAY_ERROR } }, { status: 400 });
   const tools: any[] = (Array.isArray(body.tools) ? body.tools : []).flatMap((t: any) => t?.type === 'namespace' ? (t.tools ?? []).map((x: any) => ({ ...x, namespace: t.name })) : [t]);
   const outputs = items.filter((i) => i.type === 'function_call_output').length;
   const remind = tools.find((t) => /reminder_decision/.test(t?.name ?? ''));
@@ -442,7 +443,10 @@ export function reply(path: string, body: Record<string, any>, n: number, opts: 
   }
   if (path.startsWith('/openrouter/') && path.endsWith('/v1/chat/completions') && String(body.model ?? '').startsWith('google/')) return openrouterGeminiReply(body, n, stream);
   if (path.startsWith('/openrouter/') && path.endsWith('/v1/chat/completions')) {
-    if (replayedAssistants(body).some((a) => a.tool_calls > 0 && !a.reasoning && !a.reasoning_content && !a.reasoning_details)) return Response.json(errorBody(400, DEEPSEEK_REPLAY_ERROR), { status: 400 });
+    // Only DeepSeek refuses a tool-call turn replayed without its reasoning: its thinking-mode docs say reasoning_content must
+    // be passed back. Meta answered Hermes's dropped replays with 200 in s29 (amendment 4), and no other pinned provider
+    // documents a refusal, so every other model is answered and the request log records what was replayed.
+    if (String(body.model ?? '').startsWith('deepseek/') && replayedAssistants(body).some((a) => a.tool_calls > 0 && !a.reasoning && !a.reasoning_content && !a.reasoning_details)) return Response.json(errorBody(400, DEEPSEEK_REPLAY_ERROR), { status: 400 });
     const served = OPENROUTER_MODELS[String(body.model ?? '')]?.served ?? 'DeepSeek';
     return stream ? new Response(chatStream(body, served), { headers: { 'content-type': 'text/event-stream' } }) : Response.json(chatBody(body, served));
   }

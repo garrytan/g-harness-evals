@@ -76,6 +76,26 @@ describe('receipts manifest records', () => {
     expect(edited.stderr).toContain(`differs from the results tree at ${SPLIT}`);
   });
 
+  test('a record kept as one merged trials.jsonl per results/shards/<shard>/ counts every shard', () => {
+    const dir = repo([]);
+    const SH = 'docs/benchmarks/2026-01-09-shards';
+    const put = (file: string, body: string) => { mkdirSync(dirname(join(dir, file)), { recursive: true }); writeFileSync(join(dir, file), body); };
+    put(SH + '/PREREGISTRATION.md', '# prereg\n');
+    put(SH + '/results/shards/s01/manifest.json', JSON.stringify({ run_id: 'shards-2026-01' }));
+    put(SH + '/results/shards/s01/trials.jsonl', trial('shards-2026-01/a/t1/a1', 'a') + trial('shards-2026-01/a/t1/a2', 'a'));
+    put(SH + '/results/shards/s02/trials.jsonl', trial('shards-2026-01/b/t1/a1', 'b'));
+    put(SH + '/results/shards/s02/shards/s02/a/trials.jsonl', trial('shards-2026-01/b/t1/a1', 'b'));
+    put('docs/benchmarks/preregistrations.json', JSON.stringify({ schema_version: 1, experiments: [MERGED, { id: 'shards-2026-01', preregistration: SH + '/PREREGISTRATION.md', results: [SH + '/results/**'] }] }));
+    execFileSync('git', ['add', '-A'], { cwd: dir, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-q', '-m', 'shards fixture'], { cwd: dir, stdio: 'ignore' });
+    expect(cli(dir).status).toBe(0);
+    const m = JSON.parse(readFileSync(join(dir, 'docs/receipts-manifest.json'), 'utf8'));
+    const row = m.runs.find((r: { directory: string }) => r.directory === SH);
+    expect(row).toMatchObject({ run_id: 'shards-2026-01', trials: 3, cells: { a: 2, b: 1 }, trials_jsonl: SH + '/results/shards/s01/trials.jsonl' });
+    expect(row.trials_jsonl_parts.map((o: { path: string }) => o.path)).toEqual([SH + '/results/shards/s02/trials.jsonl']);
+    expect(row.other_trials_jsonl.map((o: { path: string }) => o.path)).toEqual([SH + '/results/shards/s02/shards/s02/a/trials.jsonl']);
+  });
+
   test('an edit to a per-stage copy fails --check too', () => {
     const dir = repo([MERGED]);
     expect(cli(dir).status).toBe(0);

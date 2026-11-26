@@ -1,0 +1,47 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "frontier-shootout-2026-11",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "shared_order_seed": "harn50-frontier-2026-11-07",
+  "cap_usd": 914,
+  "reserve_usd": 35,
+  "concurrency": 4,
+  "cells": [
+    {
+      "id": "fable-hermes",
+      "model": "anthropic:claude-fable-5-2",
+      "harness": "hermes",
+      "attempts": 3,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "core",
+      "priority": 1
+    },
+    {
+      "id": "astra-hermes",
+      "model": "openai:gpt-6-astra",
+      "harness": "hermes",
+      "attempts": 3,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "core",
+      "priority": 1
+    }
+  ],
+  "shards": [
+    {
+      "name": "s10s18",
+      "cells": [
+        "fable-hermes",
+        "astra-hermes"
+      ],
+      "lease_usd": 879
+    }
+  ]
+}

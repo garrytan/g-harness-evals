@@ -51,8 +51,9 @@
 #   trial (gost, blocklist) -> our metering proxy (runner/proxy/metering-proxy.ts on the docker bridge gateway :8790,
 #   lease mode, one slot per trial, the only process holding the provider keys scripts/ubicloud/provider-keys.sh lists:
 #   ANTHROPIC_API_KEY, OPENAI_API_KEY, PARTICLE_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY and XAI_API_KEY, less the
-#   ones shard_keys leaves out: GEMINI_API_KEY only for a shard with a gemini-cli cell on the native route) -> the provider.
-#   The google route (Gemini CLI's) goes to Google's Gemini API directly, keyed with GEMINI_API_KEY. --gemini-cli-route
+#   ones shard_keys leaves out: GEMINI_API_KEY only for a shard with a google: model on the native route) -> the provider.
+#   The google route (Gemini CLI's, and since amendment 2 of frontier-shootout-2026-11 the Gemini 4 Carbon and Hydrogen cells of
+#   Hermes, OpenClaw and Pi) goes to Google's Gemini API directly, keyed with GEMINI_API_KEY. --gemini-cli-route
 #   openrouter-fallback, the named fallback and never the default, sends it through OpenRouter instead (--google-via
 #   openrouter: Gemini requests translated to OpenRouter's Chat Completions, pinned to Google AI Studio's standard endpoint, keyed with
 #   OPENROUTER_API_KEY; GEMINI_API_KEY is not read); every google line in proxy-usage.ndjson then carries
@@ -208,9 +209,15 @@ esac
 # Cursor cells: no slot models (frontier_settings.py slot_models), so a shard of Cursor cells only has none and runs no proxy.
 harnesses=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); s=next(x for x in p["shards"] if x["name"] == sys.argv[2]); print(" ".join(sorted({c["harness"] for c in p["cells"] if c["id"] in s["cells"]})))' "$prereg" "$name")
 [ -n "${models:-}" ] || metered=0
+# The OpenRouter fallback is Gemini CLI's alone (the preregistration's named fallback); a Gemini cell of any other harness stays
+# on Google's Gemini API (amendment 2 of frontier-shootout-2026-11), and the flag would send every google request of the shard.
+if [ "$gemini_route" != native ]; then
+  others=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); s=next(x for x in p["shards"] if x["name"] == sys.argv[2]); print(" ".join(sorted({c["harness"] for c in p["cells"] if c["id"] in s["cells"] and str(c.get("model")).startswith("google:") and c["harness"] != "gemini-cli"})))' "$prereg" "$name")
+  [ -z "$others" ] || { say "--gemini-cli-route $gemini_route is Gemini CLI's named fallback alone; this shard's google cells in $others stay on Google's Gemini API (amendment 2 of frontier-shootout-2026-11)"; exit 2; }
+fi
 # The proxy keeps only the keys this shard needs (shard_keys, scripts/ubicloud/provider-keys.sh): GEMINI_API_KEY only for a
-# shard with a gemini-cli cell on the native route. Every other provider key is dropped here.
-read -r -a proxy_keys <<< "$(shard_keys "$harnesses" "$gemini_route" | tr '\n' ' ')"
+# shard with a google: model on the native route. Every other provider key is dropped here.
+read -r -a proxy_keys <<< "$(shard_keys "$models" "$gemini_route" | tr '\n' ' ')"
 for k in "${provider_keys[@]}"; do case " ${proxy_keys[*]} " in *" $k "*) ;; *) unset "$k" ;; esac; done
 case " $harnesses " in
   *" cursor "*)

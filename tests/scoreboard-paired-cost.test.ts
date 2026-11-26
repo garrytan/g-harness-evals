@@ -21,6 +21,8 @@ describe('scoreboard paired cost tables', () => {
     const committed: Record<string, string> = {
       'frontier-harness-2026-11': 'docs/scoreboard/paired-cost/frontier-harness-2026-11.json',
       'matrix-mu-2026-11': 'docs/scoreboard/paired-cost/matrix-mu-2026-11.json',
+      'frontier-shootout-2026-11-tb': 'docs/scoreboard/paired-cost/frontier-shootout-2026-11-tb.json',
+      'frontier-shootout-2026-11-fresh': 'docs/scoreboard/paired-cost/frontier-shootout-2026-11-fresh.json',
     };
     for (const e of entries) expect(readFileSync(join(root, committed[e.run_id] ?? pairedCostPath(e.run_id)), 'utf8')).toBe(pairedCostTable(root, e));
   });

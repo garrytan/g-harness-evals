@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
-  benchmarkFolders, buildAll, buildTable, callFor, callPhrase, costCallFor, getPath, loadEntries, modelLines, perTaskCosts, rankingStart, rankRows, ratioOf, readResults, renderPage, renderRankingBlock, renderReadme, renderReportsIndex, usd, withoutUnindexed,
+  benchmarkFolders, buildAll, buildTable, callFor, callPhrase, costCallFor, getPath, loadEntries, modelLines, perTaskCosts, rankingStart, rankRows, ratioOf, readResults, renderPage, renderRankingBlock, renderReadme, renderReportsIndex, sameEverywhere, usd, withoutUnindexed,
   RANKING_END, type Comparison, type PairRatio, type Row,
 } from '../scripts/scoreboard/build.ts';
 import { NO_RESULTS } from '../scripts/scoreboard/build.ts';
@@ -39,11 +39,19 @@ describe('scoreboard', () => {
         rows[runId!] = (rows[runId!] ?? 0) + 1;
       }
     }
-    expect(rows).toEqual({ 'frontier-harness-2026-11': 8, 'matrix-mu-2026-11': 7 });
+    expect(rows).toEqual({ 'frontier-harness-2026-11': 8, 'matrix-mu-2026-11': 7, 'frontier-shootout-2026-11-tb': 33 });
   });
 
   test('the README has exactly one generated ranking table per main entry and model', () => {
-    expect(blocks().map(([, r, m]) => `${r}:${m}`).sort()).toEqual(['frontier-harness-2026-11:GPT-6.1 Sol', 'frontier-harness-2026-11:Opus 5.5', 'matrix-mu-2026-11:GPT-6.1 Sol', 'matrix-mu-2026-11:Opus 5.5']);
+    const shootout = ['Claude Fable 5.2', 'Claude Opus 5.5', 'DeepSeek V4.1 Flash 1017', 'GLM 5.3 on Novita fp8 host', 'GPT-6 Astra', 'GPT-6.1 Sol', 'Gemini 4 Carbon', 'Gemini 4 Hydrogen', 'Grok 4.7', 'Kimi K3.1 Pro', 'Muse Wonder'].map((m) => `frontier-shootout-2026-11-tb:${m}`);
+    expect(blocks().map(([, r, m]) => `${r}:${m}`).sort()).toEqual(['frontier-harness-2026-11:GPT-6.1 Sol', 'frontier-harness-2026-11:Opus 5.5', ...shootout, 'matrix-mu-2026-11:GPT-6.1 Sol', 'matrix-mu-2026-11:Opus 5.5'].sort());
+  });
+
+  test('a model with one cell has nothing to rank, so it needs no README table', () => {
+    const fresh = tables.find((x) => x.entry.run_id === 'frontier-shootout-2026-11-fresh')!;
+    expect(fresh.entry.role).toBe('main');
+    expect(new Set(fresh.entry.cells.map((c) => c.model)).size).toBe(fresh.entry.cells.length);
+    expect(readmeText).not.toContain('<!-- ranking:frontier-shootout-2026-11-fresh:');
   });
 
   test('a hand-edited rank is rewritten, and a Rank table outside the markers, a missing, repeated or unclosed table, or a run with no main entry is refused', () => {
@@ -77,10 +85,12 @@ describe('scoreboard', () => {
     expect(ratioOf([{ a: 'A', b: 'B', tasks: 5, ratio: 0.4, ci95: [0, 0.9], note: null }], 'A', 'B')!.ratio).toBeNull();
     const rec = (cell: string) => ({ trial_id: `${cell}/t/a1`, cell, task: 't', grade: 'pass', usage: { usd: 1 } }) as unknown as TrialRecord;
     expect(() => perTaskCosts([{ id: 'X' }, { id: 'Y' }], [rec('X')], new Set(), [])).toThrow(/no trial record for Y/);
+    const infra = { trial_id: 'X/t/a2', cell: 'X', task: 't', termination: 'infra_error', grade: 'n/a', usage: { usd: 1 } } as unknown as TrialRecord;
+    expect(perTaskCosts([{ id: 'X' }], [rec('X'), infra], new Set(['X/t/a1', 'X/t/a2']), []).X!.t).toEqual({ usd: 2, solves: 0, scored: 2 });
   });
 
   test('the four README rank sets are the ones the computed rule gives', () => {
-    const ranks = Object.fromEntries(blocks().map(([, r, m, body]) => [`${r}:${m}`, body!.split('\n').filter((l) => /^\| \d/.test(l)).map((l) => l.split('|').map((c) => c.trim())).map((c) => `${c[2]} ${c[1]}`)]));
+    const ranks = Object.fromEntries(blocks().filter(([, r]) => r === 'frontier-harness-2026-11' || r === 'matrix-mu-2026-11').map(([, r, m, body]) => [`${r}:${m}`, body!.split('\n').filter((l) => /^\| \d/.test(l)).map((l) => l.split('|').map((c) => c.trim())).map((c) => `${c[2]} ${c[1]}`)]));
     expect(ranks).toEqual({
       'frontier-harness-2026-11:Opus 5.5': ['Pi 1', 'Claude Code 1', 'OpenClaw 3†', 'Hermes Agent 3'],
       'frontier-harness-2026-11:GPT-6.1 Sol': ['Pi 1', 'Codex 2', 'Hermes Agent 3', 'OpenClaw 4'],
@@ -96,6 +106,26 @@ describe('scoreboard', () => {
     p.note = 'one paired task: no interval';
     const block = renderRankingBlock(t, 'GPT-6.1 Sol');
     expect(block).toContain('| 1 | Codex | 1.35x (no range: one paired task: no interval)‡ |');
+  });
+
+  test('paired_cost.trials may list several files, each inside the run folder, but not beside a correction', () => {
+    const many = structuredClone(matrixMu());
+    many.paired_cost!.trials = ['results/a/trials.jsonl', 'results/b/trials.jsonl'];
+    delete many.paired_cost!.correction;
+    expect(() => validateEntry(many, 'fixture')).not.toThrow();
+    many.paired_cost!.trials = ['results/a/trials.jsonl', '../b/trials.jsonl'];
+    expect(() => validateEntry(many, 'fixture')).toThrow(/paired_cost.trials must name/);
+    many.paired_cost!.trials = [];
+    expect(() => validateEntry(many, 'fixture')).toThrow(/paired_cost.trials must name/);
+    const corrected = structuredClone(frontierHarness());
+    corrected.paired_cost!.trials = ['results/merged/trials.jsonl'];
+    expect(() => validateEntry(corrected, 'fixture')).toThrow(/paired_cost.correction needs a single trials file/);
+  });
+
+  test('a family naming a cell the entry does not list is refused', () => {
+    const e = structuredClone(loadEntries(root).find((x) => x.run_id === 'frontier-shootout-2026-11-tb')!);
+    e.cells = e.cells.filter((c) => c.id !== 'opus-pi');
+    expect(() => buildTable(e, readJson)).toThrow(/vs opus-pi in .* names a cell the entry does not list/);
   });
 
   test('paired_cost files must stay inside the run folder', () => {
@@ -140,6 +170,7 @@ describe('scoreboard', () => {
   });
 
   const matrixMu = () => loadEntries(root).find((e) => e.run_id === 'matrix-mu-2026-11')!;
+  const frontierHarness = () => loadEntries(root).find((e) => e.run_id === 'frontier-harness-2026-11')!;
   const editedJson = (edit: (path: string, doc: Record<string, any>) => void) => (p: string) => {
     const doc = structuredClone(readJson(p));
     edit(p, doc);
@@ -227,15 +258,17 @@ describe('scoreboard', () => {
   test('every rendered call equals the verdict field of its preregistered family', () => {
     for (const t of tables.filter((x) => x.entry.family.kind !== 'cost_per_trial')) {
       const base = dirname(t.entry.report);
-      const { a: aKey = 'a', b: bKey = 'b', verdict: verdictSrc, words } = t.entry.family;
+      const { a: aKey = 'a', b: bKey = 'b', verdict_key: verdictKey = 'verdict', verdict: verdictSrc, words } = t.entry.family;
       const raw = getPath(readJson(join(base, t.entry.family.file)), t.entry.family.path) as Record<string, string>[];
+      const id = (c: Record<string, string>, key: string) => (key.includes('{') ? key.replace(/\{([^}]+)\}/g, (_, p: string) => String(getPath(c, p))) : c[key]!);
       const family = raw.map((c) => {
-        const v = verdictSrc ? getPath(readJson(join(base, verdictSrc.file)), verdictSrc.path.replaceAll('{cell}', c[aKey]!)) as string : c.verdict!;
-        return { a: c[aKey]!, b: c[bKey]!, verdict: words ? words[v]! : v };
+        const v = verdictSrc ? getPath(readJson(join(base, verdictSrc.file)), verdictSrc.path.replaceAll('{cell}', id(c, aKey))) as string : c[verdictKey]!;
+        return { a: id(c, aKey), b: id(c, bKey), verdict: words ? words[v]! : v };
       });
       const modelOf = new Map(t.entry.cells.map((c) => [c.id, c.model]));
       const harnessOf = new Map(t.entry.cells.map((c) => [c.id, c.harness]));
-      const sameModel = family.filter((c) => modelOf.get(c.a) === modelOf.get(c.b));
+      const [groupOf, nameOf] = t.entry.family.between === 'models' ? [harnessOf, modelOf] : [modelOf, harnessOf];
+      const sameModel = family.filter((c) => groupOf.get(c.a) === groupOf.get(c.b));
       expect(sameModel.length).toBeGreaterThan(0);
       for (const c of sameModel) {
         const verdict = c.verdict;
@@ -244,8 +277,8 @@ describe('scoreboard', () => {
         const rowB = t.rows.find((r) => r.id === c.b)!;
         expect(rowA.call).toContain(callPhrase(verdict, 'a'));
         expect(rowB.call).toContain(callPhrase(verdict, 'b'));
-        expect(rowA.call).toContain(harnessOf.get(c.b)!);
-        expect(rowB.call).toContain(harnessOf.get(c.a)!);
+        expect(rowA.call).toContain(nameOf.get(c.b)!);
+        expect(rowB.call).toContain(nameOf.get(c.a)!);
       }
       const pairsInLines = t.model_lines.reduce((n, l) => n + Number(/(\d+) preregistered pairs/.exec(l)?.[1] ?? 0), 0);
       expect(pairsInLines).toBe(sameModel.length);
@@ -321,13 +354,16 @@ const waterfall = () => tables.find((x) => x.entry.run_id === 'waterfall-frontie
     expect(() => renderPage([t], readJson('docs/scoreboard/disclosures.json').lines)).toThrow(/no main entry has task set nowhere/);
   });
 
-  test('a main entry needs tasks, same_everywhere and mdd; an other entry does not', () => {
+  test('a main entry needs tasks, mdd and paired_cost, and counts same_everywhere from its per-task table when it names no source; an other entry needs none', () => {
     const bad = structuredClone(matrixMu()) as unknown as Record<string, unknown>;
     delete bad.mdd;
     expect(() => validateEntry(bad, 'fixture')).toThrow(/a main entry needs mdd/);
     const noPaired = structuredClone(matrixMu()) as unknown as Record<string, unknown>;
     delete noPaired.paired_cost;
     expect(() => validateEntry(noPaired, 'fixture')).toThrow(/a main entry needs paired_cost/);
+    const noSame = structuredClone(matrixMu()) as unknown as Record<string, unknown>;
+    delete noSame.same_everywhere;
+    expect(() => validateEntry(noSame, 'fixture')).not.toThrow();
     const other = readJson('docs/scoreboard/entries/waterfall-frontier-2026-11.json');
     expect(other.tasks).toBeUndefined();
     expect(() => validateEntry(other, 'fixture')).not.toThrow();
@@ -510,6 +546,30 @@ describe('callFor', () => {
     expect(callFor('d', modelOf, harnessOf, primary, secondary)).toBe('not compared');
   });
 
+  test('a family between models groups by harness and names the other model, and its model lines count side a only', () => {
+    const models = new Map([['xa', 'X'], ['oa', 'O'], ['xb', 'X'], ['ob', 'O'], ['yb', 'Y']]);
+    const harnesses = new Map([['xa', 'A'], ['oa', 'A'], ['xb', 'B'], ['ob', 'B'], ['yb', 'B']]);
+    const pairs: Comparison[] = [
+      { a: 'xa', b: 'oa', verdict: 'behind', tested: true },
+      { a: 'xb', b: 'ob', verdict: "can't tell apart", tested: true },
+      { a: 'yb', b: 'ob', verdict: 'within 10 points', tested: true },
+      { a: 'xa', b: 'ob', verdict: 'behind', tested: true },
+    ];
+    expect(callFor('xa', models, harnesses, pairs, [], 'models')).toBe('behind O');
+    expect(callFor('ob', models, harnesses, pairs, [], 'models')).toBe("can't tell apart from X; at most 10 points ahead of Y");
+    const cells = [...models].map(([id, model]) => ({ id, model }));
+    expect(modelLines(cells, pairs.slice(0, 3), 'models')).toEqual([
+      '**X:** 2 preregistered pairs against O in the same harness: 1 behind, 1 can\'t tell apart.',
+      '**Y:** 1 preregistered pairs against O in the same harness: 1 within 10 points.',
+    ]);
+  });
+
+  test('same-everywhere counts tasks every cell scored and passed on every try, or failed on every try', () => {
+    const t = (solves: number, scored: number) => ({ usd: 1, solves, scored });
+    const costs = { a: { p: t(2, 2), f: t(0, 2), m: t(1, 2), u: t(2, 2) }, b: { p: t(3, 3), f: t(0, 1), m: t(3, 3), u: t(0, 0) } };
+    expect(sameEverywhere([{ id: 'a' }, { id: 'b' }], costs)).toBe(2);
+  });
+
   test('model lines count only same-model pairs', () => {
     expect(modelLines([{ id: 'a', model: 'M' }, { id: 'b', model: 'M' }, { id: 'c', model: 'M' }, { id: 'd', model: 'N' }], primary)).toEqual([
       "**M:** 2 preregistered pairs: 1 can't tell apart, 1 behind.",
@@ -524,6 +584,12 @@ describe('getPath', () => {
     expect(getPath(doc, 'cells[id=y].v.n')).toBe(2);
     expect(getPath(doc, 'cells[0].id')).toBe('x');
     expect(getPath(doc, 'list[*].m')).toEqual([3, 4]);
+  });
+  test('spreads an object\'s values and keeps every spread item matching [?key=value] or not matching [?key!=value]', () => {
+    const byKey = { 'tb/x': { calls: [{ set: 'tb', m: 'x' }] }, 'tb/y': { calls: [{ set: 'tb', m: 'y' }] }, 'f/x': { calls: [{ set: 'f', m: 'x' }] } };
+    expect(getPath(byKey, '[*].calls[*][?set=tb].m')).toEqual(['x', 'y']);
+    expect(getPath(byKey, '[*].calls[*][?set=tb][?m!=y].m')).toEqual(['x']);
+    expect(getPath(byKey, '[*].calls[*][?set=none]')).toEqual([]);
   });
   test('refuses a missing key or an ambiguous match', () => {
     expect(() => getPath(doc, 'cells[id=z].v')).toThrow(/matched 0/);

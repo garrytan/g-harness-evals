@@ -1,0 +1,356 @@
+{
+  "schema": "harness-evals/scoreboard-entry@1",
+  "run_id": "frontier-shootout-2026-11-tb",
+  "report": "docs/benchmarks/2026-11-16-frontier-shootout/README.md",
+  "role": "main",
+  "results_pr": "#619",
+  "claim_check": null,
+  "task_set": {
+    "id": "terminal-bench-2.1-dev-public",
+    "label": "52 public Terminal-Bench 2.1 dev tasks",
+    "split": "dev",
+    "public": true
+  },
+  "use_case": "codegen",
+  "tasks": {
+    "file": "results/analysis/analysis.json",
+    "path": "cells[id=opus-claude-code].pass_rate.n"
+  },
+  "mdd": {
+    "file": "results/analysis/analysis.json",
+    "path": "per_harness[*].with_stops[*][?set=tb][?model!=sonnet].smallest_detectable.at_alpha"
+  },
+  "mdd_holm": {
+    "file": "results/analysis/analysis.json",
+    "path": "per_harness[*].with_stops[*][?set=tb][?model!=sonnet].smallest_detectable.at_first_holm_step"
+  },
+  "family": {
+    "file": "results/analysis/analysis.json",
+    "path": "per_harness[*].with_stops[*][?set=tb][?model!=sonnet]",
+    "label": "preregistered per-harness readings, each model against Claude Opus 5.5 in the same harness, Holm-adjusted within each model",
+    "a": "{model}-{harnesses[0]}",
+    "b": "opus-{harnesses[0]}",
+    "between": "models",
+    "verdict_key": "label",
+    "words": {
+      "can't tell": "can't tell apart",
+      "behind": "behind",
+      "within 10 points, no measurable difference": "within 10 points"
+    }
+  },
+  "paired_cost": {
+    "trials": [
+      "results/shards/s01/trials.jsonl",
+      "results/shards/s02/trials.jsonl",
+      "results/shards/s03/trials.jsonl",
+      "results/shards/s04/trials.jsonl",
+      "results/shards/s06/trials.jsonl",
+      "results/shards/s07/trials.jsonl",
+      "results/shards/s08/trials.jsonl",
+      "results/shards/s09/trials.jsonl",
+      "results/shards/s10/trials.jsonl",
+      "results/shards/s11/trials.jsonl",
+      "results/shards/s12/trials.jsonl",
+      "results/shards/s17/trials.jsonl",
+      "results/shards/s18/trials.jsonl",
+      "results/shards/s19/trials.jsonl",
+      "results/shards/s20/trials.jsonl",
+      "results/shards/s21/trials.jsonl",
+      "results/shards/s22/trials.jsonl",
+      "results/shards/s23/trials.jsonl",
+      "results/shards/s24/trials.jsonl",
+      "results/shards/s25/trials.jsonl",
+      "results/shards/s26/trials.jsonl",
+      "results/shards/s28/trials.jsonl",
+      "results/shards/s29/trials.jsonl",
+      "results/shards/s30/trials.jsonl",
+      "results/shards/s31/trials.jsonl",
+      "results/shards/s33/trials.jsonl",
+      "results/shards/s34/trials.jsonl",
+      "results/shards/s35/trials.jsonl",
+      "results/shards/s36/trials.jsonl",
+      "results/shards/s37/trials.jsonl",
+      "results/shards/s38/trials.jsonl",
+      "results/shards/s39/trials.jsonl",
+      "results/shards/s40/trials.jsonl"
+    ],
+    "extra_usd": [
+      "frontier.first_run_usd",
+      "-frontier.first_run_usd_reserved"
+    ],
+    "analysis": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells"
+    },
+    "seed": {
+      "file": "results/analysis/analysis.json",
+      "path": "rules.seed"
+    },
+    "draws": {
+      "file": "results/analysis/analysis.json",
+      "path": "rules.draws"
+    }
+  },
+  "lead_note": "Each model is compared only with Claude Opus 5.5 in the same harness: Hermes Agent, OpenClaw and Pi for the frontier models, Pi and one other harness for the rest. The own-harness rows (Claude Code, Codex, Gemini CLI, Grok Build, Muse Code) are descriptive.",
+  "fields": {
+    "passes": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].passes"
+    },
+    "scored": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].scored"
+    },
+    "pass_rate": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].pass_rate.estimate"
+    },
+    "pass_ci95": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].pass_rate.ci95"
+    },
+    "usd_per_solved": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].cost.per_solve.usd"
+    },
+    "usd_per_solved_ci95": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].cost.per_solve.ci95"
+    },
+    "usd_per_trial": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].cost.usd",
+      "per": {
+        "file": "results/analysis/analysis.json",
+        "path": "cells[id={cell}].recorded"
+      }
+    },
+    "wall_median_s": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].wall_minutes_median",
+      "scale": 60
+    }
+  },
+  "cells": [
+    {
+      "id": "carbon-hermes",
+      "harness": "Hermes Agent",
+      "version": "v0.23.1",
+      "model": "Gemini 4 Carbon"
+    },
+    {
+      "id": "carbon-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Gemini 4 Carbon"
+    },
+    {
+      "id": "carbon-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Gemini 4 Carbon"
+    },
+    {
+      "id": "carbon-gemini-cli",
+      "harness": "Gemini CLI",
+      "version": "0.68.0",
+      "model": "Gemini 4 Carbon"
+    },
+    {
+      "id": "opus-claude-code",
+      "harness": "Claude Code",
+      "version": "2.1.312",
+      "model": "Claude Opus 5.5"
+    },
+    {
+      "id": "opus-hermes",
+      "harness": "Hermes Agent",
+      "version": "v0.23.1",
+      "model": "Claude Opus 5.5"
+    },
+    {
+      "id": "opus-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Claude Opus 5.5"
+    },
+    {
+      "id": "opus-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Claude Opus 5.5"
+    },
+    {
+      "id": "fable-hermes",
+      "harness": "Hermes Agent",
+      "version": "v0.23.1",
+      "model": "Claude Fable 5.2"
+    },
+    {
+      "id": "fable-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Claude Fable 5.2"
+    },
+    {
+      "id": "fable-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Claude Fable 5.2"
+    },
+    {
+      "id": "astra-codex",
+      "harness": "Codex",
+      "version": "0.165.0",
+      "model": "GPT-6 Astra"
+    },
+    {
+      "id": "astra-hermes",
+      "harness": "Hermes Agent",
+      "version": "v0.23.1",
+      "model": "GPT-6 Astra"
+    },
+    {
+      "id": "astra-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "GPT-6 Astra"
+    },
+    {
+      "id": "astra-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "GPT-6 Astra"
+    },
+    {
+      "id": "sol-hermes",
+      "harness": "Hermes Agent",
+      "version": "v0.23.1",
+      "model": "GPT-6.1 Sol"
+    },
+    {
+      "id": "sol-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "GPT-6.1 Sol"
+    },
+    {
+      "id": "grok-grok-build",
+      "harness": "Grok Build",
+      "version": "1.0.77",
+      "model": "Grok 4.7"
+    },
+    {
+      "id": "grok-hermes",
+      "harness": "Hermes Agent",
+      "version": "v0.23.1",
+      "model": "Grok 4.7"
+    },
+    {
+      "id": "grok-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Grok 4.7"
+    },
+    {
+      "id": "grok-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Grok 4.7"
+    },
+    {
+      "id": "muse-muse-code",
+      "harness": "Muse Code",
+      "version": "1.4.20-R8619.1",
+      "model": "Muse Wonder"
+    },
+    {
+      "id": "muse-hermes",
+      "harness": "Hermes Agent",
+      "version": "v0.23.1",
+      "model": "Muse Wonder"
+    },
+    {
+      "id": "muse-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Muse Wonder"
+    },
+    {
+      "id": "muse-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Muse Wonder"
+    },
+    {
+      "id": "hydrogen-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Gemini 4 Hydrogen"
+    },
+    {
+      "id": "hydrogen-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Gemini 4 Hydrogen"
+    },
+    {
+      "id": "deepseek-hermes",
+      "harness": "Hermes Agent",
+      "version": "v0.23.1",
+      "model": "DeepSeek V4.1 Flash 1017"
+    },
+    {
+      "id": "deepseek-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "DeepSeek V4.1 Flash 1017"
+    },
+    {
+      "id": "kimi-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "Kimi K3.1 Pro"
+    },
+    {
+      "id": "kimi-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Kimi K3.1 Pro"
+    },
+    {
+      "id": "glm-openclaw",
+      "harness": "OpenClaw",
+      "version": "2026.10.6",
+      "model": "GLM 5.3 on Novita fp8 host"
+    },
+    {
+      "id": "glm-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "GLM 5.3 on Novita fp8 host"
+    }
+  ],
+  "caveats": [
+    "Dev tasks at public pins: the 52 public Terminal-Bench 2.1 tasks of frontier-harness-2026-11, so a result here is not a held-out confirmation.",
+    "Settings: every model ran at its maker's high effort.",
+    "Trials ran 4 at a time per VM, so time per trial is contended. Median time per trial is the analysis's median in minutes, rounded to a tenth of a minute, shown here in seconds.",
+    "\"Within 10 points\" here is the run's \"within 10 points, no measurable difference\": the non-inferiority test at a 10-point margin passed and the difference test found no gap.",
+    "A provider safety-filter stop counts as a fail. Stops hit more than 5% of trials in every Claude Opus 5.5, Claude Fable 5.2, Gemini 4 Carbon and Gemini 4 Hydrogen cell (6.4% to 16.7%).",
+    "The calls lean on that rule. With stopped trials left out, 14 of the 29 calls here change: 7 go from within 10 points to can't tell apart (GPT-6 Astra in all three harnesses, Muse Wonder in Hermes Agent and Pi, GPT-6.1 Sol in Pi and Hermes Agent), 6 go from can't tell apart to behind (Grok 4.7 in all three, Muse Wonder in OpenClaw, DeepSeek V4.1 Flash 1017 in Pi and Hermes Agent), and Claude Fable 5.2 in Hermes Agent goes from behind to within 10 points. The analysis gives every call both ways.",
+    "GLM 5.3 ran on Novita's fp8 host through OpenRouter, not Z.ai's own endpoint. The preregistered Baidu fp8 host is reported as provider endpoint unavailable (host delisted 2026-11-24 23:26Z), amendment 25.",
+    "Ranks and cost ratios score the 3 Gemini 4 Carbon trials in Hermes Agent that amendment 6 rescored by the original rule, as infra errors left out of their pair; pass rates and costs per solve score them by amendment 6. With them scored, no rank or shown ratio changes.",
+    "Gemini 4 Carbon's list price doubles from 2026-12-01, which doubles its cost per solved task; the analysis gives each Carbon cell's figure at the new rate.",
+    "Own-harness rows (Claude Code, Codex, Gemini CLI, Grok Build, Muse Code) are descriptive: each runs only its own lab's model, so it is in no comparison.",
+    "Claude Sonnet 5.5 ran in Pi and OpenClaw as a one-run exception. This page shows no appendix-grade model, so its two cells and their two calls are in the run's analysis only.",
+    "Trials with a model error or an infra error are left out of scoring, so some rows score fewer than 156 trials.",
+    "Every cell is a plain harness: no gstack, no gbrain.",
+    "Cost per solved task is the cell's recorded spend at list price through our metering proxy (reservation charges for streams that never finished left out, the first run of a rerun added back), divided by its scored passes. Cost per trial divides the same spend by the cell's recorded trials.",
+    "Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking."
+  ],
+  "disclosures": [
+    "OpenAI",
+    "OpenClaw",
+    "Hermes"
+  ]
+}

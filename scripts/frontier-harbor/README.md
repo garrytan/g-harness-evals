@@ -32,6 +32,9 @@
 | [egress.py](egress.py), [egress-sidecar/](egress-sidecar/) | Harbor's docker environment with a blocklist added to its egress sidecar |
 | [vm-run.sh](vm-run.sh) | runs one shard |
 | [to-trials.ts](to-trials.ts) | Harbor results into trial records, with requested and sent effort and infra classes; the mid-run journal and the recovery from a mirror ([A lost VM](#a-lost-vm)) |
+| [truncation-recovery.ts](truncation-recovery.ts) | amendment 6 of `frontier-shootout-2026-11`: which effort_mismatch trials of a Hermes cell were Hermes's own thinking-only truncation recovery, read from the usage logs and kept request captures; analyze.ts scores them (spec `truncation_recovery: "amendment-6"`) and writes the original-rule view beside it |
+| [trial-dir.ts](trial-dir.ts) | a record's Harbor trial directory for every reader of trial files: the `trials/` copy, or for a record `to-trials.ts recover` rebuilt with `paths {}`, the shard's `run/jobs/<harbor_job>/<harbor_trial>/` |
+| [shard-hours.ts](shard-hours.ts) | amendment 7 of `frontier-shootout-2026-11`: a shard's `--timeout-hours` and `UBI_TTL_HOURS` from its canary's measured pace, logged at launch |
 | [merge-stages.ts](merge-stages.ts) | merges a staged run's shard directories into one results directory, with the exclusion list and rerun records |
 | [subset.ts](subset.ts) | a copy of merged results without some trials (tasks, a Harbor exception, first runs in a time window, or a trial list), or with one harness's infra errors on one task scored as fails, for the sensitivity lines |
 | [diagnosis-label.ts](diagnosis-label.ts) | labels each SWE-rebench task "needs diagnosis" or "pointed" by whether its instruction names a file the reference fix changes; `--check` recomputes every label from the downloaded dataset (`fable-diagnosis-2026-11`) |
@@ -159,10 +162,10 @@ By default a shard runs its cells one after another. Two optional keys spread th
 
 ### Hermes housekeeping
 
-- **Session title:** Hermes names each session with one call on the cell model, reasoning off (`agent/title_generator.py`, `generate_title`: `reasoning_config {"enabled": false}`, 512 tokens). On GPT-6.1 Sol that call sends `reasoning_effort: none`. It declares no tool, so it is housekeeping: metered, labelled, not agent loop.
+- **Session title:** Hermes v0.23.1 makes no session-title call on a one-shot run, which is how agents.py runs it (`agent/turn_context.py`: `agent_is_oneshot`, "nothing shows a one-shot's title"). v2026.9.24 named each session with one call on the cell model, reasoning off; amendment 1 of frontier-shootout-2026-11 moved every Hermes cell to v0.23.1, so that metered line is gone.
 - **Local-server probes:** at start Hermes probes the base URL for LM Studio, Ollama, llama.cpp and vLLM (`agent/model_metadata.py`, `detect_local_server_type`: GET `/api/v1/models`, `/api/tags`, `/v1/props`, `/props`, `/version`, plus POST `/api/show`). The proxy refuses them (403, not allowlisted). Hermes reads any non-200 as "not a local server", the same verdict it reaches on api.openai.com and api.anthropic.com, where it skips the probes. So refusing them changes nothing, and they stay refused.
 - **Seen in the install check:** hermes-opus had 9 refused requests and hermes-sol 7, all of these probes and model-list GETs, and both went on to their agent loop (install-check.json, `requests_refused`).
-- **Anthropic SDK:** Hermes imports the `anthropic` package lazily, and its install.sh does not install the extra. agents.py runs `uv sync --locked --extra all --extra anthropic` in Hermes's source tree and checks `anthropic` is pin.json's 0.87.0.
+- **Anthropic SDK:** Hermes imports the `anthropic` package lazily, and its install.sh does not install the extra. agents.py runs `hermes pm install --extra anthropic` under the same `HERMES_HOME` install.sh used, so the extra lands in the environment the `hermes` launcher runs on, and checks that environment's `anthropic` is pin.json's 0.125.0 (Hermes's own uv.lock at v0.23.1).
 
 ## Particle-1
 
@@ -191,19 +194,31 @@ By default a shard runs its cells one after another. Two optional keys spread th
 - **Effort:** high, as OpenRouter's `reasoning {effort: high}`. The model offers none, low, high and max.
 - **Reasoning passed back:** DeepSeek thinking mode refuses a tool-call turn replayed without its reasoning. Each harness passes it back:
   - **Pi:** `reasoning_details`.
-  - **Hermes:** `reasoning_content` (OpenRouter takes it as an alias).
+  - **Hermes:** `reasoning`, `reasoning_content` and `reasoning_details`, all three (v0.23.1's built-in openrouter provider carries every reasoning field on any base URL).
   - **OpenClaw:** `reasoning`.
   - `harness_settings.json` records the field per harness, and each trial record has `frontier.reasoning_replay`.
-- **Hermes:** `--provider custom:openrouter-proxy`, as [config.openrouter.yaml](../../harnesses/hermes/config/config.openrouter.yaml). `extra_body` adds `reasoning {effort: high}` and `max_completion_tokens: 128000`. `agent.reasoning_effort: high` also sends top-level `reasoning_effort: high`. Its session-title call sends reasoning off and the proxy fills the cap (harness housekeeping, shipped default).
-- **OpenClaw:** provider `openrouter-proxy` on api `openai-completions`, as [openclaw.openrouter.json](../../harnesses/openclaw/config/openclaw.openrouter.json), with `compat.thinkingFormat: openrouter`. The id is not `openrouter`, so OpenClaw's bundled OpenRouter provider (live catalog, openrouter.ai-only request shaping) never runs against the proxy.
+- **Hermes (amendment 1 of frontier-shootout-2026-11):** `--provider openrouter`, Hermes's built-in OpenRouter provider, with `OPENROUTER_BASE_URL` at the proxy's OpenRouter route. That provider sends OpenRouter's `reasoning` field only when the host is openrouter.ai, and it reads config `extra_body` only for custom providers (as of v0.23.1). So agents.py writes the pinned [he-openrouter-effort](hermes-plugins/he-openrouter-effort/) plugin into `$HERMES_HOME/plugins` and the config enables it. It adds `reasoning {effort: high}` and `max_completion_tokens` (the cell's cap) to every agent request. Each file's sha256 is in pin.json; a mismatch stops the trial (HE-FRONTIER-015). Compression summaries don't pass through the plugin and carry no effort (housekeeping). Our multi-user pin still uses `custom:openrouter-proxy`: at v2026.9.24 that provider dropped every replayed turn's `reasoning_details` behind the proxy.
+- **OpenClaw (amendment 1):** provider `openrouter`, OpenClaw's bundled provider id, with the base URL at the proxy, api `openai-completions` and `compat.thinkingFormat: openrouter`. Under a custom id OpenClaw rewrote every tool-call id to letters and digits, which broke Gemini's thought-signature replay. The bundled provider keeps the ids. `music_generate` and `video_generate` are denied, so the system prompt differs from the custom id's only in a dropped `openai-whisper-api` skill line and `openrouter/<model>` in place of `openrouter-proxy/<model>`.
 - **Pi:** Harbor would point Pi's openrouter provider at `OPENROUTER_BASE_URL` with `OPENROUTER_API_KEY`, names no container holds. So agents.py writes Pi's `models.json` as for Particle, plus Pi 1.5.0's own catalog row for this model (`thinkingFormat: openrouter`, reasoning on assistant turns, `max_completion_tokens`).
 - **dsh:** the pin.json model row lists dsh. Its Harbor class is `FrontierDsh` ([DeepSeek Harness (dsh)](#deepseek-harness-dsh)).
-- **Keys:** the container gets `OPENAI_BASE_URL` (the OpenRouter route) and `OPENAI_API_KEY` (the per-trial token). `OPENROUTER_API_KEY` reaches the proxy's process only, and vm-run.sh strips it from everything else.
+- **Keys:** Pi gets `OPENAI_BASE_URL` (the OpenRouter route) and `OPENAI_API_KEY` (the per-trial token), and dsh the token as `HE_MODEL_API_KEY`. Hermes and OpenClaw get `OPENROUTER_BASE_URL` and `OPENROUTER_API_KEY` set to the same route and the per-trial token, never the real key. The real `OPENROUTER_API_KEY` reaches the proxy's process only, and vm-run.sh strips it from everything else.
 - **Refused:** a DeepSeek cell on Claude Code, Codex or mini-swe-agent stops with HE-FRONTIER-012.
 - **Cost:** priced from the runner/pricing row ($0.30 input, $0.006 cached, $1.20 output per million tokens, the endpoint's peak rates). One call reserves about $0.57, so a shard of four concurrent DeepSeek trials needs a lease of at least $2.30.
 - **Install check:** install-check-prereg.json has three DeepSeek cells (`pi-deepseek`, `hermes-deepseek`, `openclaw-deepseek`). fake-upstream.ts answers the OpenRouter route like DeepSeek does, including the refusal of a tool-call turn replayed without reasoning. install-check.sh fails a DeepSeek cell that replays no reasoning. The committed install-check.json, from uncounted smoke 7 on 2026-11-10, includes them.
 - **Checked keyless with the real binaries:** `tests/frontier-harbor-deepseek.test.ts` runs Pi, Hermes and OpenClaw (set `HE_TEST_PI_BIN`, `HE_TEST_HERMES_BIN`, `HE_TEST_OPENCLAW_BIN`) through the proxy to fake-upstream.ts. Each sent effort high and the 128,000 cap and passed reasoning back.
 - **Not checked keyless:** whether OpenRouter's DeepSeek endpoint accepts every field each harness sends (Pi's `store: false`, OpenClaw's `tool_choice`). The first paid smoke trial shows it.
+
+## Gemini 4 Carbon and Hydrogen on Google's Gemini API (amendment 2 of frontier-shootout-2026-11)
+
+- **Route:** every Carbon and Hydrogen cell, in Gemini CLI, Hermes, OpenClaw and Pi, goes to Google's Gemini API through the proxy's google route (`<proxy>/<trial>/google`), keyed with `GEMINI_API_KEY`, which only the proxy holds. The OpenRouter rows for both models list no harness.
+- **Each harness's own Gemini provider:**
+  - **Hermes:** provider `gemini` (its native generateContent client), with `GEMINI_BASE_URL` set to `<route>/generativelanguage.googleapis.com/v1beta`. Hermes v0.23.1 picks its native client only when the base URL contains that host name (`agent/gemini_native_adapter.py` `is_native_gemini_base_url`, a substring test). The proxy drops exactly that one segment, once, on the google route only (`GOOGLE_HOST_SEGMENT`).
+  - **OpenClaw:** its bundled `google` provider id on api `google-generative-ai`, baseUrl `<route>/v1beta`.
+  - **Pi:** the `harbor-endpoint` provider on api `google-generative-ai`, baseUrl `<route>/v1beta`, with the thinkingLevelMap of Pi's Gemini 4 Argon catalog row.
+- **Effort:** thinkingLevel high on every agent request. Hermes writes it in lower case, OpenClaw and Pi as `HIGH`. to-trials.ts matches Gemini agent-loop requests by route (Google's bodies name no model) and reads the level in either case.
+- **Output cap:** 65,536 (Google's standard output limit). OpenClaw sends none, so the proxy writes it. Hermes sends its own 65,535 and has no setting for it, which is declared.
+- **Reasoning replayed:** each harness sends every functionCall part's `thoughtSignature` back byte for byte (checked keyless with the real binaries, `tests/frontier-harbor-replay.test.ts`). Each trial's `frontier.reasoning_replay` counts the replayed model turns whose first function call carries its signature.
+- **Logged on every line:** the finish reason, and on a non-2xx answer its Retry-After and error body with every credential masked.
 
 ## Web tools off
 
@@ -211,7 +226,7 @@ By default a shard runs its cells one after another. Two optional keys spread th
 
 | Harness | Setting on this path | Source |
 |---|---|---|
-| Hermes v2026.9.24 | `web.keyless_fallback: false` and `agent.disabled_toolsets: [web, browser]` in the config agents.py writes | `website/docs/user-guide/features/web-search.md` (keyless ring, also turns `keyless_rescue` off) and `configuration.md` "Global Toolset Disable" at the pinned commit; `plugins/web/keyless_mcp.py` is the Exa, Parallel and Keenable route |
+| Hermes v0.23.1 | `web.keyless_fallback: false` and `agent.disabled_toolsets: [web, browser]` in the config agents.py writes, plus `x_search` on xAI, where Hermes turns that toolset on whenever xAI credentials are present (amendment 19; [hermes-agent#68001](https://github.com/NousResearch/hermes-agent/issues/68001)) | `website/docs/user-guide/features/web-search.md` (keyless ring, also turns `keyless_rescue` off) and `configuration.md` "Global Toolset Disable" at the pinned commit; `plugins/web/keyless_mcp.py` is the Exa, Parallel and Keenable route |
 | OpenClaw 2026.10.6 | `tools.deny` gets `group:web` (web_search, x_search, web_fetch) and `browser`; `tools.web.search.enabled` and `tools.web.fetch.enabled` false; Harbor's `disable_web_search` kept | `docs/gateway/config-tools/tool-policy.md`, `docs/tools/web.md`, `docs/tools/web-fetch.md` in the npm package |
 | Claude Code 2.1.312 | `--disallowedTools WebSearch,WebFetch` and `permissions.deny [WebSearch, WebFetch]` (unchanged) | Harbor `disallowed_tools`; [settings.json](../../harnesses/claude-code/config/settings.json) |
 | Codex 0.165.0 | `web_search = "disabled"`, `tools.web_search = false`, `external_web_access = false` (unchanged) | Harbor `web_search`; [config.toml](../../harnesses/codex/config/config.toml) |

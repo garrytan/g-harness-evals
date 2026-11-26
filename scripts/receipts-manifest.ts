@@ -9,7 +9,8 @@
 // a row when a trials.jsonl sits anywhere under its results/. The run's record is results/trials.jsonl; else
 // results/merged/trials.jsonl (the merge of per-stage or per-shard copies, as the frontier runs keep them); else every
 // results/merged/<part>/trials.jsonl, when the merge is split across part directories (the gstack skill ablation run keeps
-// its none and full cells in merged/base/ and its other cells in merged/arms/); else the shallowest trials.jsonl under
+// its none and full cells in merged/base/ and its other cells in merged/arms/), or every results/shards/<shard>/trials.jsonl
+// (the frontier shootout keeps one merged record per shard there); else the shallowest trials.jsonl under
 // results/, the first in path order among equals. A record other than results/trials.jsonl is named under trials_jsonl
 // (the first part, in path order, for a split record, with the rest under trials_jsonl_parts, each with its sha256, and
 // every part counted in trials, cells and the trials window), and every other trials.jsonl in the run directory (per-stage copies, a second experiment's
@@ -147,6 +148,7 @@ export const REPORT_ELSEWHERE: Record<string, string> = {
   'docs/benchmarks/2026-11-02-v04-cal-r3': 'docs/benchmarks/2026-11-02-v04-cal-r1/report.md',
   'docs/benchmarks/2026-11-02-v04-cal-r4': 'docs/benchmarks/2026-11-02-v04-cal-r1/report.md',
   'docs/benchmarks/2026-11-02-v04-transfer': 'docs/benchmarks/2026-11-02-v04-cal-r1/report.md',
+  'docs/benchmarks/2026-11-16-frontier-shootout': 'docs/benchmarks/2026-11-16-frontier-shootout/README.md',
 };
 
 const sha256 = (buf: Buffer) => createHash('sha256').update(buf).digest('hex');
@@ -255,13 +257,14 @@ export function holdsTrialRecords(path: string): boolean {
 const isTrials = (f: string) => namedTrials(f) && holdsTrialRecords(f);
 
 /** The run's record among the trials.jsonl files under results/ (absolute paths): results/trials.jsonl, else
- *  results/merged/trials.jsonl, else every results/merged/<part>/trials.jsonl in path order, else the shallowest, first in
+ *  results/merged/trials.jsonl, else every results/merged/<part>/trials.jsonl or results/shards/<shard>/trials.jsonl in path
+ *  order, else the shallowest, first in
  *  path order. Empty when results/ holds none. */
 export function runRecord(results: string, files: string[]): string[] {
   const under = files.filter((f) => isTrials(f) && f.startsWith(results + '/')).sort();
   const preferred = [join(results, 'trials.jsonl'), join(results, 'merged', 'trials.jsonl')].find((f) => under.includes(f));
   if (preferred) return [preferred];
-  const parts = under.filter((f) => dirname(dirname(f)) === join(results, 'merged'));
+  const parts = under.filter((f) => [join(results, 'merged'), join(results, 'shards')].includes(dirname(dirname(f))));
   if (parts.length) return parts;
   const depth = (f: string) => f.split('/').length;
   return under.length ? [under.reduce((best, f) => (depth(f) < depth(best) ? f : best))] : [];

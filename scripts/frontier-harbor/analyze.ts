@@ -3,7 +3,7 @@
 // with the home harness, cost per solve and the results table.
 //
 //   bun scripts/frontier-harbor/analyze.ts --results <merged results dir> --spec <spec.json> [--out <dir>]
-//       [--lookup-fails <file>] [--cost-with-replaced]
+//       [--lookup-fails <file>] [--cost-with-replaced] [--shard-results <shard results dir> ...]
 //
 // Reads <results>/trials.jsonl (runner/contracts.ts TrialRecord) and <results>/manifest.json when it exists. Writes
 // analysis.json and analysis.md to --out (default: the results directory). Intervals, never ranks.
@@ -70,8 +70,20 @@
 // low_cost_swap (optional) adds the two-sided a against b contrast of the same file (amendment gate G1), scored the same way, its
 // use cases' cells drawn from this spec's cells (a, b and the frontier models listed), and its cost from the trials' token counts.
 // Its section follows the model_swap one; without the block, the analysis and its Markdown are what they were.
+//
+// truncation_recovery: "amendment-6" (optional; frontier-shootout-2026-11, amendment 6) scores an effort_mismatch trial of a
+// Hermes cell as its graded outcome when Hermes's thinking-only truncation recovery lowered the effort
+// (truncation-recovery.ts, read from the results directory's proxy usage logs and kept request captures; trials.jsonl is not
+// edited). analysis.json and analysis.md are then that view, with a truncation_recovery block: per Hermes cell the tag's
+// count and rate, the trials that stayed infra, and the cell's pass rate, verdict and pairs both ways. The whole analysis
+// under the original rule goes to analysis-original-rule.json and analysis-original-rule.md beside them. A record that
+// to-trials.ts recover rebuilt (paths {}) is read from Harbor's run/jobs/ tree (trial-dir.ts), under the results directory or
+// a --shard-results directory (a merged directory holds no run/).
+//
+// Recovered shards. When the results directory holds a shard's recovery.json (to-trials.ts recover; <shard>.recovery.json
+// after merge-shards.ts), the spend its usage log holds for no record counts in its cell's cost (unrecordedSpend).
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Termination, TrialRecord } from '../../runner/contracts.ts';
 import { RunnerError } from '../../runner/errors.ts';
@@ -102,8 +114,13 @@ export interface FrontierSpec {
   cells: FrontierCell[];
   model_swap?: ModelSwapSpec;
   low_cost_swap?: LowCostSwapSpec;
+  /** Amendment 6 of frontier-shootout-2026-11: score Hermes's thinking-only truncation recovery (truncation-recovery.ts). */
+  truncation_recovery?: 'amendment-6';
 }
-export interface FrontierInput { records: TrialRecord[]; manifest: MatrixManifest | null; lookup_fails?: string[]; cost_with_replaced?: boolean }
+/** Spend in a cell's shard usage log that no record carries: a shard whose records to-trials.ts recover rebuilt keeps the
+ *  spend of trials it never journaled (one cut mid-run, a request charged at its reservation) only in the log. */
+export interface UnrecordedSpend { usd: number; usd_reserved: number; source: string }
+export interface FrontierInput { records: TrialRecord[]; manifest: MatrixManifest | null; lookup_fails?: string[]; cost_with_replaced?: boolean; unrecorded?: Record<string, UnrecordedSpend> }
 
 export class SpecError extends Error {}
 
@@ -170,6 +187,7 @@ export function checkSpec(spec: FrontierSpec, manifest: MatrixManifest | null): 
   if (spec.saturated_at !== undefined && !(spec.saturated_at > 0 && spec.saturated_at <= 1)) problems.push('saturated_at must be in (0, 1]');
   if (spec.min_paired_tasks !== undefined && (!Number.isSafeInteger(spec.min_paired_tasks) || spec.min_paired_tasks < 2)) problems.push('min_paired_tasks must be an integer of at least 2');
   if (spec.model_swap) problems.push(...checkModelSwapSpec(spec.model_swap, new Map([...cells.values()].map((c) => [c.id, c])), 'harbor'));
+  if (spec.truncation_recovery !== undefined && spec.truncation_recovery !== 'amendment-6') problems.push('truncation_recovery is "amendment-6" or absent');
   if (spec.low_cost_swap) problems.push(...checkLowCostSwapSpec(spec.low_cost_swap, new Map([...cells.values()].map((c) => [c.id, c])), 'harbor'));
   return problems;
 }
@@ -204,6 +222,7 @@ interface CellData {
   /** The dollars charged at a full reservation (usage.usd_reserved, and the same for a first or replaced run). */
   reservedUsd: number;
   unstarted: string[];
+  unrecorded: UnrecordedSpend | null;
 }
 
 interface FrontierUsd { first_run_usd?: number; first_run_usd_reserved?: number; replaced_usd?: number; replaced_usd_reserved?: number }
@@ -273,7 +292,14 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
       reservedUsd += reserved;
     }
     const unstarted = input.manifest ? input.manifest.trials.filter((t) => t.cell === c.id && !recorded.has(t.id)).map((t) => t.id) : [];
-    data.set(c.id, { spec: c, rows, attempts, usdByTask, reservedUsd, unstarted });
+    const unrecorded = input.unrecorded?.[c.id] ?? null;
+    if (unrecorded) {
+      const metered = split ? unrecorded.usd - unrecorded.usd_reserved : unrecorded.usd;
+      const total = sum([...usdByTask.values()]);
+      for (const [task, v] of usdByTask) usdByTask.set(task, v + metered * (total > 0 ? v / total : 1 / usdByTask.size));
+      if (split) reservedUsd += unrecorded.usd_reserved;
+    }
+    data.set(c.id, { spec: c, rows, attempts, usdByTask, reservedUsd, unstarted, unrecorded });
   }
   const mainCells = [...data.values()].filter((d) => !d.spec.descriptive);
   const taskIds = [...new Set(mainCells.flatMap((d) => [...d.attempts.keys()]))].sort(byKey);
@@ -304,7 +330,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
       pass_rate: rate ? { estimate: round(rate.estimate)!, ci95: roundCi(rate.ci95), tasks: rate.n, scored_trials: scoredTrials.length, passes } : null,
       reliability: { k: c.attempts, pass_hat_k: roundMean(taskBootstrapMean(hat, opts)), pass_at_k: roundMean(taskBootstrapMean(at, opts)), tasks_with_fewer_than_k: tasks.length - hat.length },
       rerun_flip: roundMean(taskBootstrapMean(flips, opts)),
-      cost: { usd_total: round(cost.usd)!, ...(split ? { usd_reserved: round(d.reservedUsd)! } : {}), solves: cost.solves, usd_per_solve: round(cost.usd_per_solve), ci95: roundCi(cost.ci95), note: cost.note },
+      cost: { usd_total: round(cost.usd)!, ...(split ? { usd_reserved: round(d.reservedUsd)! } : {}), ...(d.unrecorded ? { unrecorded: { usd: round(d.unrecorded.usd)!, usd_reserved: round(d.unrecorded.usd_reserved)!, source: d.unrecorded.source } } : {}), solves: cost.solves, usd_per_solve: round(cost.usd_per_solve), ci95: roundCi(cost.ci95), note: cost.note },
       wall_s_median_contended: (() => { const m = median(scoredTrials.map((t) => t.wall_ms)); return m === null ? null : round(m / 1000, 1); })(),
     };
   };
@@ -448,7 +474,7 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
       estimator: "task mean (each task's mean pass over its scored attempts, then the mean over tasks); task-clustered percentile bootstrap intervals; pairs from runner/stats/paired.ts clusteredPairedDelta over per-task means of the attempts scored in both cells, Holm within model across primary pairs for the two-sided sign-flip p and for the one-sided non-inferiority p",
       seed, draws, alpha, ni_margin: NI_MARGIN, saturated_at: saturatedAt, min_paired_tasks: minPaired, drift_threshold: spec.drift_threshold ?? null,
       wall_time: 'median over scored trials, contended (trials of a shard may overlap)',
-      cost: `${input.cost_with_replaced ? 'recorded USD of every trial of the cell (excluded ones included) plus each run a rerun replaced (frontier.replaced_usd, --cost-with-replaced), over scored passes' : 'recorded USD of every trial record of the cell (excluded ones included; a run a rerun replaced is not a record) over scored passes'}${split ? '; metered dollars only: the dollars the proxy charged at a full reservation because a request carried no usage (usage.usd_reserved) are left out of usd_total, cost per solve and its interval, and reported as usd_reserved' : ''}`,
+      cost: `${input.cost_with_replaced ? 'recorded USD of every trial of the cell (excluded ones included) plus each run a rerun replaced (frontier.replaced_usd, --cost-with-replaced), over scored passes' : 'recorded USD of every trial record of the cell (excluded ones included; a run a rerun replaced is not a record) over scored passes'}${split ? '; metered dollars only: the dollars the proxy charged at a full reservation because a request carried no usage (usage.usd_reserved) are left out of usd_total, cost per solve and its interval, and reported as usd_reserved' : ''}${input.unrecorded && Object.keys(input.unrecorded).length ? '; a cell whose shard records were rebuilt by to-trials.ts recover also counts the spend its shard usage log holds for no record (cost.unrecorded), spread over the cell\'s tasks in proportion to their recorded spend, its reservation part with usd_reserved' : ''}`,
     },
     verdict_rules: Object.fromEntries((gated ? GATED_VERDICTS : VERDICTS).map((v) => [v, VERDICT_RULES[v]])) as Partial<Record<Verdict, string>>,
     trials_planned: planned, trials_recorded: input.records.length - outside, trials_outside_spec: outside, trials_unstarted: unstarted,
@@ -463,6 +489,37 @@ export function analyzeFrontier(input: FrontierInput, spec: FrontierSpec) {
 }
 
 export type FrontierAnalysis = ReturnType<typeof analyzeFrontier>;
+
+/** The spend a recovered shard's usage log holds for no record, per cell. A shard is recovered when the results directory
+ *  holds its recovery.json (to-trials.ts recover; <shard>.recovery.json after merge-shards.ts). Its usage log is
+ *  proxy-usage.ndjson or <shard>.proxy-usage.ndjson; the spend is every line whose meter key is no record's Harbor trial,
+ *  split by charged_reservation, else recovery.json's spend.not_in_a_recovered_record_usd when the log is missing. Its cell
+ *  is the shard's one cell in shards.json, else the one cell of the directory's records. */
+export function unrecordedSpend(results: string, records: TrialRecord[]): Record<string, UnrecordedSpend> {
+  const out: Record<string, UnrecordedSpend> = {};
+  const files = existsSync(results) ? readdirSync(results).filter((f) => f === 'recovery.json' || f.endsWith('.recovery.json')) : [];
+  if (!files.length) return out;
+  const shards = existsSync(join(results, 'shards.json')) ? readJsonFile<{ shards?: Record<string, { cells?: string[] }> }>(join(results, 'shards.json')).shards ?? {} : {};
+  const keys = new Set(records.flatMap((t) => { const n = (t as { frontier?: { harbor_trial?: string } }).frontier?.harbor_trial; return n ? [n, 'slot:' + n] : []; }));
+  for (const f of files.sort(byKey)) {
+    const shard = f === 'recovery.json' ? null : f.slice(0, -'.recovery.json'.length);
+    const cells = shard ? shards[shard]?.cells ?? [] : Object.keys(shards).length === 1 ? Object.values(shards)[0]!.cells ?? [] : [...new Set(records.map((t) => t.cell))];
+    if (cells.length !== 1) throw new SpecError(f + ': its shard has ' + cells.length + ' cells (' + cells.join(', ') + '), so the spend no record holds cannot be given to one cell');
+    const log = join(results, shard ? shard + '.proxy-usage.ndjson' : 'proxy-usage.ndjson');
+    let spend: UnrecordedSpend;
+    if (existsSync(log)) {
+      const lines = readJsonLines<{ key: string; outcome?: string; actual_usd?: number; charged_reservation?: boolean }>(log).filter((l) => l.outcome !== 'estimated' && !keys.has(l.key));
+      spend = { usd: sum(lines.map((l) => l.actual_usd ?? 0)), usd_reserved: sum(lines.filter((l) => l.charged_reservation).map((l) => l.actual_usd ?? 0)), source: log.slice(results.length + 1) + ': lines of no record' };
+    } else {
+      const usd = readJsonFile<{ spend?: { not_in_a_recovered_record_usd?: number } }>(join(results, f)).spend?.not_in_a_recovered_record_usd ?? 0;
+      spend = { usd, usd_reserved: 0, source: f + ': spend.not_in_a_recovered_record_usd' };
+    }
+    if (spend.usd <= 0) continue;
+    const prev = out[cells[0]!];
+    out[cells[0]!] = prev ? { usd: prev.usd + spend.usd, usd_reserved: prev.usd_reserved + spend.usd_reserved, source: prev.source + '; ' + spend.source } : spend;
+  }
+  return out;
+}
 
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? 'n/a' : `${(100 * x).toFixed(1)}%`);
 const pts = (x: number | null | undefined) => (x === null || x === undefined ? 'n/a' : `${x >= 0 ? '+' : ''}${(100 * x).toFixed(1)}`);
@@ -518,7 +575,7 @@ export function renderMarkdown(a: FrontierAnalysis): string {
   out.push('', '## Reliability and exclusions per cell', '', '| Cell | k | pass^k [95% CI] | pass@k [95% CI] | Rerun flip [95% CI] | Tasks / scored trials | Excluded (model / infra / exam) | Harness errors as fails | Lookups as fails | Cap stops | Unstarted | USD total |', '|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const c of a.cells) {
     const r = c.reliability;
-    out.push(`| ${c.label} | ${r.k} | ${r.pass_hat_k ? `${pct(r.pass_hat_k.estimate)} ${ciPct(r.pass_hat_k.ci95)}` : 'n/a'} | ${r.pass_at_k ? `${pct(r.pass_at_k.estimate)} ${ciPct(r.pass_at_k.ci95)}` : 'n/a'} | ${c.rerun_flip ? `${pct(c.rerun_flip.estimate)} ${ciPct(c.rerun_flip.ci95)}` : 'n/a'} | ${c.pass_rate?.tasks ?? 0} / ${c.trials.scored} | ${c.trials.excluded.model_error} / ${c.trials.excluded.infra_error} / ${c.trials.excluded.exam_fault} | ${c.trials.harness_error_as_fail} | ${c.trials.lookup_fails} | ${c.trials.cap_stop} | ${c.trials.unstarted.length} | ${usd(c.cost.usd_total)}${c.cost.usd_reserved === undefined ? '' : ` metered + ${usd(c.cost.usd_reserved)} reserved`} |`);
+    out.push(`| ${c.label} | ${r.k} | ${r.pass_hat_k ? `${pct(r.pass_hat_k.estimate)} ${ciPct(r.pass_hat_k.ci95)}` : 'n/a'} | ${r.pass_at_k ? `${pct(r.pass_at_k.estimate)} ${ciPct(r.pass_at_k.ci95)}` : 'n/a'} | ${c.rerun_flip ? `${pct(c.rerun_flip.estimate)} ${ciPct(c.rerun_flip.ci95)}` : 'n/a'} | ${c.pass_rate?.tasks ?? 0} / ${c.trials.scored} | ${c.trials.excluded.model_error} / ${c.trials.excluded.infra_error} / ${c.trials.excluded.exam_fault} | ${c.trials.harness_error_as_fail} | ${c.trials.lookup_fails} | ${c.trials.cap_stop} | ${c.trials.unstarted.length} | ${usd(c.cost.usd_total)}${c.cost.usd_reserved === undefined ? '' : ` metered + ${usd(c.cost.usd_reserved)} reserved`}${c.cost.unrecorded ? ` (includes ${usd(c.cost.unrecorded.usd)} in no record)` : ''} |`);
   }
   if (a.gstack?.length) {
     out.push('', '## gstack arms: exposure, opens and tokens', '', 'Per arm and model. Exposure counts every record; a mismatch (the first agent-loop request did not list exactly the lock\'s skills) is an infra_error and is excluded. Means and open rates are over scored trials. Listing bytes are the gstack entries of the first agent-loop request; opened-body tokens are the tool results that returned a SKILL.md or section file, each once.', '');
@@ -551,15 +608,23 @@ if (import.meta.main) {
   const arg = (n: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : undefined; };
   const results = arg('results'), specPath = arg('spec'), out = arg('out') ?? results, lookupFile = arg('lookup-fails'), withReplaced = process.argv.includes('--cost-with-replaced');
   if (!results || !specPath || !existsSync(join(results, 'trials.jsonl')) || !existsSync(specPath)) {
-    console.error('usage: bun scripts/frontier-harbor/analyze.ts --results <merged results dir with trials.jsonl> --spec <spec.json> [--out <dir>] [--lookup-fails <file>] [--cost-with-replaced]');
+    console.error('usage: bun scripts/frontier-harbor/analyze.ts --results <merged results dir with trials.jsonl> --spec <spec.json> [--out <dir>] [--lookup-fails <file>] [--cost-with-replaced] [--shard-results <shard results dir> ...]');
     process.exit(2);
   }
-  let analysis: FrontierAnalysis;
+  let analysis: FrontierAnalysis & { truncation_recovery?: unknown };
+  let original: FrontierAnalysis | null = null;
+  let recoveryMd = '';
   try {
     const manifest = existsSync(join(results, 'manifest.json')) ? readJsonFile<MatrixManifest>(join(results, 'manifest.json')) : null;
     if (manifest?.sealed) { console.error(`analyze: ${results} was planned with a sealed root; this script prints task ids and does not run on sealed results`); process.exit(2); }
     const records = readJsonLines<TrialRecord>(join(results, 'trials.jsonl'));
-    analysis = analyzeFrontier({ records, manifest, lookup_fails: lookupFile ? lookupList(lookupFile) : [], cost_with_replaced: withReplaced }, readJsonFile<FrontierSpec>(specPath));
+    const spec = readJsonFile<FrontierSpec>(specPath);
+    const input = { records, manifest, lookup_fails: lookupFile ? lookupList(lookupFile) : [], cost_with_replaced: withReplaced, unrecorded: unrecordedSpend(results, records) };
+    if (spec.truncation_recovery === 'amendment-6') {
+      const tr = await import(join(import.meta.dir, 'truncation-recovery.ts'));
+      ({ analysis, original } = tr.analyzeWithTruncationRecovery(input, spec, tr.applyTruncationRecovery(records, results, undefined, process.argv.flatMap((x, i) => (process.argv[i - 1] === '--shard-results' ? [x] : [])))));
+      recoveryMd = tr.renderTruncationRecovery(analysis.truncation_recovery);
+    } else analysis = analyzeFrontier(input, spec);
   } catch (e) {
     if (e instanceof SpecError) { console.error(`analyze: refused: ${e.message}`); process.exit(2); }
     if (e instanceof RunnerError) { console.error(`analyze: ${e.message}`); process.exit(2); }
@@ -567,6 +632,10 @@ if (import.meta.main) {
   }
   mkdirSync(out!, { recursive: true });
   writeFileSync(join(out!, 'analysis.json'), JSON.stringify(analysis, null, 1) + '\n');
-  writeFileSync(join(out!, 'analysis.md'), renderMarkdown(analysis));
+  writeFileSync(join(out!, 'analysis.md'), renderMarkdown(analysis) + recoveryMd);
+  if (original) {
+    writeFileSync(join(out!, 'analysis-original-rule.json'), JSON.stringify(original, null, 1) + '\n');
+    writeFileSync(join(out!, 'analysis-original-rule.md'), '> The original rule, before amendment 6: every effort_mismatch trial is an infra_error, excluded pairwise.\n\n' + renderMarkdown(original));
+  }
   console.log(`FRONTIER_ANALYSIS: ${analysis.run_id}: ${analysis.cells.length} cells, ${analysis.pairs.length} pairs, ${analysis.trials_recorded} trials recorded${analysis.complete === false ? `, incomplete (${analysis.trials_unstarted} unstarted)` : ''}; wrote ${join(out!, 'analysis.json')} and analysis.md`);
 }

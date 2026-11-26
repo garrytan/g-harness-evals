@@ -3,13 +3,24 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, symli
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { applyBlock, block, checkIndex, dropReason, END, entryHead, INDEX_SCHEMA, pack, scan, START, strip, verifyDir } from '../scripts/archive/raw.ts';
+import { applyBlock, block, checkIndex, dropReason, END, entryHead, INDEX_SCHEMA, pack, scan, scanChunked, START, strip, verifyDir } from '../scripts/archive/raw.ts';
 
 const p = (...s: string[]) => s.join('');
 const fakeAnthropic = p('sk-', 'ant-', 'api03-', 'A'.repeat(40));
 const fakeGithub = p('gh', 's_', 'b'.repeat(36));
 const fakeEnv = p('OPENAI', '_API_KEY=', 'c'.repeat(30));
 const hasZstd = Bun.spawnSync(['sh', '-c', 'command -v zstd && command -v split']).exitCode === 0;
+
+describe('scanChunked', () => {
+  test('finds what scan finds, a key across a window edge included', () => {
+    const data = new TextEncoder().encode('x'.repeat(1000) + fakeAnthropic + 'y'.repeat(3000) + fakeGithub + 'z'.repeat(50));
+    const whole = Object.keys(scan(data)).sort();
+    expect(whole.length).toBeGreaterThan(0);
+    expect(Object.keys(scan(data.subarray(0, 1010)))).toEqual([]);
+    expect(Object.keys(scanChunked(data, 1010, 200)).sort()).toEqual(whole);
+    expect(scanChunked(new TextEncoder().encode('clean '.repeat(500)), 1024, 64)).toEqual({});
+  });
+});
 
 describe('strip', () => {
   test('redacts key shapes in text and names only the pattern', () => {

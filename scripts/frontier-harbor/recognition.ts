@@ -20,6 +20,7 @@
 // and exits 1 when any scanned trial stops the run, naming them; --model scans only that model's records.
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { trialDir, type TrialDirRecord } from './trial-dir.ts';
 
 type TrialLine = { trial_id: string; cell: string; model: string; paths?: Record<string, string> };
 export interface RecognitionScan { logs: number; unrecognized_lines: number; compactions: number[]; unreadable_compactions: number; peak_context_tokens: number | null }
@@ -72,7 +73,8 @@ export function scanRecognition(dirs: string[], minPreTokens = 900000, model?: s
   const lines: Array<TrialLine & { unidentified?: boolean; scan: () => RecognitionScan }> = jobsDir ? jobTrials(jobsDir).map((t) => ({ ...t, scan: () => scanTrial(t.dir) }))
     : dirs.flatMap((dir) => readFileSync(join(dir, 'trials.jsonl'), 'utf8').split('\n').filter((l) => l.trim()).map((l) => {
       const r = JSON.parse(l) as TrialLine;
-      return { ...r, scan: () => (r.paths?.trial_dir ? scanTrial(join(dir, r.paths.trial_dir, 'harbor')) : EMPTY) };
+      const harbor = trialDir(r as TrialDirRecord, dir).dir;
+      return { ...r, scan: () => (harbor ? scanTrial(harbor) : EMPTY) };
     }));
   const rows: RecognitionRow[] = [];
   const byCell: Record<string, { trials: number; unrecognized: number; compacted: number; compacted_early: number; stopped: number }> = {};

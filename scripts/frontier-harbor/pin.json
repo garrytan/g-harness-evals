@@ -527,16 +527,26 @@
    "pin": "harnesses/hermes/pin.json",
    "adapter": "harnesses/hermes/adapter.sh",
    "config": "harnesses/hermes/config/config.yaml and config.openai.yaml",
-   "version": "v2026.9.24",
-   "commit": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
-   "install": "agents.py: the pinned commit own scripts/install.sh (raw.githubusercontent.com/NousResearch/hermes-agent/<commit>/scripts/install.sh) with --skip-setup --branch v2026.9.24, then hermes version must name the tag",
+   "version": "v0.23.1",
+   "commit": "3b421578588243f920886e6fe79a6faa87ea026e",
+   "install": "agents.py: the pinned commit own scripts/install.sh (raw.githubusercontent.com/NousResearch/hermes-agent/<commit>/scripts/install.sh) with --skip-setup --commit <commit> and no --branch, so install.sh tracks main, which contains the commit (v0.23.1 is a tag, not a branch, and --branch v0.23.1 fails install.sh's merge-base check against origin/v0.23.1; amendment 3), then the checkout must be at the commit. v0.23.1 was released 2026-11-10 (github.com/NousResearch/hermes-agent/releases/tag/v0.23.1); its hermes --version prints \"Hermes Agent v0.23.1 (2026.9.24) · stable · local 3b4215785882\" (seen on a local install of the tag), the second part being the release-date constant hermes_cli/__init__.py __release_date__, which the release did not move. Moved from v2026.9.24 (f97608f178d1ffeca59860195ab7da295f7c8e5f) for every Hermes cell by amendment 1 of frontier-shootout-2026-11 (2026-11-16)",
    "harbor_class": "harbor.agents.installed.hermes:Hermes",
    "licence": "MIT",
    "anthropic": {
-    "version": "0.87.0",
-    "wheel_sha256": "e2669b86d42c739d3df163f873c51719552e263a3d85179297180fb4fa00a236",
-    "why": "Hermes v2026.9.24 needs the anthropic SDK for its native Anthropic provider and imports it lazily (agent/anthropic_adapter.py _require_sdk); install.sh's locked [all] sync leaves it out (pyproject.toml [all] note: removed 2026-05-12, covered by lazy-install), and our config turns lazy installs off, so the first install check failed hermes-opus with \"The 'anthropic' package is required for the Anthropic provider\".",
-    "install": "agents.py FrontierHermes.install: after install.sh, uv sync --locked --extra all --extra anthropic in the checkout against its venv (Hermes's own uv.lock: anthropic==0.87.0, the pyproject extra and tools/lazy_deps.py pin, hash-verified); then the venv must import anthropic 0.87.0"
+    "version": "0.125.0",
+    "wheel_sha256": "3486013602eca76d8b12540764e53654f02cf4951110bca86cf06e67428a9f21",
+    "why": "Hermes v0.23.1 needs the anthropic SDK for its native Anthropic provider and imports it lazily (agent/anthropic_adapter.py _require_sdk); install.sh's locked [all] sync leaves it out (pyproject.toml [all] note: removed 2026-05-12, covered by lazy-install), and our config turns lazy installs off, so an install without it fails a Claude cell with \"The 'anthropic' package is required for the Anthropic provider\".",
+    "install": "agents.py FrontierHermes.install: install.sh and every later step run under HERMES_HOME=/tmp/hermes (amendment 5); after install.sh, hermes pm install --extra anthropic adds the pyproject anthropic extra to the environment Hermes's package manager committed, the one the hermes launcher runs on (Hermes's own uv.lock at v0.23.1 pins anthropic==0.125.0); then that environment must import anthropic 0.125.0"
+   },
+   "openrouter_plugin": {
+    "name": "he-openrouter-effort",
+    "dir": "scripts/frontier-harbor/hermes-plugins/he-openrouter-effort",
+    "files": {
+     "__init__.py": "16498fe6d804b99f86ba404fc95cd25f38a9171428d363e4e300157c49fc2a8f",
+     "plugin.yaml": "4eacf7236c9cf976d7242e429c5d84f3e44fd9666af2399683b035dc36012b93"
+    },
+    "why": "Hermes's built-in openrouter provider sends OpenRouter's reasoning field only when the base URL's host is openrouter.ai (run_agent.py _is_openrouter_url, agent/reasoning_params.py _supports_reasoning_extra_body) and reads config extra_body only for custom providers (agent/agent_init.py _custom_provider_extra_body_for_agent), as of v0.23.1, so behind the metering proxy it sends no effort and no output cap. This llm_request middleware (Hermes's documented plugin hook, hermes_cli/middleware.py) adds reasoning {effort: high} and max_completion_tokens (HE_OPENROUTER_MAX_OUTPUT_TOKENS) to every request on provider openrouter and changes nothing else. Declared configuration of amendment 1 of frontier-shootout-2026-11; frontier_settings.py refuses a file whose sha256 differs (HE-FRONTIER-015)",
+    "install": "agents.py FrontierHermes.run writes both files to $HERMES_HOME/plugins/he-openrouter-effort/ and config.yaml enables it (plugins.enabled) on an OpenRouter cell only"
    }
   },
   "openclaw": {
@@ -718,8 +728,16 @@
    "context_window": 1048576,
    "max_output_tokens": 65536,
    "source": "ai.google.dev/gemini-api/docs/models, read 2026-11-15 (Context 1M tokens, Max output 64K / 1M tokens): 65,536 is the standard output limit, and the 1M long-decode mode is not used; openrouter.ai endpoints for google/gemini-4-carbon list the same 65,536 on google-vertex/us and eu",
-   "api": "Gemini generateContent and streamGenerateContent on the metering proxy's google route, forwarded to Google's Gemini API (generativelanguage.googleapis.com) with GEMINI_API_KEY and priced at the gemini:gemini-4-carbon row. On the named fallback only (vm-run.sh --gemini-cli-route openrouter-fallback, --google-via openrouter, runner/proxy/gemini-openrouter.ts) each request is translated to Chat Completions for google/gemini-4-carbon, pinned to Google AI Studio's standard endpoint at the standard tier (google-ai-studio, service_tier default), priced at the openrouter:google/gemini-4-carbon row and keyed with OPENROUTER_API_KEY. Gemini CLI is the only harness that runs it",
-   "harnesses": ["gemini-cli"]
+   "api": "Gemini generateContent and streamGenerateContent on the metering proxy's google route, forwarded to Google's Gemini API (generativelanguage.googleapis.com) with GEMINI_API_KEY and priced at the gemini:gemini-4-carbon row. On the named fallback only (vm-run.sh --gemini-cli-route openrouter-fallback, --google-via openrouter, runner/proxy/gemini-openrouter.ts) each request is translated to Chat Completions for google/gemini-4-carbon, pinned to Google AI Studio's standard endpoint at the standard tier (google-ai-studio, service_tier default), priced at the openrouter:google/gemini-4-carbon row and keyed with OPENROUTER_API_KEY. Gemini CLI runs it, and since amendment 2 of frontier-shootout-2026-11 so do Hermes, OpenClaw and Pi, each through its own Gemini provider on the same route (frontier_settings.py: Hermes's gemini provider at <route>/generativelanguage.googleapis.com/v1beta, OpenClaw's bundled google provider and Pi's google-generative-ai API at <route>/v1beta)",
+   "harnesses": ["gemini-cli", "hermes", "openclaw", "pi"]
+  },
+  "google:gemini-4-hydrogen": {
+   "provider": "google",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "source": "ai.google.dev/gemini-api/docs/models, read 2026-11-16 (Context 1M tokens, Max output 64K / 1M tokens): 65,536 is the standard output limit, and the 1M long-decode mode is not used",
+   "api": "Gemini generateContent and streamGenerateContent on the metering proxy's google route, forwarded to Google's Gemini API (generativelanguage.googleapis.com) with GEMINI_API_KEY and priced at the google:gemini-4-hydrogen row (amendment 2 of frontier-shootout-2026-11). Hermes, OpenClaw and Pi run it, each through its own Gemini provider, as on google:gemini-4-carbon",
+   "harnesses": ["hermes", "openclaw", "pi"]
   },
   "xai:grok-4.7": {
    "provider": "xai",
@@ -734,18 +752,16 @@
    "context_window": 1048576,
    "max_output_tokens": 65536,
    "source": "openrouter.ai/api/v1/models/google/gemini-4-carbon/endpoints, read 2026-11-16: Google AI Studio's standard endpoint (provider Google AI Studio, tag google-ai-studio, service_tier null) has context_length 1,048,576 and lists max_completion_tokens 65,536; max_output_tokens is Google's standard 64K output limit (ai.google.dev/gemini-api/docs/models: Max output 64K / 1M tokens), as on the google row",
-   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google AI Studio's standard endpoint (provider-terms ruling, 2026-11-16; never google-vertex/* or AI Studio's flex or priority endpoints): it adds provider {only: [google-ai-studio], allow_fallbacks: false, max_price at the price row} and service_tier default, refuses a request that sets another service_tier or speed, and refuses the trial when the response names another served provider than Google AI Studio or another tier",
-   "harnesses": ["pi", "hermes", "openclaw"],
-   "reasoning_replay": {"hermes": "drops", "openclaw": "partial"}
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google AI Studio's standard endpoint (provider-terms ruling, 2026-11-16; never google-vertex/* or AI Studio's flex or priority endpoints): it adds provider {only: [google-ai-studio], allow_fallbacks: false, max_price at the price row} and service_tier default, refuses a request that sets another service_tier or speed, and refuses the trial when the response names another served provider than Google AI Studio or another tier. No harness runs it since amendment 2 of frontier-shootout-2026-11, which sends every Gemini 4 cell in Hermes, OpenClaw and Pi to Google's Gemini API (the google: row)",
+   "harnesses": []
   },
   "openrouter:google/gemini-4-hydrogen": {
    "provider": "openrouter",
    "context_window": 1048576,
    "max_output_tokens": 65536,
    "source": "openrouter.ai/api/v1/models/google/gemini-4-hydrogen/endpoints, read 2026-11-16: Google AI Studio's standard endpoint (provider Google AI Studio, tag google-ai-studio, service_tier null) has context_length 1,048,576 and lists max_completion_tokens 65,536, Google's standard 64K output limit (ai.google.dev/gemini-api/docs/models: Max output 64K / 1M tokens), the limit used here",
-   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google AI Studio's standard endpoint (provider-terms ruling, 2026-11-16; never google-vertex/* or AI Studio's flex or priority endpoints): it adds provider {only: [google-ai-studio], allow_fallbacks: false, max_price at the price row} and service_tier default, refuses a request that sets another service_tier or speed, and refuses the trial when the response names another served provider than Google AI Studio or another tier",
-   "harnesses": ["pi", "hermes", "openclaw"],
-   "reasoning_replay": {"hermes": "drops", "openclaw": "partial"}
+   "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google AI Studio's standard endpoint (provider-terms ruling, 2026-11-16; never google-vertex/* or AI Studio's flex or priority endpoints): it adds provider {only: [google-ai-studio], allow_fallbacks: false, max_price at the price row} and service_tier default, refuses a request that sets another service_tier or speed, and refuses the trial when the response names another served provider than Google AI Studio or another tier. No harness runs it since amendment 2 of frontier-shootout-2026-11, which sends every Gemini 4 cell in Hermes, OpenClaw and Pi to Google's Gemini API (the google: row)",
+   "harnesses": []
   },
   "openrouter:meta/muse-wonder": {
    "provider": "openrouter",
@@ -754,7 +770,7 @@
    "source": "openrouter.ai/api/v1/models/meta/muse-wonder/endpoints, read 2026-11-15: Meta's own endpoint (provider Meta, tag meta) has context_length 1,048,576 and max_completion_tokens 943,718. max_output_tokens is the 128,000 cap every other model here runs under",
    "api": "OpenAI Chat Completions (POST /v1/chat/completions on the metering proxy's OpenRouter route) for Pi, Hermes and OpenClaw, and OpenRouter's Responses API (POST /v1/responses on the same route) for Muse Code. The proxy pins every request to Meta's endpoint: it adds provider {only: [meta], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Meta",
    "harnesses": ["pi", "hermes", "openclaw", "muse-code"],
-   "reasoning_replay": {"hermes": "drops", "openclaw": "partial"}
+   "reasoning_replay": {"openclaw": "partial"}
   },
   "openrouter:moonshotai/kimi-k3.1-pro": {
    "provider": "openrouter",
@@ -762,8 +778,7 @@
    "max_output_tokens": 128000,
    "source": "openrouter.ai/api/v1/models/moonshotai/kimi-k3.1-pro/endpoints, read 2026-11-15: Moonshot AI's endpoints (moonshotai/mxfp4 at $2 / $10, moonshotai/highspeed at $4 / $20) have context_length 1,048,576 and max_completion_tokens 943,718; the max_price at the $2 / $10 row keeps requests off highspeed. max_output_tokens is the 128,000 cap every other model here runs under",
    "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Moonshot AI's endpoint: it adds provider {only: [moonshotai], allow_fallbacks: false, max_price at the price row} and refuses the trial when the response names another served provider than Moonshot AI",
-   "harnesses": ["pi", "hermes", "openclaw"],
-   "reasoning_replay": {"hermes": "drops"}
+   "harnesses": ["pi", "hermes", "openclaw"]
   },
   "openrouter:z-ai/glm-5.3": {
    "provider": "openrouter",
@@ -773,8 +788,7 @@
    "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). Served by Baidu at fp8 (host baidu, precision fp8; provider-terms ruling, 2026-11-16). The proxy pins every request to that one endpoint: it adds provider {only: [baidu/fp8], allow_fallbacks: false, max_price at the price row} and service_tier default, refuses a request that sets another service_tier or speed, and refuses the trial when the response names another served provider than Baidu or another tier",
    "host": "baidu",
    "precision": "fp8",
-   "harnesses": ["pi", "hermes", "openclaw"],
-   "reasoning_replay": {"hermes": "drops"}
+   "harnesses": ["pi", "hermes", "openclaw"]
   }
  },
  "effort": {
@@ -782,7 +796,8 @@
   "anthropic": "adaptive thinking plus output_config.effort = high, set through each harness own setting",
   "openai": "reasoning effort high (Responses reasoning.effort or chat reasoning_effort), set through each harness own setting",
   "particle": "reasoning_effort high on Chat Completions, set through each harness own setting (docs.particle.ai/reasoning: medium and high both select Particle-1's high effort, which is also its default when no effort is sent)",
-  "openrouter": "OpenRouter's reasoning {effort: high} on Chat Completions, set through each harness own setting (DeepSeek V4.1 Flash 1017 offers none, low, high and max; Pi 1.5.0's catalog thinkingLevelMap); Hermes also sends top-level reasoning_effort high"
+  "google": "Gemini's generationConfig.thinkingConfig.thinkingLevel HIGH on generateContent and streamGenerateContent, set through each harness own setting (amendment 2 of frontier-shootout-2026-11; Hermes v0.23.1 writes it in lower case, high, as Google's own REST examples do); the proxy records it per request as thinking_level",
+  "openrouter": "OpenRouter's reasoning {effort: high} on Chat Completions, set through each harness own setting (DeepSeek V4.1 Flash 1017 offers none, low, high and max; Pi 1.5.0's catalog thinkingLevelMap); on Hermes the he-openrouter-effort plugin sets it (amendment 1 of frontier-shootout-2026-11), and no top-level reasoning_effort is sent"
  },
  "egress": {
   "how": "Harbor 0.24.0 docker environments know three network modes (public, no-network, allowlist) and no blocklist. egress.py subclasses Harbor DockerEnvironment: its egress sidecar (a copy of Harbor harbor-docker-egress-control-sidecar, gost 3 transparent proxy plus nftables, Apache-2.0) gains a blocklist service, the sidecar runs for every trial, and the public mode (every TB2.1 phase, allow_internet = true) redirects all TCP from the task containers through gost, which sniffs the TLS SNI or the HTTP Host of each connection and refuses a host on the list. Non-TCP egress other than DNS is rejected, as in Harbor allowlist mode. A trial whose sidecar cannot start (no nftables inet) fails instead of running unblocked.",

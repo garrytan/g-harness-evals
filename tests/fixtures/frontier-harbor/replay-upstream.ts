@@ -13,11 +13,17 @@
  *   reasoning.text entry, format unknown.
  * - Anthropic Messages: a thinking block with a signature before the tool_use block.
  * - OpenAI Responses: a reasoning item with a summary and encrypted_content before the function_call item.
+ * - Gemini generateContent and streamGenerateContent (the proxy's google route, amendment 2 of frontier-shootout-2026-11): the
+ *   functionCall part carries a thoughtSignature, different for every call, after a thought summary part when the request asks
+ *   for thoughts (thinkingConfig.includeThoughts). Gemini has no call ids a harness must keep, so the k-th model functionCall a
+ *   request sends back is the k-th call this fake made. This route alone refuses as Google does: a model functionCall part sent
+ *   back without a thoughtSignature gets Gemini's 400 (GEMINI_SIGNATURE_ERROR, as the install check's fake answers it), after
+ *   the request is recorded.
  */
-import { PROBE_COMMAND, SHELL_TOOLS, shellTool, sse } from '../../../scripts/frontier-harbor/fake-upstream.ts';
+import { GEMINI_SIGNATURE_ERROR, PROBE_COMMAND, SHELL_TOOLS, shellTool, sse } from '../../../scripts/frontier-harbor/fake-upstream.ts';
 
 export const TOOL_TURNS = 2;
-export type Api = 'chat' | 'messages' | 'responses';
+export type Api = 'chat' | 'messages' | 'responses' | 'gemini';
 export type Emitted = { api: Api; callId: string; text: string; details?: Record<string, unknown>[]; opaque: string[] };
 export type ReplayTurn = { callId: string; known: boolean; id_rewritten: boolean; fields: string[]; text_exact: boolean; opaque_sent: number; opaque_exact: number; key_ok: boolean };
 export type ReplayRequest = { n: number; api: Api; chained: boolean; turns: ReplayTurn[] };
@@ -25,7 +31,13 @@ export type ReplayRequest = { n: number; api: Api; chained: boolean; turns: Repl
 const b64 = (s: string) => Buffer.from(s).toString('base64');
 export const openrouterFormat = (model: string) => model.startsWith('google/') ? 'google-gemini-v1' : model.startsWith('meta/') ? 'meta-responses-v1' : 'unknown';
 
+const GEMINI_METHOD = /\/google\/v1(?:beta)?\/models\/([A-Za-z0-9._-]+):(generateContent|streamGenerateContent)$/;
+const geminiParts = (body: Record<string, any>) => (Array.isArray(body.contents) ? body.contents : [])
+  .flatMap((c: any, i: number) => (Array.isArray(c?.parts) ? c.parts : []).map((part: any) => ({ role: c?.role, content: i, part })));
+const signatureOf = (part: any): string | undefined => typeof part?.thoughtSignature === 'string' ? part.thoughtSignature : typeof part?.thought_signature === 'string' ? part.thought_signature : undefined;
+
 function toolResults(api: Api, body: Record<string, any>): number {
+  if (api === 'gemini') return geminiParts(body).filter(({ part }) => part?.functionResponse || part?.function_response).length;
   if (api === 'responses') return (Array.isArray(body.input) ? body.input : []).filter((i: any) => typeof i?.type === 'string' && i.type.endsWith('_call_output')).length;
   const messages = Array.isArray(body.messages) ? body.messages : [];
   if (api === 'chat') return messages.filter((m: any) => m?.role === 'tool').length;
@@ -37,6 +49,7 @@ const bare = (id: string) => id.replace(/[^A-Za-z0-9]/g, '');
 export function replayUpstream(served: (model: string) => string) {
   const emitted = new Map<string, Emitted>();
   const requests: ReplayRequest[] = [];
+  const geminiCalls: string[] = [];
 
   function analyse(api: Api, body: Record<string, any>, n: number) {
     const turns: ReplayTurn[] = [];
@@ -55,6 +68,14 @@ export function replayUpstream(served: (model: string) => string) {
         const signatures = details.filter((d) => d?.type === 'reasoning.encrypted' && d.format === 'google-gemini-v1');
         turn(m.tool_calls[0].id, fields, text, details.flatMap((d) => [d?.data, d?.signature]).filter((x): x is string => typeof x === 'string'), signatures.every((d) => d.id === m.tool_calls[0].id));
       }
+    } else if (api === 'gemini') {
+      const parts = geminiParts(body);
+      parts.filter(({ role, part }) => role === 'model' && part?.functionCall).forEach(({ content, part }, k) => {
+        const callId = geminiCalls[k] ?? 'gemini_unknown_' + k;
+        const signature = signatureOf(part);
+        const thought = parts.filter((p) => p.content === content && p.part?.thought === true && typeof p.part.text === 'string').map((p) => p.part.text).join('') || null;
+        turn(callId, [...(signature ? ['thoughtSignature'] : []), ...(thought ? ['thought'] : [])], thought, signature ? [signature] : []);
+      });
     } else if (api === 'messages') {
       for (const m of Array.isArray(body.messages) ? body.messages : []) {
         if (m?.role !== 'assistant' || !Array.isArray(m.content)) continue;
@@ -77,7 +98,30 @@ export function replayUpstream(served: (model: string) => string) {
     requests.push({ n, api, chained: typeof body.previous_response_id === 'string' && body.previous_response_id !== '', turns });
   }
 
+  function geminiReply(path: string, body: Record<string, any>, n: number): Response {
+    analyse('gemini', body, n);
+    if (geminiParts(body).some(({ role, part }) => role === 'model' && part?.functionCall && !signatureOf(part)))
+      return Response.json({ error: { code: 400, message: GEMINI_SIGNATURE_ERROR, status: 'INVALID_ARGUMENT' } }, { status: 400 });
+    const [, model, method] = path.match(GEMINI_METHOD)!;
+    const declared = (Array.isArray(body.tools) ? body.tools : []).flatMap((t: any) => t?.functionDeclarations ?? t?.function_declarations ?? []);
+    const shell = declared.find((f: any) => typeof f?.name === 'string' && f.name in SHELL_TOOLS);
+    const tool = shell && toolResults('gemini', body) < TOOL_TURNS ? shell.name as string : null;
+    const callId = tool ? 'gemini_call_' + n : null;
+    const text = 'Replay probe reasoning ' + n + ': run the probe once, then answer.';
+    const signature = b64('google-thought-signature:' + (callId ?? 'text_' + n));
+    if (callId) { geminiCalls.push(callId); emitted.set(callId, { api: 'gemini', callId, text, opaque: [signature] }); }
+    const thoughts = body.generationConfig?.thinkingConfig?.includeThoughts === true;
+    const thought = thoughts ? [{ text, thought: true }] : [];
+    const last = tool ? { functionCall: { name: tool, args: SHELL_TOOLS[tool]!(PROBE_COMMAND) }, thoughtSignature: signature } : { text: 'ok', thoughtSignature: signature };
+    const usageMetadata = { promptTokenCount: 100, candidatesTokenCount: 10, thoughtsTokenCount: 20, totalTokenCount: 130, cachedContentTokenCount: 0 };
+    const done = { candidates: [{ content: { role: 'model', parts: [...thought, last] }, finishReason: 'STOP', index: 0 }], usageMetadata, modelVersion: model, responseId: 'replay-gemini-' + n };
+    if (method === 'generateContent') return Response.json(done);
+    const head = thought.length ? [[null, { candidates: [{ content: { role: 'model', parts: thought }, index: 0 }], usageMetadata: { promptTokenCount: 100, totalTokenCount: 100 }, modelVersion: model }]] as Array<[null, unknown]> : [];
+    return sse([...head, [null, { ...done, candidates: [{ ...done.candidates[0], content: { role: 'model', parts: [last] } }] }]]);
+  }
+
   function reply(path: string, body: Record<string, any>, n: number): Response {
+    if (GEMINI_METHOD.test(path)) return geminiReply(path, body, n);
     const api: Api | null = path.endsWith('/v1/chat/completions') ? 'chat' : path.endsWith('/v1/messages') ? 'messages' : path.endsWith('/v1/responses') ? 'responses' : null;
     if (!api) return path.endsWith('/v1/models') ? Response.json({ object: 'list', data: [] }) : Response.json({ error: { message: 'replay upstream: no route ' + path } }, { status: 404 });
     analyse(api, body, n);

@@ -1,0 +1,35 @@
+{
+  "run": "2026-11-16-frontier-shootout",
+  "about": "frontier-shootout-2026-11: eleven models against Claude Opus 5.5 in Hermes, OpenClaw and Pi. The merge (scripts/frontier-harbor/shootout-merge.ts with merge/merge-plan.json) and the preregistered analysis (scripts/frontier-harbor/shootout.ts with analysis-spec.json) behind results/ and README.md.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/frontier-harbor/shootout.ts",
+        "--results",
+        "{run}/results/shards",
+        "--spec",
+        "{run}/analysis-spec.json",
+        "--out",
+        "{run}/results/analysis"
+      ],
+      "outputs": [
+        "results/analysis/analysis.json",
+        "results/analysis/analysis.md",
+        "results/analysis/analysis-original-rule.json",
+        "results/analysis/analysis-original-rule.md"
+      ],
+      "timeout_s": 600
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged per-shard records (results/shards/)",
+      "reason": "shootout-merge.ts wrote them from the 79 shard results directories on the run controller; verify uses them as this run's receipts. Those directories are in the private raw release raw-frontier-shootout-2026-11, listed in reproduce.md."
+    },
+    {
+      "what": "The usage digests (results/shards/*/digest.proxy-usage.ndjson) that the analysis reads for safety stops, OpenRouter-reported cost, the amendment 6 checks and the spend with no record",
+      "reason": "scripts/frontier-harbor/usage-digest.ts wrote them from each shard's proxy-usage.ndjson (about 200 MB in all), which stays in the private raw release listed in reproduce.md. Per trial, a digest keeps its safety stop lines and its OpenRouter-reported cost, and for the 3 Hermes effort_mismatch trials every usage line. For s01, s02 and s05, one more line carries the spend a recovered stage's usage log holds for no record (amendment 7 section 3)."
+    }
+  ]
+}

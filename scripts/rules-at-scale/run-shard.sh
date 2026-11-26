@@ -98,7 +98,7 @@ trap 'on_signal 129' HUP
 # 1. the shard against the plan
 shard_json=$(cd "$repo" && "${safe_env[@]}" bun scripts/rules-at-scale/plan.ts check-shard --plan "$plan" --name "$name" --lease-usd "$lease" 2>>"$out/run.log") || { say "the shard or its lease does not match the plan (run.log); nothing ran"; exit 2; }
 read -r run_id harness models tasks_dir design environment trials concurrency <<< "$(python3 -c 'import json,sys; s=json.loads(sys.argv[1]); print(s["run_id"], s["harness"], ",".join(s["models"]), s["tasks_dir"], s["design"], s["environment"], s["trials"], s["concurrency"])' "$shard_json")"
-read -r -a proxy_keys <<< "$(shard_keys "$harness" native | tr '\n' ' ')"
+read -r -a proxy_keys <<< "$(shard_keys "$models" native | tr '\n' ' ')"
 for k in "${provider_keys[@]}"; do case " ${proxy_keys[*]} " in *" $k "*) ;; *) unset "$k" ;; esac; done
 providers=$(printf '%s' "$models" | tr ',' '\n' | cut -d: -f1 | sort -u | tr '\n' ' ')
 if [ "$fake" -eq 0 ]; then

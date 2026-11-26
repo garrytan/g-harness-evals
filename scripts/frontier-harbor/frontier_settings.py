@@ -10,6 +10,7 @@ appears only in the returned environment, never in a config overlay or in the se
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shlex
@@ -29,19 +30,41 @@ CLAUDE_MODEL_VARS = (
     "CLAUDE_CODE_BG_CLASSIFIER_MODEL",
 )
 OPENCLAW_ANTHROPIC_HOUSEKEEPING = "claude-haiku-5-5"
-# Web search and web fetch are off in every codegen cell (Captain ruling 2026-11-09, after internal-task). Hermes v2026.9.24:
+# Web search and web fetch are off in every codegen cell (Captain ruling 2026-11-09, after internal-task). Hermes v0.23.1, as v2026.9.24:
 # web.keyless_fallback false turns off the keyless Exa, Parallel, Firecrawl and Keenable ring behind web_search and
 # web_extract (plugins/web/keyless_mcp.py; website/docs/user-guide/features/web-search.md, which also turns keyless_rescue
 # off), and agent.disabled_toolsets removes the web toolset (web_search, web_extract) and the browser toolset at tool
 # granularity, after every other toolset choice (website/docs/user-guide/configuration.md "Global Toolset Disable").
 HERMES_DISABLED_TOOLSETS = ["web", "browser"]
+# On xAI, Hermes v0.23.1 also turns on its x_search toolset (X search through xAI's built-in x_search Responses tool)
+# whenever xAI credentials are present (hermes_cli/tools_config.py _composite_toolsets; upstream
+# NousResearch/hermes-agent#68001). agent.disabled_toolsets is subtracted after that, so an xAI cell disables it too
+# (amendment 19 of frontier-shootout-2026-11, after s24's web-tools check).
+HERMES_XAI_DISABLED_TOOLSETS = [*HERMES_DISABLED_TOOLSETS, "x_search"]
 # OpenClaw 2026.10.6: tools.deny group:web (web_search, x_search, web_fetch) and browser
 # (docs/gateway/config-tools/tool-policy.md), plus tools.web.search.enabled and tools.web.fetch.enabled false
 # (docs/tools/web.md, docs/tools/web-fetch.md), which also turn off native hosted OpenAI search.
 OPENCLAW_WEB_DENY = ["group:web", "browser"]
+# OpenClaw 2026.10.6's bundled openrouter provider lists these two media tools, and lines about them, in the system
+# prompt of an OpenRouter cell (they are never in the request's tools); denying them keeps that prompt as it was under
+# the custom provider id (amendment 1 of frontier-shootout-2026-11).
+OPENCLAW_OPENROUTER_DENY = ["music_generate", "video_generate"]
+# Hermes's built-in openrouter provider sends no reasoning effort and no output cap behind the proxy (as of v0.23.1); this
+# plugin, pinned file by file in pin.json, adds both (amendment 1 of frontier-shootout-2026-11).
+HERMES_OPENROUTER_PLUGIN = PIN["harnesses"]["hermes"]["openrouter_plugin"]
 PROVIDERS = {"claude-code": ("anthropic",), "codex": ("openai",), "dsh": ("anthropic", "openai", "particle", "openrouter"), "cursor": ("anthropic",),
              "gemini-cli": ("google",), "grok-build": ("xai",), "muse-code": ("openrouter",),
-             **{h: ("anthropic", "openai", "particle", "openrouter", "xai") for h in ("hermes", "openclaw", "pi")}}
+             **{h: ("anthropic", "openai", "particle", "openrouter", "google", "xai") for h in ("hermes", "openclaw", "pi")}}
+# Amendment 2 of frontier-shootout-2026-11: Gemini 4 Carbon and Hydrogen in Hermes, OpenClaw and Pi go to Google's Gemini API on
+# the proxy's google route, each through the harness's own Gemini provider. Hermes v0.23.1 runs its native Gemini client only for
+# a base URL that contains Google's API host name (agent/gemini_native_adapter.py is_native_gemini_base_url, a substring test
+# that its docs do not promise: website/docs/guides/google-gemini.md treats a proxy as OpenAI-compatible), so its base URL puts
+# that name in the path, <route>/generativelanguage.googleapis.com/v1beta, and the proxy drops it (GOOGLE_HOST_SEGMENT).
+HERMES_GEMINI_SEGMENT = "generativelanguage.googleapis.com"
+# Hermes v0.23.1 sends maxOutputTokens 65,535 on every Gemini request (agent/gemini_native_adapter.py
+# GEMINI_DEFAULT_MAX_OUTPUT_TOKENS, applied for the gemini provider in agent/agent_init.py) and reads no output setting for
+# Gemini, so its Gemini cells run one token under the pin.json row's 65,536 (amendment 2, declared).
+HERMES_GEMINI_MAX_OUTPUT = 65535
 # Gemini CLI 0.68.0's own calls beyond the cell model, at their shipped defaults, seen keyless against a fake Gemini API
 # (scripts/frontier-harbor/README.md, "Gemini CLI"): the loop-detection check every 30 turns on gemini-3-flash-preview, and the
 # loop double-check and chat compression on gemini-3-pro-preview, which the CLI resolves to gemini-3.1-pro-preview-customtools
@@ -168,25 +191,27 @@ def codex_window(model: str) -> int:
 
 
 def hermes_config(model: str) -> dict[str, Any]:
-    """Our Hermes config (config.yaml, config.openai.yaml on OpenAI, config.particle.yaml on Particle,
-    config.openrouter.yaml on OpenRouter) as data, effort high, the model's real window. On Particle and OpenRouter a
-    custom_providers entry (custom:particle, custom:openrouter-proxy) runs Hermes's custom-endpoint provider on Chat
-    Completions; Hermes sends no effort or output cap of its own there, so extra_body adds both: reasoning_effort for
-    Particle, OpenRouter's reasoning {effort} for OpenRouter. On xAI it is Hermes's own xai provider (the Responses API,
-    api_mode codex_responses), whose base URL is XAI_BASE_URL (hermes_cli/providers.py)."""
+    """Our Hermes config (config.yaml, config.openai.yaml on OpenAI, config.particle.yaml on Particle) as data, effort
+    high, the model's real window. On Particle a custom_providers entry (custom:particle) runs Hermes's custom-endpoint
+    provider on Chat Completions; Hermes sends no effort or output cap of its own there, so extra_body adds both. On
+    OpenRouter it is Hermes's built-in openrouter provider with its base URL at the proxy's OpenRouter route (amendment 1
+    of frontier-shootout-2026-11), plus the he-openrouter-effort plugin (hermes_openrouter_plugin_files), which adds the
+    effort and the cap that provider sends only to openrouter.ai. On xAI it is Hermes's own xai provider (the Responses
+    API, api_mode codex_responses), whose base URL is XAI_BASE_URL (hermes_cli/providers.py)."""
     spec = model_spec(model)
-    provider = {"anthropic": "anthropic", "openai": "openai-api", "particle": "custom:particle", "openrouter": "custom:openrouter-proxy", "xai": "xai"}[spec["provider"]]
-    effort = {"particle": {"reasoning_effort": EFFORT}, "openrouter": {"reasoning": {"effort": EFFORT}}}.get(spec["provider"])
+    provider = {"anthropic": "anthropic", "openai": "openai-api", "particle": "custom:particle", "openrouter": "openrouter", "google": "gemini", "xai": "xai"}[spec["provider"]]
     custom = {
-        "custom_providers": [{"name": provider.removeprefix("custom:"), "base_url": "${OPENAI_BASE_URL}", "key_env": "OPENAI_API_KEY",
-                              "extra_body": {**effort, "max_completion_tokens": spec["max_output_tokens"]}}],
-    } if effort else {}
+        "custom_providers": [{"name": "particle", "base_url": "${OPENAI_BASE_URL}", "key_env": "OPENAI_API_KEY",
+                              "extra_body": {"reasoning_effort": EFFORT, "max_completion_tokens": spec["max_output_tokens"]}}],
+    } if spec["provider"] == "particle" else {}
+    url = "${OPENAI_BASE_URL}" if custom else {"openrouter": "${OPENROUTER_BASE_URL}", "google": "${GEMINI_BASE_URL}"}.get(spec["provider"])
     return {
         "_config_version": 46,
-        "model": {"provider": provider, "default": spec["name"], **({"base_url": "${OPENAI_BASE_URL}"} if custom else {}),
+        "model": {"provider": provider, "default": spec["name"], **({"base_url": url} if url else {}),
                   "context_length": spec["context_window"]},
         **custom,
-        "agent": {"reasoning_effort": EFFORT, "image_input_mode": "text", "disabled_toolsets": HERMES_DISABLED_TOOLSETS},
+        **({"plugins": {"enabled": [HERMES_OPENROUTER_PLUGIN["name"]]}} if spec["provider"] == "openrouter" else {}),
+        "agent": {"reasoning_effort": EFFORT, "image_input_mode": "text", "disabled_toolsets": HERMES_XAI_DISABLED_TOOLSETS if spec["provider"] == "xai" else HERMES_DISABLED_TOOLSETS},
         "web": {"keyless_fallback": False},
         "terminal": {"backend": "local", "timeout": 180, "home_mode": "profile"},
         "display": {"streaming": False},
@@ -194,6 +219,21 @@ def hermes_config(model: str) -> dict[str, Any]:
         "check_for_updates": False,
         "security": {"allow_lazy_installs": False},
     }
+
+
+def hermes_openrouter_plugin_files(model: str) -> list[dict[str, str]]:
+    """The he-openrouter-effort plugin's files for a Hermes cell on OpenRouter, each with its path under HERMES_HOME and its
+    sha256, which must equal pin.json's (HE-FRONTIER-015); none on any other provider."""
+    if model_spec(model)["provider"] != "openrouter":
+        return []
+    out = []
+    for name, want in sorted(HERMES_OPENROUTER_PLUGIN["files"].items()):
+        body = (REPO / HERMES_OPENROUTER_PLUGIN["dir"] / name).read_bytes()
+        got = hashlib.sha256(body).hexdigest()
+        if got != want:
+            raise RuntimeError(f"HE-FRONTIER-015 {HERMES_OPENROUTER_PLUGIN['dir']}/{name} has sha256 {got}, not pin.json's {want}; the trial stops before the agent starts (docs/errors.md)")
+        out.append({"path": f"plugins/{HERMES_OPENROUTER_PLUGIN['name']}/{name}", "sha256": got, "content": body.decode()})
+    return out
 
 
 def openclaw_config(model: str, url: str) -> dict[str, Any]:
@@ -208,11 +248,17 @@ def openclaw_config(model: str, url: str) -> dict[str, Any]:
         defaults = {"model": {"primary": f"anthropic/{spec['name']}"}, "thinkingDefault": EFFORT, "skipBootstrap": True}
         return {"models": {"mode": "merge", "providers": {"anthropic": provider}}, "agents": {"defaults": defaults}, "tools": tools}
     name = openclaw_provider(model)
+    if spec["provider"] == "google":
+        provider = {"baseUrl": f"{url}/v1beta", "apiKey": "${GEMINI_API_KEY}", "api": "google-generative-ai", "models": [entry]}
+        defaults = {"model": {"primary": f"google/{spec['name']}"}, "utilityModel": f"google/{spec['name']}", "thinkingDefault": EFFORT, "skipBootstrap": True}
+        return {"models": {"mode": "merge", "providers": {"google": provider}}, "agents": {"defaults": defaults},
+                "memory": {"search": {"provider": "none"}}, "tools": tools}
     if spec["provider"] in ("particle", "openrouter"):
         entry["compat"] = {"maxTokensField": "max_completion_tokens", "supportsUsageInStreaming": True}
     if spec["provider"] == "openrouter":
         entry["compat"]["thinkingFormat"] = "openrouter"
-    provider = {"baseUrl": f"{url}/v1", "apiKey": "${XAI_API_KEY}" if name == "xai" else "${OPENAI_API_KEY}",
+        tools["deny"] += OPENCLAW_OPENROUTER_DENY
+    provider = {"baseUrl": f"{url}/v1", "apiKey": {"xai": "${XAI_API_KEY}", "openrouter": "${OPENROUTER_API_KEY}"}.get(name, "${OPENAI_API_KEY}"),
                 "api": "openai-responses" if name in ("openai", "xai") else "openai-completions", "models": [entry]}
     defaults = {"model": {"primary": f"{name}/{spec['name']}"}, "utilityModel": f"{name}/{spec['name']}",
                 "thinkingDefault": EFFORT, "skipBootstrap": True}
@@ -221,11 +267,12 @@ def openclaw_config(model: str, url: str) -> dict[str, Any]:
 
 
 def openclaw_provider(model: str) -> str:
-    """The OpenClaw provider id of a cell's model: openrouter-proxy on OpenRouter, as our OpenRouter pin names it, so
-    OpenClaw's bundled openrouter provider (live catalog discovery, openrouter.ai-only request shaping) never runs against
-    the proxy; otherwise the provider itself."""
-    provider = model_spec(model)["provider"]
-    return "openrouter-proxy" if provider == "openrouter" else provider
+    """The OpenClaw provider id of a cell's model: the provider itself. On OpenRouter that is OpenClaw's bundled openrouter
+    provider with its baseUrl at the proxy's OpenRouter route (amendment 1 of frontier-shootout-2026-11): a custom
+    provider id there gets OpenClaw's unowned-provider replay policy, which rewrites tool call ids (call_N to callN). Google
+    accepted the rewritten ids on the real route (s02 at 7c604eb, amendment 4), so the bundled provider is kept because it
+    is what an OpenRouter user of OpenClaw runs, not because the custom one fails."""
+    return model_spec(model)["provider"]
 
 
 def pi_models_entry(model: str) -> dict[str, Any]:
@@ -276,6 +323,10 @@ PI_ARGON_ROW = {
 PI_OPENROUTER_MODELS["google/gemini-4-carbon"] = PI_ARGON_ROW
 PI_OPENROUTER_MODELS["google/gemini-4-hydrogen"] = PI_ARGON_ROW
 PI_CATALOG_ROW = {"google/gemini-4-carbon": "chat:google/gemini-4-argon", "google/gemini-4-hydrogen": "chat:google/gemini-4-argon"}
+# Pi 1.5.0's google catalog (pi-ai dist/providers/data/google.json) has no Gemini 4 Carbon or Hydrogen row; both take its Gemini 4
+# Argon row ("chat:gemini-4-argon", api google-generative-ai), the same family on the same API: its thinkingLevelMap, and no compat.
+PI_GOOGLE_ARGON_ROW = {"thinkingLevelMap": {"off": None, "minimal": None, "low": "low", "medium": "medium", "high": "high", "xhigh": None, "max": None}}
+PI_GOOGLE_MODELS = {"gemini-4-carbon": PI_GOOGLE_ARGON_ROW, "gemini-4-hydrogen": PI_GOOGLE_ARGON_ROW}
 # Pi 1.5.0's own catalog row for Grok 4.7 on its xai provider (pi-ai dist/providers/data/xai.json, "chat:grok-4.7", api
 # openai-responses): its thinkingLevelMap and compat. Harbor's custom provider skips the catalog, so the entry carries them.
 PI_XAI_MODELS = {
@@ -296,6 +347,9 @@ def pi_chat_models_json(model: str, url: str) -> dict[str, Any]:
     spec = model_spec(model)
     entry = {"id": spec["name"], "reasoning": True, **pi_models_entry(model)}
     xai = spec["provider"] == "xai"
+    if spec["provider"] == "google":
+        entry.update(PI_GOOGLE_MODELS[spec["name"]])
+        return {"providers": {"harbor-endpoint": {"baseUrl": f"{url}/v1beta", "apiKey": "$GEMINI_API_KEY", "api": "google-generative-ai", "models": [entry]}}}
     if spec["provider"] == "openrouter":
         entry.update(PI_OPENROUTER_MODELS[spec["name"]])
     if xai:
@@ -364,7 +418,7 @@ def harbor_kwargs(harness: str, model: str) -> dict[str, Any]:
     if harness == "openclaw":
         return {"thinking": EFFORT, "disable_web_search": True}
     if harness == "pi":
-        return {"thinking": EFFORT, "model_api": {"anthropic": "anthropic-messages", "openai": "openai-responses", "particle": "openai-completions", "openrouter": "openai-completions", "xai": "openai-responses"}[spec["provider"]]}
+        return {"thinking": EFFORT, "model_api": {"anthropic": "anthropic-messages", "openai": "openai-responses", "particle": "openai-completions", "openrouter": "openai-completions", "google": "google-generative-ai", "xai": "openai-responses"}[spec["provider"]]}
     if harness == "mini-swe-agent":
         return {"reasoning_effort": EFFORT, "max_tokens": spec["max_output_tokens"], "litellm_model_registry": litellm_registry(model)}
     if harness == "dsh":
@@ -469,12 +523,19 @@ def container_env(harness: str, model: str, url: str, token: str, gstack: dict[s
         raise ValueError(f"a Particle cell's endpoint must be the proxy's Particle route <proxy>/<slot>/particle, not {url}")
     if spec["provider"] == "openrouter" and not url.rstrip("/").endswith("/openrouter"):
         raise ValueError(f"an OpenRouter cell's endpoint must be the proxy's OpenRouter route <proxy>/<slot>/openrouter, not {url}")
+    if spec["provider"] == "google":
+        if not url.rstrip("/").endswith("/google"):
+            raise ValueError(f"a Gemini cell's endpoint must be the proxy's google route <proxy>/<slot>/google, not {url}")
+        return {"GEMINI_API_KEY": token, **({"GEMINI_BASE_URL": f"{url}/{HERMES_GEMINI_SEGMENT}/v1beta"} if harness == "hermes" else {}),
+                **((gstack or {}).get("eval_env") or {})}
     if spec["provider"] == "xai":
         if not url.rstrip("/").endswith("/xai"):
             raise ValueError(f"an xAI cell's endpoint must be the proxy's xai route <proxy>/<slot>/xai, not {url}")
         return {"XAI_BASE_URL": f"{url}/v1", "XAI_API_KEY": token, **((gstack or {}).get("eval_env") or {})}
     env: dict[str, str] = (
         {"ANTHROPIC_BASE_URL": url, "ANTHROPIC_API_KEY": token} if anthropic
+        else {"OPENROUTER_BASE_URL": f"{url}/v1", "OPENROUTER_API_KEY": token,
+              **({"HE_OPENROUTER_MAX_OUTPUT_TOKENS": str(spec["max_output_tokens"])} if harness == "hermes" else {})} if spec["provider"] == "openrouter" and harness in ("hermes", "openclaw")
         else {"OPENAI_BASE_URL": f"{url}/v1", "OPENAI_API_KEY": token}
     )
     if harness == "claude-code":
@@ -645,8 +706,14 @@ REPLAY_CHECK = ("keyless, tests/frontier-harbor-replay.test.ts (internal-task ro
                 "config, through broker.ts and the metering proxy to a fake upstream that answers two shell tool calls with "
                 "reasoning in the provider's shape and compares what comes back on each replayed tool-call turn byte for byte")
 OPENROUTER_DEEPSEEK = "deepseek/deepseek-v4.1-flash-1017"
-HERMES_HOST_RULE = ("Hermes drops reasoning_details from the wire copy unless the base URL's host is openrouter.ai or nousresearch.com "
-                    "(agent/transports/chat_completions.py _route_replays_reasoning_details at the pinned commit), and the proxy's route is neither")
+HERMES_REPLAY_RULE = ("Hermes v0.23.1's built-in openrouter provider replays reasoning_content, reasoning and reasoning_details on "
+                      "every assistant message (agent/message_sanitization.py route_reasoning_carriers: provider openrouter carries all "
+                      "three; agent/transports/chat_completions.py _wire_reasoning_carriers), whatever the base URL's host; the "
+                      "v2026.9.24 custom provider kept reasoning_details only for openrouter.ai and nousresearch.com hosts")
+OPENCLAW_REPLAY_RULE = ("OpenClaw's bundled openrouter provider (extensions/openrouter buildReplayPolicy, the passthrough Gemini policy) keeps "
+                        "every tool call id as OpenRouter gave it; under a custom provider id the unowned-provider fallback "
+                        "(src/agents/transcript-policy.ts buildUnownedProviderTransportReplayFallback, sanitizeToolCallIds strict) "
+                        "rewrote them to letters and digits")
 
 
 def openrouter_replay(harness: str, name: str) -> dict[str, Any]:
@@ -658,16 +725,16 @@ def openrouter_replay(harness: str, name: str) -> dict[str, Any]:
     muse = name.startswith("meta/")
     checked = REPLAY_CHECK % harness
     if harness == "hermes":
-        if deepseek:
-            return {"field": "reasoning_content", "verdict": "replays", "how": "Hermes echoes an earlier assistant turn's reasoning as reasoning_content on every replayed tool-call turn for a model id naming deepseek (agent/message_sanitization.py needs_reasoning_echo at the pinned commit); OpenRouter takes reasoning_content as an alias of reasoning, and DeepSeek thinking mode refuses a tool-call turn replayed without it. Seen: the text came back exact on every replayed turn", "checked": checked}
-        gem = (" It keeps a tool call's extra_content for a model id naming gemini (_model_consumes_thought_signature), but OpenRouter's Chat Completions carry Gemini's thought signature in reasoning_details, not extra_content, so the signature is lost too; OpenRouter's Gemini endpoint refuses a function call replayed without it" if gemini else "")
-        return {"field": None, "verdict": "drops", "how": "can't replay %s in Hermes behind the proxy: seen, no replayed tool-call turn carried any reasoning. Hermes echoes reasoning_content only for deepseek, Kimi's own hosts (api.kimi.com, moonshot.ai, moonshot.cn; an OpenRouter-served Kimi is left out on purpose) and mimo (agent/message_sanitization.py _REASONING_ECHO_RULES), and %s.%s" % (name, HERMES_HOST_RULE, gem), "checked": checked}
+        what = ("the Gemini signature entry (reasoning.encrypted, google-gemini-v1) byte for byte and still keyed to its unchanged call id" if gemini
+                else "the encrypted entry (reasoning.encrypted, meta-responses-v1) byte for byte" if muse else "the reasoning text exact")
+        return {"field": "reasoning_details, reasoning and reasoning_content", "verdict": "replays", "how": "%s. Seen: every replayed tool-call turn carried reasoning, reasoning_content and reasoning_details, %s%s" % (
+            HERMES_REPLAY_RULE, what, "; DeepSeek thinking mode refuses a tool-call turn replayed without its reasoning" if deepseek else ""), "checked": checked}
     if harness == "openclaw":
         if gemini:
-            return {"field": "reasoning_details", "verdict": "partial", "how": "OpenClaw sends the Gemini thought signature back byte for byte as a reasoning.encrypted entry, but no reasoning text, and it rewrites every tool call id to letters and digits (dist/tool-call-id-*.mjs sanitizeToolCallId, strict mode) while the signature entry keeps the id OpenRouter gave it, so the entry no longer names its call. Whether OpenRouter still matches the signature to the renamed call can't be checked keyless; its Gemini endpoint refuses a function call whose signature is missing or invalid", "checked": checked}
+            return {"field": "reasoning_details", "verdict": "replays", "how": "%s. Seen: OpenClaw sends the Gemini thought signature back byte for byte as a reasoning.encrypted entry still keyed to its unchanged call id, with no reasoning text, which is what OpenRouter's Gemini endpoint matches" % OPENCLAW_REPLAY_RULE, "checked": checked}
         if muse:
-            return {"field": "reasoning", "verdict": "partial", "how": "can't replay Muse Wonder's encrypted reasoning in OpenClaw: compat.thinkingFormat openrouter sends the earlier reasoning text back as the message's reasoning field, exact, but drops reasoning_details, so the reasoning.encrypted entry (format meta-responses-v1) never returns. It also rewrites tool call ids to letters and digits (sanitizeToolCallId, strict mode)", "checked": checked}
-        return {"field": "reasoning", "verdict": "replays", "how": "compat.thinkingFormat openrouter: OpenClaw replays an earlier assistant turn's reasoning as the message's reasoning field, OpenRouter's own field, on every replayed tool-call turn; seen exact. It rewrites tool call ids to letters and digits (sanitizeToolCallId, strict mode), consistently in the call and its result" + ("; DeepSeek thinking mode refuses a tool-call turn replayed without the reasoning" if deepseek else ""), "checked": checked}
+            return {"field": "reasoning", "verdict": "partial", "how": "can't replay Muse Wonder's encrypted reasoning in OpenClaw: compat.thinkingFormat openrouter sends the earlier reasoning text back as the message's reasoning field, exact, but drops reasoning_details, so the reasoning.encrypted entry (format meta-responses-v1) never returns. Tool call ids are kept (%s)" % OPENCLAW_REPLAY_RULE, "checked": checked}
+        return {"field": "reasoning", "verdict": "replays", "how": "compat.thinkingFormat openrouter: OpenClaw replays an earlier assistant turn's reasoning as the message's reasoning field, OpenRouter's own field, on every replayed tool-call turn; seen exact, tool call ids kept (%s)" % OPENCLAW_REPLAY_RULE + ("; DeepSeek thinking mode refuses a tool-call turn replayed without the reasoning" if deepseek else ""), "checked": checked}
     return {"field": "reasoning_details", "verdict": "replays", "how": "pi-ai 1.5.0 keeps the reasoning_details OpenRouter streams with each assistant message and sends them back on that message in every later request, the tool-call turn included (dist/api/openai-completions.js convertMessages); seen exact, " + ("the Gemini signature entry still keyed to its unchanged call id" if gemini else "the encrypted entry included" if muse else "the reasoning text included") + ("; compat.requiresReasoningContentOnAssistantMessages adds an empty reasoning_content beside them, as Pi's catalog row for the model asks; DeepSeek thinking mode refuses a tool-call turn replayed without its reasoning" if deepseek else ""), "checked": checked}
 
 
@@ -681,10 +748,14 @@ def direct_replay(harness: str, provider: str) -> dict[str, Any] | None:
     if provider == "xai":
         how = {"pi": "Pi 1.5.0 (openai-responses)", "hermes": "Hermes (its xai provider, codex_responses)", "openclaw": "OpenClaw (its xai provider, openai-responses)"}[harness]
         return {"field": "reasoning items with encrypted_content", "verdict": "replays", "how": how + " sends include [reasoning.encrypted_content] and no previous_response_id, so it never relies on a response stored at xAI (the proxy refuses previous_response_id and forces store false on this route anyway, HE-PROXY-013), and replays each earlier reasoning item before its function_call; seen, encrypted_content byte for byte on every replayed turn", "checked": checked}
+    if provider == "google":
+        how = {"pi": "Pi 1.5.0 (google-generative-ai)", "hermes": "Hermes (its gemini provider's native generateContent client)", "openclaw": "OpenClaw (its bundled google provider, google-generative-ai)"}[harness]
+        sent = "the signature only, with no thought text" if harness == "hermes" else "the thought parts too, text byte for byte"
+        return {"field": "thoughtSignature on functionCall parts", "verdict": "replays", "how": how + " keeps each functionCall part's thoughtSignature and sends it back on that call in every later request, which the proxy forwards to Google unchanged; seen, every signature byte for byte on its own call, against a fake that answers 400 to a call sent back without its signature, as Google does (it sends %s)" % sent, "checked": checked}
     if provider != "anthropic":
         return None
     if harness == "hermes":
-        return {"field": None, "verdict": "drops", "how": "can't replay Claude thinking in Hermes behind the proxy: seen, every replayed tool-use turn came back without its thinking block. Hermes strips all thinking blocks for any base URL that does not contain anthropic.com, because signatures are Anthropic's own (agent/anthropic_message_convert.py with _is_third_party_anthropic_endpoint, agent/anthropic_endpoints.py, at the pinned commit), and the proxy's route is such a URL", "checked": checked}
+        return {"field": None, "verdict": "drops", "how": "can't replay Claude thinking in Hermes behind the proxy: seen, every replayed tool-use turn came back without its thinking block. Hermes strips all thinking blocks for a base URL it does not know as Anthropic's own or a signing platform, because signatures are Anthropic's own (v0.23.1: agent/anthropic_thinking_policy.py anthropic_thinking_route gives such a relay the third_party route, and agent/anthropic_message_convert.py _manage_thinking_signatures strips every block on it; _is_third_party_anthropic_endpoint in agent/anthropic_endpoints.py), and the proxy's route is such a URL. A declared per-harness property of Hermes, unchanged by amendment 1", "checked": checked}
     how = {"pi": "Pi 1.5.0 (anthropic-messages)", "openclaw": "OpenClaw (anthropic-messages)"}[harness]
     return {"field": "thinking blocks with signature", "verdict": "replays", "how": how + " sends each earlier thinking block back with its signature on the replayed tool-use turn; seen, thinking text and signature byte for byte", "checked": checked}
 
@@ -891,11 +962,11 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
             ])
     if harness == "hermes":
         compaction = {"threshold": "Hermes default: compression.threshold 0.50 with threshold_tokens 256,000, so compaction starts at 256,000 prompt tokens on these 1M windows", "set_by": "shipped default"}
-        tools = {"hosted_web_search": "off: web.keyless_fallback false and agent.disabled_toolsets [web, browser]. Hermes v2026.9.24's web_search and web_extract need no key: with no backend configured they use a keyless ring of public free tiers (Exa, Parallel, Firecrawl, Keenable; plugins/web/keyless_mcp.py, web.keyless_fallback default true), which internal-task saw return a task's solve.sh and test file", "disabled": ["web_search", "web_extract", "browser toolset"], "enabled": "toolset hermes-cli (Hermes default) less the web and browser toolsets"}
+        tools = {"hosted_web_search": "off: web.keyless_fallback false and agent.disabled_toolsets [web, browser]. Hermes's web_search and web_extract (v2026.9.24 and v0.23.1) need no key: with no backend configured they use a keyless ring of public free tiers (Exa, Parallel, Firecrawl, Keenable; plugins/web/keyless_mcp.py, web.keyless_fallback default true), which internal-task saw return a task's solve.sh and test file", "disabled": ["web_search", "web_extract", "browser toolset"], "enabled": "toolset hermes-cli (Hermes default) less the web and browser toolsets"}
         harbor_run = [
                     "runs Harbor's Hermes command (hermes --yolo chat -q <instruction> -Q --model --provider) instead of adapter.sh's hermes chat --query-file --oneshot",
                     "installed from the pinned commit's scripts/install.sh instead of our image's uv install of the source tree",
-                    "the anthropic SDK (0.87.0, Hermes's own uv.lock extra) added to Hermes's venv with uv sync --locked --extra all --extra anthropic: install.sh leaves it to a lazy install, which security.allow_lazy_installs false turns off",
+                    "the anthropic SDK (0.125.0, Hermes's own uv.lock extra) added to the environment Hermes's launcher runs on with hermes pm install --extra anthropic, under the same HERMES_HOME install.sh used (amendment 5): install.sh leaves it to a lazy install, which security.allow_lazy_installs false turns off",
         ]
         harbor_env = [
                     "terminal.cwd unset, so the task's working directory, not /workspace",
@@ -905,19 +976,34 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
         if spec["provider"] == "openrouter":
             return _record(harness, model,
                 context_window={"value": cw, "set_by": "config.yaml model.context_length=%d" % cw},
-                max_output_tokens={"value": mo, "set_by": "custom_providers[openrouter-proxy].extra_body max_completion_tokens=%d on the agent's requests (Hermes states no cap on a custom endpoint); its title call states none, so the proxy fills %d" % (mo, mo)},
+                max_output_tokens={"value": mo, "set_by": "the he-openrouter-effort plugin sets max_completion_tokens=%d (HE_OPENROUTER_MAX_OUTPUT_TOKENS) on every agent request, where Hermes's built-in openrouter provider states no cap behind the proxy; an auxiliary call (a compression summary) states none, so the proxy fills %d" % (mo, mo)},
                 compaction=compaction, tools=tools,
-                effort={"requested": EFFORT, "setting": "custom_providers[openrouter-proxy].extra_body reasoning {effort: high} (OpenRouter's field) and agent.reasoning_effort = high, which Hermes sends as top-level reasoning_effort high beside it, on every agent request (with agent.reasoning_effort unset, its custom-endpoint profile would send medium). Declared: its session-title call carries no extra_body and sends reasoning_effort none, a shipped default; it is housekeeping, never an agent-loop call"},
+                effort={"requested": EFFORT, "setting": "the he-openrouter-effort plugin (an llm_request middleware, pinned file by file in pin.json harnesses.hermes.openrouter_plugin) sets OpenRouter's reasoning {effort: high} in extra_body on every agent request, streamed or not; Hermes v0.23.1's built-in openrouter provider sends that field only when the base URL's host is openrouter.ai (run_agent.py _is_openrouter_url, agent/reasoning_params.py) and reads extra_body from config only for custom providers (agent/agent_init.py _custom_provider_extra_body_for_agent), so behind the proxy it would send no effort. agent.reasoning_effort = high is set too. No top-level reasoning_effort is sent (v2026.9.24's custom provider sent one). Declared: Hermes's auxiliary calls (compression summaries) do not pass through llm_request middleware and carry no effort; they are housekeeping, never agent-loop calls. A one-shot run makes no session-title call at v0.23.1 (agent/turn_context.py: agent_is_oneshot)"},
                 reasoning_replay=openrouter_replay(harness, spec["name"]),
                 housekeeping_model={"model": model, "note": "Hermes auxiliary calls (titles, compression summaries) use provider auto, which is the main model; the title call sends reasoning off"},
                 differences_from_pin=[*harbor_run,
-                    "provider custom:openrouter-proxy, Hermes's custom-endpoint provider on Chat Completions, reading OPENAI_API_KEY and OPENAI_BASE_URL (the per-trial token and the proxy's OpenRouter route), with extra_body reasoning {effort: high} and max_completion_tokens %d, agent.reasoning_effort high and model.context_length %d: the same settings as our OpenRouter pin (harnesses/hermes/pin.json model_openrouter, config.openrouter.yaml)" % (mo, cw),
+                    "provider openrouter, Hermes's built-in OpenRouter provider on Chat Completions, reading OPENROUTER_API_KEY and OPENROUTER_BASE_URL (the per-trial token and the proxy's OpenRouter route), with the he-openrouter-effort plugin enabled (plugins.enabled) for reasoning {effort: high} and max_completion_tokens %d, agent.reasoning_effort high and model.context_length %d (amendment 1 of frontier-shootout-2026-11; our OpenRouter pin, harnesses/hermes/pin.json model_openrouter and config.openrouter.yaml, uses provider custom:openrouter-proxy with extra_body, which at Hermes v2026.9.24 dropped every replayed turn's reasoning_details behind the proxy)" % (mo, cw),
+                    "Hermes sends an OpenRouter session_id body field (its built-in provider's sticky-routing field); the proxy forwards it",
                     *harbor_env])
+        if spec["provider"] == "google":
+            return _record(harness, model,
+                context_window={"value": cw, "set_by": "config.yaml model.context_length=%d" % cw},
+                max_output_tokens={"value": HERMES_GEMINI_MAX_OUTPUT, "set_by": "Hermes v0.23.1 sends maxOutputTokens 65,535 on every Gemini request (agent/gemini_native_adapter.py GEMINI_DEFAULT_MAX_OUTPUT_TOKENS, applied for the gemini provider in agent/agent_init.py), one under the cell's 65,536; it reads no output setting for Gemini (no model.max_tokens, no HERMES_MAX_TOKENS), and the larger long-decode budget it sends only at effort xhigh or max does not apply at high. The proxy's 65,536 cap leaves the value as sent. Declared (amendment 2)"},
+                compaction=compaction, tools=tools,
+                effort={"requested": EFFORT, "setting": "agent.reasoning_effort = high; the gemini provider sends generationConfig.thinkingConfig {includeThoughts: true, thinkingLevel: high} on every agent request, streamed or not (seen keyless). Hermes writes the level in lower case, as Google's own REST examples do; OpenClaw and Pi write HIGH"},
+                reasoning_replay=direct_replay(harness, "google"),
+                housekeeping_model={"model": model, "note": "Hermes auxiliary calls (titles, compression summaries) use provider auto, which is the main model; the title call sends reasoning off"},
+                differences_from_pin=[*harbor_run,
+                    "provider gemini, Hermes's own Gemini provider on its native generateContent client (agent/gemini_native_adapter.py), reading GEMINI_API_KEY (the per-trial token, sent as x-goog-api-key) and GEMINI_BASE_URL, the proxy's google route followed by /generativelanguage.googleapis.com/v1beta. Hermes v0.23.1 picks the native client only when the base URL contains generativelanguage.googleapis.com (is_native_gemini_base_url, lines 183-188, a substring test its docs do not promise), and the proxy drops exactly that one path segment on the google route (amendment 2 of frontier-shootout-2026-11); no Hermes pin of ours covers Gemini",
+                    "maxOutputTokens 65,535, Hermes's own value, one under the cell's 65,536 (see max_output_tokens)",
+                    "model.context_length set (our pin: Hermes's own table)",
+                    *harbor_env[:2],
+                    "no local-server probes of the base URL on this provider: every request Hermes sent was a generateContent call (seen keyless)"])
         if spec["provider"] == "xai":
             return _record(harness, model,
                 context_window={"value": cw, "set_by": "config.yaml model.context_length=%d" % cw},
                 max_output_tokens={"value": mo, "set_by": "the metering proxy caps every /v1/responses request at %d and writes that cap into one that states none" % mo},
-                compaction=compaction, tools=tools,
+                compaction=compaction, tools={**tools, "hosted_web_search": tools["hosted_web_search"] + "; on xAI the x_search toolset (X search through xAI's built-in x_search tool, which Hermes turns on whenever xAI credentials are present) is disabled too (amendment 19)", "disabled": [*tools["disabled"], "x_search"], "enabled": tools["enabled"] + " and x_search"},
                 effort={"requested": EFFORT, "unsent_default": EFFORT, "setting": "agent.reasoning_effort = high, but Hermes at the pinned commit sends reasoning.effort to xAI only for the Grok models on its allowlist (agent/model_metadata.py _GROK_EFFORT_CAPABLE_PREFIXES: grok-3-mini, grok-4.20-multi-agent, grok-4.3, grok-4.5, grok-4.6), so its agent requests on grok-4.7 carry no effort field (seen keyless) and xAI applies the model's default, high (docs.x.ai reasoning: \"If not specified, reasoning_effort defaults to high\"). The effort check counts an agent request with no effort field as high for this cell (effort.unsent_default). Declared: its session-title call sends reasoning {effort: none}, a level xAI does not list for grok-4.7 (low, medium, high, xhigh); it is housekeeping, never an agent-loop call, and whether xAI refuses it is not checked keyless"},
                 reasoning_replay=direct_replay(harness, "xai"),
                 housekeeping_model={"model": model, "note": "Hermes auxiliary calls (titles, compression summaries) use provider auto, which is the main model; the title call sends reasoning off"},
@@ -928,7 +1014,7 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                     *harbor_env])
         return _record(harness, model,
             context_window={"value": cw, "set_by": "config.yaml model.context_length=%d" % cw},
-            max_output_tokens={"value": mo, "set_by": "Hermes v2026.9.24's own output table (agent/anthropic_adapter.py: 128,000 for claude-opus-5* and claude-fable*, and claude-sonnet-5 at 128,000)" if anthropic
+            max_output_tokens={"value": mo, "set_by": "Hermes v0.23.1's own output table (agent/anthropic_adapter.py _get_anthropic_max_output: claude-fable and claude-sonnet-5 at 128,000, claude-opus-5* at the 128,000 default)" if anthropic
                                else "custom_providers[particle].extra_body max_completion_tokens=%d on the agent's requests (Hermes states no cap on a custom endpoint); its title call states none, so the proxy fills %d" % (mo, mo) if particle
                                else "Hermes default on the openai-api provider (no output cap sent); the proxy caps at %d" % mo},
             compaction=compaction,
@@ -956,15 +1042,29 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
         ]
         if spec["provider"] == "openrouter":
             return _record(harness, model,
-                context_window={"value": cw, "set_by": "models.providers.openrouter-proxy.models[0].contextWindow=%d" % cw},
-                max_output_tokens={"value": mo, "set_by": "models.providers.openrouter-proxy.models[0].maxTokens=%d, sent as max_completion_tokens (compat.maxTokensField)" % mo},
-                compaction=compaction, tools=tools,
+                context_window={"value": cw, "set_by": "models.providers.openrouter.models[0].contextWindow=%d" % cw},
+                max_output_tokens={"value": mo, "set_by": "models.providers.openrouter.models[0].maxTokens=%d, sent as max_completion_tokens (compat.maxTokensField)" % mo},
+                compaction=compaction, tools={**tools, "hosted_web_search": tools["hosted_web_search"] + "; music_generate and video_generate also denied on OpenRouter (amendment 1)", "disabled": [*tools["disabled"], *OPENCLAW_OPENROUTER_DENY]},
                 effort={"requested": EFFORT, "setting": "--thinking high and agents.defaults.thinkingDefault = high; reasoning true with compat.thinkingFormat openrouter on the model, so api openai-completions sends OpenRouter's reasoning {effort: high}"},
                 reasoning_replay=openrouter_replay(harness, spec["name"]),
-                housekeeping_model={"model": model, "note": "utilityModel = the cell model (openrouter-proxy/<model>), as our OpenRouter pin's config sets it"},
+                housekeeping_model={"model": model, "note": "utilityModel = the cell model (openrouter/<model>), as our OpenRouter pin's config sets it"},
                 differences_from_pin=[*harbor_run,
-                    "provider openrouter-proxy on api openai-completions over the proxy's OpenRouter route, apiKey ${OPENAI_API_KEY} (the per-trial token; our pin reads HE_MODEL_API_KEY), compat maxTokensField max_completion_tokens, supportsUsageInStreaming and thinkingFormat openrouter, contextWindow %d, maxTokens %d, thinkingDefault high, utilityModel the cell model and memory.search.provider none: the same settings as our OpenRouter pin (harnesses/openclaw/pin.json model_openrouter, config/openclaw.openrouter.json)" % (cw, mo),
-                    "Harbor's --model is openrouter-proxy/<model> (agents.py FrontierOpenClaw), so OpenClaw's bundled openrouter provider never runs, as in our pin",
+                    "provider openrouter (OpenClaw's bundled OpenRouter provider id, amendment 1 of frontier-shootout-2026-11; our pin's id is openrouter-proxy) on api openai-completions over the proxy's OpenRouter route, apiKey ${OPENROUTER_API_KEY} (the per-trial token; our pin reads HE_MODEL_API_KEY), compat maxTokensField max_completion_tokens, supportsUsageInStreaming and thinkingFormat openrouter, contextWindow %d, maxTokens %d, thinkingDefault high, utilityModel the cell model and memory.search.provider none: the same settings as our OpenRouter pin (harnesses/openclaw/pin.json model_openrouter, config/openclaw.openrouter.json)" % (cw, mo),
+                    "Harbor's --model is openrouter/<model> (agents.py FrontierOpenClaw), so OpenClaw's bundled openrouter provider owns the model's replay policy and keeps tool call ids as OpenRouter gave them; under our pin's custom id they were rewritten to letters and digits",
+                    "music_generate and video_generate denied (tools.deny): the bundled provider would list them in the system prompt; with them denied the prompt differs from the custom id's only in the dropped openai-whisper-api skill line and openrouter/<model> in place of openrouter-proxy/<model>",
+                    *harbor_env])
+        if spec["provider"] == "google":
+            return _record(harness, model,
+                context_window={"value": cw, "set_by": "models.providers.google.models[0].contextWindow=%d" % cw},
+                max_output_tokens={"value": mo, "set_by": "models.providers.google.models[0].maxTokens=%d; OpenClaw 2026.10.6's google transport sends no maxOutputTokens (seen keyless), so the metering proxy writes maxOutputTokens %d into every request on the google route" % (mo, mo)},
+                compaction=compaction, tools=tools,
+                effort={"requested": EFFORT, "setting": "--thinking high and agents.defaults.thinkingDefault = high; reasoning true on the model, so api google-generative-ai sends thinkingConfig {includeThoughts: true, thinkingLevel: HIGH} (seen keyless)"},
+                reasoning_replay=direct_replay(harness, "google"),
+                housekeeping_model={"model": model, "note": "utilityModel = the cell model (google/<model>)"},
+                differences_from_pin=[*harbor_run,
+                    "provider google, OpenClaw's bundled Google provider id on api google-generative-ai, its baseUrl the proxy's google route followed by /v1beta and apiKey ${GEMINI_API_KEY} (the per-trial token, sent as x-goog-api-key); OpenClaw appends /v1beta itself only on Google's own host, and its key rotation and first-response retry run only there (amendment 2 of frontier-shootout-2026-11); no OpenClaw pin of ours covers Gemini",
+                    "no explicit context cache: OpenClaw creates cachedContents only for gemini-2.5 and gemini-3 ids (isGooglePromptCacheEligible), so Gemini 4 gets only Google's implicit caching",
+                    "contextWindow %d and maxTokens %d, the pin.json row; thinkingDefault high, utilityModel the cell model and memory.search.provider none" % (cw, mo),
                     *harbor_env])
         if spec["provider"] == "xai":
             return _record(harness, model,
@@ -1019,6 +1119,20 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                     "the model entry carries what Pi's built-in provider applies to the %s catalog row: its thinkingLevelMap and compat (supportsDeveloperRole false, thinkingFormat openrouter, supportsStrictMode, sendSessionAffinityHeaders; pi-ai dist/providers/data/openrouter.json) plus sessionAffinityFormat openrouter, which pi-ai detects from the provider id openrouter, and maxTokensField max_completion_tokens%s" % (PI_CATALOG_ROW.get(spec["name"], "chat:" + spec["name"]), "; Pi 1.5.0's catalog has no row for this model, so the entry takes the row of Gemini 4 Argon, the same family on the same Google endpoints" if spec["name"] in PI_CATALOG_ROW else ""),
                     "contextWindow %d and maxTokens %d (the pin.json model row); no Pi pin of ours covers this model" % (cw, mo),
                     ]),
+                ])
+        if spec["provider"] == "google":
+            return _record(harness, model,
+                context_window={"value": cw, "set_by": "models.json contextWindow=%d on the harbor-endpoint provider agents.py writes" % cw},
+                max_output_tokens={"value": mo, "set_by": "models.json maxTokens=%d, sent as generationConfig.maxOutputTokens (pi-ai 1.5.0 google-generative-ai)" % mo},
+                compaction=compaction, tools=tools,
+                effort={"requested": EFFORT, "setting": "--thinking high with reasoning true and the Gemini 4 Argon row's thinkingLevelMap (high -> high), so pi-ai 1.5.0 sends thinkingConfig {includeThoughts: true, thinkingLevel: HIGH} (dist/api/google-generative-ai.js; seen keyless)"},
+                reasoning_replay=direct_replay(harness, "google"),
+                housekeeping_model={"model": None, "note": "Pi makes no calls on another model"},
+                differences_from_pin=[
+                    "Harbor 0.24.0's stock Pi class at the Pi release our pin runs (1.5.0)",
+                    "provider harbor-endpoint, a custom provider agents.py writes, on api google-generative-ai as Pi's own google provider uses, baseUrl the proxy's google route followed by /v1beta and apiKey $GEMINI_API_KEY (the per-trial token, sent as x-goog-api-key), instead of Pi's built-in google provider at Google's host (amendment 2 of frontier-shootout-2026-11)",
+                    "the model entry carries the thinkingLevelMap of Pi's Gemini 4 Argon row (pi-ai dist/providers/data/google.json, chat:gemini-4-argon), since Pi 1.5.0's google catalog has no Carbon or Hydrogen row; Pi sends a thoughtSignature back only to the same provider and model and only when it is valid base64, both true here",
+                    "contextWindow %d and maxTokens %d (the pin.json model row); no Pi pin of ours covers Gemini" % (cw, mo),
                 ])
         if spec["provider"] == "xai":
             return _record(harness, model,
@@ -1214,10 +1328,11 @@ def render(harness: str, model: str, url: str, token: str, gstack: dict[str, Any
         out["config"] = codex_config(model, url)
     if harness == "hermes":
         out["config"] = hermes_config(model)
+        out["files"] = hermes_openrouter_plugin_files(model)
     if harness == "openclaw":
         out["config"] = openclaw_config(model, url)
     if harness == "pi":
-        out["config"] = pi_chat_models_json(model, url) if spec["provider"] in ("particle", "openrouter", "xai") else pi_models_entry(model)
+        out["config"] = pi_chat_models_json(model, url) if spec["provider"] in ("particle", "openrouter", "google", "xai") else pi_models_entry(model)
     if harness == "dsh":
         out["config"] = dsh_profile_patch(model, url)
     if harness == "gemini-cli":

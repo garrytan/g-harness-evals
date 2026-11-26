@@ -27,6 +27,15 @@ function variant(change: (s: any) => void, setText?: string): LoadedSpec {
 }
 const problemsOf = (l: LoadedSpec) => checkSpec(l).problems;
 const sha = (p: string) => new Bun.CryptoHasher('sha256').update(readFileSync(p)).digest('hex');
+// The one pin move versions.json may lag behind: amendment 1 of frontier-shootout-2026-11 moved Hermes off v2026.9.24, and
+// pin.json's install text records it. Any other version that differs from pin.json is a problem.
+const RECORDED_PIN_MOVES: Record<string, string> = { hermes: 'v2026.9.24' };
+const pinDrift = (h: string, e: Record<string, any>, pinned: Record<string, any>): string | null => {
+  if (e.version === String(pinned.version)) return null;
+  if (RECORDED_PIN_MOVES[h] !== e.version) return h + ': versions.json has ' + e.version + ' but pin.json has ' + pinned.version + ', and that is not a recorded move';
+  if (!String(pinned.install).includes('Moved from ' + e.version + ' (' + e.commit + ')')) return h + ': pin.json does not record the move from ' + e.version + ' (' + e.commit + ')';
+  return null;
+};
 /** A completed interim look whose decision was computed from shard a's phase 1 final in dir. */
 const interimFor = (spec: LoadedSpec, dir: string) => ({
   schema: 'he-mcp-at-scale-interim-state/1', look: 'interim', status: 'complete', run_id: spec.spec.run_id,
@@ -364,13 +373,24 @@ describe('spec checker', () => {
     for (const [h, e] of Object.entries(VERSIONS.harnesses as Record<string, Record<string, any>>)) {
       expect(pin.harnesses[h]).toBeDefined();
       expect(e.source).toMatch(/^https:\/\//);
-      if (e.same_as_pin) { expect(e.version).toBe(String(pin.harnesses[h].version)); continue; }
+      if (e.same_as_pin) { expect(pinDrift(h, e, pin.harnesses[h])).toBeNull(); continue; }
       expect(e.version).not.toBe(String(pin.harnesses[h].version));
       expect(e.npm_integrity).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/);
     }
     expect(VERSIONS.harnesses['claude-code']!).toHaveProperty('native_binary_sha256', expect.stringMatching(/^[0-9a-f]{64}$/));
     expect(VERSIONS.gbrain.tag).toMatch(/^v\d+\.\d+\.\d+\.\d+$/);
     expect(VERSIONS.gbrain.commit).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  test('a versions.json entry may differ from pin.json only by the Hermes move pin.json records', () => {
+    const pin = JSON.parse(readFileSync(resolve(import.meta.dir, '../scripts/frontier-harbor/pin.json'), 'utf8'));
+    const hermes = (VERSIONS.harnesses as Record<string, Record<string, any>>).hermes!;
+    expect(pinDrift('hermes', hermes, pin.harnesses.hermes)).toBeNull();
+    const unrecorded = { ...pin.harnesses.hermes, install: String(pin.harnesses.hermes.install).replace(/Moved from [^(]*\([0-9a-f]{40}\)/, '') };
+    expect(String(unrecorded.install)).not.toContain('Moved from');
+    expect(pinDrift('hermes', hermes, unrecorded)).toContain('does not record the move');
+    expect(pinDrift('hermes', { ...hermes, version: 'v2026.10.1' }, { ...pin.harnesses.hermes, install: 'Moved from v2026.10.1 (' + hermes.commit + ')' })).toContain('not a recorded move');
+    expect(pinDrift('codex', { version: '0.1.0', commit: hermes.commit }, { version: '0.2.0', install: 'Moved from 0.1.0 (' + hermes.commit + ')' })).toContain('not a recorded move');
   });
 
   test('the frozen listing map records each harness and gbrain at the pinned releases', () => {

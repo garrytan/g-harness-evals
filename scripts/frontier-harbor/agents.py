@@ -331,7 +331,9 @@ class FrontierCodex(_Frontier, Codex):
 
 
 class FrontierHermes(_Frontier, Hermes):
-    """Harbor's Hermes command, installed from the pinned commit, configured from our Hermes config."""
+    """Harbor's Hermes command, installed from the pinned commit, configured from our Hermes config. On an OpenRouter cell
+    it also writes the he-openrouter-effort plugin (frontier_settings.hermes_openrouter_plugin_files, each file checked
+    against pin.json's sha256) under $HERMES_HOME/plugins, which the config enables (amendment 1 of frontier-shootout-2026-11)."""
 
     HARNESS = "hermes"
     SRC = "$HOME/.hermes-src"
@@ -340,17 +342,14 @@ class FrontierHermes(_Frontier, Hermes):
         pin = fs.PIN["harnesses"]["hermes"]
         await self.ensure_system_dependencies(environment, ("curl", "git", "ripgrep", "xz"))
         await self.exec_as_agent(environment, command=(
-            "set -euo pipefail; for i in 1 2 3; do "
+            'set -euo pipefail; export HERMES_HOME=/tmp/hermes; mkdir -p "$HERMES_HOME"; for i in 1 2 3; do '
             f"curl -fsSL --retry 6 --retry-delay 20 --retry-max-time 300 https://raw.githubusercontent.com/NousResearch/hermes-agent/{pin['commit']}/scripts/install.sh "
-            f"| bash -s -- --skip-setup --dir {self.SRC} --branch {pin['version']} --commit {pin['commit']} && break; "
+            f"| bash -s -- --skip-setup --dir {self.SRC} --commit {pin['commit']} && break; "
             '[ "$i" -lt 3 ] || exit 1; sleep 30; done; '
-            'export PATH="$HOME/.local/bin:$PATH" && export HERMES_HOME=/tmp/hermes && '
+            'export PATH="$HOME/.local/bin:$PATH" && '
             'mkdir -p "$HERMES_HOME/sessions" "$HERMES_HOME/skills" "$HERMES_HOME/memories" && hermes --version'))
         await self.exec_as_agent(environment, command=(
-            "set -euo pipefail; "
-            f'uv="$HOME/.hermes/bin/uv"; [ -x "$uv" ] || uv=$(command -v uv); cfg=$(mktemp -d); cd {self.SRC} && '
-            f'XDG_CONFIG_HOME="$cfg" XDG_CONFIG_DIRS="$cfg" UV_PROJECT_ENVIRONMENT={self.SRC}/venv "$uv" sync --locked --extra all --extra anthropic && '
-            f"{self.SRC}/venv/bin/python -c 'import anthropic; print(anthropic.__version__)'"))
+            'set -euo pipefail; export PATH="$HOME/.local/bin:$PATH" HERMES_HOME=/tmp/hermes; hermes pm install --extra anthropic'))
 
     async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
         want = fs.PIN["harnesses"]["hermes"]["commit"]
@@ -360,11 +359,15 @@ class FrontierHermes(_Frontier, Hermes):
         if got != want:
             raise RuntimeError(f"HE-FRONTIER-002 the Hermes checkout is at {got}, not the pinned {want}")
         want_sdk = fs.PIN["harnesses"]["hermes"]["anthropic"]["version"]
-        res = await environment.exec(command=f"{self.SRC}/venv/bin/python -c 'import anthropic; print(anthropic.__version__)'")
+        res = await environment.exec(command=(
+            'export HERMES_HOME=/tmp/hermes; py=$(ls -d "$HERMES_HOME"/tools/python-*/bin/python3 | head -1); '
+            f'venv=$("$py" -I -c "import sys; sys.path.insert(0, \'{self.SRC}\'); from pathlib import Path; '
+            f'from pm.environments import committed_venv; print(committed_venv(Path(\'{self.SRC}\')))") && '
+            '"$venv/bin/python" -c "import anthropic; print(anthropic.__version__)"'))
         sdk = (res.stdout or "").strip() or None
         self._frontier_checks["anthropic_sdk"] = sdk
         if sdk != want_sdk:
-            raise RuntimeError(f"HE-FRONTIER-002 Hermes's venv has anthropic {sdk}, not the pinned {want_sdk}")
+            raise RuntimeError(f"HE-FRONTIER-002 Hermes's committed environment has anthropic {sdk}, not the pinned {want_sdk}")
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         spec = fs.model_spec(self._frontier_model)
@@ -374,6 +377,8 @@ class FrontierHermes(_Frontier, Hermes):
         env = {"HERMES_HOME": "/tmp/hermes", "TERMINAL_ENV": "local", "HARBOR_INSTRUCTION": instruction}
         config_yaml = yaml.safe_dump(config, sort_keys=False)
         await self.exec_as_agent(environment, command=f"mkdir -p /tmp/hermes && cat > /tmp/hermes/config.yaml << 'EOF'\n{config_yaml}EOF", env=env, timeout_sec=10)
+        for f in fs.hermes_openrouter_plugin_files(self._frontier_model):
+            await self.exec_as_agent(environment, command=dl._write("/tmp/hermes/" + f["path"], f["content"].encode(), "0644"), env=env, timeout_sec=10)
         skills_command = self._build_register_skills_command()
         if skills_command:
             await self.exec_as_agent(environment, command=skills_command, env=env, timeout_sec=60)
@@ -411,16 +416,19 @@ class FrontierHermes(_Frontier, Hermes):
 
 class FrontierOpenClaw(_Frontier, OpenClaw):
     """Harbor's OpenClaw class on Node 24: OpenClaw 2026.10.6 refuses Node 22 (engines >=24.22.1 <25), which Harbor's
-    commands name; every command Harbor runs gets the pinned Node major instead. Particle and openrouter-proxy are added to
-    Harbor's providers with no variable forwarded for them: the overlay's provider reads the per-trial token from
-    OPENAI_API_KEY. xai is added with Harbor's own convention (XAI_API_KEY and XAI_BASE_URL forwarded), and the overlay's xai
-    provider reads XAI_API_KEY. On OpenRouter the agent's model is openrouter-proxy/<model>, so Harbor's --model names the overlay's
-    provider and not OpenClaw's bundled openrouter provider."""
+    commands name; every command Harbor runs gets the pinned Node major instead. Particle and openrouter are added to
+    Harbor's providers with no variable forwarded for them: the overlay's particle provider reads the per-trial token from
+    OPENAI_API_KEY, and the openrouter one from OPENROUTER_API_KEY, which container_env sets to the token. xai is added with
+    Harbor's own convention (XAI_API_KEY and XAI_BASE_URL forwarded), and the overlay's xai provider reads XAI_API_KEY. On
+    OpenRouter the agent's model is openrouter/<model>, OpenClaw's bundled openrouter provider with its base URL at the
+    proxy's OpenRouter route (amendment 1 of frontier-shootout-2026-11). On Gemini it is google/<model>, OpenClaw's bundled
+    google provider with its baseUrl at the proxy's google route, reading GEMINI_API_KEY, which container_env sets to the
+    token; Harbor forwards no variable for it (amendment 2)."""
 
     HARNESS = "openclaw"
     LAUNCH = "openclaw agent --local"
     NODE = str(fs.PIN["harnesses"]["openclaw"]["node_major"])
-    _SUPPORTED_PROVIDERS = OpenClaw._SUPPORTED_PROVIDERS | {"particle", "openrouter-proxy", "xai"}
+    _SUPPORTED_PROVIDERS = OpenClaw._SUPPORTED_PROVIDERS | {"particle", "openrouter", "google", "xai"}
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -430,7 +438,7 @@ class FrontierOpenClaw(_Frontier, OpenClaw):
 
     @classmethod
     def _provider_env_keys(cls, provider: str) -> tuple[str, ...]:
-        return () if provider in ("particle", "openrouter-proxy") else super()._provider_env_keys(provider)
+        return () if provider in ("particle", "openrouter", "google") else super()._provider_env_keys(provider)
 
     async def _exec(self, environment: BaseEnvironment, command: str, *args: Any, **kwargs: Any) -> Any:
         command = command.replace("nvm install 22", "nvm install " + self.NODE).replace("nvm use 22", "nvm use " + self.NODE)
@@ -453,8 +461,41 @@ class FrontierOpenClaw(_Frontier, OpenClaw):
 
 
 class FrontierPi(_Frontier, Pi):
+    """Harbor's Pi installs Node by piping nvm's install script from raw.githubusercontent.com. The SWE-rebench source's
+    blocklist refuses *.githubusercontent.com (pin-swe-rebench-07-2026.json egress.why), so every fresh-set Pi trial ended
+    at setup with no model request (HE-FRONTIER-006, s05 on 2026-11-19). In a task source environment the same nvm v0.40.2
+    files, vendored under vendor/nvm-v0.40.2 and checked against NVM_SHA256, are copied into ~/.nvm instead, and the rest of
+    Harbor's install runs unchanged (Node from nodejs.org and Pi from the npm registry, neither refused). Terminal-Bench
+    cells keep Harbor's install as it is."""
+
     HARNESS = "pi"
     LAUNCH = "pi --print --mode json"
+    NVM_CURL = "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | env -u NODE_VERSION bash"
+    NVM_VENDOR = fs.HERE / "vendor" / "nvm-v0.40.2"
+    NVM_REMOTE = "/tmp/frontier-nvm"
+    NVM_SHA256 = {
+        "nvm.sh": "9290aec6cc2efc89273e16a77214eb37303caaff8c943102de5116fdef47ba86",
+        "nvm-exec": "e6b7a2bafac6994e1ba14282cff82c75476fba0788f68a9ecf558dfdf3331621",
+    }
+
+    async def install(self, environment: BaseEnvironment) -> None:
+        from egress import SourceBlocklistDockerEnvironment
+
+        self._frontier_nvm_staged = isinstance(environment, SourceBlocklistDockerEnvironment)
+        if self._frontier_nvm_staged:
+            self._frontier_checks["nvm"] = "vendored v0.40.2"
+            for name, sha in self.NVM_SHA256.items():
+                if hashlib.sha256((self.NVM_VENDOR / name).read_bytes()).hexdigest() != sha:
+                    raise RuntimeError(f"HE-FRONTIER-002 vendor/nvm-v0.40.2/{name} is not the sha256 FrontierPi pins")
+            await environment.upload_dir(self.NVM_VENDOR, self.NVM_REMOTE)
+        await super().install(environment)
+
+    async def _exec(self, environment: BaseEnvironment, command: str, *args: Any, **kwargs: Any) -> Any:
+        if getattr(self, "_frontier_nvm_staged", False) and self.NVM_CURL in command:
+            command = command.replace(self.NVM_CURL, (
+                f'mkdir -p "$HOME/.nvm" && cp {self.NVM_REMOTE}/nvm.sh {self.NVM_REMOTE}/nvm-exec "$HOME/.nvm/" && '
+                'chmod 755 "$HOME/.nvm/nvm-exec"'))
+        return await super()._exec(environment, command, *args, **kwargs)
 
     def build_cli_flags(self) -> str:
         """Harbor's Pi puts these flags right before the instruction, which it passes as an argument. Pi 1.5.0 reads an
@@ -463,7 +504,7 @@ class FrontierPi(_Frontier, Pi):
         return (super().build_cli_flags() + " --").strip()
 
     def _build_custom_models_json(self, access: Any, model_id: str) -> dict[str, Any] | None:
-        if fs.model_spec(self._frontier_model)["provider"] in ("particle", "openrouter", "xai"):
+        if fs.model_spec(self._frontier_model)["provider"] in ("particle", "openrouter", "google", "xai"):
             return fs.pi_chat_models_json(self._frontier_model, self._frontier_url)
         out = super()._build_custom_models_json(access, model_id)
         if out is None:

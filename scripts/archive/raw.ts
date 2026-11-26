@@ -92,6 +92,15 @@ export function scan(data: Uint8Array): Record<string, number> {
   return hits;
 }
 
+/** scan over a member too large for one string (V8 strings stop at 2^31 - 1 characters): the same 64 MiB windows with a
+ *  16 KiB overlap that pack's addLarge scans a large file in, so a hit across a window edge is still found. A hit inside an
+ *  overlap may count twice, which can only fail a verify, never pass one. */
+export function scanChunked(data: Uint8Array, chunk = 64 * MiB, overlap = 16 * 1024): Record<string, number> {
+  const hits: Record<string, number> = {};
+  for (let off = 0; off < data.length; off += chunk) for (const [k, v] of Object.entries(scan(data.subarray(off, Math.min(data.length, off + chunk + overlap))))) hits[k] = (hits[k] ?? 0) + v;
+  return hits;
+}
+
 export function dropReason(rel: string): { name: string; reason: string } | null {
   for (const r of DROP_RULES) if (r.re.test(rel)) return r;
   return null;
@@ -360,7 +369,7 @@ export async function verifyDir(dir: string, runId?: string, digest?: string) {
     const inPath = Object.keys(scan(enc.encode(path)));
     const shown = inPath.length ? '[path withheld]' : path;
     if (inPath.length) { leaks['secret-in-path'] = (leaks['secret-in-path'] ?? 0) + 1; if (leakPaths.length < 20) leakPaths.push(shown + ' (' + inPath.join(',') + ')'); }
-    const hits = scan(data);
+    const hits = data.length > IN_MEMORY_MAX ? scanChunked(data) : scan(data);
     if (Object.keys(hits).length) { for (const [k, v] of Object.entries(hits)) leaks[k] = (leaks[k] ?? 0) + v; if (leakPaths.length < 20) leakPaths.push(shown + ' (' + Object.keys(hits).join(',') + ')'); }
     if (dropReason(path)) { leaks['drop-rule-path'] = (leaks['drop-rule-path'] ?? 0) + 1; if (leakPaths.length < 20) leakPaths.push(shown); }
   });

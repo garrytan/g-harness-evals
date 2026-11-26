@@ -8,7 +8,9 @@ const read = (file: string) => JSON.parse(readFileSync(new URL(`../runner/pricin
 describe('prices-2026-11-21', () => {
   test('keeps the previous header and rows except for the date and the GPT-6.2 Astra row after GPT-6 Astra', () => {
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-21.json this test accepts the table it covers and the table that replaced it
-    expect(['prices-2026-11-21.json', 'prices-2026-11-25.json']).toContain(PRICE_TABLE_FILE);
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-26.json this test accepts every table that has replaced the one it covers
+    // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-25.json this test accepts every table that has replaced the one it covers
+    expect(['prices-2026-11-21.json', 'prices-2026-11-25.json', 'prices-2026-11-26.json']).toContain(PRICE_TABLE_FILE);
     // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-20.json the new table is checked against the table it replaces
     const before = read('prices-2026-11-20.json'), now = read('prices-2026-11-21.json'); // pregate-literal: PRICE_TABLE_FILE=prices-2026-11-21.json this test reads its own historical table
     const { date: _was, rows: beforeRows, ...beforeHeader } = before;

@@ -97,3 +97,4 @@ Run folders with no row in docs/scoreboard/reports.json yet. A new folder lands 
 - [2026-11-20-h10-rule-placement-rerun](benchmarks/2026-11-20-h10-rule-placement-rerun/)
 - [2026-11-21-shared-brain-access](benchmarks/2026-11-21-shared-brain-access/)
 - [2026-11-22-always-on-week](benchmarks/2026-11-22-always-on-week/)
+- [2026-11-24-gbrain-first-wow](benchmarks/2026-11-24-gbrain-first-wow/)

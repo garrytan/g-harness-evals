@@ -1,0 +1,151 @@
+{
+  "schema": "harness-evals/scoreboard-entry@1",
+  "run_id": "frontier-shootout-2026-11-fresh",
+  "report": "docs/benchmarks/2026-11-16-frontier-shootout/README.md",
+  "role": "main",
+  "results_pr": "#619",
+  "claim_check": null,
+  "task_set": {
+    "id": "swe-rebench-2026-07-fresh",
+    "label": "107 SWE-rebench July 2026 tasks",
+    "split": "dev",
+    "public": true
+  },
+  "use_case": "codegen",
+  "tasks": {
+    "file": "results/analysis/analysis.json",
+    "path": "cells[id=swe-opus-pi].pass_rate.n"
+  },
+  "mdd": {
+    "file": "results/analysis/analysis.json",
+    "path": "per_harness[*].with_stops[*][?set=fresh][?model!=sonnet].smallest_detectable.at_alpha"
+  },
+  "mdd_holm": {
+    "file": "results/analysis/analysis.json",
+    "path": "per_harness[*].with_stops[*][?set=fresh][?model!=sonnet].smallest_detectable.at_first_holm_step"
+  },
+  "family": {
+    "file": "results/analysis/analysis.json",
+    "path": "per_harness[*].with_stops[*][?set=fresh][?model!=sonnet]",
+    "label": "preregistered per-harness readings, each model against Claude Opus 5.5 in the same harness, Holm-adjusted within each model",
+    "a": "swe-{model}-{harnesses[0]}",
+    "b": "swe-opus-{harnesses[0]}",
+    "between": "models",
+    "verdict_key": "label",
+    "words": {
+      "can't tell": "can't tell apart",
+      "behind": "behind",
+      "within 10 points, no measurable difference": "within 10 points"
+    }
+  },
+  "paired_cost": {
+    "trials": [
+      "results/shards/s05/trials.jsonl",
+      "results/shards/s15/trials.jsonl",
+      "results/shards/s16/trials.jsonl",
+      "results/shards/s27/trials.jsonl",
+      "results/shards/s32/trials.jsonl"
+    ],
+    "extra_usd": [
+      "frontier.first_run_usd",
+      "-frontier.first_run_usd_reserved"
+    ],
+    "analysis": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells"
+    },
+    "seed": {
+      "file": "results/analysis/analysis.json",
+      "path": "rules.seed"
+    },
+    "draws": {
+      "file": "results/analysis/analysis.json",
+      "path": "rules.draws"
+    }
+  },
+  "lead_note": "Each model is compared only with Claude Opus 5.5 in Pi, the one harness on this set; each cell is 2 tries at each of 107 GitHub issues from July 2026.",
+  "fields": {
+    "passes": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].passes"
+    },
+    "scored": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].scored"
+    },
+    "pass_rate": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].pass_rate.estimate"
+    },
+    "pass_ci95": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].pass_rate.ci95"
+    },
+    "usd_per_solved": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].cost.per_solve.usd"
+    },
+    "usd_per_solved_ci95": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].cost.per_solve.ci95"
+    },
+    "usd_per_trial": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].cost.usd",
+      "per": {
+        "file": "results/analysis/analysis.json",
+        "path": "cells[id={cell}].recorded"
+      }
+    },
+    "wall_median_s": {
+      "file": "results/analysis/analysis.json",
+      "path": "cells[id={cell}].wall_minutes_median",
+      "scale": 60
+    }
+  },
+  "cells": [
+    {
+      "id": "swe-carbon-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Gemini 4 Carbon"
+    },
+    {
+      "id": "swe-opus-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Claude Opus 5.5"
+    },
+    {
+      "id": "swe-fable-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Claude Fable 5.2"
+    },
+    {
+      "id": "swe-grok-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Grok 4.7"
+    },
+    {
+      "id": "swe-muse-pi",
+      "harness": "Pi",
+      "version": "1.5.0",
+      "model": "Muse Wonder"
+    }
+  ],
+  "caveats": [
+    "Public tasks: the 107 SWE-rebench July 2026 issues that fable-diagnosis-2026-11 counted, so a result here is not a held-out confirmation.",
+    "Settings: every model ran at its maker's high effort.",
+    "Trials ran 4 at a time per VM, so time per trial is contended. Median time per trial is the analysis's median in minutes, rounded to a tenth of a minute, shown here in seconds.",
+    "\"Within 10 points\" here is the run's \"within 10 points, no measurable difference\": the non-inferiority test at a 10-point margin passed and the difference test found no gap.",
+    "A provider safety-filter stop counts as a fail; no trial on this set had one.",
+    "Gemini 4 Carbon's list price doubles from 2026-12-01, which doubles its cost per solved task; the analysis gives its figure at the new rate.",
+    "GPT-6 Astra did not run on this set.",
+    "Every cell is a plain harness: no gstack, no gbrain.",
+    "Cost per solved task is the cell's recorded spend at list price through our metering proxy (reservation charges for streams that never finished left out, the first run of a rerun added back), divided by its scored passes. Cost per trial divides the same spend by the cell's recorded trials.",
+    "Calls come only from the run's preregistered comparisons; rows are in the run's own order, which is not a ranking."
+  ],
+  "disclosures": []
+}

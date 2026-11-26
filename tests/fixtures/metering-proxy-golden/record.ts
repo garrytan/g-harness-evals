@@ -3,6 +3,8 @@
 // re-recording it from origin/main at 3cf4fde1 (after internal-task's ablation proxy, #188) gives the same file. Re-recorded from origin/main
 // at 205c1432 (after #293's usage-line schema v1 adds cache_write_tokens, cache_write_1h_tokens and reasoning_tokens to forwarded lines).
 // Re-recorded by the change that marks a call whose usage is unknown: the lost-connection line gains usage_unknown and reported_usd; the ledger is unchanged.
+// Re-recorded by amendment 2 of frontier-shootout-2026-11 (rulings B and C): a forwarded line gains finish_reason and a non-2xx one error_body; with those
+// two fields taken out every line is byte for byte the earlier file's, and the ledger is unchanged.
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

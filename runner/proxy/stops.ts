@@ -52,3 +52,35 @@ export function safetyStop(response: unknown): { safety_stop?: string } {
   } catch { /* a stop is recorded only when it can be read */ }
   return {};
 }
+
+/** The finish reason one answer object reports, as its provider spells it, or undefined. */
+function finishIn(o: unknown): string | undefined {
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return undefined;
+  const r = o as Record<string, any>;
+  const candidate = (Array.isArray(r.candidates) ? r.candidates : []).map((c: any) => c?.finishReason).find((f: unknown) => typeof f === 'string');
+  if (candidate) return candidate;
+  const choice = (Array.isArray(r.choices) ? r.choices : []).map((c: any) => c?.finish_reason).find((f: unknown) => typeof f === 'string');
+  if (choice) return choice;
+  const stop = r.delta?.stop_reason ?? r.stop_reason ?? r.message?.stop_reason;
+  if (typeof stop === 'string') return stop;
+  const response = r.response && typeof r.response === 'object' ? r.response : r.object === 'response' ? r : null;
+  if (response && typeof response.status === 'string' && response.status !== 'in_progress' && response.status !== 'queued') {
+    return typeof response.incomplete_details?.reason === 'string' ? response.status + ':' + response.incomplete_details.reason : response.status;
+  }
+  return undefined;
+}
+
+const FINISH = /^[A-Za-z0-9_.:-]{1,64}$/;
+/** Amendment 2 of frontier-shootout-2026-11, ruling B: the finish reason an answer reports, so a cut at the output cap shows
+ *  (MAX_TOKENS, length, max_tokens, incomplete:max_output_tokens). `response` is the parsed body (a Gemini JSON array
+ *  included) or a stream's text, whose last reported reason wins. Record only; never throws. */
+export function finishReason(response: unknown): { finish_reason?: string } {
+  try {
+    const objects = typeof response === 'string'
+      ? response.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => { try { return JSON.parse(l.slice(5).trim()); } catch { return null; } })
+      : Array.isArray(response) ? response : [response];
+    let last: string | undefined;
+    for (const o of objects) last = finishIn(o) ?? last;
+    return last !== undefined && FINISH.test(last) ? { finish_reason: last } : {};
+  } catch { return {}; }
+}

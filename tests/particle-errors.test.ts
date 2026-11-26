@@ -51,11 +51,15 @@ async function oneLine(status: number, body: unknown, provider = 'particle', mod
   } finally { t.proxy.stop(); }
 }
 
-describe('the proxy logs a non-2xx Particle answer\'s status and error code, and nothing else from it', () => {
-  test('a 400 invalid_value carries status, error_code and error_type; the message and param stay out of the line', async () => {
-    const line = await oneLine(400, { error: { message: MESSAGE, type: 'invalid_request_error', param: 'reasoning_effort', code: 'invalid_value' } });
+// Amendment 2 of frontier-shootout-2026-11, ruling C: the error body of every non-2xx answer is logged too, in error_body (or
+// error_text when it is not JSON), so the message and param now reach the line there and nowhere else.
+describe('the proxy logs a non-2xx Particle answer\'s status and error code, and its body only in error_body', () => {
+  test('a 400 invalid_value carries status, error_code and error_type; the message and param stay inside error_body', async () => {
+    const body = { error: { message: MESSAGE, type: 'invalid_request_error', param: 'reasoning_effort', code: 'invalid_value' } };
+    const line = await oneLine(400, body);
     expect(line).toMatchObject({ provider: 'particle', outcome: 'forwarded', status: 400, error_code: 'invalid_value', error_type: 'invalid_request_error', actual_usd: 0 });
-    expect(JSON.stringify(line)).not.toContain('Invalid value');
+    expect(line.error_body).toEqual(body);
+    expect(JSON.stringify({ ...line, error_body: null })).not.toContain('Invalid value');
     expect(Object.keys(line)).not.toContain('param');
     expect(Object.keys(line)).not.toContain('message');
   });
@@ -77,11 +81,12 @@ describe('the proxy logs a non-2xx Particle answer\'s status and error code, and
     const html = await oneLine(400, '<html>Bad Request</html>');
     expect(html.status).toBe(400);
     expect('error_code' in html).toBe(false);
+    expect(html.error_text).toBe('<html>Bad Request</html>');
     const prose = await oneLine(400, { error: { message: MESSAGE, type: 'invalid request error', code: MESSAGE } });
     expect(prose.status).toBe(400);
     expect('error_code' in prose).toBe(false);
     expect('error_type' in prose).toBe(false);
-    expect(JSON.stringify(prose)).not.toContain('Invalid value');
+    expect(JSON.stringify({ ...prose, error_body: null })).not.toContain('Invalid value');
   });
 
   test('a 200 carries no error fields', async () => {
@@ -106,7 +111,8 @@ describe('the proxy logs a non-2xx Particle answer\'s status and error code, and
       await proxy.finalize('trial-token:p');
       const [line] = readFileSync(usageLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as UsageLine);
       expect(line).toMatchObject({ status: 400, streamed: true, error_code: 'invalid_value', error_type: 'invalid_request_error' });
-      expect(JSON.stringify(line)).not.toContain('Invalid value');
+      expect(line!.error_body).toEqual({ error: { message: MESSAGE, type: 'invalid_request_error', code: 'invalid_value' } });
+      expect(JSON.stringify({ ...line, error_body: null })).not.toContain('Invalid value');
     } finally { proxy.stop(); }
   });
 

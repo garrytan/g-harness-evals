@@ -376,7 +376,11 @@ describe('provider error answers through the proxy', () => {
   test('the usage log never carries a key, a trial token, a prompt or a reply', () => {
     const log = readFileSync(proxy.usageLog, 'utf8');
     expect(log.length).toBeGreaterThan(0);
-    for (const s of ['placeholder-', 'tok-', PROMPT, REPLY, 'Overloaded', 'Bad Gateway']) expect(log).not.toContain(s);
+    for (const s of ['placeholder-', 'tok-', PROMPT, REPLY]) expect(log).not.toContain(s);
+    // Amendment 2 of frontier-shootout-2026-11, ruling C: a non-2xx answer's error body is logged, so its message is there.
+    const lines = log.trim().split('\n').map((l) => JSON.parse(l) as UsageLine);
+    expect(lines.find((l) => l.status === 529)?.error_body).toEqual({ type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } });
+    expect(lines.find((l) => l.status === 502 && l.outcome === 'forwarded')?.error_text).toBe('<html><body>502 Bad Gateway</body></html>');
   });
 });
 

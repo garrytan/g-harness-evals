@@ -17,8 +17,9 @@
 #      OpenRouter route, DeepSeek Harness (dsh) on Opus 5.5, GPT-6.1 Sol, Particle-1 and DeepSeek-V4.1-Flash-1017, Gemini CLI
 #      on Gemini 4 Carbon through the proxy's google route, Grok Build, Pi, Hermes and OpenClaw on Grok 4.7 through its xai
 #      route (xAI's Responses API), Muse Code on Muse Wonder through its OpenRouter Responses route, Pi, OpenClaw and
-#      Hermes on Gemini 4 Carbon and Muse Wonder and Pi and OpenClaw on Gemini 4 Hydrogen and GLM 5.3 through its OpenRouter
-#      route, Gemini pinned to Google AI Studio's standard endpoint and GLM to Baidu's fp8 one, each at the standard tier),
+#      Hermes on Gemini 4 Carbon and Pi and OpenClaw on Gemini 4 Hydrogen through the proxy's google route (amendment 2 of
+#      frontier-shootout-2026-11), and Pi, OpenClaw and Hermes on Muse Wonder and Pi and OpenClaw on GLM 5.3 through its
+#      OpenRouter route, GLM pinned to Baidu's fp8 endpoint at the standard tier),
 #      one task each, uncounted, fake
 #      upstream: every class must install its pinned version, bind its slot, reach the fake model through the proxy and
 #      finish its trial. On the OpenRouter route the fake answers with one tool call and refuses a tool-call turn replayed
@@ -30,6 +31,9 @@
 #      signature with no reasoning text). Any other verdict fails the cell and is named under "reasons". The xai route's
 #      fake answers each harness's shell tool with a call after a reasoning item carrying encrypted_content, and an xAI
 #      cell is held to the same rule: it passes only when that encrypted reasoning came back on every replayed turn.
+#      The google route's fake answers the first declared function with a call carrying a thoughtSignature and refuses a
+#      function call replayed without one with Gemini's 400, and a Gemini API cell (Gemini CLI, and since amendment 2 of
+#      frontier-shootout-2026-11 Hermes, OpenClaw and Pi on Carbon and Hydrogen) is held to the same rule on that signature.
 #   1b. zero data retention: zdr-check.ts reads the agents' captures. The fake upstream answers a Responses request that
 #      declares a function or custom tool (in a namespace too, as Codex does) with one call of it and refuses one chained
 #      on previous_response_id with OpenAI's zero-data-retention 400, so every OpenAI cell of Codex, Hermes, OpenClaw, Pi and dsh must have sent a tool-output
@@ -180,7 +184,7 @@ def replay_seen(a):
 def replay_declared(a):
     return ((pin["models"].get(a.get("model") or "") or {}).get("reasoning_replay") or {}).get(a.get("harness"), "replays")
 def replay_checked(a):
-    return str(a.get("model") or "").startswith(("openrouter:", "xai:"))
+    return str(a.get("model") or "").startswith(("openrouter:", "xai:", "google:"))
 def replayed(a):
     if not replay_checked(a):
         return True

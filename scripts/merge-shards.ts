@@ -34,6 +34,7 @@
 //                      shard but not in the manifest is a refusal
 //   trials/            each shard's trial directories; a cell directory present in two shards is a refusal
 //   <name>.ledger.sqlite, <name>.proxy.log, <name>.proxy-usage.ndjson, <name>.ablation.ndjson (prompt archaeology), <name>.run-summary.json, <name>.run.log,
+//   <name>.recovery.json (to-trials.ts recover's counts and spend, which analyze.ts reads for a recovered shard),
 //   <name>.reconcile*.json, <name>.leak-preflight-<scope>-<split>.json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.laneb/ (a Lane B
 //                      shard's Lane B run root: Harbor jobs, Lane B proxy sessions and ledger, docs/gstack-laneb.md), <name>.gbrain-install/ (the first shard's gbrain-install/ is also copied
 //                      under its own name), <name>.shard.json: each shard's own files under its name
@@ -94,7 +95,7 @@ export class MergeError extends Error {}
 
 const canonical = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
 export const SECRET_FILES = new Set(['token', 'token.tmp', 'tokens.json', 'ingest-tokens.json', 'tokens.json.tmp', 'ingest-tokens.json.tmp']);
-const PER_SHARD_FILES = ['ledger.sqlite', 'proxy.log', 'proxy-usage.ndjson', 'ablation.ndjson', 'run-summary.json', 'run.log', 'shard.json'];
+const PER_SHARD_FILES = ['ledger.sqlite', 'proxy.log', 'proxy-usage.ndjson', 'ablation.ndjson', 'run-summary.json', 'run.log', 'shard.json', 'recovery.json'];
 const perShard = (entry: string) => PER_SHARD_FILES.includes(entry) || /^reconcile.*\.json$/.test(entry) || /^(leak-)?preflight-/.test(entry) || entry === 'gbrain-install' || entry === 'laneb';
 
 /** A leak preflight record whose layout hashes read the shard's own copies of the files it hashed, with what differs between
