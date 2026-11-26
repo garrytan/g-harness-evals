@@ -198,6 +198,58 @@ test('a preregistration\'s pins.sha256 is declared content and left out of revie
   expect(POLICY.review_content_patterns).toContain('docs/benchmarks/*/pins.sha256');
 });
 
+// Value: protects=the gbrain access-leaks exclusion hides only JSON under that run's results/ (its generated
+// analysis tables, comparison JSON and leak preflight copies), so the run's top-level JSON, every preflight receipt, its
+// report, its Markdown tables and every other run's JSON still reach /ship's readers; fails_when=the pattern is widened
+// to other runs, to the run's top level or to preflight/, or matches Markdown; why_new=the results pull request's review diff was 5.6 MB, about 4.7 MB of it these JSON
+// files, over the 2 MB review ceiling, and bun run verify rebuilds the published numbers from the committed trial
+// records; seam=a throwaway git repository and git's own glob pathspecs; no_claim=the rebuild check itself.
+test("the gbrain access-leaks run's results JSON is left out of review, and its preflight receipts, top-level files, Markdown and other runs are still reviewed", () => {
+  const run = 'docs/benchmarks/2026-11-09-gbrain-access-leaks';
+  const kept = [
+    run + '/stand-in.json',
+    run + '/report-stand-in.md',
+    run + '/results/analysis/stand-in.md',
+    run + '/preflight/stand-in/notes.md',
+    run + '/preflight/prereg.json',
+    run + '/preflight/stand-in/gbrain-check/check.json',
+    run + '/preflight/stand-in/leak/stand-in.json',
+    run + '/prereg/stand-in.json',
+    'docs/benchmarks/2026-11-07-frontier-harness/results/analysis/stand-in.json',
+    'docs/benchmarks/2026-11-09-failure-mining/preflight/stand-in/check.json',
+  ];
+  const dropped = [
+    run + '/results/stand-in.json',
+    run + '/results/analysis/stand-in.json',
+    run + '/results/stand-in.leak-preflight-x.json',
+  ];
+  expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+});
+
+// Value: protects=the *-v2 dev task pattern, which replaces the company-v2 and personal-v2 entries, hides only dev task
+// JSON in sets whose name ends in -v2, so a future company-v20 or team-v2-beta set, heldout folders, v0.x sets and v3
+// sets stay reviewed, and company-v2-l5 and personal-v2x keep their own exact entries; fails_when=the pattern loses
+// its separator after -v2 or its dev/ anchor; why_new=the two entries became one to make room within gstack's 64-pattern
+// limit; seam=a throwaway git repository and git's own glob pathspecs; no_claim=which sets exist today.
+test('the *-v2 dev task pattern matches only dev task JSON in sets whose name ends in -v2', () => {
+  const kept = [
+    'tasks/multiuser/company-v20/dev/stand-in/spec.json',
+    'tasks/multiuser/team-v2-beta/dev/stand-in/spec.json',
+    'tasks/multiuser/v2/dev/stand-in/spec.json',
+    'tasks/multiuser/company-v3/dev/stand-in/spec.json',
+    'tasks/multiuser/v0.3/dev/stand-in/spec.json',
+    'tasks/multiuser/company-v2/heldout/stand-in/spec.json',
+    'tasks/multiuser/company-v2-l5/dev/stand-in/task.toml',
+  ];
+  const dropped = [
+    'tasks/multiuser/company-v2/dev/stand-in/spec.json',
+    'tasks/multiuser/personal-v2/dev/stand-in/oracle.json',
+    'tasks/multiuser/company-v2-l5/dev/stand-in/spec.json',
+    'tasks/multiuser/personal-v2x/dev/stand-in/spec.json',
+  ];
+  expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+});
+
 // Value: protects=gstack refuses a review_exclude_paths list longer than 64 patterns, and it reads the list from the base
 // branch, so one pattern too many on main stops every pull request's review; fails_when=a pattern is added past 64;
 // why_new=one merge took main to 65 patterns and no /ship could run; seam=the policy file itself; no_claim=gstack's own
