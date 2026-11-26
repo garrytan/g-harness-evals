@@ -893,6 +893,14 @@
       ],
       "pattern": "[A-Z][a-z]{5,9}(?=\")",
       "reason": "owner-identity gold files: each planted fact's token is a made-up pseudo-word from world/owner-identity/tokens.ts, not a credential"
+    },
+    {
+      "finding": "env.kv",
+      "paths": [
+        "scripts/frontier-harbor/vendor/nvm-v0.40.2/nvm.sh"
+      ],
+      "pattern": "\\$\\(nvm_echo \"\\$\\{key\\}\" \\| command sed 's\\/\\^\\[\\[:space:\\]\\]\\*\\/\\/;s\\/\\[\\[:space:\\]\\]\\*\\$\\/\\/'\\)\\s*$",
+      "reason": "nvm v0.40.2's own .nvmrc parser, vendored byte for byte for the frontier shootout's Pi cells: its line 568 trims whitespace from a key with nvm_echo and a sed expression, which reads as a secret-named assignment with a high-entropy value; it is not a credential. The pattern is that whole value, anchored where gstack-pregate puts the finding"
     }
   ]
 }
