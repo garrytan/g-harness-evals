@@ -101,6 +101,8 @@ export interface AskerObservation {
   write_source: string | null;
   returned: Record<LeakReadTool, string[]>;
   rows_outside: Array<{ slug: string; source_id: string }>;
+  /** gbrain refused this asker's list_pages with permission_denied, which counts as no rows. */
+  list_pages_refused?: boolean;
 }
 
 export interface LeakProblem { check: 'ingest' | 'grant' | 'own-returned' | 'other-absent' | 'served' | 'write-carry' | 'probe'; token: string; member: string; tool: string; fact: string; source: string; what: string }
@@ -220,15 +222,23 @@ function replyParts(result: Record<string, unknown> | null): { rest: string; hot
   return { rest: JSON.stringify({ ...result, _meta: otherMeta }), hot: JSON.stringify(brain_hot_memory ?? null), error: result.isError === true };
 }
 
-/** The rows of a list_pages reply (the JSON array in its text). */
-function pageRows(result: Record<string, unknown> | null): Array<{ slug: string; source_id: string }> {
-  const content = Array.isArray(result?.content) ? result!.content as Array<{ text?: unknown }> : [];
+/** The rows of a list_pages reply (the JSON array in its text). A missing reply, an error reply or one with no JSON array is not
+ *  a listing, so it fails the preflight instead of reading as an empty one (Amendment 1, 2026-11-22). The one exception is an
+ *  asker's permission_denied refusal when the caller passes refused: gbrain answered that it lists nothing for that token, so
+ *  it counts as no rows and the caller records the refusal. */
+export function pageRows(result: Record<string, unknown> | null, fail: (what: string) => Error, refused?: () => void): Array<{ slug: string; source_id: string }> {
+  if (!result) throw fail('gave no list_pages reply, so the listing is unverified');
+  if (result.isError === true && refused && /"code"[ ]*:[ ]*"permission_denied"/.test(replyText(result))) { refused(); return []; }
+  if (result.isError === true) throw fail(`answered list_pages with an error (${replyText(result).slice(0, 300)}), so the listing is unverified`);
+  const content = Array.isArray(result.content) ? result.content as Array<{ text?: unknown }> : [];
   for (const c of content) {
     if (typeof c.text !== 'string' || !c.text.trim().startsWith('[')) continue;
     try { return (JSON.parse(c.text) as Array<{ slug?: unknown; source_id?: unknown }>).map((r) => ({ slug: String(r.slug ?? ''), source_id: String(r.source_id ?? '') })); } catch { /* prose */ }
   }
-  return [];
+  throw fail('answered list_pages with no page listing, so the listing is unverified');
 }
+
+const replyText = (result: Record<string, unknown>) => (Array.isArray(result.content) ? (result.content as Array<{ text?: unknown }>).map((c) => String(c.text ?? '')).join(' ') : '');
 
 async function rpc(url: string, token: string, name: string, args: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   const res = await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
@@ -333,6 +343,8 @@ export async function runLeakPreflight(o: LeakPreflightOptions): Promise<{ recor
 async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ record: LeakPreflightRecord; secrets: string[] }> {
   const log = o.log ?? (() => undefined);
   const trialId = `leak-preflight-${o.arm}-${o.split}`;
+  const listFail = (code: string) => (what: string) => new RunnerError(code, `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`);
+  const carryRows = (r: Record<string, unknown> | null) => (r && r.isError !== true ? pageRows(r, listFail(LEAK_CODES.write_carry)) : []);
   const conversation = o.channelRemember === 'conversation';
   const sidecar: GbrainSidecar = await startGbrainSidecar({ trialId, trialSlug: `${trialId}-${process.pid}`, split: o.split, outDir: join(out, 'gbrain'), image: o.image, ...LEAK_PREFLIGHT_SIDECAR, scope: o.arm === 'open' ? 'open' : 'member-sources', ...(conversation ? { channelRemember: 'conversation' as const } : {}) });
   const commit = gbrainImageCommit(o.image);
@@ -368,7 +380,7 @@ async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ 
     const ingests = world.events.filter((e) => e.tool === 'gbrain.ingest');
     // Where each fact landed, read back under the unscoped token (recall returns source_id), and which page holds it.
     const direct = `${sidecar.url}/mcp`;
-    const allPages = await listPagesToEnd(async (offset) => { calls++; return pageRows(await rpc(direct, sidecar.token, 'list_pages', { limit: 100, offset, sort: 'slug' })) as unknown as Array<Record<string, unknown>>; }, (what) => new RunnerError(LEAK_CODES[o.arm], `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`)) as unknown as Array<{ slug: string; source_id: string }>;
+    const allPages = await listPagesToEnd(async (offset) => { calls++; return pageRows(await rpc(direct, sidecar.token, 'list_pages', { limit: 100, offset, sort: 'slug' }), listFail(LEAK_CODES[o.arm])) as unknown as Array<Record<string, unknown>>; }, listFail(LEAK_CODES[o.arm])) as unknown as Array<{ slug: string; source_id: string }>;
     const factSources = new Set(facts.map((f) => f.source));
     const candidatePages = allPages.filter((p) => factSources.has(p.source_id));
     const pageText = new Map<string, string>();
@@ -403,6 +415,7 @@ async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ 
     for (const asker of [...members, null]) {
       await world.setGbrainRequester(asker);
       const seen = Object.fromEntries(LEAK_READ_TOOLS.map((t) => [t, new Set<string>()])) as Record<LeakReadTool, Set<string>>;
+      let listRefused = false;
       for (const f of facts) {
         if (f.kind === 'correction-new') continue;
         scan(seen, 'search', await tap('search', { query: f.query, limit: 20 }));
@@ -415,10 +428,10 @@ async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ 
         if (!served.error && o.arm !== 'open') for (const f of facts) if (pages[f.id]?.slug === p.slug && pages[f.id]?.source_id === p.source_id) seen.get_page.add(f.id);
         scan(seen, 'get_page', r);
       }
-      const rows = await listPagesToEnd(async (offset) => { const r = await tap('list_pages', { limit: 100, offset, sort: 'slug' }); scan(seen, 'list_pages', r); return pageRows(r) as unknown as Array<Record<string, unknown>>; }, (what) => new RunnerError(LEAK_CODES[o.arm], `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`)) as unknown as Array<{ slug: string; source_id: string }>;
+      const rows = await listPagesToEnd(async (offset) => { const r = await tap('list_pages', { limit: 100, offset, sort: 'slug' }); scan(seen, 'list_pages', r); return pageRows(r, (what) => listFail(LEAK_CODES[o.arm])(`for asker ${asker ?? 'public-only'} ${what}`), () => { listRefused = true; }) as unknown as Array<Record<string, unknown>>; }, listFail(LEAK_CODES[o.arm])) as unknown as Array<{ slug: string; source_id: string }>;
       for (const f of facts) if (pages[f.id] && rows.some((r) => r.slug === pages[f.id]!.slug && r.source_id === pages[f.id]!.source_id)) seen.list_pages.add(f.id);
       const grant = grants[asker ?? 'public-only'] ?? [];
-      asked.push({ asker, token: tokenName(asker), write_source: o.arm === 'open' ? null : grantList.find((g) => g.member === (asker ?? 'public-only'))?.write ?? null, returned: Object.fromEntries(LEAK_READ_TOOLS.map((t) => [t, [...seen[t]].sort()])) as Record<LeakReadTool, string[]>, rows_outside: o.arm === 'open' ? [] : rows.filter((r) => !grant.includes(r.source_id)) });
+      asked.push({ asker, token: tokenName(asker), write_source: o.arm === 'open' ? null : grantList.find((g) => g.member === (asker ?? 'public-only'))?.write ?? null, returned: Object.fromEntries(LEAK_READ_TOOLS.map((t) => [t, [...seen[t]].sort()])) as Record<LeakReadTool, string[]>, rows_outside: o.arm === 'open' ? [] : rows.filter((r) => !grant.includes(r.source_id)), ...(listRefused ? { list_pages_refused: true } : {}) });
     }
     problems.push(...leakProblems(o.arm, facts, pages, grants, asked));
     // T8, rules arm: the writer's put_page and remember through the tap, read back by every asker.
@@ -450,7 +463,7 @@ async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ 
         if (!replyParts(got).error && reader !== writer) seen.get_page.add('t8-page');
         scan(seen, 'get_page', got, writes);
         if (carry.writes[0]!.source_id) scan(seen, 'get_page', await tap('get_page', { slug, source_id: carry.writes[0]!.source_id }), writes);
-        const rows = await listPagesToEnd(async (offset) => { const r = await tap('list_pages', { limit: 100, offset, sort: 'slug' }); scan(seen, 'list_pages', r, writes); return pageRows(r) as unknown as Array<Record<string, unknown>>; }, (what) => new RunnerError(LEAK_CODES.write_carry, `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`)) as unknown as Array<{ slug: string }>;
+        const rows = await listPagesToEnd(async (offset) => { const r = await tap('list_pages', { limit: 100, offset, sort: 'slug' }); scan(seen, 'list_pages', r, writes); return pageRows(r, (what) => listFail(LEAK_CODES.write_carry)(`for reader ${reader ?? 'public-only'} ${what}`), () => {}) as unknown as Array<Record<string, unknown>>; }, listFail(LEAK_CODES.write_carry)) as unknown as Array<{ slug: string }>;
         if (rows.some((r) => r.slug === slug)) seen.list_pages.add('t8-page');
         for (const w of writes) carry.reads.push({ reader: reader ?? 'public-only', token: tokenName(reader), write: w.id, tools: LEAK_READ_TOOLS.filter((t) => seen[t].has(w.id)) });
       }
@@ -472,7 +485,7 @@ async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ 
         const recalled = replyParts(await unscopedCall('recall', { query: w.query, question: w.query }, 'recall')).rest;
         const landedIn = new Set<string>();
         for (const m of recalled.matchAll(new RegExp(`${w.secret}[^{}]*?source_id\\\\?":\\\\?"([a-z0-9-]+)|source_id\\\\?":\\\\?"([a-z0-9-]+)[^{}]*?${w.secret}`, 'g'))) { const s = m[1] ?? m[2]; if (s) landedIn.add(s); }
-        const after = await listPagesToEnd(async (offset) => pageRows(await unscopedCall('list_pages', { limit: 100, offset, sort: 'slug' }, `list_pages offset ${offset}`)) as unknown as Array<Record<string, unknown>>, (what) => new RunnerError(LEAK_CODES.write_carry, `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`)) as unknown as Array<{ slug: string; source_id: string }>;
+        const after = await listPagesToEnd(async (offset) => carryRows(await unscopedCall('list_pages', { limit: 100, offset, sort: 'slug' }, `list_pages offset ${offset}`)) as unknown as Array<Record<string, unknown>>, (what) => new RunnerError(LEAK_CODES.write_carry, `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`)) as unknown as Array<{ slug: string; source_id: string }>;
         const holders: Array<{ slug: string; source_id: string }> = [];
         for (const p of after) if (replyParts(await unscopedCall('get_page', { slug: p.slug, source_id: p.source_id }, `get_page ${p.source_id}/${p.slug}`)).rest.includes(w.secret)) holders.push({ slug: p.slug, source_id: p.source_id });
         for (const p of holders) landedIn.add(p.source_id);
@@ -492,7 +505,7 @@ async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ 
           await ask('query', 'query', { query: w.query, limit: 20 });
           await ask('recall', 'recall', { query: w.query, question: w.query });
           for (const p of holders) if (!(await ask('get_page', 'get_page', { slug: p.slug, source_id: p.source_id })).parts.error) seen.get_page.add(w.id);
-          const rows = await listPagesToEnd(async (offset) => pageRows((await ask('list_pages', 'list_pages', { limit: 100, offset, sort: 'slug' })).r) as unknown as Array<Record<string, unknown>>, (what) => new RunnerError(LEAK_CODES.write_carry, `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`)) as unknown as Array<{ slug: string; source_id: string }>;
+          const rows = await listPagesToEnd(async (offset) => carryRows((await ask('list_pages', 'list_pages', { limit: 100, offset, sort: 'slug' })).r) as unknown as Array<Record<string, unknown>>, (what) => new RunnerError(LEAK_CODES.write_carry, `the member brain for ${o.split} in ${o.image} ${what}; ${LEAK_RECOVERY}`)) as unknown as Array<{ slug: string; source_id: string }>;
           if (holders.some((p) => rows.some((x) => x.slug === p.slug && x.source_id === p.source_id))) seen.list_pages.add(w.id);
           channelCarry.reads.push({ reader: reader ?? 'public-only', token: tokenName(reader), tools: LEAK_READ_TOOLS.filter((t) => seen[t].has(w.id)), inconclusive: [...inconclusive].sort() });
         }

@@ -76,6 +76,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { installerNotApplied, type TrialRecord } from '../runner/contracts.ts';
 import type { WorldEvent } from '../world/services/events.ts';
 import { seededRandom } from '../runner/stats/paired.ts';
@@ -185,8 +186,10 @@ const usd = (x: number) => `$${x.toFixed(2)}`;
 const eventsCache = new Map<string, WorldEvent[] | null>();
 const eventsOf = (t: TrialRecord): WorldEvent[] | null => {
   if (eventsCache.has(t.trial_id)) return eventsCache.get(t.trial_id)!;
-  const candidates = [join(results, 'trials', ...t.trial_id.split('/').slice(1), 'events.jsonl'), t.paths?.events ?? '', join(t.paths?.dir ?? '', 'events.jsonl')].filter((p) => p && existsSync(p));
-  const events = candidates.length ? readFileSync(candidates[0]!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorldEvent) : null;
+  const plain = [join(results, 'trials', ...t.trial_id.split('/').slice(1), 'events.jsonl'), t.paths?.events ?? '', join(t.paths?.dir ?? '', 'events.jsonl')].filter(Boolean);
+  const candidates = plain.flatMap((p) => [p, p + '.gz']).filter((p) => existsSync(p));
+  const read = (p: string) => (p.endsWith('.gz') ? gunzipSync(readFileSync(p)).toString('utf8') : readFileSync(p, 'utf8'));
+  const events = candidates.length ? read(candidates[0]!).split('\n').filter(Boolean).map((l) => JSON.parse(l) as WorldEvent) : null;
   eventsCache.set(t.trial_id, events);
   return events;
 };

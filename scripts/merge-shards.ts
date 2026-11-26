@@ -34,7 +34,7 @@
 //                      shard but not in the manifest is a refusal
 //   trials/            each shard's trial directories; a cell directory present in two shards is a refusal
 //   <name>.ledger.sqlite, <name>.proxy.log, <name>.proxy-usage.ndjson, <name>.ablation.ndjson (prompt archaeology), <name>.run-summary.json, <name>.run.log,
-//   <name>.reconcile*.json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.laneb/ (a Lane B
+//   <name>.reconcile*.json, <name>.leak-preflight-<scope>-<split>.json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.laneb/ (a Lane B
 //                      shard's Lane B run root: Harbor jobs, Lane B proxy sessions and ledger, docs/gstack-laneb.md), <name>.gbrain-install/ (the first shard's gbrain-install/ is also copied
 //                      under its own name), <name>.shard.json: each shard's own files under its name
 //   set-worlds.json    the shards' set-world pins (runner/run.ts SET_WORLDS_FILE), which must be identical; absent when no
@@ -80,6 +80,7 @@ import { sealedGuard } from '../runner/heldout/guard.ts';
 import { openingDiff, readJsonFile, readJsonLines, type OpeningReceipt } from '../runner/heldout/sealed.ts';
 import { insideGitTree } from './sealed/custody.ts';
 import { SET_WORLDS_FILE } from '../runner/run.ts';
+import { layoutProblem, type LeakPreflightRecord } from '../runner/trial/gbrain-leak-preflight.ts';
 
 export interface ShardInput { name: string; dir: string }
 export interface ShardInfo { name: string; machine: string | null; commit: string | null; images: unknown; source: string; trials: number; cells: string[] }
@@ -94,7 +95,22 @@ export class MergeError extends Error {}
 const canonical = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
 export const SECRET_FILES = new Set(['token', 'token.tmp', 'tokens.json', 'ingest-tokens.json', 'tokens.json.tmp', 'ingest-tokens.json.tmp']);
 const PER_SHARD_FILES = ['ledger.sqlite', 'proxy.log', 'proxy-usage.ndjson', 'ablation.ndjson', 'run-summary.json', 'run.log', 'shard.json'];
-const perShard = (entry: string) => PER_SHARD_FILES.includes(entry) || /^reconcile.*\.json$/.test(entry) || /^preflight-/.test(entry) || entry === 'gbrain-install' || entry === 'laneb';
+const perShard = (entry: string) => PER_SHARD_FILES.includes(entry) || /^reconcile.*\.json$/.test(entry) || /^(leak-)?preflight-/.test(entry) || entry === 'gbrain-install' || entry === 'laneb';
+
+/** A leak preflight record whose layout hashes read the shard's own copies of the files it hashed, with what differs between
+ *  two builds of one layout left out: the manifest without built_at and the import timings (duration_s), and the ingest
+ *  tokens by the sources they write to, not the token values. A record whose files the shard holds no copy of is refused. */
+function crossShardLayout(dir: string, record: LeakPreflightRecord, at: string): LeakPreflightRecord {
+  const sha = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
+  const copies = readdirSync(dir).filter((e) => /^preflight-/.test(e) && statSync(join(dir, e)).isDirectory());
+  const find = (file: string, hash: string) => copies.map((e) => join(dir, e, file)).find((p) => existsSync(p) && sha(readFileSync(p)) === hash);
+  const manifestPath = find('manifest.json', record.layout.manifest_sha256);
+  const tokensPath = find('ingest-tokens.json', record.layout.ingest_tokens_sha256);
+  if (!manifestPath || !tokensPath) throw new MergeError(`${at}: no preflight directory in its shard holds the ${manifestPath ? 'ingest-tokens.json' : 'manifest.json'} whose sha256 the record names, so its brain layout can't be compared with other shards`);
+  const stable = (v: unknown): unknown => Array.isArray(v) ? v.map(stable) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([k]) => k !== 'built_at' && k !== 'duration_s').map(([k, x]) => [k, stable(x)])) : v;
+  const tokens = readJsonFile<{ schema_version?: unknown; brain?: unknown; split?: unknown; sources?: Record<string, unknown> }>(tokensPath);
+  return { ...record, layout: { ...record.layout, manifest_sha256: sha(canonical(stable(readJsonFile<unknown>(manifestPath)))), ingest_tokens_sha256: sha(canonical({ schema_version: tokens.schema_version, brain: tokens.brain, split: tokens.split, sources: Object.keys(tokens.sources ?? {}).sort() })) } };
+}
 
 /** Plan the merge without writing: every refusal is raised here. */
 export interface MergeOptions { partial?: boolean; vmLost?: string[]; skippedByRule?: Array<{ cell: string; reason: string }>; cells?: string[]; amendments?: AmendedPlan[] }
@@ -233,6 +249,24 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   const pinFiles = shards.map((s) => join(s.dir, SET_WORLDS_FILE)).filter((f) => existsSync(f));
   const pins = pinFiles.map((f) => readFileSync(f, 'utf8'));
   if (pins.some((p) => p !== pins[0])) throw new MergeError(`${SET_WORLDS_FILE} differs between shards; every shard must run at the same commit`);
+  // Amendment 1 (2026-11-22): the leak preflight compares the open and rules arms only when one shard holds both, so the merge
+  // compares every shard's leak preflight records of a split against one another: one brain layout across the whole run.
+  // Each shard builds its own image and brain, so its manifest.json carries its own built_at and import timings and its
+  // ingest tokens are minted fresh: the record's hashes match only within one shard. Records from one shard are compared as
+  // they are; across shards each record is compared through its shard's own copies of the files it hashed (crossShardLayout).
+  const leak = shards.flatMap((s) => readdirSync(s.dir).filter((f) => /^leak-preflight-(open|member-sources)-[a-z]+\.json$/.test(f)).map((f) => {
+    const at = `${s.name}/${f}`;
+    const record = readJsonFile<LeakPreflightRecord>(join(s.dir, f));
+    return { at, shard: s.name, dir: s.dir, record };
+  }));
+  for (const split of new Set(leak.map((x) => x.record.split))) {
+    const same = leak.filter((x) => x.record.split === split);
+    const first = same.find((x) => x.record.arm === 'open') ?? same[0]!;
+    for (const x of same) {
+      const problem = x.shard === first.shard ? layoutProblem(first.record, x.record) : layoutProblem(crossShardLayout(first.dir, first.record, first.at), crossShardLayout(x.dir, x.record, x.at));
+      if (problem) throw new MergeError(`${problem} (${first.at} against ${x.at}): every shard's leak preflight of a split must record one brain layout`);
+    }
+  }
   if (pinFiles.length) copies.push({ from: pinFiles[0]!, to: join(out, SET_WORLDS_FILE) });
   const rows = plannedTrials.filter((t) => rowsById.has(t.id)).map((t) => rowsById.get(t.id)!);
   const unstarted = plannedTrials.filter((t) => !owner.has(t.id) && !skippedCells.includes(t.cell)).map((t) => ({ id: t.id, cell: t.cell }));

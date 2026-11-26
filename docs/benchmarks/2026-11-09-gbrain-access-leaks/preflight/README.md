@@ -10,7 +10,7 @@
 
 ## Pins
 
-- gbrain: stable tag `98dda48fb9fd339609d6d4eef009811280ff648d`, version 0.60.613.0, until 2026-11-21. Now v0.60.758.0 (via v0.60.754.0): see the plan change at the end.
+- gbrain: stable tag `98dda48fb9fd339609d6d4eef009811280ff648d`, version 0.60.613.0, until 2026-11-21. Now v0.60.764.0 (via v0.60.754.0 and v0.60.758.0): see the plan changes at the end.
 - Image: `harness-eval/gbrain:stable-98dda48fb9fd`, id `sha256:23a3436069e4d33225963e19287886754481f4ed1766f21f70312ee2aa5861f5`, built with `scripts/build-gbrain-image.sh --gbrain 98dda48fb9fd339609d6d4eef009811280ff648d --tag harness-eval/gbrain:stable-98dda48fb9fd`.
 - [prereg.json](prereg.json): the pins and the three arms (none, open, rules) on one dev task, so `runner/run.ts plan` and `preflight` can exercise them. It names `gbrain_commit` and `"gbrain_surface_tools": {"starter": 34}`. It is not the counted run's preregistration, which comes in its own pull request with the task sets.
 - gbrain/pin.json is unchanged.
@@ -70,6 +70,17 @@ Scratch brain in the same image, members alice and bob. The probes judge outcome
 - **The open arm differs here.** It uses one bot token, so the agent's saves are readable by every asker. That is part of the leak path the open arm measures, and the leak tags count those saves under the `agent_written` origin.
 - **gbrain's channel-remember routing is off in these cells.** That change sends a member's channel `remember` under the channel source's ingest token. The rules cells set its cell field, `channel_remember: "member"`, to keep member-token writes, so T8 and the `agent_written` tags measure the documented shape.
 - **Why this note exists.** An earlier audit found head-to-head cells where the model said its saved fact "came back empty" for a second member. That was this same behavior, with ingestion off.
+
+## Plan change: gbrain v0.60.764.0 (2026-11-22, R100, Amendment 1)
+
+Six gbrain releases landed on master after the preregistration froze and before any counted trial, so the run moves to the newest one by the preregistration's Amendment 1, and these checks reran with the amended leak preflight.
+
+- **New pin:** gbrain `b6d0a1dba7455011da957208e2697971d897d204`, v0.60.764.0, the newest release on gbrain's master when both checks passed on 2026-11-22.
+- **Image:** `harness-eval/gbrain:check-b6d0a1dba745`, id `sha256:8825c9a3c2ec0f05dab7b5c274e3f4a880f1255993e4f2e69bcd5b0d9c812c09`, built by `scripts/gbrain-check.ts --gbrain b6d0a1dba7455011da957208e2697971d897d204 --harness fake`.
+- **Keyless gbrain check:** 37 passed, 0 failed, 0 pin diffs. The starter surface still lists 34 tools, and the scoped check returns the same 3,140 rows with 0 outside the grant. [v0.60.764.0/gbrain-check/](v0.60.764.0/gbrain-check/gbrain-check.out)
+- **Leak preflight, dev:** both arms pass with 0 problems, the same counts and write-carry probe outcomes as v0.60.758.0 (open: 22 facts, 16 askers, 1,394 calls; rules: 22 facts, 16 askers, 1,540 calls). Only the image, the manifest digest and the ingest-token digest differ. [v0.60.764.0/leak/](v0.60.764.0/leak/leak-preflight-dev.md)
+- **public-only's listing is a refusal.** In the rules arm gbrain answers public-only's `list_pages` with `permission_denied` (its token holds no source). It did the same at v0.60.758.0; the old preflight read the refusal as an empty listing. The amended preflight counts a `permission_denied` refusal as no rows and marks it "(list_pages refused)" in the table; any other error still fails it.
+- **What changed that could touch this run:** a put that names no source no longer writes a second copy of a page that lives in another source (v0.60.759.0); a brain shared with members keeps a read log (v0.60.762.0); search's alias hop and get_page's error hint changed (v0.60.764.0). The gbrain docs views and the Hermes installer view changed too, but this run's cells use the starter surface over MCP with no installer or docs route.
 
 ## Plan change: gbrain v0.60.758.0 (2026-11-21, R100)
 

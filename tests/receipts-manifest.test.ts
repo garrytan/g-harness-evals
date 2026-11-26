@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { Database } from 'bun:sqlite';
 import { REPORT_ELSEWHERE, buildManifest, compareManifests, ledgerSpend, readLedger, renderManifest } from '../scripts/receipts-manifest.ts';
 
@@ -103,6 +104,21 @@ describe('receipts manifest', () => {
     populate(dir);
     expect(ledgerSpend(readFileSync(join(dir, RUN, 'results', 'ledger.sqlite')))).toEqual({ committed_usd: 0.75, settled_usd: 0.5, open_reservations_usd: 0.25, leases: [{ run_id: 'unit-2026-01', budget_usd: 2, committed_usd: 0.75, overshoot_usd: 0 }] });
     expect(() => ledgerSpend(readFileSync(join(dir, RUN, 'results', 'broken.sqlite')))).toThrow();
+  });
+
+  test('a gzipped ledger and usage log are listed under their own names and read the same as plain ones', () => {
+    const dir = repo();
+    populate(dir);
+    const results = join(dir, RUN, 'results');
+    const plain = readFileSync(join(results, 'ledger.sqlite'));
+    const before = buildManifest(dir).runs.find((r) => r.directory === RUN)!.ledgers.find((l) => l.path.endsWith('/ledger.sqlite'))!;
+    writeFileSync(join(results, 'shard.ledger.sqlite.gz'), gzipSync(plain));
+    writeFileSync(join(results, 'shard.proxy-usage.ndjson.gz'), gzipSync('{}\n'));
+    expect(ledgerSpend(gzipSync(plain))).toEqual(ledgerSpend(plain));
+    const run = buildManifest(dir).runs.find((r) => r.directory === RUN)!;
+    const gz = run.ledgers.find((l) => l.path.endsWith('/shard.ledger.sqlite.gz'))!;
+    expect({ requests: gz.requests, leases: gz.leases }).toEqual({ requests: before.requests, leases: before.leases });
+    expect(run.proxy_usage_logs.map((p) => p.path)).toContain(RUN + '/results/shard.proxy-usage.ndjson.gz');
   });
 
   test('a private-by-hash run lists the artifacts its results attestation names, and its row has no ledger or usage log', () => {

@@ -23,7 +23,8 @@
 // path (the run's own report.md, else the report REPORT_ELSEWHERE names for it), results/UNCOUNTED.md under uncounted when
 // the run marks itself uncounted, the preregistration with the commit that added it and every later commit that touched it (the amendments, with
 // their committer dates and subjects), the trial count and the count per cell, the sha256 of trials.jsonl, every
-// *.sqlite ledger under results/ with its sha256, request count and leases, every proxy-usage*.ndjson with its sha256,
+// *.sqlite ledger under results/ (plain or gzipped) with its sha256, request count and leases, every proxy-usage*.ndjson
+// (plain or gzipped) with its sha256,
 // and whether summary.json and taxonomy.json sit beside the record. The manifest carries no spend: ledgerSpend below is the one
 // spend query, which the private program ledger (private/spend/budget-ledger.ts) runs on the ledgers themselves.
 //
@@ -62,6 +63,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { Database } from 'bun:sqlite';
 import { deriveSet, registeredHeldout } from '../runner/heldout/openings.ts';
 import { loadManifest } from '../runner/prereg/prereg.ts';
@@ -178,7 +180,7 @@ export function preregistrationHistory(root: string, relPath: string): { first_c
  *  mode before deserializing, because a committed ledger still marked WAL would otherwise make every read-only open drop
  *  -shm and -wal files into the receipts tree; nothing on disk is touched. */
 function withLedger<T>(bytes: Buffer, read: (db: Database) => T): T {
-  const copy = Buffer.from(bytes);
+  const copy = Buffer.from(bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes) : bytes);
   if (copy.length >= 20) { copy[18] = 1; copy[19] = 1; }
   const db = Database.deserialize(copy, { readonly: true });
   try { return read(db); } finally { db.close(); }
@@ -296,8 +298,8 @@ export function buildRun(root: string, directory: string, inRun: string[] = walk
   const files = inRun.filter((f) => f.startsWith(results + '/'));
   const rel = (p: string) => relative(root, p).split('\\').join('/');
   const others = inRun.filter((f) => isTrials(f) && f !== trialsPath && !parts.includes(f)).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));
-  const ledgers = files.filter((f) => f.endsWith('.sqlite')).map((f) => { const bytes = readFileSync(f); return { path: rel(f), sha256: sha256(bytes), ...readLedger(f, bytes) }; });
-  const proxyLogs = files.filter((f) => /(^|[./-])proxy-usage([.-][^/]*)?\.ndjson$/.test(f.slice(f.lastIndexOf('/') + 1))).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));
+  const ledgers = files.filter((f) => /\.sqlite(\.gz)?$/.test(f)).map((f) => { const bytes = readFileSync(f); return { path: rel(f), sha256: sha256(bytes), ...readLedger(f, bytes) }; });
+  const proxyLogs = files.filter((f) => /(^|[./-])proxy-usage([.-][^/]*)?\.ndjson(\.gz)?$/.test(f.slice(f.lastIndexOf('/') + 1))).map((f) => ({ path: rel(f), sha256: sha256(readFileSync(f)) }));
 
   const attested = privateArtifacts(results);
   const prereg = join(dir, 'PREREGISTRATION.md');

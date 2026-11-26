@@ -1,0 +1,110 @@
+{
+  "run": "2026-11-09-gbrain-access-leaks",
+  "about": "gbrain-access-leaks-2026-11: gbrain's value (rules against no brain on the expiry-on twins) and its leaks (open against rules, rules against no brain with a 3-point margin) over six harness and model setups, from the stored evidence of every scored trial: the run summary, the gbrain pairs with the leak tags, the headroom table, the preregistered endpoints, the unmapped records and their mapping, and the negation and filler checks.",
+  "steps": [
+    {
+      "cmd": [
+        "bun",
+        "scripts/summarize-run.ts",
+        "--results",
+        "{run}/results",
+        "--leak-tags"
+      ],
+      "outputs": [
+        "results/summary.json"
+      ],
+      "stdout": {
+        "file": "results/analysis/summary.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/compare-run.ts",
+        "--results",
+        "{run}/results",
+        "--pair",
+        "gbrain",
+        "--leak-tags"
+      ],
+      "outputs": [
+        "results/comparisons.gbrain.json"
+      ],
+      "stdout": {
+        "file": "results/analysis/comparisons.gbrain.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "scripts/paired-mdd.ts",
+        "--results",
+        "{run}/results"
+      ],
+      "stdout": {
+        "file": "results/analysis/headroom.md"
+      }
+    },
+    {
+      "cmd": [
+        "bun",
+        "docs/benchmarks/2026-11-09-gbrain-access-leaks/analysis/endpoints.ts",
+        "--results",
+        "{run}/results",
+        "--out",
+        "{run}/results/analysis/endpoints.json"
+      ],
+      "outputs": [
+        "results/analysis/endpoints.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "docs/benchmarks/2026-11-09-gbrain-access-leaks/analysis/unmapped.ts",
+        "--results",
+        "{run}/results",
+        "--out",
+        "{run}/results/analysis/unmapped.json"
+      ],
+      "outputs": [
+        "results/analysis/unmapped.json"
+      ]
+    },
+    {
+      "cmd": [
+        "bun",
+        "docs/benchmarks/2026-11-09-gbrain-access-leaks/analysis/map-unmapped.ts",
+        "--results",
+        "{run}/results",
+        "--out",
+        "{run}/results/analysis/map-unmapped.json"
+      ],
+      "outputs": [
+        "results/analysis/map-unmapped.json"
+      ]
+    },
+    {
+      "cmd": [
+        "python3",
+        "docs/benchmarks/2026-11-09-gbrain-access-leaks/analysis/negation-flags.py",
+        "{run}/results",
+        "{run}/results/analysis/negation-flags.json"
+      ],
+      "outputs": [
+        "results/analysis/negation-flags.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged trial list and per-shard receipts (results/trials.jsonl, manifest.json, shards.json and each shard's manifest, run summary, ledger, proxy usage, run log and leak preflight record)",
+      "reason": "They were written by the run itself and merged from each VM's results with scripts/merge-shards.ts; verify uses them as the run's receipts."
+    },
+    {
+      "what": "The content check of the harness transcripts",
+      "file": "results/analysis/content-check.json",
+      "reason": "It reads each turn's harness transcript (logs/turns), which stays in the private raw archive because it carries the harness vendors' own system prompts; analysis/content-check.ts rebuilds it from that archive."
+    }
+  ]
+}

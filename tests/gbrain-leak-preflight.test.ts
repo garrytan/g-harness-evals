@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
 import { conversationSources, tokenMembers } from '../gbrain/build-brain.ts';
 import { leakCellLayoutProblem, loadPrereg, buildManifest, resolveGbrain, type Cell, type Prereg } from '../runner/run.ts';
 import { containerScope, sidecarLayout } from '../runner/trial/gbrain.ts';
-import { LEAK_CODES, LEAK_PREFLIGHT_SIDECAR, LEAK_RECOVERY, channelCarryProblems, layoutProblem, leakLayout, leakMessage, leakProblems, leakRecordName, leakRecordProblem, leakScript, runLeakPreflight, writeCarryProblems, writeLeakRecord, type AskerObservation, type ChannelCarry, type LeakPreflightRecord, type WriteCarry } from '../runner/trial/gbrain-leak-preflight.ts';
+import { LEAK_CODES, LEAK_PREFLIGHT_SIDECAR, LEAK_RECOVERY, channelCarryProblems, layoutProblem, leakLayout, leakMessage, leakProblems, leakRecordName, leakRecordProblem, leakScript, pageRows, runLeakPreflight, writeCarryProblems, writeLeakRecord, type AskerObservation, type ChannelCarry, type LeakPreflightRecord, type WriteCarry } from '../runner/trial/gbrain-leak-preflight.ts';
 import { gbrainUpstream } from '../runner/trial/trial.ts';
 import { grantFor } from '../world/services/gbrain-tap.ts';
 import { world } from './world-helpers.ts';
@@ -274,4 +274,24 @@ describe.skipIf(!haveImage)(`the leak preflight on ${IMAGE ?? '(HE_GBRAIN_IMAGE 
     expect(c.reads.filter((r) => c.readers.includes(r.reader)).every((r) => r.tools.includes('search'))).toBe(true);
     expect(c.reads.filter((r) => !c.readers.includes(r.reader)).every((r) => r.tools.length === 0)).toBe(true);
   }, 1_800_000);
+});
+
+
+describe('Amendment 1 (2026-11-22): an unverified page listing fails the preflight', () => {
+  test('a missing reply, an error reply or a reply with no JSON array throws; an empty array is a real empty listing', () => {
+    const fail = (what: string) => new Error(what);
+    expect(() => pageRows(null, fail)).toThrow(/gave no list_pages reply/);
+    expect(() => pageRows({ isError: true, content: [{ type: 'text', text: '[]' }] }, fail)).toThrow(/answered list_pages with an error/);
+    expect(() => pageRows({ content: [{ type: 'text', text: 'no pages for you' }] }, fail)).toThrow(/no page listing/);
+    expect(() => pageRows({ content: [{ type: 'text', text: '[not json' }] }, fail)).toThrow(/no page listing/);
+    expect(pageRows({ content: [{ type: 'text', text: '[]' }] }, fail)).toEqual([]);
+    const denied = { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: 'permission_denied', code: 'permission_denied', message: 'Requested source is outside your granted sources' }) }] };
+    let refusals = 0;
+    expect(pageRows(denied, fail, () => { refusals++; })).toEqual([]);
+    expect(refusals).toBe(1);
+    expect(() => pageRows(denied, fail)).toThrow(/answered list_pages with an error \(.*permission_denied/);
+    expect(() => pageRows({ isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'internal_error' }) }] }, fail, () => { refusals++; })).toThrow(/answered list_pages with an error/);
+    expect(refusals).toBe(1);
+    expect(pageRows({ content: [{ type: 'text', text: JSON.stringify([{ slug: 'notes/a', source_id: 'private-dana' }]) }] }, fail)).toEqual([{ slug: 'notes/a', source_id: 'private-dana' }]);
+  });
 });

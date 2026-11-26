@@ -308,9 +308,9 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         }
       }
       else if (p.run_id === 'gbrain-access-leaks-2026-11') {
-        // internal-task: gbrain's value and access rules on gbrain 88610870 (v0.60.758.0). Six rows, network internal; none, open (one bot token, scope open) and rules
+        // internal-task: gbrain's value and access rules on gbrain b6d0a1db (v0.60.764.0, Amendment 1; frozen at 88610870, v0.60.758.0). Six rows, network internal; none, open (one bot token, scope open) and rules
         // (member-bound tokens under whole-source rules, channel remembers to the member) on company-v2-l5 and personal-v2 L5, none and rules on the personal-v2x twins.
-        expect(p.gbrain_commit).toBe('886108700bba0fcd3e597320e23a17a8c1d27319'); expect(p.spend_cap_usd).toBe(2400); expect(p.cells).toHaveLength(48);
+        expect(p.gbrain_commit).toBe('b6d0a1dba7455011da957208e2697971d897d204'); expect(p.spend_cap_usd).toBe(2400); expect(p.cells).toHaveLength(48);
         expect(p.cells.reduce((n, x) => n + x.tasks!.length * x.repetitions, 0)).toBe(2880);
         expect(['company-v2-l5', 'personal-v2', 'personal-v2x']).toContain(c.task_set!); expect(c.network).toBe('internal');
         if (!c.gbrain) { expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.md'); continue; }

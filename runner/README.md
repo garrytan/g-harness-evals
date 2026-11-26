@@ -171,6 +171,10 @@ A `gbrain-install` cell asks a freshly set-up harness to install gbrain, then ch
 
 The trial directory listing names `saw-skill.json`, which a skill-requests trial now writes before the request scrub and keeps through it: the catalog skills its captured requests listed with a description or by name only, the ones a gbrain resolver block named (`resolver`), and how many requests carried a closed resolver block naming a catalog skill (`block_requests`). A skill-arm cell can also set `rung`, the catalog's skill count, which the runner passes to the manifest without reading it (HE-PREREG-007 when it is not a positive whole number or sits on a cell with no `skill_arm`). Why: the skills-at-scale analysis reads it for "saw the right skill", and nothing wrote it, so that outcome had no value for any trial.
 
+### 2026-11-22: bounded harness memory snapshots (internal-task)
+
+The harness memory paragraph gives the snapshot bounds. Why: a large memory tree had no bound and could stall the runner or fill its disk.
+
 ### 2026-11-21: the 2026-11-21 price table (internal-task)
 
 "Price table" names `prices-2026-11-21.json`, which adds GPT-6.2 Astra's Standard rates. The metering proxy uses the same short- and long-prompt rates.
@@ -232,7 +236,7 @@ The OpenRouter bullet under "Vendored pieces": the proxy's `openrouter` provider
 
 ### 2026-11-08: harness memory snapshots (internal-task)
 
-The results tree lists `harness-memory/`. Hermes and OpenClaw each keep one memory every member's conversation shares, so the leak eval needs to know what that memory held before each reply. The runner copies their Markdown memory files (`state/hermes/memories/`, and `workspace/MEMORY.md` and `workspace/memory/`) on the host from the trial's own bind mounts, before the first turn and after each turn, with no adapter change ([runner/trial/harness-memory.ts](trial/harness-memory.ts)). Scripted trials and every other harness get none.
+The results tree lists `harness-memory/`. Hermes and OpenClaw each keep one memory every member's conversation shares, so the leak eval needs to know what that memory held before each reply. The runner copies their Markdown memory files (`state/hermes/memories/`, and `workspace/MEMORY.md` and `workspace/memory/`) on the host from the trial's own bind mounts, before the first turn and after each turn, with no adapter change ([runner/trial/harness-memory.ts](trial/harness-memory.ts)). Each snapshot is bounded (`HARNESS_MEMORY_LIMITS`: 8 directories deep, 200 files, 1 MiB per file, 16 MiB in all); a skipped file is listed with its reason, and a snapshot cut short says `truncated`. Scripted trials and every other harness get none.
 
 ### 2026-11-09: the price table section names prices-2026-11-09.json (internal-task)
 
