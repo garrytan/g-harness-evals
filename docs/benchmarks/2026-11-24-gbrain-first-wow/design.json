@@ -1,0 +1,218 @@
+{
+  "schema": "gbrain-first-wow-design/1",
+  "run_id": "gbrain-first-wow-2026-12",
+  "status": "frozen 2026-11-25 (PREREGISTRATION.md, Freeze); counted cells in prereg.json",
+  "preregistration": "PREREGISTRATION.md",
+  "gbrain": {
+    "build": {
+      "commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+      "version": "0.60.774.0",
+      "frozen": "2026-11-25",
+      "replaced": "2b4cc26f59861ba35c5ac30f60a2d133ae22d17b (pilot 2), same day, before any counted trial"
+    },
+    "rule": "newest release on gbrain's main branch when the counted run starts, holding PR 1 and PR 2 (R100)",
+    "checked_at": {
+      "commit": "d7278e4c8bff486ef4f208937faf8d33d1da6bfe",
+      "version": "0.60.769.0",
+      "what": "setup targets and the default registration"
+    },
+    "landed": {
+      "pr0": {
+        "pr": "gbrain#10248",
+        "commit": "37a2eae8d36626fbd14304f85ee5295a37306db1",
+        "date": "2026-11-25",
+        "note": "Codex setup registers the full tool set by default; Claude Code unchanged"
+      },
+      "pr1": {
+        "pr": "gbrain#10249",
+        "commit": "87277dd25898eeb3ae5d58316f7b795989b528cb",
+        "date": "2026-11-25"
+      },
+      "pr2": {
+        "pr": "gbrain#10346",
+        "commit": "2b4cc26f59861ba35c5ac30f60a2d133ae22d17b",
+        "date": "2026-11-25"
+      },
+      "codex_session_start": {
+        "pr": "gbrain#10370",
+        "commit": "55f8b60d",
+        "date": "2026-11-25"
+      },
+      "recent_pages": {
+        "pr": "gbrain#10375",
+        "commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+        "date": "2026-11-25"
+      }
+    },
+    "pilot_1_build": {
+      "commit": "87277dd25898eeb3ae5d58316f7b795989b528cb",
+      "version": "0.60.773.0",
+      "tag": null
+    }
+  },
+  "registration": {
+    "claude-code": "serve --surface starter --advertise verbs",
+    "codex": "serve --surface full",
+    "decision": "G, 2026-11-25"
+  },
+  "fixtures": {
+    "generator": "scripts/gbrain-first-wow/fixtures.ts",
+    "verdict_seeds": [
+      0,
+      99
+    ],
+    "no_history_seeds": [
+      9000,
+      9009
+    ],
+    "rotation": "even seeds history-rich, odd seeds messy"
+  },
+  "question_session": {
+    "wall_clock_s": 600,
+    "scripted_reply": "I'm not sure, use your best judgement",
+    "scripted_replies_max": 1
+  },
+  "cells": [
+    {
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "arms": [
+        "defaults",
+        "pr1",
+        "full",
+        "plain"
+      ],
+      "home": "claude-code",
+      "verdict_pairs": 100,
+      "no_history": 10
+    },
+    {
+      "harness": "codex",
+      "model": "openai:gpt-6.2-sol",
+      "arms": [
+        "defaults",
+        "pr1",
+        "full",
+        "plain"
+      ],
+      "home": "codex",
+      "verdict_pairs": 100,
+      "no_history": 10
+    },
+    {
+      "harness": "qm",
+      "model": "anthropic:claude-opus-5-5",
+      "arms": [
+        "qm-native",
+        "plain"
+      ],
+      "home": "claude-code",
+      "verdict_pairs": 100,
+      "no_history": 10,
+      "configs": {
+        "qm-native": "pi-memory-provider",
+        "plain": "pi"
+      }
+    },
+    {
+      "harness": "qm",
+      "model": "openai:gpt-6.2-sol",
+      "arms": [
+        "qm-native",
+        "plain"
+      ],
+      "home": "claude-code",
+      "verdict_pairs": 100,
+      "no_history": 10,
+      "configs": {
+        "qm-native": "pi-memory-provider",
+        "plain": "pi"
+      }
+    },
+    {
+      "harness": "qm",
+      "model": "particle:particle-1",
+      "arms": [
+        "qm-native",
+        "plain"
+      ],
+      "home": "claude-code",
+      "verdict_pairs": 100,
+      "no_history": 10,
+      "configs": {
+        "qm-native": "pi-memory-provider",
+        "plain": "pi"
+      },
+      "role": "named low-cost primary (R54); never carries a verdict alone",
+      "added": "2026-11-24"
+    }
+  ],
+  "coding_check": {
+    "harnesses": [
+      "claude-code",
+      "codex"
+    ],
+    "arms": [
+      "defaults",
+      "full"
+    ],
+    "pairs": 15,
+    "tasks": "pinned at pilot 2",
+    "seeds": [
+      200,
+      214
+    ]
+  },
+  "analysis": {
+    "script": "scripts/gbrain-first-wow/analyze.ts (applies verdict.ts)",
+    "primary": "full minus defaults, per harness; qm-native minus plain on QM",
+    "interim": {
+      "look_at_seeds": 50,
+      "seeds": "INTERIM_SEEDS in scripts/gbrain-first-wow/prereg.ts",
+      "p_bound": 0.003
+    },
+    "final_p_bound": 0.049,
+    "reference_rule": "any (decision A, 2026-11-24)",
+    "stated_difference_points": {
+      "claude-code/claude-opus-5-5": 26,
+      "codex/gpt-6.2-sol": 20,
+      "qm/claude-opus-5-5": 20,
+      "qm/gpt-6.2-sol": 20,
+      "qm/particle-1": 20
+    }
+  },
+  "pending_from_gbrain": [],
+  "caps_usd": {
+    "paid": 700,
+    "spend_stop": 760
+  },
+  "left_out": [
+    {
+      "cell": "openclaw / particle:particle-1, defaults and full",
+      "date": "2026-11-24",
+      "reason": "gbrain's history import runs only in setup claude-code and codex (gbrain#10249 at dd7b936a), and particle-1 has no route in either"
+    },
+    {
+      "cell": "codex / openai:gpt-6.2-sol, full and full-coding (with defaults-coding)",
+      "date": "2026-11-25",
+      "reason": "on gbrain 2b4cc26f the first-session section is recorded as delivered in Codex but no Codex transcript holds it (pilot 2); decision J; back in the same day (decision K): on gbrain c341d40d the section reached all 5 Codex full sessions (pilot 3)",
+      "status": "superseded 2026-11-25"
+    }
+  ],
+  "setup": {
+    "all_gbrain_arms": {
+      "claude-code": "gbrain setup claude-code --surface starter --advertise verbs --json",
+      "codex": "gbrain setup codex --surface full --json"
+    },
+    "defaults": "--history none",
+    "pr1": "--history 30",
+    "full": "accept the first setup_history decision (newest session), then the second (30-day range), each by --history-decision <id>",
+    "source": "gbrain#10249 at 87277dd2 (landed; flags unchanged from draft dd7b936a) and gbrain#10248 at 37a2eae8"
+  },
+  "projection_usd": {
+    "total": 214.54,
+    "upper95_sum_of_cells": 246.63,
+    "receipt": "plan-cost-receipt.json"
+  },
+  "trials": 1600
+}

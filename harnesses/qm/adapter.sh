@@ -154,8 +154,13 @@ fi
 
 # ---- serve ----------------------------------------------------------------------------------------
 : "${HE_TURNS_DIR:=/he-turns}"
-[ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ] || { log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; }
+# HE_QM_WORLD=off (the gbrain first-wow eval only, runner/trial/first-wow-qm.ts): a person DMs QM with no world, so serve
+# registers no world MCP server and pushes no directory; everything else is unchanged. Unset, serve needs the world as before.
+: "${HE_QM_WORLD:=on}"
+case "$HE_QM_WORLD" in on|off) ;; *) log "HE_QM_WORLD must be on or off (got $HE_QM_WORLD)"; exit 2 ;; esac
 mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
+if [ "$HE_QM_WORLD" = on ]; then
+[ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ] || { log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; }
 
 # The world-MCP server is registered through QM's admin API with the bot's bearer token (the
 # per-trial token the world minted; in the redaction set). readOnly false exposes the write tools;
@@ -200,6 +205,25 @@ if node /opt/harness/qm-directory.mjs "$HE_SLACK_API_URL" "$HE_SLACK_BOT_TOKEN" 
 else
   log "directory push failed: $(head -c 400 "$HE_LOG_DIR/qm-directory.json" 2>/dev/null)"
   exit 2
+fi
+else
+  [ -z "${HE_WORLD_MCP_URL:-}" ] && [ -z "${HE_GBRAIN_MCP_URL:-}" ] || { log "HE_QM_WORLD=off registers no MCP server, but HE_WORLD_MCP_URL or HE_GBRAIN_MCP_URL is set"; exit 2; }
+  log "HE_QM_WORLD=off: no world MCP server registered and no directory pushed"
+fi
+
+# HE_QM_DEFAULT_SANDBOX_SCOPE (the gbrain first-wow eval only): the scope a person's DM runs in (personal:<slack user id>)
+# gets a sandbox from LOCAL_SANDBOX_IMAGE made its default before the first turn, as the run entry does for set T. The runner
+# seeds that image's /root/workspace with the trial's files (runner/trial/first-wow-qm.ts). Both responses go to
+# qm-default-sandbox.json; a refusal is a harness error before any model call.
+if [ -n "${HE_QM_DEFAULT_SANDBOX_SCOPE:-}" ]; then
+  sbx_scope=$HE_QM_DEFAULT_SANDBOX_SCOPE
+  printf '{"action":"create","backend":"local","name":"first-wow"}' > "$HE_LOG_DIR/qm-sandbox-create.body.json"
+  create=$(node /opt/harness/qm-api.mjs admin-post "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" "/v1/admin/sandboxes/$sbx_scope" "$HE_LOG_DIR/qm-sandbox-create.body.json" 2>>"$HE_LOG_DIR/stderr.log") || { log "default sandbox create failed: $(printf '%s' "$create" | head -c 400)"; exit 2; }
+  sbx_id=$(printf '%s' "$create" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const id=JSON.parse(s).body?.id;if(typeof id!=="string"||!id)process.exit(1);process.stdout.write(id)})') || { log "default sandbox create returned no id"; exit 2; }
+  node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ action: "default", sandboxId: process.argv[2] }))' "$HE_LOG_DIR/qm-sandbox-default.body.json" "$sbx_id"
+  dflt=$(node /opt/harness/qm-api.mjs admin-post "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" "/v1/admin/sandboxes/$sbx_scope" "$HE_LOG_DIR/qm-sandbox-default.body.json" 2>>"$HE_LOG_DIR/stderr.log") || { log "default sandbox set_default failed: $(printf '%s' "$dflt" | head -c 400)"; exit 2; }
+  printf '{"scope":"%s","create":%s,"set_default":%s}\n' "$sbx_scope" "$create" "$dflt" > "$HE_LOG_DIR/qm-default-sandbox.json"
+  log "default sandbox $sbx_id for $sbx_scope"
 fi
 
 # The probe configs (pin.json configs, docs/tasks.md "QM probes"): an org setting PUT through QM's admin

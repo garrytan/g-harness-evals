@@ -404,6 +404,11 @@ for c in cells_out:
         if not ids: sys.exit(f"vm-shard: cell {c['id']} has no {c['slice']} task to smoke")
         c['tasks'] = [task or ids[0]]
         continue
+    if c.get('slice') == 'gbrain-first-wow':
+        # a first-wow cell's trials are the seeds it lists (a coding cell's are its coding seeds); --smoke-task only when listed
+        if not c.get('tasks'): sys.exit(f"vm-shard: cell {c['id']} lists no gbrain-first-wow seed to smoke")
+        c['tasks'] = [task if task in c['tasks'] else c['tasks'][0]]
+        continue
     root = os.path.join('tasks', 'multiuser', c['task_set'], 'dev') if c.get('task_set') and c['task_set'] != 'v0.1' else os.path.join('tasks', 'multiuser', 'dev')
     t = task or sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)))[0]
     if not os.path.isdir(os.path.join(root, t)): sys.exit(f'vm-shard: smoke task {t} is not under {root}')
@@ -428,16 +433,21 @@ PY
     with_cursor_key scripts/run-shard.sh "${smoke_args[@]}"
     rc=$?
     phase smoke_end
-    python3 - "$shard/smoke/results/trials.jsonl" <<'PY'
+    python3 - "$shard/smoke/results/trials.jsonl" "$smoke_prereg" <<'PY'
 import json, sys, os
 p = sys.argv[1]
+first_wow = {c['id'] for c in json.load(open(sys.argv[2]))['cells'] if c.get('slice') == 'gbrain-first-wow'}
 if not os.path.exists(p): print('smoke: no trials.jsonl'); sys.exit(1)
 rows = [json.loads(l) for l in open(p) if l.strip()]
 # a skill-request trial the cell's request_cap stopped ended as preregistered (internal-task); half the pilot's did
 bad = [r for r in rows if r.get('termination') != 'completed' and not (r.get('termination') == 'request_cap' and r.get('skill_request'))]
+# a first-wow trial, plain arm included, also has to carry its score: the questions scored, or the coding check's grade
+# (first_wow.score or first_wow.coding.grade, runner/trial/first-wow*.ts); a completed trial with neither proves nothing
+def scored(r): fw = r.get('first_wow') or {}; return isinstance(fw.get('score'), dict) or isinstance((fw.get('coding') or {}).get('grade'), dict)
+bad += [r for r in rows if r.get('cell') in first_wow and not scored(r) and r not in bad]
 usd = sum((r.get('usage') or {}).get('usd', 0) for r in rows)
 for r in rows: print(f"smoke trial {r['trial_id']}: termination={r.get('termination')} grade={r.get('grade')} wall_ms={r.get('wall_ms')} usd={(r.get('usage') or {}).get('usd')}")
-print(f'smoke: {len(rows)} trial(s), {len(bad)} not completed, ${usd:.4f}')
+print(f'smoke: {len(rows)} trial(s), {len(bad)} not completed or unscored, ${usd:.4f}')
 sys.exit(1 if bad or not rows else 0)
 PY
     smoke_ok=$?

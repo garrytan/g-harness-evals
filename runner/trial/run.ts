@@ -42,6 +42,8 @@ import { checkoutProvenance } from './provenance.ts';
 import { routeTextsFor } from './routes.ts';
 import { type EgressAllowlist, cursorTransport, isCursorCell, keyValueFound, startEgressAllowlist } from './cursor.ts';
 import { INSTALL_SLICE } from './install-cell.ts';
+import { FIRST_WOW_SLICE } from './first-wow-cell.ts';
+import { runFirstWowTrial } from './first-wow.ts';
 import { InstallLeak, type LsRemote, measureColdDownload, preinstalledProblem, runInstallTrial, tagProblem } from './install.ts';
 import { type OpenEgress, loadBlocklist, openEgressEnv, startOpenEgress } from './egress.ts';
 
@@ -165,7 +167,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     if (gap) log(gap);
   }
   const needsProxy = pending.some((t) => modeFor(cells.get(t.cell)!) !== 'scripted' && !isCursorCell(cells.get(t.cell)!));
-  const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!) && cells.get(t.cell)!.slice !== SKILL_REQUESTS_SLICE && cells.get(t.cell)!.slice !== INSTALL_SLICE);
+  const needsGrader = pending.some((t) => !isSingleShot(cells.get(t.cell)!) && cells.get(t.cell)!.slice !== SKILL_REQUESTS_SLICE && cells.get(t.cell)!.slice !== INSTALL_SLICE && cells.get(t.cell)!.slice !== FIRST_WOW_SLICE);
   const preambles = new Map<string, string>();
   const preambleFor = (cell: Cell): string => {
     const path = cell.preamble ?? opts.preamblePath ?? defaultPreambleFor(cell.task_set);
@@ -285,6 +287,11 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       try {
         record = cell.slice === INSTALL_SLICE
           ? await runInstallTrial({ cell, trial, runDir, trialDir, proxy, log, opts: serveOpts(), egress: openEgress, keyEnv: opts.installKeyEnv }).catch((e: unknown) => {
+            if (e instanceof InstallLeak && e.record) { appendRecord(runDir, e.record); records.push(e.record); }
+            throw e;
+          })
+          : cell.slice === FIRST_WOW_SLICE
+          ? await runFirstWowTrial({ cell, trial, runDir, trialDir, proxy, log, opts: serveOpts(), keyEnv: opts.installKeyEnv }).catch((e: unknown) => {
             if (e instanceof InstallLeak && e.record) { appendRecord(runDir, e.record); records.push(e.record); }
             throw e;
           })

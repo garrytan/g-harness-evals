@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "run_id": "gbrain-first-wow-pilot-2-messy-qm",
+  "question": "Pilot 2, messy persona and QM part, of the gbrain time-to-first-wow eval (PREREGISTRATION.md, Pilot): on gbrain 2b4cc26f (package 0.60.774.0) and QM main@77024e79, can the messy persona (odd seeds, half the counted verdict seeds) be supplied and scored in every arm, and do the QM arms run on the counted build? Claude Code defaults, pr1, full and plain; Codex defaults, pr1 and plain (full left out: the suggestion does not reach Codex sessions on this build); QM qm-native (provider read query, decision H) and plain with Opus 5.5, GPT-6.2 Sol and particle-1; seeds 101 and 103. Publishes no verdict. QM part, rerun under its own id: the first attempt ran out of disk on the runner machine (PGLite could not start) before any model call.",
+  "tasks": {},
+  "wall_clock_s": {
+    "gbrain-first-wow": 900
+  },
+  "spend_cap_usd": 8,
+  "drop_order": [],
+  "minimum_v01": [
+    "qm-opus-native",
+    "qm-sol-native",
+    "qm-particle-native",
+    "qm-opus-plain",
+    "qm-sol-plain",
+    "qm-particle-plain"
+  ],
+  "order": {
+    "kind": "interleave-task",
+    "seed": 1125
+  },
+  "cells": [
+    {
+      "id": "qm-opus-native",
+      "harness": "qm",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "utility_models": [
+        "anthropic:claude-sonnet-5-5",
+        "anthropic:claude-haiku-5-5"
+      ],
+      "tasks": [
+        "seed-0101",
+        "seed-0103"
+      ],
+      "first_wow": {
+        "arm": "qm-native",
+        "gbrain_commit": "2b4cc26f59861ba35c5ac30f60a2d133ae22d17b",
+        "gbrain_version": "0.60.774.0",
+        "provider_read": "query"
+      }
+    },
+    {
+      "id": "qm-sol-native",
+      "harness": "qm",
+      "model": "openai:gpt-6.2-sol",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "utility_models": [
+        "openai:gpt-5.6-luna"
+      ],
+      "tasks": [
+        "seed-0101",
+        "seed-0103"
+      ],
+      "first_wow": {
+        "arm": "qm-native",
+        "gbrain_commit": "2b4cc26f59861ba35c5ac30f60a2d133ae22d17b",
+        "gbrain_version": "0.60.774.0",
+        "provider_read": "query"
+      }
+    },
+    {
+      "id": "qm-particle-native",
+      "harness": "qm",
+      "model": "particle:particle-1",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "tasks": [
+        "seed-0101",
+        "seed-0103"
+      ],
+      "first_wow": {
+        "arm": "qm-native",
+        "gbrain_commit": "2b4cc26f59861ba35c5ac30f60a2d133ae22d17b",
+        "gbrain_version": "0.60.774.0",
+        "provider_read": "query"
+      }
+    },
+    {
+      "id": "qm-opus-plain",
+      "harness": "qm",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "utility_models": [
+        "anthropic:claude-sonnet-5-5",
+        "anthropic:claude-haiku-5-5"
+      ],
+      "tasks": [
+        "seed-0101",
+        "seed-0103"
+      ],
+      "first_wow": {
+        "arm": "plain"
+      }
+    },
+    {
+      "id": "qm-sol-plain",
+      "harness": "qm",
+      "model": "openai:gpt-6.2-sol",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "utility_models": [
+        "openai:gpt-5.6-luna"
+      ],
+      "tasks": [
+        "seed-0101",
+        "seed-0103"
+      ],
+      "first_wow": {
+        "arm": "plain"
+      }
+    },
+    {
+      "id": "qm-particle-plain",
+      "harness": "qm",
+      "model": "particle:particle-1",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "tasks": [
+        "seed-0101",
+        "seed-0103"
+      ],
+      "first_wow": {
+        "arm": "plain"
+      }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+# gbrain first-wow eval: a harness image plus gbrain at one pinned commit, for the gbrain arms only.
+# The plain arm runs the harness image unchanged, so it has no gbrain and no bun (the clean-arm rule).
+# bun comes from npm at a pinned version. gbrain is the source tarball of its GitHub commit, installed with bun.lock
+# (--frozen-lockfile), so every build of one commit gets the same dependency versions. Both are linked into
+# /usr/local/bin so gbrain setup finds an absolute launcher and gbrain's bun shebang resolves on the image PATH.
+# No key enters the image. /opt/first-wow/image.json records what was installed, with the sha256 of bun.lock and of the
+# installed dependency tree (every node_modules package.json), and the build fails if the version differs.
+ARG BASE
+FROM ${BASE}
+ARG GBRAIN_COMMIT
+ARG GBRAIN_VERSION
+ARG BUN_VERSION=1.4.4
+USER root
+LABEL harness-eval.gbrain-commit="${GBRAIN_COMMIT}" harness-eval.gbrain-version="${GBRAIN_VERSION}" harness-eval.bun-version="${BUN_VERSION}"
+RUN test -n "${GBRAIN_COMMIT}" && test -n "${GBRAIN_VERSION}" \
+    && npm install -g --prefix /opt/bun "bun@${BUN_VERSION}" && npm cache clean --force \
+    && ln -sf /opt/bun/bin/bun /usr/local/bin/bun \
+    && test "$(bun --version)" = "${BUN_VERSION}" \
+    && mkdir -p /opt/gbrain \
+    && curl -fsSL "https://codeload.github.com/garrytan/gbrain/tar.gz/${GBRAIN_COMMIT}" | tar -xz -C /opt/gbrain --strip-components=1 \
+    && test -f /opt/gbrain/bun.lock \
+    && cd /opt/gbrain && HOME=/tmp/gbrain-build bun install --frozen-lockfile --production \
+    && chmod a+x /opt/gbrain/src/cli.ts && ln -sf /opt/gbrain/src/cli.ts /usr/local/bin/gbrain \
+    && test "$(HOME=/tmp/gbrain-build gbrain --version | head -n 1)" = "gbrain ${GBRAIN_VERSION}" \
+    && lock=$(sha256sum /opt/gbrain/bun.lock | cut -d' ' -f1) \
+    && deps=$(cd /opt/gbrain && find node_modules -name package.json -not -path '*/test/*' | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -d' ' -f1) \
+    && rm -rf /tmp/gbrain-build /root/.bun /root/.cache \
+    && chmod -R a+rX /opt/bun /opt/gbrain \
+    && mkdir -p /opt/first-wow \
+    && printf '{"gbrain_commit":"%s","gbrain_version":"%s","bun_version":"%s","bun_lock_sha256":"%s","deps_sha256":"%s"}\n' "${GBRAIN_COMMIT}" "${GBRAIN_VERSION}" "${BUN_VERSION}" "$lock" "$deps" > /opt/first-wow/image.json

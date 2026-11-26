@@ -76,6 +76,9 @@ export interface DockerHarnessOptions {
   repoRoot?: string;
   /** Extra read-only bind mounts, host path to container path (the install bundle view at /he-gbrain-install). */
   readOnlyMounts?: Record<string, string>;
+  /** Where the trial's state directory is mounted and HE_SESSION_STATE_DIR points; /harness-state unless set. The gbrain first-wow
+   *  eval mounts it at its fixtures' HOME, /home/dev (runner/trial/first-wow.ts). */
+  stateMount?: string;
   /** Capture mode: the container's DNS server (docker run --dns). The compose topology ignores it. */
   dns?: string;
   /** Variables passed by name only (docker run -e NAME), their values in the environment of that one docker run call and
@@ -114,7 +117,7 @@ export async function removeInternalNetwork(name: string): Promise<boolean> {
 /** The `docker run` argument list of the in-container topology. */
 export function dockerRunArgs(opts: DockerHarnessOptions, name: string): string[] {
   const args = ['docker', 'run', '-d', '--name', name, '--user', uidGid(), '--network', opts.network?.name ?? 'bridge', '--add-host', `host.docker.internal:${opts.network?.gateway ?? 'host-gateway'}`,
-    '-v', `${resolve(opts.dirs.workspace)}:/workspace`, '-v', `${resolve(opts.dirs.state)}:/harness-state`, '-v', `${resolve(opts.dirs.logs)}:/he-logs`, '-v', `${resolve(opts.dirs.turns)}:/he-turns`];
+    '-v', `${resolve(opts.dirs.workspace)}:/workspace`, '-v', `${resolve(opts.dirs.state)}:${opts.stateMount ?? '/harness-state'}`, '-v', `${resolve(opts.dirs.logs)}:/he-logs`, '-v', `${resolve(opts.dirs.turns)}:/he-turns`];
   if (opts.dns) args.push('--dns', opts.dns);
   for (const [host, inside] of Object.entries(opts.readOnlyMounts ?? {})) args.push('-v', `${resolve(host)}:${inside}:ro`);
   for (const [k, v] of Object.entries(opts.env)) args.push('-e', `${k}=${v}`);

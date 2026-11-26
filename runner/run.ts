@@ -83,6 +83,7 @@ import { checkCursorCell, isCursorCell, offlineCanary, requireCursorCells, takeC
 import { SET_T_DIR, SET_T_SLICE, setTTaskIds, skillArmImage } from './trial/set-t.ts';
 import { REQUEST_HALVES, SKILL_REQUESTS_SLICE, privateSetProblem, requestSetIds } from './trial/skill-requests.ts';
 import { INSTALL_SLICE, INSTALL_TASK, checkInstallCell, type InstallCellConfig } from './trial/install-cell.ts';
+import { brainHostImage, checkFirstWowCell, imageFor as firstWowImage, type FirstWowCellConfig } from './trial/first-wow-cell.ts';
 
 export { RunnerError };
 
@@ -171,7 +172,7 @@ export interface Cell {
   model: string;
   /** skill-tasks: set T of the skill-resolver eval (runner/trial/set-t.ts), single-shot like hello and smoke. skill-requests:
    *  its Phase B, one request row per trial (runner/trial/skill-requests.ts), single-shot too. */
-  slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke' | 'skill-tasks' | 'skill-requests' | 'gbrain-install';
+  slice: 'multiuser' | 'work' | 'continuity' | 'coding-calibration' | 'hello' | 'smoke' | 'skill-tasks' | 'skill-requests' | 'gbrain-install' | 'gbrain-first-wow';
   split: 'dev' | 'heldout';
   /** Harness-specific configuration name, handed to the adapter as HE_HARNESS_CONFIG. QM accepts pi (the
    *  default), pi-probe, pi-strict, pi-command-deny and pi-memory-provider (gbrain as QM's per-turn memory provider,
@@ -243,9 +244,11 @@ export interface Cell {
   request_cap?: number;
   /** internal-task, gbrain-install cells only: the arm, the release pin and the nonce seed (runner/trial/install-cell.ts). */
   install?: InstallCellConfig;
+  /** gbrain first-wow cells only: the arm and the gbrain build (runner/trial/first-wow-cell.ts). */
+  first_wow?: FirstWowCellConfig;
 }
 
-const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'rung', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap', 'install']);
+const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'rung', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap', 'install', 'first_wow']);
 export const DEFAULT_TASK_SET = 'v0.1';
 
 /** The cells whose harness pin has no `transport` entry (model_particle, model_openrouter), the declaration an adapter makes
@@ -493,6 +496,7 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (c.log_sections === true && c.split === 'heldout') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections cannot run on a held-out split; its unsalted digests would let a published usage log confirm held-out content. fix: drop log_sections from the cell`);
     if (c.log_sections === true && c.harness_mode === 'scripted') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: log_sections needs a cell that calls a model; a scripted cell calls none. fix: drop log_sections from the cell`);
     checkInstallCell(c);
+    checkFirstWowCell(c);
     if (c.network !== undefined) {
       if (c.network !== 'internal' && c.network !== 'install') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: network must be "internal" or absent, the default docker bridge, or "install" on a gbrain-install cell (got ${JSON.stringify(c.network)})`);
       if (c.harness_mode === 'scripted' || c.harness_mode === 'process') throw new RunnerError('HE-NET-001', `cell ${c.id}: network "internal" needs a harness container; harness_mode "${c.harness_mode}" runs none. fix: drop network or harness_mode`);
@@ -928,6 +932,17 @@ async function main(argv: string[]): Promise<number> {
     const missing = m.cells.filter(c => c.harness !== 'scripted' && !existsSync(join('harnesses', c.harness, 'pin.json'))).map(c => c.harness);
     if (missing.length) throw new RunnerError('HE-PIN-001', `no harnesses/<name>/pin.json for: ${[...new Set(missing)].join(', ')}; fix: add the pin before any cell runs`);
     for (const c of m.cells) { checkZeroConfig(c); checkCursorCell(c); }
+    // gbrain first-wow: every image a cell's trials run is present before the first trial (runner/trial/first-wow*.ts): the arm's
+    // image, and on QM the sandbox base (first-wow-qm.ts SANDBOX_BASE) and, in qm-native, the Claude Code gbrain image as brain host.
+    for (const c of m.cells.filter((c) => c.first_wow)) {
+      const fw = c.first_wow!;
+      const build = `bash harnesses/_first-wow/build.sh ${fw.gbrain_commit} ${fw.gbrain_version}`;
+      const needed: Array<[string, string]> = [[firstWowImage(c as Cell & { first_wow: FirstWowCellConfig }), fw.arm === 'plain' || c.harness === 'qm' ? `docker build -q -t harness-eval/${c.harness}:dev harnesses/${c.harness}` : `${build} ${c.harness}`]];
+      if (c.harness === 'qm') needed.push(['harness-eval/qm-sandbox:dev', 'docker build -q -f harnesses/qm/Dockerfile.sandbox -t harness-eval/qm-sandbox:dev harnesses/qm']);
+      if (fw.arm === 'qm-native') needed.push([brainHostImage(fw.gbrain_commit!), `${build} claude-code`]);
+      for (const [image, fix] of needed) if (spawnSync('docker', ['image', 'inspect', image], { stdio: 'ignore' }).status !== 0) throw new RunnerError('HE-ADAPTER-005', `cell ${c.id}: image ${image}, which its first-wow trials run, is absent, so the shard would fail at its first trial; fix: ${fix} (scripts/run-shard.sh builds it)`);
+      console.log(`FIRSTWOW: cell ${c.id} (${fw.arm}) images ${needed.map(([i]) => i).join(', ')} present`);
+    }
     const cursorCells = m.cells.filter(isCursorCell);
     if (cursorCells.length) console.log(`CURSOR: cells ${cursorCells.map((c) => c.id).join(', ')} call Cursor's backend through the egress allowlist, with no metering proxy; CURSOR_API_KEY is ${cursorKey ? 'set' : 'not set (run refuses them without it, except with --cursor-offline)'}`);
     if (m.cells.some((c) => c.harness_mode !== 'scripted' && !isCursorCell(c))) for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) if (!process.env[k]) console.log(`WARN: HE-PROXY-001 ${k} is not set in this shell; the metering proxy needs it, harness containers never do`);

@@ -644,6 +644,8 @@ export interface TrialRecord {
   skill_request?: TrialSkillRequest;
   /** internal-task addition: set on a trial of a gbrain-install cell (runner/trial/install.ts). grade stays n/a; outcome is the score. */
   install?: TrialInstall;
+  /** The gbrain first-wow eval only: setup, registration, the question session and its score (runner/trial/first-wow.ts TrialFirstWow). */
+  first_wow?: unknown;
 }
 
 /** internal-task: one gbrain install trial. The finish line is all of finish.reply (the recall reply holds the nonce as a whole

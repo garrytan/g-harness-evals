@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "run_id": "gbrain-first-wow-pilot-3",
+  "question": "Pilot 3 of the gbrain time-to-first-wow eval (PREREGISTRATION.md, Pilot 3), a dated pre-freeze change: on gbrain c341d40d (package 0.60.774.0, the head of gbrain main on 2026-11-25 with gbrain#10370, Codex session-start context, and #10375, Recent pages lists the imported conversations), does the first-session section now reach Codex sessions, does Codex full run as the plan says, does the coding check run on Codex defaults and full, and does Claude Code full still see the section with its Recent pages list filled? Codex full and Claude Code full on seeds 100 to 104, the Codex coding check on seeds 100, 102 and 104, and one trial of every other gbrain cell on seed 105. Publishes no verdict.",
+  "tasks": {},
+  "wall_clock_s": {
+    "gbrain-first-wow": 900
+  },
+  "spend_cap_usd": 20,
+  "drop_order": [],
+  "minimum_v01": [
+    "codex-sol-full",
+    "cc-opus-full"
+  ],
+  "order": {
+    "kind": "interleave-task",
+    "seed": 1125
+  },
+  "cells": [
+    {
+      "id": "codex-sol-full",
+      "harness": "codex",
+      "model": "openai:gpt-6.2-sol",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0100",
+        "seed-0101",
+        "seed-0102",
+        "seed-0103",
+        "seed-0104"
+      ],
+      "first_wow": {
+        "arm": "full",
+        "gbrain_commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true
+      }
+    },
+    {
+      "id": "codex-sol-defaults-coding",
+      "harness": "codex",
+      "model": "openai:gpt-6.2-sol",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0100",
+        "seed-0102",
+        "seed-0104"
+      ],
+      "first_wow": {
+        "arm": "defaults",
+        "gbrain_commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true,
+        "task": "coding"
+      }
+    },
+    {
+      "id": "codex-sol-full-coding",
+      "harness": "codex",
+      "model": "openai:gpt-6.2-sol",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0100",
+        "seed-0102",
+        "seed-0104"
+      ],
+      "first_wow": {
+        "arm": "full",
+        "gbrain_commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true,
+        "task": "coding"
+      }
+    },
+    {
+      "id": "cc-opus-full",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0100",
+        "seed-0101",
+        "seed-0102",
+        "seed-0103",
+        "seed-0104"
+      ],
+      "first_wow": {
+        "arm": "full",
+        "gbrain_commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true
+      }
+    },
+    {
+      "id": "cc-opus-defaults",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0105"
+      ],
+      "first_wow": {
+        "arm": "defaults",
+        "gbrain_commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true
+      }
+    },
+    {
+      "id": "cc-opus-pr1",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0105"
+      ],
+      "first_wow": {
+        "arm": "pr1",
+        "gbrain_commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true
+      }
+    },
+    {
+      "id": "codex-sol-defaults",
+      "harness": "codex",
+      "model": "openai:gpt-6.2-sol",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0105"
+      ],
+      "first_wow": {
+        "arm": "defaults",
+        "gbrain_commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true
+      }
+    },
+    {
+      "id": "codex-sol-pr1",
+      "harness": "codex",
+      "model": "openai:gpt-6.2-sol",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0105"
+      ],
+      "first_wow": {
+        "arm": "pr1",
+        "gbrain_commit": "c341d40de3e5f7cacecb064825655ce926d877f8",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true
+      }
+    }
+  ]
+}

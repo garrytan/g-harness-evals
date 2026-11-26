@@ -83,6 +83,15 @@ Keyless proof at `90e4ced7` (2026-11-08, `tests/qm-openai-branch.test.ts`): one 
 - **What it doesn't change.** At QM's shipped Isolated posture, a DM still reads only its own scope. The single-shot `run` entry is unchanged.
 - **A Slack redelivery is dropped, as QM's Slack surface drops it.** QM's Slack surface skips a message whose channel and ts it has already handled, before any turn starts (`dedupeKey`, `src/slack/message-gating.ts:171-174`, called from `src/slack/events.ts:141` and `:150`, and skipped by `dedupedRun`, `message-gating.ts:190-196`). The adapter does the same with `slack-event-key.mjs`. A redelivered member message with the same channel and ts gets no QM turn and no reply, and the adapter log says so. A new message is a new turn even when its text repeats, and a timer turn is never dropped. Like QM's in-memory deduper, the set of seen keys starts empty when the adapter starts, and a key whose turn failed is forgotten. With every member turn sent as `human`, the agent answered 5 of 9 redelivered messages with a note ("I answered this one already, so I haven't posted again") instead of `NOTHING_TO_SAY`, and that note is itself the posted reply. `tests/qm-redelivery.test.ts` covers the key.
 
+## A person's DM with gbrain as memory (gbrain first-wow eval, 2026-11-25)
+
+**The gbrain first-wow eval runs QM the way one person DMs it, with no world.** `runner/trial/first-wow-qm.ts` sets two adapter variables that no other eval sets:
+
+- **`HE_QM_WORLD=off`:** `serve` registers no world MCP server and pushes no directory. Unset, it is `on` and `serve` needs the world as before. With `off`, a world or gbrain MCP URL in the environment is refused.
+- **`HE_QM_DEFAULT_SANDBOX_SCOPE`:** the DM's scope (`personal:<slack user id>`) gets a sandbox from `LOCAL_SANDBOX_IMAGE` made its default before the first turn, so the runner can seed `/root/workspace` with the person's files. Both admin responses go to `qm-default-sandbox.json`; a refusal is a harness error before any model call.
+
+In qm-native, `memory-provider.ts` reads gbrain with `query` instead of `recall` (`providerConfig(url, 'query')`). gbrain's `recall` returns saved facts only, never page text, and an imported history lands as pages, so with `recall` QM's first smoke found none of it. The memory-provider cells of other evals keep `recall`.
+
 ## Images
 
 Both images fetch QM by commit (`QM_COMMIT`), not by tag: `git fetch --depth 1 origin <sha>`, then the build fails unless `git rev-parse HEAD` equals that sha. Both carry the labels `harness-eval.commit` and `harness-eval.version`.
@@ -297,6 +306,10 @@ Findings:
 - The MCP registration route needs an `org_admin` grant; with Postgres and no `ADMIN_GRANTS`, core boots with no admin at all and the route answers 403, so `config/core.env` names `harness-admin`.
 
 ## Changelog
+
+### 2026-11-25: a person's DM with gbrain as memory (gbrain first-wow eval)
+
+`serve` takes `HE_QM_WORLD=off` (no world MCP server, no directory) and `HE_QM_DEFAULT_SANDBOX_SCOPE` (a default sandbox for the DM's scope), and the memory provider can read with `query` (the section above). Why: the first-wow eval's QM arms are one person's DM, and an import writes pages that `recall` does not return. Every other cell is unchanged.
 
 ### 2026-11-21: member turns are sent as human turns
 

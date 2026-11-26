@@ -208,6 +208,73 @@ export function parseHermes(raw: string, session: string, turn: number, sessionL
   return out;
 }
 
+/** One row of QM's Postgres items table (main@77024e79), as the first-wow runner dumps it after each turn with row_to_json. */
+export interface QmItem { session_id: string; seq: number; kind: string; turn_id: string | null; author: string | null; tool: string | null; call_id: string | null; text: string | null; is_error: boolean | null; variant: string | null; body: Record<string, unknown> | null }
+
+/** A memory provider's section of a stored UserMessage's environment: "### <scope label> · <route label>" and an untrusted-data block. */
+const QM_PROVIDER_SECTION = /^### [^\n]*· ([A-Za-z0-9_-]+)\n```untrusted-data\n([\s\S]*?)\n```/gm;
+
+/** The QM turn (logs/turns/turn-NNNN.qm-items.json, every items row after turn NNNN). Turn n is the n-th group of rows sharing a
+ *  turn_id that holds a UserMessage with an author (a person's message; side sessions such as titles have none). Events, in seq order:
+ *  - each memory provider section of that UserMessage's environment: QM's per-turn recall, the text QM handed the model. A section
+ *    labelled gbrain becomes an mcp event gbrain__provider_recall, so the scorer counts it as a gbrain read;
+ *  - each ToolCall with its ToolResult (paired by call_id): execute is a shell event (body.command), web_search and web_fetch web
+ *    events, memory an mcp event gbrain__memory_<action> when gbrain is one of the turn's recall providers (QM's memory tool reads
+ *    every provider on the scope, so its output is gbrain's rows merged with QM's own notebook: an upper bound on what gbrain served),
+ *    every other tool an other event with the call's body (wire metadata dropped) as input;
+ *  - each AgentMessage as text. Reasoning rows are skipped. */
+export function parseQm(raw: string, session: string, turn: number): NEvent[] {
+  let rows: QmItem[] = [];
+  try { const v = JSON.parse(raw); if (Array.isArray(v)) rows = v as QmItem[]; } catch { return []; }
+  const groups: QmItem[][] = [];
+  const byTurn = new Map<string, QmItem[]>();
+  for (const r of [...rows].sort((a, b) => a.session_id === b.session_id ? a.seq - b.seq : a.session_id < b.session_id ? -1 : 1)) {
+    if (!r.turn_id) continue;
+    let g = byTurn.get(r.turn_id);
+    if (!g) { g = []; byTurn.set(r.turn_id, g); groups.push(g); }
+    g.push(r);
+  }
+  const mine = groups.filter((g) => g.some((r) => r.kind === 'UserMessage' && r.author))[turn - 1];
+  if (!mine) return [];
+  const user = mine.find((r) => r.kind === 'UserMessage' && r.author)!;
+  const outcomes = (user.body?.memoryRecallOutcomes ?? []) as Array<{ provider?: string }>;
+  const gbrainProvider = Array.isArray(outcomes) && outcomes.some((o) => o?.provider === 'gbrain');
+  const out: NEvent[] = [];
+  const env = typeof user.body?.environment === 'string' ? user.body.environment : '';
+  for (const m of env.matchAll(QM_PROVIDER_SECTION)) {
+    if (m[1] === 'gbrain') out.push({ kind: 'mcp', name: 'gbrain__provider_recall', input: '', output: m[2]!, is_error: false, exit_code: null, session, turn });
+  }
+  const results = new Map(mine.filter((r) => r.kind === 'ToolResult' && r.call_id).map((r) => [r.call_id!, r]));
+  for (const r of mine) {
+    if (r.kind === 'AgentMessage' && r.text?.trim()) { out.push(textEvent(r.text, session, turn)); continue; }
+    if (r.kind !== 'ToolCall') continue;
+    const { wire: _wire, ...args } = (r.body ?? {}) as Record<string, unknown>;
+    const res = r.call_id ? results.get(r.call_id) : undefined;
+    const output = res?.text ?? '';
+    const isError = res?.is_error === true;
+    const tool = String(r.tool ?? '');
+    const base = { output, is_error: isError, session, turn };
+    if (tool === 'execute') {
+      const exit = /\[exit (\d+)\]\s*$/.exec(output);
+      out.push({ ...base, kind: 'shell', name: 'execute', input: str(args.command ?? ''), exit_code: exit ? Number(exit[1]) : isError ? 1 : null });
+    } else if (tool === 'web_search' || tool === 'web_fetch') {
+      out.push({ ...base, kind: 'web', name: tool, input: str(args.url ?? args.query ?? args), exit_code: null });
+    } else if (tool === 'memory' && gbrainProvider) {
+      out.push({ ...base, kind: 'mcp', name: `gbrain__memory_${String(args.action ?? 'call')}`, input: str(args), exit_code: null });
+    } else {
+      out.push({ ...base, kind: 'other', name: tool, input: str(args), exit_code: null });
+    }
+  }
+  return out;
+}
+
+/** The events of one QM turn: <logsDir>/turns/turn-NNNN.qm-items.json (or its .gz), [] when the turn has no file. QM is not a
+ *  parseTurn harness: its record is a database dump the first-wow runner writes, not a transcript the adapter streams. */
+export function parseQmTurn(logsDir: string, turn: number, session: string): NEvent[] {
+  const raw = readTurnFile(join(logsDir, 'turns', `turn-${String(turn).padStart(4, '0')}.qm-items.json`));
+  return raw === null ? [] : parseQm(raw, session, turn);
+}
+
 const readTurnFile = (path: string) => existsSync(path) ? readFileSync(path, 'utf8') : existsSync(path + '.gz') ? gunzipSync(readFileSync(path + '.gz')).toString('utf8') : null;
 
 /** The events of one turn: reads <logsDir>/turns/turn-NNNN.<ext> (or its .gz), for OpenClaw also turn-NNNN.openclaw-session.jsonl and

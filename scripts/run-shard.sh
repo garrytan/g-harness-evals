@@ -33,7 +33,15 @@
 # --clean-arm-preflight (internal-task, v0.4; CREW.md "Clean no-gstack and no-brain arms") runs scripts/v04/clean-arm-audit.ts
 # preflight before plan: no Capy drive mounted and no gstack installed on this machine or inside the shard's harness images.
 # It writes <out>/preflight-clean-arm.json (merge-shards.ts keeps it as <shard>.preflight-clean-arm.json) and stops the
-# shard with exit 2, before any trial, when anything is found.
+# shard with exit 2, before any trial, when anything is found. A shard with gbrain first-wow cells runs it without the flag,
+# and also checks each plain-arm image (and for QM the sandbox image) for gbrain (--plain-image). The gbrain-arm images are
+# not checked: gbrain's own source names gstack files.
+#
+# gbrain first-wow cells (slice gbrain-first-wow): after the harness images the shard builds the gbrain-arm images with
+# bash harnesses/_first-wow/build.sh <gbrain_commit> <gbrain_version> <harnesses> from the cells' first_wow fields (QM's
+# qm-native arm adds harness-eval/claude-code:dev and its gbrain image, the brain host), and records their ids in shard.json.
+# A first-wow shard with no gbrain sidecar cell (no gbrain field) and no sealed root skips the gbrain sidecar image build;
+# the runner checks that image only for gbrain cells. Other shards build it as before.
 #
 # --max-output-tokens (default 128000, what Hermes states on every call) is passed to the runner's proxy: a call that states
 # more is refused and a call that states none gets it, and the proxy reserves input plus that many output tokens against the
@@ -194,6 +202,49 @@ if [ -n "$world_file" ]; then
   [ "$gbrain_image" != harness-eval/gbrain:dev ] || gbrain_image=${set_world#* }
   log "gbrain cells read the set world $world_file; gbrain image $gbrain_image"
 fi
+# gbrain first-wow cells (runner/trial/first-wow*.ts): the images their trials run. A gbrain arm runs
+# harness-eval/<harness>-gbrain:<commit 12>, built from harness-eval/<harness>:dev by harnesses/_first-wow/build.sh with the
+# cell's gbrain_commit and gbrain_version; QM's qm-native arm hosts its brain in the Claude Code one, so it needs
+# harness-eval/claude-code:dev and that image too. The plain arm runs harness-eval/<harness>:dev (QM: and the sandbox image),
+# which the clean-arm preflight below checks for gbrain as well as gstack. Lines: any first-wow cell (1 or 0), whether the
+# gbrain sidecar image is built (0 only for a first-wow shard with no gbrain cell), extra base harnesses, first-wow image tags, plain-arm images, then one "<commit> <version> <harness>..."
+# line per gbrain build.
+mapfile -t first_wow < <(python3 - "$prereg" "$cells" <<'PY'
+import json, re, sys
+p = json.load(open(sys.argv[1])); want = set(sys.argv[2].split(','))
+cs = [c for c in p['cells'] if c['id'] in want]
+fw = [c for c in cs if c.get('slice') == 'gbrain-first-wow']
+extra, tags, plain, builds = set(), [], [], {}
+for c in fw:
+    f, h = c.get('first_wow') or {}, c['harness']
+    commit, version = f.get('gbrain_commit'), f.get('gbrain_version')
+    if commit is not None and not (isinstance(commit, str) and re.fullmatch(r'[0-9a-f]{40}', commit) and isinstance(version, str) and re.fullmatch(r'\d+(\.\d+){2,3}', version)):
+        sys.exit('run-shard: cell %s: first_wow needs a 40-character gbrain_commit and a gbrain_version (got %s, %s)' % (c['id'], json.dumps(commit), json.dumps(version)))
+    if f.get('arm') == 'plain' or h == 'qm':
+        tags.append(f.get('image') or 'harness-eval/%s:dev' % h)
+        if f.get('arm') == 'plain': plain += [tags[-1]] + (['harness-eval/qm-sandbox:dev'] if h == 'qm' else [])
+    if commit is None: continue
+    built = 'claude-code' if h == 'qm' else h
+    if h == 'qm': extra.add('claude-code')
+    if f.get('image') and h != 'qm': tags.append(f['image']); continue
+    builds.setdefault((commit, version), set()).add(built)
+    tags.append('harness-eval/%s-gbrain:%s' % (built, commit[:12]))
+uniq = lambda xs: ' '.join(dict.fromkeys(xs))
+print(1 if fw else 0); print(0 if fw and not any(c.get('gbrain') for c in cs) else 1)
+print(uniq(sorted(extra))); print(uniq(tags)); print(uniq(plain))
+for (commit, version), hs in sorted(builds.items()): print(commit, version, ' '.join(sorted(hs)))
+PY
+) && [ ${#first_wow[@]} -ge 5 ] || exit 2
+fw_extra=${first_wow[2]} fw_images=${first_wow[3]} fw_plain=${first_wow[4]}
+fw_builds=("${first_wow[@]:5}")
+gbrain_sidecar=${first_wow[1]}
+[ -z "$sealed_root" ] || gbrain_sidecar=1
+if [ "${first_wow[0]}" = 1 ]; then
+  log "first-wow cells: images ${fw_images:-none}${fw_extra:+, base harnesses $fw_extra for the brain host}; plain-arm images ${fw_plain:-none}"
+  [ "$clean_arm" -eq 1 ] || log "clean-arm preflight: on, as every shard with first-wow cells runs it (the plain arm has no Capy drive, gstack or gbrain)"
+  clean_arm=1
+fi
+base_harnesses=$(printf '%s\n' $harnesses $fw_extra | sort -u | tr '\n' ' ')
 qm_sandbox=harness-eval/qm-sandbox:dev
 case " $harnesses " in *" qm "*) [ "${QM_SANDBOX_IMAGE:-$qm_sandbox}" = "$qm_sandbox" ] || { log "refused: QM_SANDBOX_IMAGE=$QM_SANDBOX_IMAGE; a shard builds and records $qm_sandbox, the tag harnesses/qm/prepare.sh uses when it is unset, so unset it"; exit 2; } ;; esac
 export QM_SANDBOX_IMAGE="$qm_sandbox"
@@ -227,20 +278,28 @@ if [ -n "$sealed_root" ]; then
 fi
 
 if [ "$skip_build" -eq 0 ]; then
-  for h in $harnesses; do
+  for h in $base_harnesses; do
     log "building harness-eval/$h:dev from harnesses/$h"
     docker build -q -t "harness-eval/$h:dev" "harnesses/$h" > "$out/build-$h.log" 2>&1 || { show_tail "$out/build-$h.log" 20; log "harness image build failed for $h"; exit 2; }
     [ "$h" = qm ] || continue
     log "building $qm_sandbox from harnesses/qm/Dockerfile.sandbox"
     docker build -q -f harnesses/qm/Dockerfile.sandbox -t "$qm_sandbox" harnesses/qm > "$out/build-qm-sandbox.log" 2>&1 || { show_tail "$out/build-qm-sandbox.log" 20; log "QM sandbox image build failed"; exit 2; }
   done
-  log "building $gbrain_image from gbrain/ (embedded=$embedded)"
-  args=(--tag "$gbrain_image" --out "$out/gbrain-image")
-  [ "$embedded" -eq 1 ] && args+=(--embedded)
-  [ -z "$gbrain_commit" ] || args+=(--gbrain "$gbrain_commit")
-  [ -z "$shard_root" ] || args+=(--sealed-root "$shard_root")
-  [ -z "$world_file" ] || args+=(--world "$world_file")
-  scripts/build-gbrain-image.sh "${args[@]}" > "$out/build-gbrain.log" 2>&1 || { show_tail "$out/build-gbrain.log" 20; [ -z "$shard_root" ] || log "the sealed build log is kept at $out/sealed-root-logs/build-gbrain-image.log (custody only)"; log "gbrain image build failed"; exit 2; }
+  for b in ${fw_builds[@]+"${fw_builds[@]}"}; do
+    log "building first-wow images: bash harnesses/_first-wow/build.sh $b"
+    bash harnesses/_first-wow/build.sh $b >> "$out/build-first-wow.log" 2>&1 || { show_tail "$out/build-first-wow.log" 20; log "first-wow image build failed ($b)"; exit 2; }
+  done
+  if [ "$gbrain_sidecar" -eq 1 ]; then
+    log "building $gbrain_image from gbrain/ (embedded=$embedded)"
+    args=(--tag "$gbrain_image" --out "$out/gbrain-image")
+    [ "$embedded" -eq 1 ] && args+=(--embedded)
+    [ -z "$gbrain_commit" ] || args+=(--gbrain "$gbrain_commit")
+    [ -z "$shard_root" ] || args+=(--sealed-root "$shard_root")
+    [ -z "$world_file" ] || args+=(--world "$world_file")
+    scripts/build-gbrain-image.sh "${args[@]}" > "$out/build-gbrain.log" 2>&1 || { show_tail "$out/build-gbrain.log" 20; [ -z "$shard_root" ] || log "the sealed build log is kept at $out/sealed-root-logs/build-gbrain-image.log (custody only)"; log "gbrain image build failed"; exit 2; }
+  else
+    log "first-wow shard with no gbrain sidecar cell; $gbrain_image is not built"
+  fi
 fi
 
 skill_images=""
@@ -254,11 +313,26 @@ if python3 -c "import json,sys; w=set(sys.argv[2].split(',')); sys.exit(0 if any
   skill_images=$(python3 -c "import json,sys; print(' '.join(json.load(open(sys.argv[1])).get('images') or {}))" "$out/skill-kit.json")
 fi
 
-images=""
-for tag in $(for h in $harnesses; do echo "harness-eval/$h:dev"; [ "$h" != qm ] || echo "$qm_sandbox"; done) "$gbrain_image" $skill_images; do
+images="" seen=" "
+sidecar_image=""
+[ "$gbrain_sidecar" -eq 0 ] || sidecar_image=$gbrain_image
+for tag in $(for h in $base_harnesses; do echo "harness-eval/$h:dev"; [ "$h" != qm ] || echo "$qm_sandbox"; done) $sidecar_image $fw_images $skill_images; do
+  case "$seen" in *" $tag "*) continue ;; esac
+  seen+="$tag "
   id=$(docker image inspect -f '{{.Id}}' "$tag" 2>/dev/null) && [ -n "$id" ] || { log "image $tag is missing; build it, or run without --skip-build"; exit 2; }
   images+="${images:+, }\"$tag\": \"$id\""
 done
+# first-wow gbrain-arm images: each image's /opt/first-wow/image.json (gbrain commit, bun.lock and dependency-tree sha256) and
+# its image id, one line per image, so shards built hours apart can be shown to run the same gbrain dependencies.
+if [ -n "$fw_images" ]; then
+  : > "$out/first-wow-images.ndjson"
+  for tag in $fw_images; do
+    case "$tag" in *-gbrain:*) ;; *) continue ;; esac
+    rec=$(docker run --rm --entrypoint cat "$tag" /opt/first-wow/image.json 2>/dev/null) && [ -n "$rec" ] || { log "image $tag has no /opt/first-wow/image.json; rebuild it with harnesses/_first-wow/build.sh"; exit 2; }
+    printf '{"tag": "%s", "id": "%s", "image": %s}\n' "$tag" "$(docker image inspect -f '{{.Id}}' "$tag")" "$rec" >> "$out/first-wow-images.ndjson"
+    log "first-wow image $tag: $rec"
+  done
+fi
 if [ "$resume" -eq 1 ] && [ -f "$out/shard.json" ]; then
   recorded=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['commit'])" "$out/shard.json")
   if [ "$recorded" != "$commit" ] && [ "$amendment" != "$commit" ]; then
@@ -282,8 +356,9 @@ fi
 if [ "$clean_arm" -eq 1 ] && [ -n "$harnesses" ]; then
   clean_args=()
   for h in $harnesses; do clean_args+=(--image "harness-eval/$h:dev"); done
-  log "clean-arm preflight: no Capy drive and no gstack on this machine or in harness images $harnesses"
-  bun scripts/v04/clean-arm-audit.ts preflight --out "$out/preflight-clean-arm.json" "${clean_args[@]}" 2>&1 | tee -a "$out/run-shard.log" >&2 || { rc=${PIPESTATUS[0]}; if [ "$rc" -eq 1 ]; then log "clean-arm preflight failed: gstack or a Capy drive is reachable ($out/preflight-clean-arm.json); the shard does not start"; else log "clean-arm preflight could not run (exit $rc; see run-shard.log): the arms cannot be shown clean; the shard does not start"; fi; exit 2; }
+  for i in $fw_plain; do clean_args+=(--plain-image "$i"); done
+  log "clean-arm preflight: no Capy drive and no gstack on this machine or in harness images $harnesses${fw_plain:+, and no gbrain in plain-arm images $fw_plain}"
+  bun scripts/v04/clean-arm-audit.ts preflight --out "$out/preflight-clean-arm.json" "${clean_args[@]}" 2>&1 | tee -a "$out/run-shard.log" >&2 || { rc=${PIPESTATUS[0]}; if [ "$rc" -eq 1 ]; then log "clean-arm preflight failed: gstack or a Capy drive is reachable, or a plain-arm image holds gbrain ($out/preflight-clean-arm.json); the shard does not start"; else log "clean-arm preflight could not run (exit $rc; see run-shard.log): the arms cannot be shown clean; the shard does not start"; fi; exit 2; }
 fi
 
 if [ ! -f "$out/manifest.json" ]; then
@@ -294,7 +369,7 @@ if [ "$resume" -eq 1 ] && grep -q '^PREFLIGHT: ok' "$out/preflight.log" 2>/dev/n
 else
   log "preflight --cells $cells"
   bun runner/run.ts preflight --manifest "$out/manifest.json" --cells "$cells" --gbrain-image "$gbrain_image" ${sealed[@]+"${sealed[@]}"} > "$out/preflight.log" 2>&1 || { show_tail "$out/preflight.log" 30; log "preflight failed"; exit 2; }
-  grep -E '^(ADAPTER|GBRAIN|PREFLIGHT):' "$out/preflight.log" | tee -a "$out/run-shard.log" >&2
+  grep -E '^(ADAPTER|GBRAIN|FIRSTWOW|PREFLIGHT):' "$out/preflight.log" | tee -a "$out/run-shard.log" >&2
 fi
 
 prune() {

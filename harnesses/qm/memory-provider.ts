@@ -34,15 +34,23 @@ export const ACTOR_ARG = 'acting_user';
 /** A QM cell that routes gbrain through the memory provider. */
 export const isQmMemoryProvider = (cell: { harness: string; config?: string }): boolean => cell.harness === 'qm' && cell.config === MEMORY_PROVIDER_CONFIG_NAME;
 
+/** The gbrain tool the provider reads with. recall (the C4 cells) returns saved facts only; query (the gbrain first-wow eval's
+ *  qm-native fix, pilot 1) returns page chunks, the only place an imported history lands on a keyless brain. query takes no
+ *  max_chars, so QM cuts its text at the recall cap itself and the tap tags every provider call provider_op query. */
+export type ProviderReadTool = 'recall' | 'query';
+
 /** The exact MEMORY_PROVIDER_CONFIG of the cell; mcpUrl is the world's /gbrain tap as core reaches it. */
-export function providerConfig(mcpUrl: string) {
+export function providerConfig(mcpUrl: string, readTool: ProviderReadTool = 'recall') {
+  const read = readTool === 'recall'
+    ? { tool: 'recall', queryArg: 'question', maxCharsArg: MAX_CHARS_ARG, clientIdEnv: CLIENT_ID_ENV, clientSecretEnv: CLIENT_SECRET_ENV }
+    : { tool: 'query', queryArg: 'query', clientIdEnv: CLIENT_ID_ENV, clientSecretEnv: CLIENT_SECRET_ENV };
   return {
     providers: [{
       id: 'gbrain',
       type: 'mcp',
       url: mcpUrl,
       timeoutMs: TIMEOUT_MS,
-      read: { tool: 'recall', queryArg: 'question', maxCharsArg: MAX_CHARS_ARG, clientIdEnv: CLIENT_ID_ENV, clientSecretEnv: CLIENT_SECRET_ENV },
+      read,
     }],
     routes: [
       { provider: 'default', scopes: ['personal', 'channel', 'group', 'team', 'org'], capture: 'automatic' },
@@ -74,9 +82,9 @@ export interface QmProviderWiring {
 }
 
 /** One trial's wiring: a fresh client secret, the config naming the tap, and the provider block acting as the bot. */
-export function memoryProviderWiring(o: { mcpUrl: string; actor: string; secret?: string }): QmProviderWiring {
+export function memoryProviderWiring(o: { mcpUrl: string; actor: string; secret?: string; readTool?: ProviderReadTool }): QmProviderWiring {
   const secret = o.secret ?? randomBytes(24).toString('hex');
-  const config = providerConfig(o.mcpUrl);
+  const config = providerConfig(o.mcpUrl, o.readTool);
   return {
     coreEnv: { MEMORY_PROVIDER_CONFIG: JSON.stringify(config), [CLIENT_ID_ENV]: CLIENT_ID, [CLIENT_SECRET_ENV]: secret },
     provider: { clients: { [CLIENT_ID]: { secret, member: o.actor } }, tokens: {}, actor: o.actor, max_chars_arg: MAX_CHARS_ARG, max_chars: RECALL_MAX_CHARS, timeout_ms: TIMEOUT_MS, actor_arg: ACTOR_ARG },

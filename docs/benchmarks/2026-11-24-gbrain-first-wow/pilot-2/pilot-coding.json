@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "run_id": "gbrain-first-wow-pilot-2-coding",
+  "question": "Pilot 2, coding supplement, of the gbrain time-to-first-wow eval: two more coding-check trials per Claude Code coding cell and for Codex defaults, seeds 101 and 103 (coding-12, coding-14), on gbrain 2b4cc26f, so each coding cell has 5 pilot trials to price. Publishes no verdict.",
+  "tasks": {},
+  "wall_clock_s": {
+    "gbrain-first-wow": 900
+  },
+  "spend_cap_usd": 4,
+  "drop_order": [],
+  "minimum_v01": [
+    "cc-opus-defaults-coding",
+    "cc-opus-full-coding",
+    "codex-sol-defaults-coding"
+  ],
+  "order": {
+    "kind": "interleave-task",
+    "seed": 1125
+  },
+  "cells": [
+    {
+      "id": "cc-opus-defaults-coding",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0101",
+        "seed-0103"
+      ],
+      "first_wow": {
+        "arm": "defaults",
+        "gbrain_commit": "2b4cc26f59861ba35c5ac30f60a2d133ae22d17b",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true,
+        "task": "coding"
+      }
+    },
+    {
+      "id": "cc-opus-full-coding",
+      "harness": "claude-code",
+      "model": "anthropic:claude-opus-5-5",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0101",
+        "seed-0103"
+      ],
+      "first_wow": {
+        "arm": "full",
+        "gbrain_commit": "2b4cc26f59861ba35c5ac30f60a2d133ae22d17b",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true,
+        "task": "coding"
+      }
+    },
+    {
+      "id": "codex-sol-defaults-coding",
+      "harness": "codex",
+      "model": "openai:gpt-6.2-sol",
+      "slice": "gbrain-first-wow",
+      "split": "dev",
+      "repetitions": 1,
+      "ceiling": {
+        "input_tokens": 400000,
+        "output_tokens": 20000
+      },
+      "network": "internal",
+      "tasks": [
+        "seed-0101",
+        "seed-0103"
+      ],
+      "first_wow": {
+        "arm": "defaults",
+        "gbrain_commit": "2b4cc26f59861ba35c5ac30f60a2d133ae22d17b",
+        "gbrain_version": "0.60.774.0",
+        "suggestion_switch": true,
+        "task": "coding"
+      }
+    }
+  ]
+}
