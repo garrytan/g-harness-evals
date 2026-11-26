@@ -258,3 +258,23 @@ test('review_exclude_paths stays within gstack\'s 64-pattern limit', () => {
   expect(POLICY.review_exclude_paths.length).toBeLessThanOrEqual(64);
 });
 
+// Value: protects=every SQLite file under a benchmark folder stays out of review wherever it sits, and a run's merge/
+// folder loses only its per-shard *.manifest.json files, so the merge plan and any script there still reach /ship's
+// readers; fails_when=the sqlite pattern is narrowed back to named stage folders, or the merge pattern widens to merge/**
+// or to other json; why_new=#619's reviewer diff was over the 2 MB ceiling and the list was at its 64-pattern cap, so the
+// seven per-folder sqlite patterns became one; seam=a throwaway git repository and git's own glob pathspecs;
+// no_claim=gstack's ceiling or its named-by-code rule.
+test('SQLite files anywhere under a benchmark and per-shard merge manifests are left out, and the merge plan is still reviewed', () => {
+  const kept = [
+    'docs/benchmarks/run-x/merge/merge-plan.json',
+    'docs/benchmarks/run-x/merge/check.ts',
+    'docs/benchmarks/run-x/merge/README.md',
+    'docs/benchmarks/run-x/smoke/notes.md',
+  ];
+  const dropped = [
+    'docs/benchmarks/run-x/smoke/cc.ledger.sqlite',
+    'docs/benchmarks/run-x/results/shards/s1/ledger.sqlite',
+    'docs/benchmarks/run-x/merge/c-s01.manifest.json',
+  ];
+  expect(reviewed([...kept, ...dropped])).toEqual([...kept].sort());
+});
