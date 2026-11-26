@@ -124,9 +124,11 @@ log() { printf '%(%Y-%m-%dT%H:%M:%SZ)T fanout: %s\n' -1 "$*" >&2; }
 # shard's latest lease. A dest from before leases.jsonl counts its shard-vm.json lease. "check" runs before any VM call;
 # "reserve" runs before the first launch under an exclusive lock on <dest>/.stage-cap.lock (waiting up to
 # UBI_STAGE_LOCK_SECONDS, default 300), checks again and appends one reservation per shard it launches fresh, printing
-# "<shard><TAB><reservation>" lines, so two fan-outs on one dest cannot spend the same budget.
+# "<shard><TAB><reservation>" lines, so two fan-outs on one dest cannot spend the same budget. "release <shard> <reservation>
+# ..." runs at the end for the shards that never launched: each reservation no launch line names gets a released line in
+# leases.jsonl (and the stage ledger), which drops it from the sum, and the shard is printed.
 stage_cap() {
-  python3 - "$manifest" "$workload" "$1" "$rep_to" "$here" <<'PY'
+  python3 - "$manifest" "$workload" "$1" "$rep_to" "$here" "${@:2}" <<'PY'
 import fcntl, json, os, sys, time
 m = json.load(open(sys.argv[1])); workload, mode, rep_to, here = sys.argv[2:6]
 num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
@@ -144,6 +146,28 @@ dest = os.path.expanduser(m['dest'])
 opts = m.get('options', [])
 resume = '--resume' in (opts[:opts.index('--')] if '--' in opts else opts)
 when = 'before any VM call' if mode == 'check' else 'before any VM was created'
+if mode == 'release':
+    stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    if workload == 'qm-driver':
+        sys.path.insert(0, here); sys.dont_write_bytecode = True
+        import stage_ledger as sl
+        design = sl.prereg(os.path.dirname(os.path.dirname(here)), m['commit'], m['prereg'], 'fanout')
+        stage = sl.stage_of(shards[0].get('args') or [])
+    for name, rid in zip(sys.argv[6::2], sys.argv[7::2]):
+        p = os.path.join(dest, name, 'leases.jsonl')
+        try: rows = [json.loads(l) for l in open(p) if l.strip()]
+        except (OSError, ValueError): continue
+        mine = [e for e in rows if isinstance(e, dict) and e.get('reservation') == rid]
+        if not mine or any(e.get('launched_at') or e.get('released') for e in mine): continue
+        row = {'reservation': rid, 'lease_usd': mine[0].get('lease_usd'), 'released': True, 'released_at': stamp, 'by': 'fanout.sh', 'resume': False}
+        try:
+            if workload == 'qm-driver': sl.append(os.path.abspath(rep_to), dict(row, run_id=design['run_id'], stage=stage, dest=os.path.realpath(os.path.join(dest, name))))
+            with open(p, 'a') as f: f.write(json.dumps(row) + '\n')
+        except OSError as e:
+            print('fanout: releasing the reservation of %s failed (%s); %s still counts it, and so does the stage ledger unless its line was written' % (name, e, p), file=sys.stderr)
+            continue
+        print(name)
+    sys.exit(0)
 if mode == 'reserve':
     os.makedirs(dest, exist_ok=True)
     lp = os.path.join(dest, '.stage-cap.lock')
@@ -160,7 +184,7 @@ if mode == 'reserve':
 def leases(d):
     p = os.path.join(dest, d, 'leases.jsonl')
     if os.path.isfile(p):
-        units = {}
+        units, released = {}, set()
         for i, line in enumerate(open(p), 1):
             if not line.strip(): continue
             try:
@@ -170,8 +194,9 @@ def leases(d):
                 sys.exit('fanout: refused %s: %s line %d is unreadable, so its lease cannot be counted against stage_cap_usd' % (when, p, i))
             if e.get('resume'): continue
             k = e.get('reservation') or 'line %d' % i
+            if e.get('released'): released.add(k); continue
             units[k] = max(units.get(k, 0.0), lease)
-        return list(units.values())
+        return [v for k, v in units.items() if k not in released]
     q = os.path.join(dest, d, 'shard-vm.json')
     if not os.path.isfile(q): return []
     try: v = json.load(open(q))
@@ -417,6 +442,14 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
   log "shard $name exited $rc"
 done
 if [ "$stopping" -eq 1 ]; then for line in "${queue[@]}"; do IFS=$'\t' read -r name _ _ <<<"$line"; exit_of[$name]=interrupted; done; fi
+# A shard that never launched (left in the queue with no room, or by an interrupt) gives its stage-cap reservation back, so
+# a relaunch is not refused over the cap with nothing spent; a shard that launched keeps it, even when it failed.
+back=()
+for name in "${!exit_of[@]}"; do case ${exit_of[$name]} in no-room|interrupted) [ -z "${rid_of[$name]:-}" ] || back+=("$name" "${rid_of[$name]}") ;; esac; done
+if [ ${#back[@]} -gt 0 ]; then
+  freed=$(stage_cap release "${back[@]}") || log "WARNING: the stage-cap reservations of the shards that never launched could not be released; they still count against the cap"
+  [ -z "${freed:-}" ] || log "released the stage-cap reservation of $(paste -sd' ' - <<<"$freed"), which never launched"
+fi
 
 # The table, from each shard's shard-vm.json and trials.jsonl (turns.jsonl for qm-driver), then one "kept:" line per VM
 # left running; it exits 3 when there is one.

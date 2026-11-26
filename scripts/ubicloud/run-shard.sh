@@ -486,6 +486,16 @@ PY
 # file keeps the inode of the name it was created under, and a new file created under that name gets that inode again, so
 # with any fixed temp name (X.tmp, X.part) mv -f fails as "the same file" from the second pass on.
 part_name() { printf '%s/.%s.part.%s.%s' "$1" "$2" "$$" "$(date +%s%N)"; }
+# clear_parts <dir>: deletes the part files in <dir> left by a controller killed mid-write, so they do not stay in the drive
+# folder forever: those whose pid is no live process here and whose write started more than 6 hours ago (the time in the
+# name). The folder is shared, so a fresh part file may be another machine's write in progress and stays, as a live pid's does.
+clear_parts() {
+  local p cut=$(( $(date +%s) - 21600 ))
+  for p in "$1"/.*.part.*; do
+    [[ $p =~ \.part\.([0-9]+)\.([0-9]{1,19})$ ]] && (( 10#${BASH_REMATCH[2]} / 1000000000 < cut )) && ! kill -0 "${BASH_REMATCH[1]}" 2>/dev/null && rm -f -- "$p"
+  done
+  return 0
+}
 # settle <tmp> <target>: renames <tmp> onto <target>, then checks that <target> holds as many bytes as <tmp> did; on a
 # failure or a mismatch it logs, deletes <tmp> and returns 1.
 settle() {
@@ -499,6 +509,7 @@ settle() {
 replica_preflight() {
   local to=$replicate_to/$name i p
   mkdir -p "$to" || return 1
+  clear_parts "$to"
   for i in 1 2; do
     p=$(part_name "$to" .replica-probe)
     printf 'replica probe %s %s\n' "$$" "$i" > "$p" && settle "$p" "$to/.replica-probe" && [ "$(cat "$to/.replica-probe")" = "replica probe $$ $i" ] ||
@@ -508,12 +519,25 @@ replica_preflight() {
 }
 mirror() {
   [ -n "$replicate_to" ] || return 0
-  if [ -e "$dest/CURSOR-KEY-FOUND" ]; then log "WARNING: replicate: $dest/CURSOR-KEY-FOUND exists (the Cursor key scan hit); no mirror to $replicate_to"; return 1; fi
   local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits skip=()
-  local packs=() raw=() t e b p w task bases rc why ext=gz other=zst comp=(gzip -c)
+  local packs=() found=() parts=() raw=() t e b p w c task bases rc why ext=gz other=zst comp=(gzip -c) real
+  clear_parts "$to"
+  if [ -e "$dest/CURSOR-KEY-FOUND" ]; then log "WARNING: replicate: $dest/CURSOR-KEY-FOUND exists (the Cursor key scan hit); no mirror to $replicate_to"; return 1; fi
   ! command -v zstd >/dev/null 2>&1 || { ext=zst other=gz; comp=(zstd -q -c -T0 -19); }
   [ "$workload" != frontier-harbor ] || skip=(--exclude=proxy-capture --exclude=./results/run --exclude=./smoke/results/gstack/agents/run --exclude=./smoke/results/gstack/agents/trials --exclude='./results/gstack/agents/run/gstack/*/runtime' --exclude='./results/trials/*/*/*/harbor/artifacts/work/repo' --exclude='./results/trials/*/*/*/harbor/artifacts/work/remote.git')
-  [ "$workload" != frontier-harbor ] || mapfile -t packs < <(finished_trees)
+  [ "$workload" != frontier-harbor ] || mapfile -t found < <(finished_trees)
+  # The pulled tree comes from a VM an agent ran on, so any folder on a trial's path may be a symlink (artifacts/work,
+  # harbor, the trial folder), and following it would have git and cp work on a tree outside <dest>. A finished trial's
+  # work/ must be the same path with symlinks followed and not, and work/repo and work/remote.git no symlinks; otherwise it
+  # is logged and neither packed nor copied raw, and the first symlink on its path is left out of the staging tar, which
+  # stores a symlink as a link and never follows it.
+  real=$(realpath -e "$dest")
+  for t in ${found[@]+"${found[@]}"}; do
+    if [ "$(realpath -e "$dest/$t/work" 2>/dev/null)" = "$real/$t/work" ] && [ ! -L "$dest/$t/work/repo" ] && [ ! -L "$dest/$t/work/remote.git" ]; then packs+=("$t"); continue; fi
+    log "WARNING: replicate: $t/work has a symlink on its path; its work trees are neither packed nor copied into $to"
+    IFS=/ read -ra parts <<<"$t/work"; p=.
+    for c in "${parts[@]}"; do p=$p/$c; [ ! -L "$dest/$p" ] || { skip+=(--exclude="$p"); break; }; done
+  done
   rm -rf "$stage" && mkdir -p "$stage" &&
     tar -C "$dest" -cf - --exclude='./.pull*' --exclude='./results.partial-*' --exclude=./.mirror --exclude=./smoke/work/gstack-edition --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} . | tar -C "$stage" -xf - ||
     { log "WARNING: replicate: staging $dest for $to failed; the previous mirror stays"; rm -rf "$stage"; return 1; }

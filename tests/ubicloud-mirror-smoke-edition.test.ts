@@ -16,7 +16,7 @@
 
 import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -49,7 +49,7 @@ function standInMv(dir: string) {
 }
 
 // opts.again, when given, runs after a first --attach and before a second one over the same dest and replica.
-function attachWithSmoke(smokeFiles: Record<string, string>, workload = 'qm-driver', links: Array<[string, string]> = [], trees: Array<[string, string]> = [], opts: { seed?: Record<string, string>; mv?: Record<string, string>; again?: (dest: string) => void } = {}) {
+function attachWithSmoke(smokeFiles: Record<string, string>, workload = 'qm-driver', links: Array<[string, string]> = [], trees: Array<[string, string]> = [], opts: { seed?: Record<string, string>; mv?: Record<string, string>; again?: (dest: string) => void; path?: string } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'he-ubi-mirror-'));
   dirs.push(dir);
   const files = join(dir, 'smoke-files.json');
@@ -74,7 +74,7 @@ function attachWithSmoke(smokeFiles: Record<string, string>, workload = 'qm-driv
   mkdirSync(dest);
   writeFileSync(join(dest, 'shard-vm.json'), JSON.stringify({ name: 'opus-b1', vm: 'vm1', size: 'standard-16', sealed: false, workload, cleanup: 'pending' }));
   for (const [f, t] of Object.entries(opts.seed ?? {})) { mkdirSync(join(replica, 'opus-b1'), { recursive: true }); writeFileSync(join(replica, 'opus-b1', f), t); }
-  const env = { ...opts.mv, REPLICA: replica, PATH: opts.mv ? standInMv(dir) : process.env.PATH ?? '/usr/bin:/bin', HOME: dir, UBI_RUNNER: runner, UBI_RUNNER_STATE: join(dir, 'state'), UBI_OWNER: 'test-owner', UBICLOUD_API_KEY: 'placeholder-not-a-key' };
+  const env = { ...opts.mv, REPLICA: replica, PATH: (opts.path ? opts.path + ':' : '') + (opts.mv ? standInMv(dir) : process.env.PATH ?? '/usr/bin:/bin'), HOME: dir, UBI_RUNNER: runner, UBI_RUNNER_STATE: join(dir, 'state'), UBI_OWNER: 'test-owner', UBICLOUD_API_KEY: 'placeholder-not-a-key' };
   const attach = () => spawnSync('bash', [join(ROOT, 'scripts', 'ubicloud', 'run-shard.sh'), '--attach', '--dest', dest, '--poll-seconds', '1', '--replicate-to', replica], { cwd: ROOT, encoding: 'utf8', timeout: 60_000, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let r = attach();
   const first = { code: r.status, err: r.stderr };
@@ -297,6 +297,57 @@ describe('run-shard.sh mirrors each finished trial\'s work trees, and only once 
     expect(r.laneLog).not.toContain(KEY_SHAPED);
     expect(existsSync(join(r.replica, 'results.tar.zst')) || existsSync(join(r.replica, 'results.tar.gz'))).toBe(false);
   }, 60_000);
+  // Value: protects=a pulled trial whose artifacts/work or harbor folder is a symlink to a repository outside <dest> is
+  // neither packed (no git command runs on it or a copy of it) nor copied raw, nothing of it reaches the replica, and
+  // other trials still mirror; fails_when=finished_trees and work-git.sh follow the symlinked parent, as before this check,
+  // so git runs on a copy of the outside repository, its files are scanned and copied, and its key-shaped file stops the
+  // whole mirror; seam=a fake pull whose tree holds the symlink and a git stand-in on PATH that records any call on a
+  // repository holding the outside sentinel; no_claim=a real VM or a symlink inside work/repo (work-git.sh's own test).
+  for (const level of ['work', 'harbor'] as const) {
+    test('a finished trial whose ' + (level === 'work' ? 'artifacts/work' : 'harbor folder') + ' is a symlink out of <dest> is logged, never packed or copied, and the other trials still mirror', () => {
+      const scratch = mkdtempSync(join(tmpdir(), 'he-ubi-outside-'));
+      dirs.push(scratch);
+      const marker = join(scratch, 'marker');
+      const outside = session();
+      writeFileSync(join(outside, 'repo', 'OUTSIDE-SENTINEL'), 'outside\n');
+      writeFileSync(join(outside, 'repo', 'creds.txt'), 'TOKEN = "' + KEY_SHAPED + '"\n');
+      mkdirSync(join(outside, 'repo', '.git', 'hooks'), { recursive: true });
+      for (const h of ['post-checkout', 'reference-transaction', 'pre-commit']) { writeFileSync(join(outside, 'repo', '.git', 'hooks', h), '#!/bin/sh\ntouch ' + JSON.stringify(marker) + '\n'); chmodSync(join(outside, 'repo', '.git', 'hooks', h), 0o755); }
+      const realGit = spawnSync('bash', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+      const bin = join(scratch, 'bin');
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'git'), ['#!/usr/bin/env bash', 'd=$PWD prev=""', 'for a in "$@"; do [ "$prev" != -C ] || d=$a; prev=$a; done', '[ ! -e "$d/OUTSIDE-SENTINEL" ] || echo "git $*" >> ' + JSON.stringify(marker), 'exec ' + realGit + ' "$@"'].join('\n') + '\n');
+      chmodSync(join(bin, 'git'), 0o755);
+      const trial = 'results/trials/sol-pi-hook/gd-dev-ship-01/a1';
+      const other = 'results/trials/opus-pi-hook/gd-dev-ship-01/a1/harbor/artifacts';
+      const links = join(scratch, 'links');
+      mkdirSync(links);
+      let root = outside, cut = done + '/work', into = done;
+      if (level === 'work') symlinkSync(outside, join(links, 'work'));
+      else {
+        root = join(scratch, 'harbor');
+        mkdirSync(join(root, 'artifacts'), { recursive: true });
+        renameSync(outside, join(root, 'artifacts', 'work'));
+        symlinkSync(root, join(links, 'harbor'));
+        cut = trial + '/harbor';
+        into = trial;
+      }
+      const two = [journal, JSON.stringify({ record: { trial_id: 'gstack-delivery-2026-11/opus-pi-hook/gd-dev-ship-01/a1' } }) + '\n'].join('');
+      const r = attachWithSmoke({ 'results/trials.journal.jsonl': two, [other + '/manifest.json']: '{}\n' }, 'frontier-harbor', [], [[links, into], [session(), other + '/work']], { path: bin });
+      expect(r.code, r.err).toBe(0);
+      expect(r.laneLog).toContain('WARNING: replicate: ' + done + '/work has a symlink on its path; its work trees are neither packed nor copied');
+      expect(r.laneLog).not.toContain('key-shaped text');
+      expect(r.laneLog).not.toContain(KEY_SHAPED);
+      expect(existsSync(marker)).toBe(false);
+      expect(spawnSync('find', [root, '-name', 'work-git'], { encoding: 'utf8' }).stdout.trim()).toBe('');
+      const archive = readdirSync(r.replica).find((x) => /^results\.tar\.(zst|gz)$/.test(x));
+      expect(archive).toBeDefined();
+      const list = spawnSync('tar', ['-tf', join(r.replica, archive!)], { encoding: 'utf8' }).stdout.split('\n');
+      expect(list.filter((l) => l === cut || l.startsWith(cut + '/') || l.startsWith(done + '/work-git'))).toEqual([]);
+      expect(readdirSync(join(r.mirror, other, 'work-git'))).toContain('repo.bundle');
+      expect(existsSync(join(r.mirror, other, 'manifest.json'))).toBe(true);
+    }, 60_000);
+  }
   test('key-shaped text in a finished trial\'s work tree is found before packing and keeps the mirror from being written', () => {
     const path = done + '/work/repo/pkg/settings.py';
     const r = attachWithSmoke(base({ [path]: 'TOKEN = "' + KEY_SHAPED + '"\n' }), 'frontier-harbor');
@@ -387,9 +438,10 @@ describe('run-shard.sh packs a frontier-harbor replica into results and smoke ar
 
 
 describe('run-shard.sh checks the replica\'s temp-then-rename path before any VM call (Amendment 1, added 2026-11-15 (3))', () => {
-  function launch(mv: Record<string, string>) {
+  function launch(mv: Record<string, string>, seed: Record<string, string> = {}) {
     const dir = mkdtempSync(join(tmpdir(), 'he-ubi-replica-preflight-'));
     dirs.push(dir);
+    for (const [f, t] of Object.entries(seed)) { mkdirSync(join(dir, 'replica', 's1'), { recursive: true }); writeFileSync(join(dir, 'replica', 's1', f), t); }
     const runner = join(dir, 'ubi-runner.sh');
     writeFileSync(runner, '#!/usr/bin/env bash\necho "$*" >> ' + JSON.stringify(join(dir, 'calls')) + '\nexit 1\n');
     chmodSync(runner, 0o755);
@@ -416,5 +468,44 @@ describe('run-shard.sh checks the replica\'s temp-then-rename path before any VM
     expect(readFileSync(join(dir, 'mv-renames'), 'utf8').split('\n').filter((l) => l.endsWith('/s1/.replica-probe')).length).toBe(2);
     expect(calls).toBe('');
     expect(left).toEqual([]);
+  }, 60_000);
+  test('the preflight deletes a part file a dead controller left in the replica and keeps one whose pid is alive', () => {
+    const stale = '.results.tar.zst.part.' + spawnSync('true').pid + '.1763000000000000000', live = '.lane.log.part.' + process.pid + '.1763000000000000001';
+    const { r, left, calls } = launch({}, { [stale]: 'cut short', [live]: 'still writing' });
+    expect(r.stderr).not.toContain('replica preflight');
+    expect(calls).toBe('');
+    expect(left).toEqual([live]);
+  }, 60_000);
+  test('the preflight keeps a dead pid\'s part file whose write started less than 6 hours ago, which may be another machine\'s', () => {
+    const fresh = '.results.tar.zst.part.' + spawnSync('true').pid + '.' + (BigInt(Date.now()) * 1000000n).toString();
+    const { r, left, calls } = launch({}, { [fresh]: 'another machine still writing' });
+    expect(r.stderr).not.toContain('replica preflight');
+    expect(calls).toBe('');
+    expect(left).toEqual([fresh]);
+  }, 60_000);
+});
+
+
+describe('run-shard.sh clears the part files a killed controller left in the replica', () => {
+  // Value: protects=a part file whose writer died (a controller killed mid-write) is deleted by the next mirror instead of
+  // staying in the drive folder forever, one whose pid is alive is left to its writer, and a failed archive write leaves
+  // no part file; fails_when=mirror() never looks at old part files, as before; seam=attachWithSmoke's seeded replica and
+  // the stand-in mv; no_claim=a writer on another machine sharing the drive folder whose write has run for more than 6 hours.
+  const files = { 'results/trials/sol-pi-hook/gd-dev-ship-01/a1/harbor/artifacts/work/out/review.json': '[]\n', 'smoke/results/install-check.json': '{}\n' };
+  test('the next mirror deletes a part file whose pid is dead and keeps one whose pid is alive', () => {
+    const stale = '.results.tar.zst.part.' + spawnSync('true').pid + '.1763000000000000000', live = '.lane.log.part.' + process.pid + '.1763000000000000001';
+    const r = attachWithSmoke(files, 'frontier-harbor', [], [], { seed: { [stale]: 'cut short', [live]: 'still writing' } });
+    expect(r.code, r.err).toBe(0);
+    const top = readdirSync(r.replica);
+    expect(top).not.toContain(stale);
+    expect(top).toContain(live);
+    expect(top.some((x) => /^results\.tar\.(zst|gz)$/.test(x))).toBe(true);
+  }, 60_000);
+  test('an archive write that fails leaves no part file behind', () => {
+    const ext = spawnSync('bash', ['-c', 'command -v zstd'], { encoding: 'utf8' }).status === 0 ? 'zst' : 'gz';
+    const r = attachWithSmoke(files, 'frontier-harbor', [], [], { mv: { MV_FAIL: 'results.tar.' + ext } });
+    expect(r.code, r.err).toBe(0);
+    expect(r.laneLog).toContain('WARNING: replicate: packing results into ');
+    expect(readdirSync(r.replica).filter((x) => x.includes('.part.'))).toEqual([]);
   }, 60_000);
 });

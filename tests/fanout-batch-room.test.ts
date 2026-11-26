@@ -197,3 +197,144 @@ describe('fanout.sh interrupted by a group TERM during a usage read', () => {
   }, 60_000);
 });
 
+
+
+describe('fanout.sh gives back the stage-cap reservation of a shard that never launched', () => {
+  // Value: protects=a shard left with no room (no VM ever created for it) no longer keeps its reservation in leases.jsonl
+  // and the stage ledger, so relaunching it is not refused over the cap with nothing spent, while a shard that launched
+  // keeps its reservation; fails_when=a no-room shard's reservation still counts, as before (harness-evals#484 known issue
+  // 2), or a launched shard's reservation is released; seam=UBI_RUNNER and a fake run-shard.sh that writes the launch
+  // lines the real one writes; no_claim=a real VM, the interrupt path (released the same way) or the real run-shard.sh.
+  test('the no-room shard is released and relaunches under the cap, and the launched shard still counts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-fanout-release-'));
+    try {
+      for (const s of ['fanout.sh', 'stage_ledger.py', 'prune-pending.sh']) copyFileSync(join(FANOUT, '..', s), join(dir, s));
+      writeFileSync(join(dir, 'prereg.json'), JSON.stringify({ run_id: 'stage-test', caps_usd: { main: 2 } }));
+      const dest = join(dir, 'dest'), replica = join(dir, 'replica');
+      script(dir, 'run-shard.sh', [
+        'arg() { sed -E "s/.* --$1 ([^ ]+).*/\\1/" <<<"$*"; }',
+        'name=$(arg name "$*") d=$(arg dest "$*") rep=$(arg replicate-to "$*") at=2026-11-17T00:00:00Z',
+        'echo "$name" >> "' + dir + '/started"',
+        '[ "$name" != s1 ] || touch "' + dir + '/full"',
+        'printf \'{"lease_usd": 1, "launched_at": "%s", "vm": "vm-%s", "resume": false, "reservation": "%s"}\\n\' "$at" "$name" "$UBI_LEASE_RESERVATION" >> "$d/leases.jsonl"',
+        'printf \'{"run_id": "stage-test", "stage": "main", "dest": "%s", "lease_usd": 1, "resume": false, "launched_at": "%s", "vm": "vm-%s", "by": "run-shard.sh", "reservation": "%s"}\\n\' "$(realpath "$d")" "$at" "$name" "$UBI_LEASE_RESERVATION" >> "$rep/stage-ledger.jsonl"',
+        'sleep 1',
+        'exit 0',
+      ].join('\n'));
+      script(dir, 'ubi-runner.sh', 'case $1 in usage) if [ -e "' + dir + '/full" ]; then echo "total 29 464"; else echo "total 28 448"; fi ;; esac');
+      const run = (names: string[]) => {
+        rmSync(join(dir, 'full'), { force: true });
+        writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ commit: 'a'.repeat(40), prereg: join(dir, 'prereg.json'), dest, size: 'standard-16', stage_cap_usd: 2, shards: names.map((name) => ({ name, cells: 'c-' + name, lease_usd: 1, args: ['--stage', 'main', '--shards', '8'] })) }));
+        return spawnSync('bash', [join(dir, 'fanout.sh'), '--manifest', join(dir, 'manifest.json'), '--workload', 'qm-driver', '--replicate-to', replica], {
+          encoding: 'utf8',
+          timeout: 60_000,
+          env: { PATH: process.env.PATH, HOME: dir, UBI_OWNER: 'test-owner', UBI_RUNNER: join(dir, 'ubi-runner.sh') },
+        });
+      };
+      const rows = (p: string) => (existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+      const first = run(['s1', 's2']);
+      expect(first.stderr).toContain('1 shard(s) not launched');
+      expect(first.stderr).toContain('released the stage-cap reservation of s2, which never launched');
+      expect(rows(join(dest, 's1', 'leases.jsonl')).some((e) => e.released)).toBe(false);
+      expect(rows(join(dest, 's2', 'leases.jsonl')).filter((e) => e.released).length).toBe(1);
+      expect(rows(join(replica, 'stage-ledger.jsonl')).filter((e) => e.released).map((e) => e.dest)).toEqual([join(dest, 's2')]);
+      const again = run(['s2']);
+      expect(again.stderr).not.toContain('refused');
+      expect(again.status, again.stderr).toBe(0);
+      const more = run(['s3']);
+      expect(more.status).toBe(2);
+      expect(more.stderr).toContain('the shard leases sum to $1 plus $2 launched earlier from ' + dest + ' (s1, s2)');
+      expect(readFileSync(join(dir, 'started'), 'utf8').trim().split('\n')).toEqual(['s1', 's2']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
+});
+
+describe('fanout.sh gives back the reservation of a shard an interrupt left in the queue', () => {
+  // Value: protects=after a TERM, a shard still in the queue gets its reservation released in leases.jsonl and the stage
+  // ledger, while the shard that was running keeps its reservation; fails_when=the interrupt path skips the release, or
+  // releases the running shard's reservation; why_new=the /ship review of the release (only the no-room path was tested);
+  // seam=UBI_RUNNER and a fake run-shard.sh that writes the launch lines the real one writes; no_claim=a real VM or the
+  // real run-shard.sh.
+  test('a TERM while s1 runs releases queued s2 and keeps s1', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-fanout-release-'));
+    try {
+      for (const s of ['fanout.sh', 'stage_ledger.py', 'prune-pending.sh']) copyFileSync(join(FANOUT, '..', s), join(dir, s));
+      writeFileSync(join(dir, 'prereg.json'), JSON.stringify({ run_id: 'stage-test', caps_usd: { main: 2 } }));
+      const dest = join(dir, 'dest'), replica = join(dir, 'replica');
+      script(dir, 'run-shard.sh', [
+        'arg() { sed -E "s/.* --$1 ([^ ]+).*/\\1/" <<<"$*"; }',
+        'name=$(arg name "$*") d=$(arg dest "$*") rep=$(arg replicate-to "$*") at=2026-11-17T00:00:00Z',
+        'printf \'{"lease_usd": 1, "launched_at": "%s", "vm": "vm-%s", "resume": false, "reservation": "%s"}\\n\' "$at" "$name" "$UBI_LEASE_RESERVATION" >> "$d/leases.jsonl"',
+        'printf \'{"run_id": "stage-test", "stage": "main", "dest": "%s", "lease_usd": 1, "resume": false, "launched_at": "%s", "vm": "vm-%s", "by": "run-shard.sh", "reservation": "%s"}\\n\' "$(realpath "$d")" "$at" "$name" "$UBI_LEASE_RESERVATION" >> "$rep/stage-ledger.jsonl"',
+        'echo "$name" >> "' + dir + '/started"',
+        'trap \'exit 130\' TERM',
+        'sleep 8 & wait',
+        'exit 0',
+      ].join('\n'));
+      script(dir, 'ubi-runner.sh', 'echo "total 0 0"');
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ commit: 'a'.repeat(40), prereg: join(dir, 'prereg.json'), dest, size: 'standard-16', stage_cap_usd: 2, shards: ['s1', 's2'].map((name) => ({ name, cells: 'c-' + name, lease_usd: 1, args: ['--stage', 'main', '--shards', '8'] })) }));
+      const driver = [
+        'bash "$1" --manifest "$2" --parallel 1 --workload qm-driver --replicate-to "$3/replica" & p=$!',
+        'for i in $(seq 1 150); do [ -s "$3/started" ] && break; sleep 0.1; done',
+        'kill -TERM $p; wait $p; echo "fanout exit $?"',
+      ].join('\n');
+      const r = spawnSync('bash', ['-c', driver, 'driver', join(dir, 'fanout.sh'), join(dir, 'manifest.json'), dir], {
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: { PATH: process.env.PATH, HOME: dir, UBI_OWNER: 'test-owner', UBI_RUNNER: join(dir, 'ubi-runner.sh') },
+      });
+      const rows = (p: string) => (existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+      expect(readFileSync(join(dir, 'started'), 'utf8').trim().split('\n')).toEqual(['s1']);
+      expect(r.stderr).toContain('released the stage-cap reservation of s2, which never launched');
+      expect(rows(join(dest, 's2', 'leases.jsonl')).filter((e) => e.released).length).toBe(1);
+      expect(rows(join(dest, 's1', 'leases.jsonl')).some((e) => e.released)).toBe(false);
+      expect(rows(join(replica, 'stage-ledger.jsonl')).filter((e) => e.released).map((e) => e.dest)).toEqual([join(dest, 's2')]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
+describe('fanout.sh releases nothing for a shard whose stage-ledger line cannot be written', () => {
+  // Value: protects=a release whose stage-ledger write fails leaves that shard's leases.jsonl unreleased too, so both ledgers
+  // still count the reservation, and says so; fails_when=leases.jsonl is released first and the stage ledger still counts
+  // it, or the log claims a release that was not written; why_new=the /ship second-model review of the release order;
+  // seam=UBI_RUNNER and a fake run-shard.sh that turns the stage ledger into a folder after its launch; no_claim=a real VM,
+  // a drive mount or the real run-shard.sh.
+  test('s2 is left counted in both ledgers and the log names it as not released', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-fanout-release-'));
+    try {
+      for (const s of ['fanout.sh', 'stage_ledger.py', 'prune-pending.sh']) copyFileSync(join(FANOUT, '..', s), join(dir, s));
+      writeFileSync(join(dir, 'prereg.json'), JSON.stringify({ run_id: 'stage-test', caps_usd: { main: 2 } }));
+      const dest = join(dir, 'dest'), replica = join(dir, 'replica');
+      script(dir, 'run-shard.sh', [
+        'arg() { sed -E "s/.* --$1 ([^ ]+).*/\\1/" <<<"$*"; }',
+        'name=$(arg name "$*") d=$(arg dest "$*") rep=$(arg replicate-to "$*") at=2026-11-17T00:00:00Z',
+        'echo "$name" >> "' + dir + '/started"',
+        'touch "' + dir + '/full"',
+        'printf \'{"lease_usd": 1, "launched_at": "%s", "vm": "vm-%s", "resume": false, "reservation": "%s"}\\n\' "$at" "$name" "$UBI_LEASE_RESERVATION" >> "$d/leases.jsonl"',
+        '{ mv "$rep/stage-ledger.jsonl" "$rep/ledger.bak" 2>/dev/null || true; } && mkdir -p "$rep/stage-ledger.jsonl"',
+        'exit 0',
+      ].join('\n'));
+      script(dir, 'ubi-runner.sh', 'case $1 in usage) if [ -e "' + dir + '/full" ]; then echo "total 29 464"; else echo "total 28 448"; fi ;; esac');
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ commit: 'a'.repeat(40), prereg: join(dir, 'prereg.json'), dest, size: 'standard-16', stage_cap_usd: 2, shards: ['s1', 's2'].map((name) => ({ name, cells: 'c-' + name, lease_usd: 1, args: ['--stage', 'main', '--shards', '8'] })) }));
+      const r = spawnSync('bash', [join(dir, 'fanout.sh'), '--manifest', join(dir, 'manifest.json'), '--workload', 'qm-driver', '--replicate-to', replica], {
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: { PATH: process.env.PATH, HOME: dir, UBI_OWNER: 'test-owner', UBI_RUNNER: join(dir, 'ubi-runner.sh') },
+      });
+      const rows = (p: string) => (existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+      expect(r.stderr).toContain('1 shard(s) not launched');
+      expect(r.stderr).toContain('fanout: releasing the reservation of s2 failed (');
+      expect(r.stderr).not.toContain('released the stage-cap reservation of s2');
+      expect(rows(join(dest, 's2', 'leases.jsonl')).length).toBe(1);
+      expect(rows(join(dest, 's2', 'leases.jsonl')).some((e) => e.released)).toBe(false);
+      expect(rows(join(replica, 'ledger.bak')).some((e) => e.released)).toBe(false);
+      expect(readFileSync(join(dir, 'started'), 'utf8').trim().split('\n')).toEqual(['s1']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});

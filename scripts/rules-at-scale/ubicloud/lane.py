@@ -46,8 +46,8 @@ def patches(root):
              '  rules-at-scale)\n  [ "$embedded" -eq 0 ] && [ -z "$sealed_root" ] && [ -z "$opening_receipt" ] || { echo "run-shard (ubicloud): --workload rules-at-scale takes no --embedded, --sealed-root or --opening-receipt" >&2; exit 2; } ;;\n'
              '  *) echo "run-shard (ubicloud): --workload must be harness, gstack-laneb, qm-driver, frontier-harbor or rules-at-scale" >&2; exit 2 ;;\n', 1),
             # the mirror leaves out the request captures and both Harbor job trees (results/run and smoke/results/run)
-            ('  [ "$workload" != frontier-harbor ] || mapfile -t packs < <(finished_trees)\n',
-             '  [ "$workload" != frontier-harbor ] || mapfile -t packs < <(finished_trees)\n'
+            ('  [ "$workload" != frontier-harbor ] || mapfile -t found < <(finished_trees)\n',
+             '  [ "$workload" != frontier-harbor ] || mapfile -t found < <(finished_trees)\n'
              '  [ "$workload" != rules-at-scale ] || skip=(--exclude=proxy-capture --exclude=./results/run --exclude=./smoke/results/run)\n', 1),
             # a mid-run pull skips the container-owned files of a live Harbor trial instead of failing
             ('  [ "$workload" != frontier-harbor ] || skip=(--skip-unreadable)\n',

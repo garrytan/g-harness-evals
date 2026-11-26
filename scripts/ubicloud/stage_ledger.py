@@ -6,7 +6,9 @@
 run-shard.sh appends one per launch, plus its own reservation first when no fan-out reserved one. The stage cap is the
 preregistration's caps_usd entry for that stage, and it is checked against the sum of that (run id, stage)'s lines, so a
 split dest or a one-off run-shard.sh relaunch counts against the same cap. A reservation and the launch that used it count
-once, and a --resume line continues its shard's lease and adds nothing. Writers hold <replicate-to>/.stage-ledger.lock.
+once, and a --resume line continues its shard's lease and adds nothing. A shard that never launched gets a released line
+from fanout.sh at the end of its fan-out, and its reservation then counts nothing; a released line only lowers the sum, so
+it is appended without the lock. Writers of reservations hold <replicate-to>/.stage-ledger.lock.
 
 fanout.sh imports it; run-shard.sh runs it:
   stage_ledger.py launch <repo root> <commit> <prereg> <replicate-to> <dest> <lease> <resume 0|1> <reservation or ""> [workload args]
@@ -58,9 +60,10 @@ def lock(rep, who, when):
 
 
 def units(rep, run_id, stage, who, when):
-    """{shard dest: {reservation: lease}} for the run id and stage, in ledger order; --resume lines add nothing."""
+    """{shard dest: {reservation: lease}} for the run id and stage, in ledger order; --resume lines add nothing, and a
+    reservation fanout.sh released (its shard never launched) is dropped."""
     p = os.path.join(rep, LEDGER)
-    out = {}
+    out, released = {}, set()
     if not os.path.isfile(p): return out
     for i, line in enumerate(open(p), 1):
         if not line.strip(): continue
@@ -70,9 +73,11 @@ def units(rep, run_id, stage, who, when):
         except (ValueError, TypeError, KeyError, AttributeError):
             sys.exit('%s: refused %s: %s line %d is unreadable, so its lease cannot be counted against the stage cap' % (who, when, p, i))
         if e.get('run_id') != run_id or e.get('stage') != stage or e.get('resume'): continue
-        d = out.setdefault(e.get('dest') or '?', {})
         k = e.get('reservation') or 'line %d' % i
+        if e.get('released'): released.add((e.get('dest') or '?', k)); continue
+        d = out.setdefault(e.get('dest') or '?', {})
         d[k] = max(d.get(k, 0.0), lease)
+    for d, k in released: out.get(d, {}).pop(k, None)
     return out
 
 
