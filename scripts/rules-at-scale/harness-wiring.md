@@ -15,7 +15,8 @@ This folder runs each coding agent with a rules file (CLAUDE.md, AGENTS.md or GE
 | `pin.json` | Newest release of each harness, with its npm integrity (Hermes: its git commit) and what changed from the frontier pin. |
 | `pin-check.ts` | Checks the pin's shape and matches an installed version string against it. |
 | `rules_wiring.py` | All the logic, with no Harbor import: which arms a harness can run, where each file goes, the cut-lifting settings, the hook route, the launch checks and the QM helpers. CLI: `plan`, `cant-run`, `materialize`, `version`. |
-| `agents_rules.py` | The Harbor classes: `RulesClaudeCode`, `RulesCodex`, `RulesHermes`, `RulesOpenClaw`, `RulesPi`, `RulesGeminiCli`, and the `RulesQm` stub. |
+| `agents_rules.py` | The Harbor classes: `RulesClaudeCode`, `RulesCodex`, `RulesHermes`, `RulesOpenClaw`, `RulesPi` and `RulesGeminiCli`. |
+| `agents_rules_qm.py` | `RulesQm`: QM's class, on the QM runner's `FrontierQm`. |
 | `hooks/rules-hook.py` | Prints the six rules once, in each harness's hook output shape. |
 | `hooks/openclaw-rules-plugin/` | OpenClaw plugin `he-rules-hook`, which adds the six rules through `before_prompt_build`. |
 | `map/` | The keyless delivery map. See `map/README.md`. |
@@ -60,9 +61,10 @@ Every failure has a code and stops the trial before the agent starts, so it coun
 | HE-RULES-006 | gstack or gbrain found in the container |
 | HE-RULES-007 | no single task folder for the trial |
 | HE-RULES-008 | the materializer failed |
-| HE-RULES-009 | QM (stub, see below) |
+| HE-RULES-009 | retired: it was the QM stub |
 | HE-RULES-010 | the installed harness isn't the pinned version |
 | HE-RULES-011 | a QM SOUL over 100,000 characters |
+| HE-RULES-012 | QM refused the SOUL admin call |
 
 ## Arms a harness can't run
 
@@ -83,13 +85,21 @@ Every failure has a code and stops the trial before the agent starts, so it coun
 - **Hermes installs from `main` through its own package manager.** Its `install.sh` refuses the release tag as `--branch` ("commit ... is not on branch v0.23.2"), so the install runs with `--branch main --commit <pin>` and `--hermes-home /tmp/hermes`, then adds the `anthropic` package through `pm.ensure_import`. With the default home, Hermes refuses to start ("no dependency environment is committed for this install"). The version check reads the commit and `anthropic` from the committed environment.
 - **Codex doesn't tell the model when it cuts.** Codex 0.170.0's "Loaded only 32768 of 163790 bytes ... increase `project_doc_max_bytes`" appears as an `error` item in its own JSON event log, not in the request the model sees.
 
-## QM (a stub)
+## QM
 
 QM reads no rules file from the workspace. Its equivalent is the organization's SOUL, set through QM's admin API and shown to the model under "## Organization instructions" (a source read of yc-software/qm at 90e4ced7).
 
-`RulesQm` is a marked stub that refuses with HE-RULES-009. It waits for the QM runner's `FrontierQm` (`scripts/frontier-harbor/qm_harbor.py`), which isn't on this base yet, so `agents_rules.py` imports `FrontierQm` guarded and the keyless tests still pass. The helpers it will call are in `rules_wiring.py`:
+`RulesQm` (`agents_rules_qm.py`) puts the same wiring in front of the QM runner's `FrontierQm` (`scripts/frontier-harbor/agents.py`). Per trial:
 
-- `qm_soul_call(text)`: the admin call `PUT /v1/admin/scopes/org:harness-eval/soul` with `{"content": text}`, made before the turn. A text over 100,000 characters fails the trial (HE-RULES-011) and is never cut.
+1. `FrontierQm` starts QM and makes its own admin calls: the model, the command policy and the sandbox.
+2. The wiring runs its usual checks and places the arm's repository files. Only `qm-repo` has one: the b8k AGENTS.md.
+3. One admin call sets the arm's SOUL. `none` makes no call, so QM's default SOUL stays. `qm-repo` sets an empty SOUL, and every other arm sets the manifest's `qm-organization-instructions` text. A reply other than 200, 201 or 204 stops the trial (HE-RULES-012). The call sends no `expectedVersion`: QM's SOUL route (`src/api/routes/admin-resources.ts` at the pinned commit) checks a version only when one is sent.
+4. QM's turn is a message to QM core, not a command in the task container. So the launch checks and the watcher start run right before that message.
+5. A failure while QM's containers are up stops them before the trial ends. A QM that failed to start has already stopped itself, so it isn't stopped twice and its `qm-core.log` keeps core's own output.
+
+A QM arm runs only on a model the QM runner routes (`harnesses.qm.models` in `scripts/frontier-harbor/pin.json`); any other model, Particle included, is refused when the shard's jobs are written (HE-RULES-003). QM's version is the QM runner's own pin (`harnesses/qm/pin.json`), so `pin.json` here has no QM row. The trial's `harness_settings.json` names that pin file and its commit. The helpers are in `rules_wiring.py`:
+
+- `qm_soul_call(text)`: the admin call `PUT /v1/admin/scopes/org:harness-eval/soul` with `{"content": text}`. A text over 100,000 characters fails the trial (HE-RULES-011) and is never cut. Characters are counted as QM counts them: JavaScript string length, so an emoji counts as two.
 - `qm_soul_text(arm, loaded)`: no SOUL on `none` (QM's default stays), else the manifest's `qm-organization-instructions` file. On `qm-repo` that file is empty and the b8k AGENTS.md is a `repo` file.
 - `qm_soul_delivered(system_prompt, text)`: the proof, read from the captured first agent-loop request. The admin reply is not proof.
 

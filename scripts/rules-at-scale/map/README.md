@@ -58,7 +58,7 @@ The `none` arm carries no rule on every harness, and `short` carries all six who
 
 ## QM (predicted, not captured)
 
-QM is a stub here, so its row is a prediction from a source read, not a capture. QM reads no rules file from the workspace. Its rules go in the organization's SOUL, set by one admin call before the turn and shown under "## Organization instructions", up to 100,000 characters. A longer SOUL fails the trial and is never cut, so QM offers no b160k, split, hook or cutlift arm. The `qm-repo` arm (b8k AGENTS.md in the repository, empty SOUL) is predicted absent from the first request. The predicted rows are in `delivery-map.md`, and under `qm_predicted` in `delivery-map.json`.
+QM was a stub when this map ran, so its row is a prediction from a source read, not a capture. QM reads no rules file from the workspace. Its rules go in the organization's SOUL, set by one admin call before the turn and shown under "## Organization instructions", up to 100,000 characters. A longer SOUL fails the trial and is never cut, so QM offers no b160k, split, hook or cutlift arm. The `qm-repo` arm (b8k AGENTS.md in the repository, empty SOUL) is predicted absent from the first request. The predicted rows are in `delivery-map.md`, and under `qm_predicted` in `delivery-map.json`.
 
 ## Run it
 

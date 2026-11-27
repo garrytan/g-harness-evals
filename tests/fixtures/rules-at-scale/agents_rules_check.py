@@ -27,6 +27,7 @@ stub_cc.ClaudeCode.__init__ = _cc_init
 
 import agents  # noqa: E402
 import agents_rules as ar  # noqa: E402
+import agents_rules_qm as arq  # noqa: E402
 import rules_wiring as rw  # noqa: E402
 
 agents.bind_slot = lambda broker, trial, harness, model, *a, **k: {"token": "trial-token:stub", "base_url": f"http://gw/{trial}/{model.split(':')[0]}"}
@@ -55,7 +56,7 @@ class FakeEnv:
 
     async def exec(self, command, user=None, env=None, cwd=None, timeout_sec=None):
         self.commands.append(command)
-        if command == ar.VERSION_COMMAND[self.harness]:
+        if command == ar.VERSION_COMMAND.get(self.harness):
             return Res("codex-cli 0.165.0" if self.old else VERSION_OUT[self.harness])
         if "rev-parse HEAD" in command and "anthropic" in command:
             return Res(rw.PIN["harnesses"]["hermes"]["commit"] + "\n" + rw.PIN["harnesses"]["hermes"]["anthropic"]["version"])
@@ -129,6 +130,94 @@ async def case(tmp, materializer, harness, arm=None, **kw):
     return out
 
 
+class FakeQm(arq.RulesQm):
+    """RulesQm with QM itself replaced: no images, containers or daemon. Every QM call is logged in order with the event
+    names qm_started, admin <path>, turn and qm_stopped; an admin call to the SOUL path answers soul_http. Like FrontierQm's
+    own stop, which reads core's log and removes containers only while they are up, a stop with nothing up logs nothing."""
+
+    soul_http = 200
+    start_fails = False
+
+    def __init__(self, *a, **k):
+        self.qm_events = []
+        super().__init__(*a, **k)
+
+    async def install(self, environment):
+        return None
+
+    def render_instruction(self, text):
+        return text
+
+    async def _frontier_after_install(self, environment):
+        self.qm_events.append("qm_started")
+        self._qm_names = ["qm-pg", "qm-core"]
+        if self.start_fails:
+            await self._qm_stop(environment)
+            raise RuntimeError("HE-QM-002 QM core did not answer /healthz within 120 s (qm-core.log)")
+
+    async def _qm_call(self, *args, body=None, timeout=300):
+        if args[0] == "turn":
+            self.qm_events.append(f"turn launched={str(self._rules_launched).lower()}")
+            return {"http": 200, "body": {"status": "ok"}, "exit": 0}
+        self.qm_events.append(" ".join(args[:3]))
+        self.qm_body = body
+        return {"http": self.soul_http if args[2] == rw.QM_SOUL_PATH else 200, "exit": 0}
+
+    async def _qm_stop(self, environment):
+        if self._qm_names:
+            self.qm_events.append("qm_stopped")
+        self._qm_names = []
+
+
+async def qm_case(tmp, materializer, arm, soul_http=200, planted="", start_fails=False, broken=(), blank_soul=False, qm_commit=None):
+    name = f"qm-{arm}-{soul_http}-{bool(planted)}-{start_fails}-{bool(broken)}-{blank_soul}-{bool(qm_commit)}"
+    logs = Path(tmp) / name / "jobs" / "job" / f"{TASK}__abc1234" / "agent"
+    rules = {"arm": arm}
+    if arm != "none":
+        files = Path(tmp) / name / "rules"
+        files.mkdir(parents=True)
+        if arm in rw.QM_ARMS:
+            subprocess.run(["bun", materializer, "--task", str(REPO / "scripts/rules-at-scale/map/stub-task"), "--arm", arm, "--harness", "qm", "--out", str(files / TASK)], check=True, capture_output=True)
+        if blank_soul:
+            man_path = files / TASK / "manifest.json"
+            man = json.loads(man_path.read_text())
+            (files / TASK / "soul.txt").write_text(" \n")
+            for f in man["files"]:
+                if f["path"] == "soul.txt":
+                    f.update(sha256=hashlib.sha256(b" \n").hexdigest(), bytes=2)
+            man_path.write_text(json.dumps(man))
+        rules["files_dir"] = str(files)
+    out = {"arm": arm}
+    attrs = {"soul_http": soul_http, "start_fails": start_fails, **({"QM_COMMIT": qm_commit} if qm_commit else {})}
+    try:
+        agent = type("FakeQm", (FakeQm,), attrs)(logs_dir=str(logs), model_name="anthropic/claude-opus-5-5", broker_url="http://broker", cell="c", attempt=1, rules=rules)
+    except rw.RulesRefused as e:
+        return {**out, "refused_at": "init", "code": e.code}
+    try:
+        p = rw.plan("qm", agent._rules, rw.load_files(agent._rules, "qm", rw.task_dir_for(agent._rules, f"{TASK}__abc1234")), agent._rules_model)
+        checks = p["checks_setup"] + p["checks_launch"]
+    except rw.RulesRefused:
+        checks = []
+    env = FakeEnv("qm", checks, broken=broken, planted=planted)
+    try:
+        await agent.setup(env)
+        await agent.run("Fix the clamp bug.", env, None)
+    except rw.RulesRefused as e:
+        out.update(code=e.code, message=str(e)[:240])
+    except RuntimeError as e:
+        out.update(code=str(e).split(" ", 1)[0], message=str(e)[:240])
+    events = agent.qm_events
+    out["events"] = [e if e.startswith(("qm_", "turn")) or e.endswith(rw.QM_SOUL_PATH) else "admin" for e in events]
+    out["soul_body"] = agent.qm_body if any(e.endswith(rw.QM_SOUL_PATH) for e in events) else None
+    out["placed"] = [c.split(" && cp ")[1].split(" ")[1] for c in env.commands if "/tmp/he-rules/stage/" in c and "sha256sum" in c]
+    out["watch_started"] = rw.watch_start() in env.commands
+    settings = logs / "harness_settings.json"
+    out["rules_record"] = json.loads(settings.read_text()).get("rules") if settings.exists() else None
+    soul = Path(rules["files_dir"]) / TASK / "soul.txt" if arm != "none" else None
+    out["soul_file"] = soul.read_text() if soul and soul.exists() else None
+    return out
+
+
 async def main(tmp, materializer):
     cases = {}
     for h in ("claude-code", "codex", "hermes", "openclaw", "pi", "gemini-cli"):
@@ -140,11 +229,14 @@ async def main(tmp, materializer):
     cases["pi gbrain planted"] = await case(tmp, materializer, "pi", "b8k", planted="/root/.gbrain\n")
     cases["openclaw extra rules file"] = await case(tmp, materializer, "openclaw", "b8k", broken=("-name AGENTS.md",))
     cases["claude-code hook broken"] = await case(tmp, materializer, "claude-code", "hook", broken=("HE_RULES_CHECK=1",))
-    try:
-        ar.RulesQm(rules={"arm": "b8k"})
-        cases["qm stub"] = {"code": None}
-    except rw.RulesRefused as e:
-        cases["qm stub"] = {"code": e.code, "frontier_qm_importable": ar.FrontierQm is not None}
+    for arm in ("none", "qm-repo", "b8k", "qm-top", "b160k"):
+        cases[f"qm {arm}"] = await qm_case(tmp, materializer, arm)
+    cases["qm soul refused"] = await qm_case(tmp, materializer, "b8k", soul_http=500)
+    cases["qm gbrain planted"] = await qm_case(tmp, materializer, "b8k", planted="/root/.gbrain\n")
+    cases["qm start fails"] = await qm_case(tmp, materializer, "b8k", start_fails=True)
+    cases["qm launch check fails"] = await qm_case(tmp, materializer, "b8k", broken=("-name AGENTS.md",))
+    cases["qm blank soul"] = await qm_case(tmp, materializer, "b8k", blank_soul=True)
+    cases["qm commit override"] = await qm_case(tmp, materializer, "b8k", qm_commit="a" * 40)
     print(json.dumps(cases))
 
 

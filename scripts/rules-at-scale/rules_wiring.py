@@ -37,6 +37,7 @@ sys.path.insert(0, str(REPO / "scripts" / "frontier-harbor"))
 
 import delivery as dl  # noqa: E402  (the frontier delivery module: its gstack probe and file writer, imported, never edited)
 import frontier_settings as fs  # noqa: E402
+import qm_harbor as qh  # noqa: E402
 
 PIN = json.loads((HERE / "pin.json").read_text())
 HOOK_ASSETS = HERE / "hooks"
@@ -82,19 +83,25 @@ HOOK = {
 
 # QM (the QM runner's design, read at yc-software/qm 90e4ced7): no workspace rules file; the
 # organization instructions (SOUL) are set by one admin call before the turn and shown to the model under
-# "## Organization instructions". A stub until FrontierQm (scripts/frontier-harbor/qm_harbor.py, the QM runner's branch) is on
-# main: agents_rules.RulesQm refuses with HE-RULES-009, and these helpers are what it will call.
+# "## Organization instructions". agents_rules_qm.RulesQm calls these helpers on the QM runner's FrontierQm.
+QM_PIN_FILE = "harnesses/qm/pin.json"
 QM_ARMS = ("none", "qm-repo", "short", "b8k", "b28k", "b80k", "qm-top")
-QM_SOUL_PATH = "/v1/admin/scopes/org:harness-eval/soul"
+QM_SOUL_PATH = f"/v1/admin/scopes/{qh.SCOPE}/soul"
 QM_SOUL_HEADING = "## Organization instructions"
 QM_MAX_SOUL_CHARS = 100_000
 
 
+def qm_chars(text: str) -> int:
+    """The length QM's TypeScript reads (string.length, UTF-16 code units), which a code-point count undercounts for any
+    character outside the Basic Multilingual Plane."""
+    return len(text.encode("utf-16-le")) // 2
+
+
 def qm_soul_call(text: str) -> dict[str, Any]:
-    """The admin call that sets the trial's organization instructions, for qm_harbor.admin_calls(). A text over QM's
+    """The admin call that sets the trial's organization instructions, which agents_rules_qm.RulesQm makes after FrontierQm's own admin calls. A text over QM's
     MAX_SOUL_CHARS (src/api/routes/admin-resources.ts) fails the trial; it is never cut."""
-    if len(text) > QM_MAX_SOUL_CHARS:
-        raise RulesRefused("HE-RULES-011", f"the organization instructions are {len(text)} characters, over QM's MAX_SOUL_CHARS of {QM_MAX_SOUL_CHARS}; the trial stops and the text is not cut")
+    if qm_chars(text) > QM_MAX_SOUL_CHARS:
+        raise RulesRefused("HE-RULES-011", f"the organization instructions are {qm_chars(text)} characters, over QM's MAX_SOUL_CHARS of {QM_MAX_SOUL_CHARS}; the trial stops and the text is not cut")
     return {"name": "soul", "method": "PUT", "path": QM_SOUL_PATH, "body": {"content": text}}
 
 
@@ -105,6 +112,8 @@ def qm_soul_text(arm: str, loaded: dict[str, Any]) -> str | None:
         return None
     if loaded.get("soul") is None:
         raise RulesRefused("HE-RULES-002", f"QM arm {arm} needs a qm-organization-instructions file in its manifest")
+    if arm != "qm-repo" and not loaded["soul"].strip():
+        raise RulesRefused("HE-RULES-002", f"QM arm {arm} has an empty qm-organization-instructions file")
     return loaded["soul"]
 
 
@@ -133,7 +142,7 @@ def cant_run(harness: str, arm: str) -> dict[str, str] | None:
     if harness == "qm":
         if arm not in QM_ARMS:
             return {"code": "HE-RULES-003", "why": f"QM has no {arm} arm (plan cell table: none, qm-repo, short, b8k, b28k, b80k, qm-top)"}
-        return {"code": "HE-RULES-009", "why": "QM runs through the QM runner's FrontierQm, which is not on main yet; agents_rules.RulesQm is a stub shaped to it (one SOUL admin call before the turn)"}
+        return None
     if arm in ("qm-repo", "qm-top"):
         return {"code": "HE-RULES-003", "why": "qm-repo and qm-top are QM arms"}
     if arm == "hook" and harness not in HOOK_HARNESSES:
@@ -158,8 +167,8 @@ def resolve(harness: str, rules: dict[str, Any], model: str | None = None) -> di
     """The job's rules kwarg, checked on the host before the trial is ready."""
     def bad(m: str) -> RulesRefused:
         return RulesRefused("HE-RULES-001", m)
-    if harness not in HARNESSES:
-        raise bad(f"{harness} has no rules arms (only {', '.join(HARNESSES)})")
+    if harness not in HARNESSES + ("qm",):
+        raise bad(f"{harness} has no rules arms (only {', '.join(HARNESSES + ('qm',))})")
     if not isinstance(rules, dict):
         raise bad("the rules kwarg must be an object")
     arm = rules.get("arm")
@@ -168,6 +177,8 @@ def resolve(harness: str, rules: dict[str, Any], model: str | None = None) -> di
     refused = cant_run(harness, arm)
     if refused:
         raise RulesRefused(refused["code"], f"{harness} {arm}: {refused['why']}")
+    if harness == "qm" and model and model not in fs.PIN["harnesses"]["qm"]["models"]:
+        raise RulesRefused("HE-RULES-003", f"the QM runner routes only {', '.join(fs.PIN['harnesses']['qm']['models'])} (scripts/frontier-harbor/pin.json harnesses.qm.models), not {model}")
     extra = set(rules) - {"arm", "files_dir", "hooktext", "cutlift"}
     if extra:
         raise bad(f"unknown rules keys {sorted(extra)}")
@@ -303,7 +314,17 @@ def rules_files_in_repo() -> str:
 def plan(harness: str, resolved: dict[str, Any], loaded: dict[str, Any], model: str) -> dict[str, Any]:
     """What the arm does in the task container: files to write (repository files and hook files), the commands, the checks
     at setup and at launch, and the harness_settings.json record."""
-    record: dict[str, Any] = {"arm": resolved["arm"], "harness": harness, "rules_file": RULES_FILE[harness], "pin": {"version": PIN["harnesses"][harness]["version"]}}
+    if harness == "qm":
+        want = ["AGENTS.md"] if resolved["arm"] == "qm-repo" else []
+        if [f["path"] for f in loaded["files"]] != want:
+            raise RulesRefused("HE-RULES-002", f"QM arm {resolved['arm']} places {[f['path'] for f in loaded['files']]} in the repository, not {want}")
+        record: dict[str, Any] = {"arm": resolved["arm"], "harness": harness, "rules_file": "AGENTS.md" if loaded["files"] else None,
+                                  "pin": {"commit": json.loads((REPO / QM_PIN_FILE).read_text())["commit"]}}
+        soul = qm_soul_text(resolved["arm"], loaded)
+        record["soul"] = None if soul is None else {"sha256": sha256(soul.encode()), "chars": qm_chars(soul)}
+    else:
+        record = {"arm": resolved["arm"], "harness": harness, "rules_file": RULES_FILE[harness], "pin": {"version": PIN["harnesses"][harness]["version"]}}
+        soul = None
     if harness == "hermes":
         record["named_settings"] = {"model.context_length": context_length(model), "default_context_file_cap_chars": hermes_default_cap(model)}
     if resolved["cutlift"]:
@@ -347,7 +368,7 @@ def plan(harness: str, resolved: dict[str, Any], loaded: dict[str, Any], model: 
     return {"record": record,
             "files": [{"path": f["path"], "mode": f.get("mode", "0644"), "sha256": sha256(f["body"]), "bytes": len(f["body"]), "body": f["body"]}
                       for f in repo_files + hook_files],
-            "commands": commands, "checks_setup": checks_setup, "checks_launch": checks_launch}
+            "commands": commands, "checks_setup": checks_setup, "checks_launch": checks_launch, "soul": soul}
 
 
 def install_staged(stage: str, f: dict[str, Any]) -> str:

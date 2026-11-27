@@ -13,11 +13,11 @@ with scripts/frontier-harbor and scripts/rules-at-scale on PYTHONPATH. The versi
 Failure codes: HE-RULES-001 bad kwarg, 002 a materialized file or manifest that does not check, 003 an arm the harness
 can't run, 004 a placed file changed or a rules file the arm did not place before the agent started, 005 a setup or
 launch check failed, 006 gstack or gbrain found in the container, 007 no single task folder for the trial, 008 the
-materializer failed, 009 QM (stub), 010 the installed harness is not the pinned version, 011 a QM SOUL over 100,000
-characters. Each stops the trial before the agent starts, so it is an infrastructure failure, never a scored trial.
+materializer failed, 009 retired (it was the QM stub), 010 the installed harness is not the pinned version, 011 a QM SOUL over
+100,000 characters, 012 QM refused the SOUL admin call. Each stops the trial before the agent starts, so it is an
+infrastructure failure, never a scored trial.
 
-QM: a marked stub. RulesQm below is shaped to the QM runner's FrontierQm (one SOUL admin call before the turn) and refuses
-with HE-RULES-009 until FrontierQm is on main; the FrontierQm import is guarded so this module loads on a base without it.
+QM's class, RulesQm, is in agents_rules_qm.py.
 """
 
 from __future__ import annotations
@@ -59,10 +59,11 @@ class _Rules:
         model = fa.cell_model(kwargs.get("model_name"))
         if rules is not None and kwargs.get("delivery") is not None:
             raise rw.RulesRefused("HE-RULES-001", "a job sets rules or delivery, not both")
-        want = rw.PIN["harnesses"][self.HARNESS]["version"]
-        if kwargs.get("version") not in (None, want):
-            raise rw.RulesRefused("HE-RULES-010", f"the job asks for {self.HARNESS} {kwargs.get('version')}, not the pinned {want} (scripts/rules-at-scale/pin.json)")
-        kwargs["version"] = want
+        if self.HARNESS in rw.PIN["harnesses"]:
+            want = rw.PIN["harnesses"][self.HARNESS]["version"]
+            if kwargs.get("version") not in (None, want):
+                raise rw.RulesRefused("HE-RULES-010", f"the job asks for {self.HARNESS} {kwargs.get('version')}, not the pinned {want} (scripts/rules-at-scale/pin.json)")
+            kwargs["version"] = want
         self._rules = rw.resolve(self.HARNESS, rules, model) if rules is not None else None
         self._rules_model = model
         self._rules_record: dict[str, Any] = {}
@@ -74,7 +75,8 @@ class _Rules:
         super()._write_settings()
         path = Path(self.logs_dir) / "harness_settings.json"
         settings = json.loads(path.read_text())
-        settings["rules"] = {"pin_file": "scripts/rules-at-scale/pin.json", **(self._rules or {"arm": None}), **self._rules_record}
+        pin_file = "scripts/rules-at-scale/pin.json" if self.HARNESS in rw.PIN["harnesses"] else rw.QM_PIN_FILE
+        settings["rules"] = {"pin_file": pin_file, **(self._rules or {"arm": None}), **self._rules_record}
         path.write_text(json.dumps(settings, indent=2) + "\n")
 
     async def _rules_sh(self, environment: BaseEnvironment, command: str, code: str, what: str) -> str:
@@ -103,10 +105,11 @@ class _Rules:
     async def setup(self, environment: BaseEnvironment) -> None:
         await super().setup(environment)
         try:
-            out = await self._rules_sh(environment, VERSION_COMMAND[self.HARNESS], "HE-RULES-010", "the version check")
-            self._rules_record["installed_version"] = out[-200:]
-            if not rw.version_matches(self.HARNESS, out):
-                raise rw.RulesRefused("HE-RULES-010", f"the installed {self.HARNESS} prints {out[-200:]!r}, not the pinned {rw.PIN['harnesses'][self.HARNESS]['version']}")
+            if self.HARNESS in VERSION_COMMAND:
+                out = await self._rules_sh(environment, VERSION_COMMAND[self.HARNESS], "HE-RULES-010", "the version check")
+                self._rules_record["installed_version"] = out[-200:]
+                if not rw.version_matches(self.HARNESS, out):
+                    raise rw.RulesRefused("HE-RULES-010", f"the installed {self.HARNESS} prints {out[-200:]!r}, not the pinned {rw.PIN['harnesses'][self.HARNESS]['version']}")
             if self._rules is None:
                 return
             await self._rules_probe(environment, "setup")
@@ -281,24 +284,6 @@ class RulesGeminiCli(_Rules, fa.FrontierGeminiCli):
     """Descriptive row of the keyless delivery map only (plan decision E): GEMINI.md, no hook or cutlift arm."""
 
     RULES_LAUNCH = fa.FrontierGeminiCli.LAUNCH
-
-
-FrontierQm = getattr(fa, "FrontierQm", None)
-
-
-class RulesQm:
-    """STUB until the QM runner's agents.py FrontierQm (rendered by scripts/frontier-harbor/qm_harbor.py) is on main; this base
-    has no FrontierQm, so the import is guarded and the class refuses with HE-RULES-009. The design it is shaped to:
-    subclass FrontierQm and add rules_wiring.qm_soul_call(rules_wiring.qm_soul_text(arm,
-    rules_wiring.load_files(...))) to its admin calls before the turn (none sets no SOUL; qm-repo places the b8k AGENTS.md in the repository and
-    sets an empty SOUL); a text over 100,000 characters fails the trial and is never cut; FrontierQm's own install_checks.qm_admin
-    stops a non-2xx; and the proof is rules_wiring.qm_soul_delivered on the captured first agent-loop request, never the
-    admin reply. QM runs one organization per trial (its own core and Postgres), so a SOUL cannot leak across trials."""
-
-    HARNESS = "qm"
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        raise rw.RulesRefused("HE-RULES-009", "QM rules arms are a stub: they wait for the QM runner's FrontierQm on main" + ("" if FrontierQm is None else " (FrontierQm is importable here; wire RulesQm to it)"))
 
 
 CLASSES = {c.HARNESS: c for c in (RulesClaudeCode, RulesCodex, RulesHermes, RulesOpenClaw, RulesPi, RulesGeminiCli)}
