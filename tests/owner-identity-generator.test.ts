@@ -99,7 +99,7 @@ describe('bank validity and coverage', () => {
     const dir = mkdtempSync(join(tmpdir(), 'oi-test-'));
     try {
       writeBank(dev, dir);
-      const ids = readdirSync(join(dir, 'dev'));
+      const ids = readdirSync(join(dir, 'dev')).sort();
       expect(ids.length).toBe(17);
       expect(ids.filter((id) => id.endsWith('-capture'))).toEqual(['oi-16-capture', 'oi-17-capture']);
       for (const id of ids) expect(loadTask(join(dir, 'dev', id)).family).toMatch(id.endsWith('-capture') ? /^owner_identity_C$/ : /^owner_identity_[IL]$/);
