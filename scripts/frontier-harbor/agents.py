@@ -24,6 +24,7 @@ BaseInstalledAgent, not Harbor's own cursor_cli.CursorCli (scripts/frontier-harb
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
@@ -824,6 +825,17 @@ class FrontierQm(_Frontier, BaseInstalledAgent):
         self._qm_secrets: list[str] = []
         super().__init__(*args, **kwargs)
 
+    @property
+    def _qm_jobs_dir(self) -> str:
+        return str(Path(self.logs_dir).absolute().parents[2])
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        try:
+            await super().setup(environment)
+        except BaseException:
+            await self._qm_stop(environment)
+            raise
+
     def _write_settings(self) -> None:
         super()._write_settings()
         if self.QM_COMMIT == qm.COMMIT:
@@ -856,7 +868,9 @@ class FrontierQm(_Frontier, BaseInstalledAgent):
             await proc.wait()
             return 124, "", f"docker {args[0]} timed out after {timeout:.0f}s"
         except asyncio.CancelledError:
-            proc.kill()
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            await proc.wait()
             raise
         return proc.returncode or 0, out.decode(errors="replace"), err.decode(errors="replace")
 
@@ -946,7 +960,7 @@ class FrontierQm(_Frontier, BaseInstalledAgent):
         self._qm_core = core
         pg_password, secret, connector = secrets.token_hex(16), secrets.token_hex(32), secrets.token_hex(32)
         self._qm_secrets += [pg_password, secret, connector]
-        code, _, err = await self._docker("run", "-d", "--name", pg, "--label", f"{qm.LABEL}={self.frontier_trial}", "--network", f"container:{target}",
+        code, _, err = await self._docker("run", "-d", "--name", pg, "--label", f"{qm.LABEL}={self.frontier_trial}", "--label", f"{qm.JOBS_LABEL}={self._qm_jobs_dir}", "--network", f"container:{target}",
                                           "--tmpfs", "/var/lib/postgresql/data", "-e", "POSTGRES_DB=qm", "-e", "POSTGRES_USER=postgres", "-e", "POSTGRES_PASSWORD",
                                           "-e", "POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=scram-sha-256",
                                           qm.pin()["postgres_image"], "-c", f"port={qm.PORTS['postgres']}", timeout=120, env={"POSTGRES_PASSWORD": pg_password})
@@ -962,6 +976,8 @@ class FrontierQm(_Frontier, BaseInstalledAgent):
         self._frontier_checks["qm_pg_passwordless"] = "accepted" if code == 0 else err.strip()[-200:]
         if code == 0:
             raise RuntimeError("HE-QM-002 Postgres accepted a connection from 127.0.0.1 with no password, so the task container could reach QM's database")
+        if not qm.pg_auth_refused(err):
+            raise RuntimeError(f"HE-QM-002 the passwordless Postgres probe failed for a reason other than an authentication refusal (exit {code}), so it proves nothing: {err.strip()[-200:]}")
         self._qm_dir = Path(tempfile.mkdtemp(prefix="frontier-qm-"))
         mounts = self._qm_dir / "mounts"
         mounts.mkdir()
@@ -973,7 +989,7 @@ class FrontierQm(_Frontier, BaseInstalledAgent):
         envf.touch(mode=0o600)
         envf.write_text(qm.env_file(qm.core_env(self._frontier_model, self._qm_slot["base_url"], self._qm_slot["token"], secret, connector, pg_password)))
         try:
-            code, _, err = await self._docker("run", "-d", "--name", core, "--label", f"{qm.LABEL}={self.frontier_trial}", "--network", f"container:{target}",
+            code, _, err = await self._docker("run", "-d", "--name", core, "--label", f"{qm.LABEL}={self.frontier_trial}", "--label", f"{qm.JOBS_LABEL}={self._qm_jobs_dir}", "--network", f"container:{target}",
                                               "--env-file", str(envf), "-v", f"{mounts}:{qm.MOUNT}:ro", qm.images(self.QM_COMMIT)[0], timeout=120)
         finally:
             envf.unlink(missing_ok=True)
@@ -1032,14 +1048,15 @@ class FrontierQm(_Frontier, BaseInstalledAgent):
             for name in self._qm_names:
                 await self._docker("rm", "-f", "-v", name, timeout=120)
             self._qm_names = []
+            self._qm_core = ""
             if self._qm_dir is not None:
                 shutil.rmtree(self._qm_dir, ignore_errors=True)
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
-        text = self.render_instruction(self._frontier_instruction(instruction))
         started = datetime.now(timezone.utc)
         out: dict[str, Any] = {}
         try:
+            text = self.render_instruction(self._frontier_instruction(instruction))
             out = await self._qm_call("turn", self.frontier_trial, body=text, timeout=24 * 3600)
         finally:
             status = {**qm.turn_status(out), "started_at": started.isoformat().replace("+00:00", "Z"), "ended_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}

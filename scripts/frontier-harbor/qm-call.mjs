@@ -77,4 +77,4 @@ try {
   fail(2, `${mode} failed: ${e?.message ?? e}`);
 }
 console.log(JSON.stringify(out));
-process.exit(out.http >= 200 && out.http < 300 ? 0 : 2);
+process.exitCode = out.http >= 200 && out.http < 300 ? 0 : 2;

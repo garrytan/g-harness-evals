@@ -155,7 +155,7 @@ run_scrubbed() {
 pids=() harbor_pid="" journal_pid="" stop_pid="" lane_pids=() harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc="" metered=1 cursor_key_dir=""
 cleanup() {
   [ -z "$cursor_key_dir" ] || rm -rf "$cursor_key_dir"
-  docker ps -aq --filter label=harness-eval.frontier-qm 2>/dev/null | xargs -r docker rm -f -v >/dev/null 2>&1 || true
+  docker ps -aq --filter "label=harness-eval.frontier-qm.jobs=$run/jobs" 2>/dev/null | xargs -r docker rm -f -v >/dev/null 2>&1 || true
   [ -z "$harbor_pid" ] || kill "$harbor_pid" 2>/dev/null || true
   for p in ${lane_pids[@]+"${lane_pids[@]}"}; do kill "$p" 2>/dev/null || true; done
   for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done

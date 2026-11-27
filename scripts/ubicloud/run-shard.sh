@@ -22,7 +22,7 @@
 # --zdr-gate (frontier-harbor shards with an openai: cell; refused without it): the OpenAI organization behind the shared
 # key enforces zero data retention, so a Responses request chained on previous_response_id gets HTTP 400. Pass the results
 # directory of a keyless install check (--workload frontier-harbor --install-check, whose fake upstream makes each harness
-# send a tool turn and refuses a chained one). Before any VM, scripts/frontier-harbor/zdr-check.ts must pass every OpenAI
+# send a tool turn and refuses a chained one; for QM cells, QM's own check, whose report is install-check-qm.json). Before any VM, scripts/frontier-harbor/zdr-check.ts must pass every OpenAI
 # cell of the shard from that check's captures (HE-FRONTIER-013), and the check's commit must hold the same harness pins
 # and settings as --commit (scripts/frontier-harbor/pin.json, frontier_settings.py, agents.py and harnesses/<harness>/).
 # A harness-workload shard has no such gate: its smoke calls the real API, so a chained request fails there.
@@ -793,10 +793,13 @@ else
     openai_cells=$(printf '%s' "$prereg_text" | python3 -c 'import json,sys; p=json.load(sys.stdin); want=set(sys.argv[1].split(",")); print(",".join(c["id"] for c in p.get("cells", []) if c.get("id") in want and str(c.get("model", "")).startswith("openai:")))' "$cells") || { echo "run-shard (ubicloud): the preregistration's cells could not be read" >&2; exit 2; }
     if [ -n "$openai_cells" ]; then
       [ -n "$zdr_gate" ] || { echo "run-shard (ubicloud): HE-FRONTIER-013 refused: cells $openai_cells call OpenAI, whose organization enforces zero data retention, and no --zdr-gate was given. Nothing was created. fix: pass --zdr-gate <the results directory of a keyless install check> (docs/errors.md)" >&2; exit 2; }
-      gate_commit=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("repo_commit") or "")' "$zdr_gate/install-check.json" 2>/dev/null) || gate_commit=""
-      [ -n "$gate_commit" ] && git -C "$root" cat-file -e "$gate_commit^{commit}" 2>/dev/null || { echo "run-shard (ubicloud): HE-FRONTIER-013 refused: $zdr_gate/install-check.json names no commit this repository holds. Nothing was created" >&2; exit 2; }
+      gate_report=$zdr_gate/install-check.json
+      [ -f "$gate_report" ] || [ ! -f "$zdr_gate/install-check-qm.json" ] || gate_report=$zdr_gate/install-check-qm.json
+      gate_commit=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("repo_commit") or "")' "$gate_report" 2>/dev/null) || gate_commit=""
+      [ -n "$gate_commit" ] && git -C "$root" cat-file -e "$gate_commit^{commit}" 2>/dev/null || { echo "run-shard (ubicloud): HE-FRONTIER-013 refused: $gate_report names no commit this repository holds. Nothing was created" >&2; exit 2; }
       pins=(scripts/frontier-harbor/pin.json scripts/frontier-harbor/frontier_settings.py scripts/frontier-harbor/agents.py)
       for h in $shard_harnesses; do pins+=("harnesses/$h"); done
+      [[ " $shard_harnesses " != *" qm "* ]] || pins+=(scripts/frontier-harbor/qm_harbor.py scripts/frontier-harbor/qm-call.mjs scripts/frontier-harbor/qm-install-check.sh scripts/frontier-harbor/install-check-qm-prereg.json)
       git -C "$root" diff --quiet "$gate_commit" "$commit" -- "${pins[@]}" || { echo "run-shard (ubicloud): HE-FRONTIER-013 refused: the install check in $zdr_gate ran at $gate_commit, whose harness pins or settings (${pins[*]}) differ from $commit. Nothing was created. fix: rerun the install check at a commit that matches" >&2; exit 2; }
       zdr_prereg=$(mktemp)
       printf '%s' "$prereg_text" > "$zdr_prereg"

@@ -54,6 +54,16 @@ SHIM = HERE / "qm-docker-shim.sh"
 CALL = HERE / "qm-call.mjs"
 MOUNT = "/opt/he-qm"
 LABEL = "harness-eval.frontier-qm"
+# The jobs directory of the Harbor run that started a QM container (vm-run.sh's $run/jobs), so vm-run.sh's cleanup removes
+# only its own run's containers.
+JOBS_LABEL = "harness-eval.frontier-qm.jobs"
+# psql's stderr when the server refuses a connection for want of a password: the only failure that shows the passwordless
+# probe was refused rather than never reaching Postgres.
+PG_AUTH_REFUSED = ("no password supplied", "password authentication failed")
+
+
+def pg_auth_refused(stderr: str) -> bool:
+    return any(m in stderr for m in PG_AUTH_REFUSED)
 # core.env keys a Harbor cell drops: no QM budget (a budget that binds would stop a trial on QM's own spend estimate; the
 # ledger lease is the cap), and the model, which each cell sets below.
 DROPPED_CORE_ENV = ("BUDGET_USD_PER_WINDOW", "ORG_BUDGET_USD_PER_WINDOW", "BUDGET_WINDOW_MS", "PI_MODEL", "MODEL_PROVIDER")

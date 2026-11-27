@@ -152,6 +152,16 @@ if [ "$workload" = frontier-harbor ]; then
   [ ${#sealed[@]} -eq 0 ] || { log "frontier-harbor takes no sealed flags"; finish 2; }
   planned=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(",".join(next((s["cells"] for s in p["shards"] if s["name"] == sys.argv[2]), [])))' "$prereg" "$name")
   [ "$planned" = "$cells" ] || { log "shard $name of $prereg has cells '$planned', not the manifest's '$cells'"; finish 2; }
+  # A shard of QM cells takes QM's own keyless check (scripts/frontier-harbor/qm-install-check.sh, on its cells file
+  # install-check-qm-prereg.json, report install-check-qm.json) as its install check and its smoke: install-check.sh runs
+  # no QM cell, so the web-tools check and run-shard.sh's zero-data-retention gate would find no QM slot in its captures.
+  # QM's check runs its own cells, so a shard mixes no QM cell with another harness's.
+  read -r n_qm n_cells <<< "$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); want=set(sys.argv[2].split(",")); h=[c["harness"] for c in p["cells"] if c["id"] in want]; print(sum(x == "qm" for x in h), len(h))' "$prereg" "$cells")"
+  check=scripts/frontier-harbor/install-check.sh check_report=install-check.json
+  if [ "$n_qm" -gt 0 ]; then
+    [ "$n_qm" -eq "$n_cells" ] || { log "shard $name mixes $n_qm QM cells with other harnesses' cells; QM's install check and smoke are qm-install-check.sh, so QM cells need a shard of their own"; finish 2; }
+    check=scripts/frontier-harbor/qm-install-check.sh check_report=install-check-qm.json
+  fi
   read -r tb_repo tb_commit <<< "$(python3 -c 'import json,sys; t=json.load(open(sys.argv[1]))["terminal_bench"]; print(t["repo"], t["commit"])' scripts/frontier-harbor/pin.json)"
   tb21=$HOME/terminal-bench-2-1
   if [ "$(git -C "$tb21" rev-parse HEAD 2>/dev/null)" != "$tb_commit" ]; then
@@ -163,32 +173,41 @@ if [ "$workload" = frontier-harbor ]; then
   if [ "$install_check" -eq 1 ]; then
     mkdir -p "$shard/results"
     phase run_start
-    log "install check: scripts/frontier-harbor/install-check.sh (keyless, fake upstream)"
-    "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/results" --prereg "$prereg" ${extra[@]+"${extra[@]}"} > "$shard/results/run.stdout.log" 2>&1
+    if [ "$n_qm" -gt 0 ]; then
+      log "install check: $check (keyless, fake upstream, on its own cells file install-check-qm-prereg.json)"
+      "${keyless[@]}" bash scripts/frontier-harbor/qm-install-check.sh "$shard/results" > "$shard/results/run.stdout.log" 2>&1
+    else
+      log "install check: scripts/frontier-harbor/install-check.sh (keyless, fake upstream)"
+      "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/results" --prereg "$prereg" ${extra[@]+"${extra[@]}"} > "$shard/results/run.stdout.log" 2>&1
+    fi
     rc=$?
     phase run_end
     tail -3 "$shard/results/run.stdout.log"
-    log "install-check.sh exited $rc"
+    log "$(basename "$check") exited $rc"
     finish "$rc"
   fi
   if [ "$smoke" -eq 1 ]; then
     mkdir -p "$shard/smoke/results"
     phase smoke_start
-    log "smoke: scripts/frontier-harbor/install-check.sh (keyless, fake upstream)"
+    if [ "$n_qm" -gt 0 ]; then log "smoke: $check (keyless, fake upstream)"; else log "smoke: scripts/frontier-harbor/install-check.sh (keyless, fake upstream)"; fi
     # A harness install that stalls in its download ends in Harbor's AgentSetupTimeoutError (hermes-opus-none at 1200 s,
     # 2026-11-15), and since #461 one missing none-arm request fails the whole gstack check. Only that failure is retried,
     # with the qm-driver smoke's tries and backoff (HE_SMOKE_TRIES, HE_RETRY_BASE_S doubling up to 120 s), from an empty
-    # results directory, keeping each try's logs and install-check.json as ~/shard/smoke/try<n>.*; the installed runtime/
-    # trees are not read. A try whose install-check.json also fails egress, canary or zdr, or whose gstack check reports
+    # results directory, keeping each try's logs and report ($check_report) as ~/shard/smoke/try<n>.*; the installed runtime/
+    # trees are not read. A try whose report also fails egress, canary or zdr, or whose gstack check reports
     # its own fake-key canary or packet-capture failure, is never retried. A zdr no_capture on a cell whose own trial ended
     # in AgentSetupTimeoutError does not stop it (that cell sent nothing to check). A results directory that cannot be
     # cleared ends the retries, so the shard stops on that try's report.
     smoke_tries=${HE_SMOKE_TRIES:-4} wait_s=${HE_RETRY_BASE_S:-30}
     for ((try = 1; ; try++)); do
-      "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
+      if [ "$n_qm" -gt 0 ]; then
+        "${keyless[@]}" bash scripts/frontier-harbor/qm-install-check.sh "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
+      else
+        "${keyless[@]}" bash scripts/frontier-harbor/install-check.sh "$shard/smoke/results" > "$shard/smoke/results/run.stdout.log" 2>&1
+      fi
       rc=$?
       [ "$rc" -ne 0 ] && [ "$try" -lt "$smoke_tries" ] && grep -rqs --exclude-dir=runtime --include='*.log' --include=result.json AgentSetupTimeoutError "$shard/smoke/results" &&
-        python3 - "$shard/smoke/results/install-check.json" <<'PY' || break
+        python3 - "$shard/smoke/results/$check_report" <<'PY' || break
 import json, os, re, sys
 report = json.load(open(sys.argv[1])) if os.path.exists(sys.argv[1]) else {}
 cells = (report.get("agents") or {}).get("cells") or {}
@@ -200,7 +219,7 @@ def stops(reason):
 sys.exit(1 if any(stops(r) for r in report.get("reasons") or []) else 0)
 PY
       cp "$shard/smoke/results/run.stdout.log" "$shard/smoke/try$try.run.stdout.log"
-      for f in install-check.log install-check.json; do [ ! -f "$shard/smoke/results/$f" ] || cp "$shard/smoke/results/$f" "$shard/smoke/try$try.$f"; done
+      for f in install-check.log "$check_report"; do [ ! -f "$shard/smoke/results/$f" ] || cp "$shard/smoke/results/$f" "$shard/smoke/try$try.$f"; done
       log "smoke try $try of $smoke_tries: an agent setup timed out (AgentSetupTimeoutError); next try in ${wait_s}s"
       rm -rf "$shard/smoke/results" && mkdir -p "$shard/smoke/results" || { log "smoke: could not clear smoke/results after try $try; no more tries"; break; }
       sleep "$wait_s"; wait_s=$(( wait_s * 2 > 120 ? 120 : wait_s * 2 ))
