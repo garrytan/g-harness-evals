@@ -1844,7 +1844,7 @@ cmd_sync() {
 # backdated mtime cannot hide) is after the last pull that used the same FILE, plus every *.sqlite, *.sqlite-wal and
 # *.sqlite-shm, so a ledger never comes back without its journal. Each --exclude GLOB (a find -path pattern) is left out.
 # A file that vanishes before tar reads it is skipped, and a file that grows while read (tar exit 1) still counts as a
-# good pull. The mark moves only after the local extract succeeds, so a failed pull is sent again.
+# good pull. A listed file tar cannot open or read keeps the old mark, with a warning, so the next pull sends it again. The mark moves only after the local extract succeeds, so a failed pull is sent again.
 cmd_pull() {
   local name=$1 from=$2 to=$3 dir rc=0 skip="" mark="" prune="" m
   shift 3
@@ -1870,7 +1870,7 @@ cmd_pull() {
     return
   fi
   m='$HOME/'$(printf %q "$mark")
-  remote "$name" "cd $dir && rm -f $m.next $m.find && s=\$((\$(date +%s) - 5)) && n=\$(cat $m 2>/dev/null || echo 0) && { find $(basename "$from") ${prune:+\\( $prune \\) -prune -o }! -type d \\( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -newerct @\$n \\) -print0; echo \$? > $m.find; } | tar --ignore-failed-read --null --no-recursion -T - -czf -; t=\$?; [ \$t -gt 1 ] || [ \"\$(cat $m.find 2>/dev/null)\" != 0 ] || echo \$s > $m.next; rm -f $m.find; exit \$t" | tar -xzf - -C "$to" || rc=$?
+  remote "$name" "cd $dir && rm -f $m.next $m.find $m.tar && s=\$((\$(date +%s) - 5)) && n=\$(cat $m 2>/dev/null || echo 0) && { find $(basename "$from") ${prune:+\\( $prune \\) -prune -o }! -type d \\( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -newerct @\$n \\) -print0; echo \$? > $m.find; } | tar --ignore-failed-read --null --no-recursion -T - -czf - 2> $m.tar; t=\$?; cat $m.tar >&2; [ \$t -gt 1 ] || [ \"\$(cat $m.find 2>/dev/null)\" != 0 ] || { grep -Eq 'Cannot (open|read)|Read error' $m.tar && echo 'pull: mark kept: tar could not read a listed file, so the next pull sends it again' >&2; } || echo \$s > $m.next; rm -f $m.find $m.tar; exit \$t" | tar -xzf - -C "$to" || rc=$?
   [ "$rc" -le 1 ] || return "$rc"
   remote "$name" "[ ! -f $m.next ] || mv -f $m.next $m"
   return "$rc"

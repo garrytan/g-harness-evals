@@ -2,7 +2,7 @@
 // so runner/run.ts can import the checks without loading the trial driver.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { RunnerError } from '../errors.ts';
 
@@ -160,16 +160,24 @@ export function readRegistration(harness: string, home: string): { file: string;
  * .gbrain/brain.pglite.tgz and bun's package download cache is removed. A gbrain trial leaves about 100 MB there, which
  * 1,600 trials could not bring back from the shard VMs; scoring reads the brain export and the agent's text files, never
  * these. A database tar cannot pack stays as it was, and a folder it cannot remove is named in the list with the error
- * instead of failing the finished trial. Returns what changed, for the run log.
+ * instead of failing the finished trial. The harness can write its home, so a path with a symlink anywhere below the home
+ * is named in the list and left alone: following it would pack or delete files outside the trial. Returns what changed,
+ * for the run log.
  */
 export function packRawBrain(home: string): string[] {
   const done: string[] = [];
   const remove = (path: string) => { try { rmSync(path, { recursive: true, force: true }); return ''; } catch (e) { return ` (not removed: ${(e as Error).message})`; } };
+  const linked = (parts: string[]) => parts.map((_, i) => parts.slice(0, i + 1).join('/')).find(rel => { try { return lstatSync(join(home, rel)).isSymbolicLink(); } catch { return false; } });
   const gbrain = join(home, '.gbrain');
-  if (existsSync(join(gbrain, 'brain.pglite')) && spawnSync('tar', ['-czf', 'brain.pglite.tgz', 'brain.pglite'], { cwd: gbrain }).status === 0) {
+  const db = ['.gbrain', 'brain.pglite'];
+  const dbLink = linked(db) ?? linked(['.gbrain', 'brain.pglite.tgz']);
+  if (dbLink) done.push(`.gbrain/brain.pglite (not packed: ${dbLink} is a symlink)`);
+  else if (existsSync(join(gbrain, 'brain.pglite')) && spawnSync('tar', ['-czf', 'brain.pglite.tgz', 'brain.pglite'], { cwd: gbrain }).status === 0) {
     done.push('.gbrain/brain.pglite.tgz' + remove(join(gbrain, 'brain.pglite')));
   }
-  const cache = join(home, '.bun', 'install', 'cache');
-  if (existsSync(cache)) done.push('-.bun/install/cache' + remove(cache));
+  const cacheParts = ['.bun', 'install', 'cache'];
+  const cacheLink = linked(cacheParts);
+  if (cacheLink) done.push(`-.bun/install/cache (not removed: ${cacheLink} is a symlink)`);
+  else if (existsSync(join(home, ...cacheParts))) done.push('-.bun/install/cache' + remove(join(home, ...cacheParts)));
   return done;
 }

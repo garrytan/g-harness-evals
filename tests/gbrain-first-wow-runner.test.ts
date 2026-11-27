@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { QM_ACTOR_ID, QM_BRAIN_MEMBER, accessCheckOk, brainHostImage, brainHostSteps, checkFirstWowCell, packRawBrain, readRegistration, seedOfTask, setupArgv, suggestionIn, taskForSeed, imageFor } from '../runner/trial/first-wow-cell.ts';
@@ -196,6 +196,44 @@ describe('packing a finished trial home', () => {
     } finally {
       chmodSync(join(home, '.bun', 'install', 'cache', 'pkg'), 0o755);
     }
+  });
+
+  test('a symlinked .gbrain or .bun is left alone, so nothing outside the trial home is packed or deleted', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'fw-pack-outside-'));
+    mkdirSync(join(outside, 'gbrain', 'brain.pglite', 'base'), { recursive: true });
+    writeFileSync(join(outside, 'gbrain', 'brain.pglite', 'base', 'page'), 'host data');
+    mkdirSync(join(outside, 'bun', 'install', 'cache', 'pkg'), { recursive: true });
+    writeFileSync(join(outside, 'bun', 'install', 'cache', 'pkg', 'index.js'), 'x');
+    const home = mkdtempSync(join(tmpdir(), 'fw-pack-'));
+    symlinkSync(join(outside, 'gbrain'), join(home, '.gbrain'));
+    symlinkSync(join(outside, 'bun'), join(home, '.bun'));
+    expect(packRawBrain(home)).toEqual(['.gbrain/brain.pglite (not packed: .gbrain is a symlink)', '-.bun/install/cache (not removed: .bun is a symlink)']);
+    expect(existsSync(join(outside, 'gbrain', 'brain.pglite', 'base', 'page'))).toBe(true);
+    expect(existsSync(join(outside, 'gbrain', 'brain.pglite.tgz'))).toBe(false);
+    expect(existsSync(join(outside, 'bun', 'install', 'cache', 'pkg', 'index.js'))).toBe(true);
+  });
+
+  test('a symlink deeper in the path is caught too', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'fw-pack-outside-'));
+    mkdirSync(join(outside, 'cache', 'pkg'), { recursive: true });
+    writeFileSync(join(outside, 'cache', 'pkg', 'index.js'), 'x');
+    const home = mkdtempSync(join(tmpdir(), 'fw-pack-'));
+    mkdirSync(join(home, '.bun', 'install'), { recursive: true });
+    symlinkSync(join(outside, 'cache'), join(home, '.bun', 'install', 'cache'));
+    expect(packRawBrain(home)).toEqual(['-.bun/install/cache (not removed: .bun/install/cache is a symlink)']);
+    expect(existsSync(join(outside, 'cache', 'pkg', 'index.js'))).toBe(true);
+  });
+
+  test('a symlinked brain.pglite.tgz is not written through', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'fw-pack-outside-'));
+    writeFileSync(join(outside, 'victim'), 'keep');
+    const home = mkdtempSync(join(tmpdir(), 'fw-pack-'));
+    mkdirSync(join(home, '.gbrain', 'brain.pglite'), { recursive: true });
+    writeFileSync(join(home, '.gbrain', 'brain.pglite', 'page'), 'x');
+    symlinkSync(join(outside, 'victim'), join(home, '.gbrain', 'brain.pglite.tgz'));
+    expect(packRawBrain(home)).toEqual(['.gbrain/brain.pglite (not packed: .gbrain/brain.pglite.tgz is a symlink)']);
+    expect(readFileSync(join(outside, 'victim'), 'utf8')).toBe('keep');
+    expect(existsSync(join(home, '.gbrain', 'brain.pglite', 'page'))).toBe(true);
   });
 
   test('a home with no gbrain database and no bun cache is left alone', () => {

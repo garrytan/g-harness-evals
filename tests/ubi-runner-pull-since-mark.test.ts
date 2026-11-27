@@ -3,7 +3,7 @@
 //
 // Value: protects=ubi-runner.sh pull --since-mark copies every file on the first pull, then only files changed since the
 // mark (by change time, so a backdated fixture file still comes back) plus every sqlite file and its journal, leaves out each --exclude path, and moves the mark only after a good
-// extract of a complete listing (a folder find cannot read keeps the old mark); fails_when=a second pull re-copies unchanged files, drops a ledger's -wal, brings back an excluded raw database,
+// extract of a complete listing (a folder find cannot read, or a listed file tar cannot read, keeps the old mark); fails_when=a second pull re-copies unchanged files, drops a ledger's -wal, brings back an excluded raw database,
 // or moves the mark after a failed extract; why_new=the pull had no incremental mode; seam=a fake ssh on PATH that runs the
 // remote command in a local folder; no_claim=a real VM or ssh.
 
@@ -121,5 +121,64 @@ describe('ubi-runner.sh pull --since-mark', () => {
     } finally {
       chmodSync(locked, 0o755);
     }
+  });
+
+  test.skipIf(process.getuid?.() === 0)('a listed file tar cannot read keeps the mark where it was, so the next pull sends it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ubi-since-'));
+    dirs.push(dir);
+    const remote = join(dir, 'vm-home');
+    const trial = join(remote, 'shard/results/trials/cc-opus-full/seed-0105/r1');
+    mkdirSync(trial, { recursive: true });
+    writeFileSync(join(trial, 'first-wow.json'), '{}');
+    writeFileSync(join(trial, 'root-owned.log'), 'written by the container user');
+    writeFileSync(join(remote, 'shard/results/trials.jsonl'), '{}\n');
+    writeFileSync(join(remote, 'shard/.pull-mark'), '100\n');
+    chmodSync(join(trial, 'root-owned.log'), 0o000);
+    const bin = join(dir, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'ssh'), '#!/usr/bin/env bash\ncd "$FAKE_VM_HOME" && HOME="$FAKE_VM_HOME" exec bash -c "${@: -1}"\n', { mode: 0o755 });
+    const state = join(dir, 'state');
+    mkdirSync(join(state, 'vm1'), { recursive: true });
+    writeFileSync(join(state, 'vm1/env'), 'IP=127.0.0.1\n');
+    const env = { PATH: bin + ':/usr/bin:/bin', HOME: dir, UBI_RUNNER_STATE: state, FAKE_VM_HOME: remote, UBICLOUD_API_KEY: 'placeholder-not-a-key' };
+    try {
+      for (let pull = 0; pull < 2; pull++) {
+        const r = spawnSync('bash', [join(ROOT, 'scripts/ubicloud/ubi-runner.sh'), 'pull', 'vm1', 'shard/results', join(dir, 'out'), '--since-mark', 'shard/.pull-mark'], { encoding: 'utf8', env });
+        expect(r.status, r.stderr).toBe(0);
+        expect(existsSync(join(dir, 'out/results/trials/cc-opus-full/seed-0105/r1/first-wow.json'))).toBe(true);
+        expect(existsSync(join(dir, 'out/results/trials/cc-opus-full/seed-0105/r1/root-owned.log'))).toBe(false);
+        expect(r.stderr).toContain('root-owned.log');
+        expect(r.stderr).toContain('pull: mark kept');
+        expect(readFileSync(join(remote, 'shard/.pull-mark'), 'utf8')).toBe('100\n');
+        expect(existsSync(join(remote, 'shard/.pull-mark.next'))).toBe(false);
+        expect(existsSync(join(remote, 'shard/.pull-mark.tar'))).toBe(false);
+      }
+    } finally {
+      chmodSync(join(trial, 'root-owned.log'), 0o644);
+    }
+  });
+
+  test('a listed file that vanishes before tar reads it is skipped and the mark still moves', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ubi-since-'));
+    dirs.push(dir);
+    const remote = join(dir, 'vm-home');
+    mkdirSync(join(remote, 'shard/results'), { recursive: true });
+    writeFileSync(join(remote, 'shard/results/trials.jsonl'), '{}\n');
+    writeFileSync(join(remote, 'shard/.pull-mark'), '100\n');
+    const bin = join(dir, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'ssh'), '#!/usr/bin/env bash\ncd "$FAKE_VM_HOME" && HOME="$FAKE_VM_HOME" exec bash -c "${@: -1}"\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'find'), '#!/usr/bin/env bash\n/usr/bin/find "$@"; rc=$?; printf \'results/ledger.sqlite-wal\\0\'; exit $rc\n', { mode: 0o755 });
+    const state = join(dir, 'state');
+    mkdirSync(join(state, 'vm1'), { recursive: true });
+    writeFileSync(join(state, 'vm1/env'), 'IP=127.0.0.1\n');
+    const env = { PATH: bin + ':/usr/bin:/bin', HOME: dir, UBI_RUNNER_STATE: state, FAKE_VM_HOME: remote, UBICLOUD_API_KEY: 'placeholder-not-a-key' };
+    const r = spawnSync('bash', [join(ROOT, 'scripts/ubicloud/ubi-runner.sh'), 'pull', 'vm1', 'shard/results', join(dir, 'out'), '--since-mark', 'shard/.pull-mark'], { encoding: 'utf8', env });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain('Cannot stat');
+    expect(r.stderr).not.toContain('pull: mark kept');
+    expect(existsSync(join(dir, 'out/results/trials.jsonl'))).toBe(true);
+    expect(readFileSync(join(remote, 'shard/.pull-mark'), 'utf8')).not.toBe('100\n');
+    expect(existsSync(join(remote, 'shard/.pull-mark.next'))).toBe(false);
   });
 });
