@@ -160,19 +160,6 @@ Cost per solve is the money spent on a cell's trials divided by the trials it so
 - Use harder tasks, because Opus 5.5 passed 85.3% of Terminal-Bench in Claude Code and every frontier model on the fresh set landed within a few points of Opus, which leaves little room to tell models apart.
 - Report the five tasks that draw most safety stops as their own group, because 159 of 212 stops fall on them and leaving stops out changes six labels.
 
-<details>
-<summary>Disclosures</summary>
-
-Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
-
-Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
-
-Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
-
-Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
-
-</details>
-
 ## What we got wrong first, before the counted run
 
 **We expected three model and harness pairings to break, and on the real APIs they didn't.** Before any counted trial, we test every pairing against a keyless stand-in for the provider APIs. That stand-in refused three ways of sending a model's earlier reasoning back, so we expected Gemini 4 Carbon in Hermes, Carbon in OpenClaw and Muse Wonder in Hermes to fail. We then ran each one for 3 trials on the real APIs, through OpenRouter, and none of them failed that way:
@@ -188,3 +175,16 @@ Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
 1. **Hermes behind a gateway silently drops a model's reasoning between turns** (Hermes v2026.9.24). Through a custom OpenAI-compatible provider, Hermes keeps `reasoning_details` only when the host is openrouter.ai or nousresearch.com. Point it at any other gateway and every replayed turn goes out without the reasoning. Google and Meta accept that, so you get no error. We haven't measured whether it costs quality. Hermes v0.23.1's built-in openrouter provider sends the reasoning back.
 2. **Hermes's built-in openrouter provider sends no reasoning effort through a gateway** (Hermes v0.23.1). Set effort high and point the provider's base URL anywhere but openrouter.ai, and the request goes out with no effort field, so the model runs at its default. The only other hosts that get effort are a few Hermes knows by name (Nous Portal, Vercel AI Gateway, Ollama Cloud, LM Studio) or one a provider plugin claims. Hermes reads `extra_body` only for custom providers, so that doesn't help either. This one comes from Hermes's source and from the requests the pinned Hermes binary sent in our keyless check, not from a paid trial: what Hermes sends doesn't depend on which API answers. We reported it to Hermes as [NousResearch/hermes-agent#156806](https://github.com/NousResearch/hermes-agent/issues/156806); [#55276](https://github.com/NousResearch/hermes-agent/issues/55276) is the related report for custom and Z.ai providers. We add effort with a small Hermes plugin, pinned by hash (amendment 1).
 3. **OpenRouter's shared Google AI Studio capacity returned 429s on Carbon under moderate load** (2026-11-16). In Hermes, with 4 trials running at once, 16 of 42 Carbon requests got a 429, peaking at about 22 requests and 300,000 input tokens a minute, and all 3 trials ended on them. OpenClaw on the same endpoint and concurrency got none in 146 requests. Our own Gemini key took 8 workers at about 650,000 input tokens a minute with no 429s. OpenRouter kept no error body, so whose limit it was is our inference. Carbon and Hydrogen now call Google's API directly on our own quota (amendment 2).
+
+<details>
+<summary>Disclosures</summary>
+
+Disclosure: OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
+
+Disclosure: OpenAI is now the key benefactor of OpenClaw, and OpenClaw's creator, Peter Steinberger, works for OpenAI. OpenAI began through YC Research, which was started by Sam Altman, a former president of Y Combinator. Garry Tan runs Y Combinator.
+
+Disclosure: Y Combinator, which Garry Tan runs, is an investor in Hermes.
+
+Disclosure: QM is a project of Y Combinator, which Garry Tan runs.
+
+</details>
