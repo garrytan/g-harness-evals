@@ -342,14 +342,15 @@ describe('spec checker', () => {
     expect(problemsOf(load()).join('\n')).toContain('acceptable tool postgres/does_not_exist is not in the catalog');
   });
 
-  test('the codex cell runs GPT-6.2 Sol from versions.json models, which pin.json does not list (R116)', () => {
+  test('the codex cell runs GPT-6.2 Sol, whose versions.json row matches the shared pin.json row (R116)', () => {
     const pin = JSON.parse(readFileSync(join(REPO, 'scripts/frontier-harbor/pin.json'), 'utf8'));
-    expect(pin.models['openai:gpt-6.2-sol']).toBeUndefined();
+    expect(pin.models['openai:gpt-6.2-sol']).toEqual(VERSIONS.models['openai:gpt-6.2-sol']);
+    expect(pin.models['openai:gpt-6.2-sol'].harnesses).toBeUndefined();
     expect(VERSIONS.models['openai:gpt-6.2-sol']).toEqual({ ...pin.models['openai:gpt-6.1-sol'], source: expect.stringContaining('developers.openai.com/api/docs/models/gpt-6.2-sol') });
     const { plan, problems } = checkSpec(loadSpec(EXAMPLE));
     expect(problems).toEqual([]);
     expect(plan.cells.get('codex-sol-r30')!.cell.model).toBe('openai/gpt-6.2-sol');
-    expect(checkSpec(loadSpec(EXAMPLE), { versions: { ...VERSIONS, models: {} } }).problems.join('\n')).toContain('model openai/gpt-6.2-sol is not in pin.json models or scripts/mcp-at-scale/versions.json models');
+    expect(checkSpec(loadSpec(EXAMPLE), { versions: { ...VERSIONS, models: {} } }).problems).toEqual([]);
   });
 
   test('arms, variants, models, versions and rungs are checked', () => {

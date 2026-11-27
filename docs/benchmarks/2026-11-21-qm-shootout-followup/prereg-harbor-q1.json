@@ -1,0 +1,52 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "frontier-shootout-2026-11-qm",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "shared_order_seed": "harn50-frontier-2026-11-07",
+  "cap_usd": 336,
+  "reserve_usd": 16,
+  "concurrency": 2,
+  "cells": [
+    {
+      "id": "qm-carbon",
+      "model": "openrouter:google/gemini-4-carbon",
+      "harness": "qm",
+      "attempts": 3,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "core",
+      "priority": 1
+    }
+  ],
+  "stages": [
+    {
+      "name": "pilot",
+      "trials": {
+        "qm-carbon": {
+          "attempts": [
+            1,
+            2,
+            3
+          ],
+          "tasks": {
+            "from": 0,
+            "to": 5
+          }
+        }
+      }
+    }
+  ],
+  "shards": [
+    {
+      "name": "q1",
+      "cells": [
+        "qm-carbon"
+      ],
+      "lease_usd": 320
+    }
+  ]
+}

@@ -53,7 +53,7 @@ describe('MCP at scale: scripts the other tests do not load still parse', () => 
     const out = JSON.parse(r.stdout.toString());
     const versions = JSON.parse(read('scripts/mcp-at-scale/versions.json'));
     expect(out.variant).toBe('openai/gpt-6.2-sol');
-    expect(out.in_pin).toBe(false);
+    expect(out.in_pin).toBe(true);
     expect(out.spec).toEqual({ ...versions.models['openai:gpt-6.2-sol'], id: 'openai:gpt-6.2-sol', name: 'gpt-6.2-sol', provider: 'openai' });
     expect(out.codex_model).toBe('gpt-6.2-sol');
     expect(out.pin_row).toBe(true);

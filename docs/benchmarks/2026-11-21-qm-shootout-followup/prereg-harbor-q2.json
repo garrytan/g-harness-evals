@@ -1,0 +1,52 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "frontier-shootout-2026-11-qm",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "shared_order_seed": "harn50-frontier-2026-11-07",
+  "cap_usd": 263,
+  "reserve_usd": 13,
+  "concurrency": 4,
+  "cells": [
+    {
+      "id": "qm-opus",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "qm",
+      "attempts": 3,
+      "tasks": {
+        "from": 0,
+        "to": 52
+      },
+      "stage": "core",
+      "priority": 1
+    }
+  ],
+  "stages": [
+    {
+      "name": "pilot",
+      "trials": {
+        "qm-opus": {
+          "attempts": [
+            1,
+            2,
+            3
+          ],
+          "tasks": {
+            "from": 0,
+            "to": 5
+          }
+        }
+      }
+    }
+  ],
+  "shards": [
+    {
+      "name": "q2",
+      "cells": [
+        "qm-opus"
+      ],
+      "lease_usd": 250
+    }
+  ]
+}
