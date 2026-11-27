@@ -89,7 +89,7 @@ import { checkCursorCell, isCursorCell, offlineCanary, requireCursorCells, takeC
 import { SET_T_DIR, SET_T_SLICE, setTTaskIds, skillArmImage } from './trial/set-t.ts';
 import { REQUEST_HALVES, SKILL_REQUESTS_SLICE, privateSetProblem, requestSetIds } from './trial/skill-requests.ts';
 import { INSTALL_SLICE, INSTALL_TASK, checkInstallCell, type InstallCellConfig } from './trial/install-cell.ts';
-import { brainHostImage, checkFirstWowCell, imageFor as firstWowImage, type FirstWowCellConfig } from './trial/first-wow-cell.ts';
+import { brainHostImage, checkFirstWowCell, imageFor as firstWowImage, otherHarness, secondImageFor, type FirstWowCellConfig } from './trial/first-wow-cell.ts';
 
 export { RunnerError };
 
@@ -1045,6 +1045,9 @@ async function main(argv: string[]): Promise<number> {
       const needed: Array<[string, string]> = [[firstWowImage(c as Cell & { first_wow: FirstWowCellConfig }), fw.arm === 'plain' || c.harness === 'qm' ? `docker build -q -t harness-eval/${c.harness}:dev harnesses/${c.harness}` : `${build} ${c.harness}`]];
       if (c.harness === 'qm') needed.push(['harness-eval/qm-sandbox:dev', 'docker build -q -f harnesses/qm/Dockerfile.sandbox -t harness-eval/qm-sandbox:dev harnesses/qm']);
       if (fw.arm === 'qm-native') needed.push([brainHostImage(fw.gbrain_commit!), `${build} claude-code`]);
+      // C2 correction cells run session 2 in the other harness's gbrain image (runner/trial/c2-rules.ts); a shard builds it only
+      // when it also holds a cell of that harness, so a missing one stops the shard here.
+      if (fw.task === 'correction') needed.push([secondImageFor(c as Cell & { first_wow: FirstWowCellConfig }), `${build} ${otherHarness(c.harness)}`]);
       for (const [image, fix] of needed) if (spawnSync('docker', ['image', 'inspect', image], { stdio: 'ignore' }).status !== 0) throw new RunnerError('HE-ADAPTER-005', `cell ${c.id}: image ${image}, which its first-wow trials run, is absent, so the shard would fail at its first trial; fix: ${fix} (scripts/run-shard.sh builds it)`);
       console.log(`FIRSTWOW: cell ${c.id} (${fw.arm}) images ${needed.map(([i]) => i).join(', ')} present`);
     }

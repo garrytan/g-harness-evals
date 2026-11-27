@@ -7,7 +7,7 @@
 // gbrain arms dump the brain with gbrain export, and the trial is scored by rule (scripts/gbrain-first-wow/score.ts). The token is
 // scrubbed from every file and a canary scan must come back clean, as in the install eval (runner/trial/install.ts).
 
-import { existsSync, mkdirSync, chmodSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, chmodSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { Termination, TrialRecord, TrialUsage, TurnRequest } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
@@ -16,13 +16,15 @@ import { HarnessGone, type Harness, awaitResponse, makeTrialDirs, writeAtomic, w
 import { startDockerHarness } from './docker.ts';
 import { reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { type TrialContext, classify, foreignModels, trialTermination } from './trial.ts';
-import { InstallLeak, canaryScan, scrubToken } from './install.ts';
+import { InstallLeak, PROVIDER_KEY_NAMES, canaryScan, scrubToken } from './install.ts';
 import { FIRST_WOW_SLICE, MAX_ACCEPTS, PERSON_REPLY, QUESTION_BUDGET_S, REGISTRATION, SETUP_TIMEOUT_S, FALLBACK_MARKERS, suggestionIn, type FirstWowArm, type FirstWowCellConfig, imageFor, packRawBrain, readRegistration, seedOfTask, setupArgv } from './first-wow-cell.ts';
 import { asksForInput } from '../../scripts/gbrain-install/classify.ts';
 import { type NEvent, parseTurn } from '../../scripts/gbrain-install/transcript.ts';
 import { HOME_DIR, buildFixture, personaFor, questionPrompt, writeFixture, type FixtureManifest } from '../../scripts/gbrain-first-wow/fixtures.ts';
 import { applyCodingTask, codingTaskForSeed, gradeCodingTask, type CodingGrade } from '../../scripts/gbrain-first-wow/coding.ts';
 import { type Arm, type BrainPage, readBrainExport, scoreNoHistory, scoreTrial, splitAnswers } from '../../scripts/gbrain-first-wow/score.ts';
+import { CODING_CHECK_RULES } from '../../scripts/c2-standing-rules/items.ts';
+import { SECTION_MARKER, parseRules } from '../../scripts/c2-standing-rules/score.ts';
 
 /** The reply that is scored: the first one that is a numbered list of the three answers, else the last non-empty one. Once the
  *  session has answered, a follow-up after the runner's one reply does not replace the answers (pilot 1, 2026-11-25). */
@@ -44,10 +46,10 @@ export function scoreFirstWow(o: { manifest: FixtureManifest; arm: Arm; replies:
   return o.manifest.persona === 'no-history' ? scoreNoHistory(input) : scoreTrial(input);
 }
 
-interface Exec { status: number; stdout: string; stderr: string; ms: number }
+export interface Exec { status: number; stdout: string; stderr: string; ms: number }
 /** docker exec in the harness container with a clean environment: HOME, PATH and the harness's state dir only, never a token.
  *  Asynchronous, because the metering proxy answers in this process. */
-async function execIn(container: string, harness: string, argv: string[], timeoutS: number): Promise<Exec> {
+export async function execIn(container: string, harness: string, argv: string[], timeoutS: number): Promise<Exec> {
   const stateVar = harness === 'codex' ? `CODEX_HOME=${HOME_DIR}/codex` : `CLAUDE_CONFIG_DIR=${HOME_DIR}/claude`;
   const args = ['docker', 'exec', '-w', HOME_DIR, container, 'env', '-i', `HOME=${HOME_DIR}`, 'PATH=/usr/local/bin:/usr/bin:/bin', stateVar, 'timeout', String(timeoutS), ...argv];
   const t0 = Date.now();
@@ -56,8 +58,20 @@ async function execIn(container: string, harness: string, argv: string[], timeou
   return { status, stdout, stderr, ms: Date.now() - t0 };
 }
 
+/** execIn for an owner command that asks for a short code (gbrain rules approve, and gbrain correct run by the owner): the same
+ *  clean environment, with no agent marker, under a pseudo-terminal that types the code the command prints, as the owner would
+ *  (scripts/c2-standing-rules/pty-answer.py). The C2 standing-rules eval only. */
+export async function execOwnerAtTerminal(container: string, harness: string, argv: string[], repoRoot: string): Promise<Exec> {
+  const stateVar = harness === 'codex' ? `CODEX_HOME=${HOME_DIR}/codex` : `CLAUDE_CONFIG_DIR=${HOME_DIR}/claude`;
+  const cmd = ['python3', join(repoRoot, 'scripts', 'c2-standing-rules', 'pty-answer.py'), 'docker', 'exec', '-it', '-w', HOME_DIR, container, 'env', '-i', `HOME=${HOME_DIR}`, 'PATH=/usr/local/bin:/usr/bin:/bin', 'TERM=dumb', stateVar, ...argv];
+  const t0 = Date.now();
+  const proc = Bun.spawn(cmd, { env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp' }, stdout: 'pipe', stderr: 'pipe' });
+  const [stdout, stderr, status] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  return { status, stdout, stderr, ms: Date.now() - t0 };
+}
+
 /** The history object of one setup --json run, without its printed lines. */
-function historyOf(stdout: string): Record<string, unknown> | null {
+export function historyOf(stdout: string): Record<string, unknown> | null {
   try { const h = (JSON.parse(stdout) as { history?: Record<string, unknown> }).history; if (!h) return null; const { lines: _lines, ...rest } = h; return rest; } catch { return null; }
 }
 
@@ -80,6 +94,9 @@ export interface TrialFirstWow {
   score: unknown;
   /** The coding check's task and grade, when the session was a coding task. */
   coding?: { task: string; grade: CodingGrade | null };
+  /** The C2 coding check: the 30 owner rules saved, how many came back confirmed, the switch, and whether the session's
+   *  transcript holds the standing-rules section. */
+  standing_rules?: { state: 'on' | 'off'; saved: number; failed: number; confirmed: number; switch_exit: number | null; section_seen: boolean; files: string[] };
 }
 
 const readText = (path: string) => { try { return readFileSync(path, 'utf8'); } catch { return ''; } };
@@ -95,12 +112,38 @@ function sessionSuggestion(state: string, logs: string, since: number): { seen: 
   return { seen: hits.length > 0, pages: [...new Set(hits.flatMap((x) => x.s.pages))], brain_text: [...new Set(hits.flatMap((x) => x.s.brain_text ? x.s.brain_text.split('\n') : []))].join('\n'), files: hits.map((x) => x.f.startsWith(state) ? 'state' + x.f.slice(state.length) : 'logs' + x.f.slice(logs.length)) };
 }
 
+/** Whether a session transcript written in [since, until) holds marker: Claude Code's project jsonl, Codex's rollout and the turn
+ *  log, as sessionSuggestion reads them. The C2 standing-rules eval looks for its section's first line this way. */
+/** The trial record with the trial token replaced, so trials.jsonl never holds it (scrubToken covers files on disk only). */
+export function scrubRecord<T>(record: T, token: string): T {
+  if (!record || !token) return record;
+  const s = JSON.stringify(record);
+  return s.includes(token) ? JSON.parse(s.split(token).join('[trial-token-removed]')) as T : record;
+}
+
+/** Provider key names whose values appear in the serialized trial record. */
+export function recordKeyNames(record: unknown, env: Record<string, string | undefined>): string[] {
+  if (!record) return [];
+  const s = JSON.stringify(record);
+  return PROVIDER_KEY_NAMES.filter((k) => !!env[k] && s.includes(env[k]!));
+}
+
+export function transcriptMarker(state: string, logs: string, since: number, marker: string, until = Infinity): { seen: boolean; files: string[] } {
+  const files: string[] = [];
+  const walk = (dir: string) => { let names: string[] = []; try { names = readdirSync(dir); } catch { return; }
+    for (const n of names) { const p = join(dir, n); let st; try { st = lstatSync(p); } catch { continue; } if (st.isDirectory()) walk(p); else if (st.isFile() && n.endsWith('.jsonl') && st.mtimeMs >= since && st.mtimeMs < until) files.push(p); } };
+  for (const d of [join(state, 'claude', 'projects'), join(state, 'codex', 'sessions'), join(logs, 'turns')]) { try { if (lstatSync(d).isDirectory()) walk(d); } catch { /* not there */ } }
+  const hits = files.filter((f) => readText(f).includes(marker));
+  return { seen: hits.length > 0, files: hits.map((f) => f.startsWith(state) ? 'state' + f.slice(state.length) : 'logs' + f.slice(logs.length)) };
+}
+
 const CONVERSATION = 'first-wow';
 
 export async function runFirstWowTrial(ctx: Omit<TrialContext, 'grade'> & { keyEnv?: Record<string, string | undefined> }): Promise<TrialRecord> {
   if (ctx.cell.harness === 'qm') return (await import('./first-wow-qm.ts')).runFirstWowQmTrial(ctx);
   const { cell, trial, opts, log } = ctx;
   const fw = (cell as Cell & { first_wow: FirstWowCellConfig }).first_wow;
+  if (fw.task === 'correction') return (await import('./c2-rules.ts')).runC2Trial(ctx);
   const repoRoot = resolve(opts.repoRoot ?? '.');
   if (opts.harnessMode !== 'docker' || !opts.network) throw new RunnerError('HE-NET-001', `cell ${cell.id}: a first-wow trial runs in docker mode on the internal network; fix: run it through executeRun with --harness-mode docker`);
   const seed = seedOfTask(trial.task);
@@ -164,6 +207,7 @@ export async function runFirstWowTrial(ctx: Omit<TrialContext, 'grade'> & { keyE
     let brain: BrainPage[] = [];
     let exportOk: boolean | null = null;
     let onboarding: unknown;
+    let standingRules: TrialFirstWow['standing_rules'];
     const turns: FirstWowTurn[] = [];
     const events: NEvent[] = [];
     const note = (msg: string) => { log(msg); error = error ? `${error}; ${msg}` : msg; };
@@ -230,6 +274,21 @@ export async function runFirstWowTrial(ctx: Omit<TrialContext, 'grade'> & { keyE
           registration = readRegistration(cell.harness, dirs.state);
           if (!setupError && !registration.ok) { setupError = true; note(`HE-FIRSTWOW-002 trial ${trial.id}: the gbrain entry in ${registration.file} has args ${JSON.stringify(registration.args)}, not gbrain ${REGISTRATION[cell.harness]!.join(' ')}; the trial stops as a setup error`); }
         }
+        if (!setupError && fw.standing_rules) {
+          const runs = [];
+          for (const [i, rule] of CODING_CHECK_RULES.entries()) {
+            const r = await execOwnerAtTerminal(container, cell.harness, ['gbrain', 'correct', rule, '--json'], repoRoot);
+            writeFileSync(join(setupDir, `rule-${String(i + 1).padStart(2, '0')}.log`), r.stdout + (r.stderr ? '\n--- stderr\n' + r.stderr : ''));
+            runs.push(r.status);
+          }
+          const sw = fw.standing_rules === 'on' ? await execIn(container, cell.harness, ['gbrain', 'config', 'set', 'rules.session_start', 'on'], SETUP_TIMEOUT_S) : null;
+          const list = await execIn(container, cell.harness, ['gbrain', 'rules', 'list', '--json'], SETUP_TIMEOUT_S);
+          writeFileSync(join(setupDir, 'rules-list.json'), list.stdout);
+          const confirmed = parseRules(list.stdout).filter((x) => x.status === 'active' && x.confirmed).length;
+          standingRules = { state: fw.standing_rules, saved: runs.filter((s) => s === 0).length, failed: runs.filter((s) => s !== 0).length, confirmed, switch_exit: sw?.status ?? null, section_seen: false, files: [] };
+          log(`standing rules: ${standingRules.saved} saved, ${standingRules.failed} failed, ${confirmed} confirmed, switch ${fw.standing_rules}${sw ? ` (exit ${sw.status})` : ''}`);
+          if (confirmed !== CODING_CHECK_RULES.length || (sw && sw.status !== 0)) { setupError = true; note(`HE-C2-002 trial ${trial.id}: ${confirmed} of ${CODING_CHECK_RULES.length} owner rules confirmed${sw && sw.status !== 0 ? `, rules.session_start set exited ${sw.status}` : ''}; the trial stops as a setup error`); }
+        }
         if (!setupError) {
           const q = await ask('question', coding ? coding.prompt : questionPrompt(manifest));
           if (q?.reply_text && q.exit === 0 && needsPerson(q.reply_text)) await ask('person', PERSON_REPLY);
@@ -272,6 +331,7 @@ export async function runFirstWowTrial(ctx: Omit<TrialContext, 'grade'> & { keyE
     const setupOutput = setup.map((s) => JSON.stringify(s.history)).join('\n');
     const readFile = (rel: string) => { try { return readFileSync(join(dirs.state, rel), 'utf8'); } catch { return null; } };
     const suggestionSeen = fw.suggestion_switch ? sessionSuggestion(dirs.state, dirs.logs, started) : undefined;
+    if (standingRules) { const m = transcriptMarker(dirs.state, dirs.logs, started, SECTION_MARKER); standingRules.section_seen = m.seen; standingRules.files = m.files; }
     const score = coding ? null : turns.length ? scoreFirstWow({ manifest, arm: fw.arm as Arm, replies: turns.map((t) => t.reply_text), events, brain, readFile, setupOutput, sessionStart: suggestionSeen?.brain_text }) : null;
     const exits = turns.map((t) => t.exit);
     const fromExits: Termination = readyFailure ? classify([], readyFailure, null, false) : setupError ? 'harness_error' : classify(exits, null, null, false);
@@ -285,6 +345,7 @@ export async function runFirstWowTrial(ctx: Omit<TrialContext, 'grade'> & { keyE
       question_ms: turns.length ? Date.parse(turns[turns.length - 1]!.ended_at) - Date.parse(turns[0]!.started_at) : null,
       person_needed: turns.filter((t) => t.role === 'person').length, turns, score,
       ...(codingTask ? { coding: { task: codingTask.id, grade: codingGrade } } : {}),
+      ...(standingRules ? { standing_rules: standingRules } : {}),
     };
     writeAtomic(paths.first_wow!, JSON.stringify(firstWow, null, 1) + '\n');
     const s = score as { finish_any?: boolean; correct_abstention?: boolean } | null;
@@ -303,9 +364,11 @@ export async function runFirstWowTrial(ctx: Omit<TrialContext, 'grade'> & { keyE
     rmSync(secretDir, { recursive: true, force: true });
     const scrubbed = scrubToken(dirs.root, token);
     const canary = canaryScan(dirs.root, token, ctx.keyEnv ?? process.env);
-    const found = canary.token_files.length > 0 || canary.key_names.length > 0;
-    log(`first-wow trial ${trial.id}: token scrubbed from ${scrubbed.length} file(s); canary ${found ? 'FOUND' : 'clean'}`);
-    if (found) throw new InstallLeak(record, `HE-INSTALL-005 after first-wow trial ${trial.id}${thrown ? ' (which threw)' : ''}: ${canary.token_files.length ? `the trial token is still in ${canary.token_files.join(', ')}` : ''}${canary.key_names.length ? ` provider key value(s) of ${canary.key_names.join(', ')} found` : ''}; the run stops`);
+    record = scrubRecord(record, token);
+    const recordKeys = recordKeyNames(record, ctx.keyEnv ?? process.env);
+    const found = canary.token_files.length > 0 || canary.key_names.length > 0 || recordKeys.length > 0;
+    log(`first-wow trial ${trial.id}: token scrubbed from ${scrubbed.length} file(s) and the record; canary ${found ? 'FOUND' : 'clean'}`);
+    if (found) throw new InstallLeak(recordKeys.length ? null : record, `HE-INSTALL-005 after first-wow trial ${trial.id}${thrown ? ' (which threw)' : ''}: ${canary.token_files.length ? `the trial token is still in ${canary.token_files.join(', ')}` : ''}${canary.key_names.length ? ` provider key value(s) of ${canary.key_names.join(', ')} found` : ''}${recordKeys.length ? ` provider key value(s) of ${recordKeys.join(', ')} in the trial record` : ''}; the run stops`);
   }
   const packed = packRawBrain(dirs.state);
   if (packed.length) log(`first-wow trial ${trial.id}: packed the trial home (${packed.join(', ')})`);

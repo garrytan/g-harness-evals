@@ -8,10 +8,17 @@ import { RunnerError } from '../errors.ts';
 
 export const FIRST_WOW_SLICE = 'gbrain-first-wow';
 export const FIRST_WOW_HARNESSES: readonly string[] = ['claude-code', 'codex', 'qm'];
-export const FIRST_WOW_ARMS = ['defaults', 'pr1', 'full', 'plain', 'qm-native'] as const;
+export const FIRST_WOW_ARMS = ['defaults', 'pr1', 'full', 'plain', 'qm-native', 'c2-rules', 'c2-control', 'c2-remember', 'c2-floor'] as const;
 export type FirstWowArm = (typeof FIRST_WOW_ARMS)[number];
+/** The C2 standing-rules eval's correction arms (runner/trial/c2-rules.ts, docs/benchmarks/2026-12-c2-standing-rules/). */
+export const C2_ARMS: readonly FirstWowArm[] = ['c2-rules', 'c2-control', 'c2-remember', 'c2-floor'];
 /** The arms each harness runs. QM has no gbrain setup, so it runs gbrain as its memory provider against plain QM (PREREGISTRATION.md, QM). */
-export const ARMS_BY_HARNESS: Record<string, readonly FirstWowArm[]> = { 'claude-code': ['defaults', 'pr1', 'full', 'plain'], codex: ['defaults', 'pr1', 'full', 'plain'], qm: ['qm-native', 'plain'] };
+export const ARMS_BY_HARNESS: Record<string, readonly FirstWowArm[]> = { 'claude-code': ['defaults', 'pr1', 'full', 'plain', ...C2_ARMS], codex: ['defaults', 'pr1', 'full', 'plain', ...C2_ARMS], qm: ['qm-native', 'plain'] };
+/** A C2 arm's name in scripts/c2-standing-rules (rules, remember or floor), or null for any other arm. */
+export const c2ArmOf = (arm: string): 'rules' | 'control' | 'remember' | 'floor' | null => (C2_ARMS.includes(arm as FirstWowArm) ? arm.slice(3) as 'rules' | 'control' | 'remember' | 'floor' : null);
+/** A C2 correction trial's session 2 runs in the other harness, on the model its provider has in the cell's utility_models. */
+export const otherHarness = (harness: string): 'claude-code' | 'codex' => (harness === 'claude-code' ? 'codex' : 'claude-code');
+const PROVIDER_OF: Record<string, string> = { 'claude-code': 'anthropic', codex: 'openai' };
 /** The QM config of each QM arm (harnesses/qm/prepare.sh). */
 export const QM_CONFIG: Record<string, string> = { 'qm-native': 'pi-memory-provider', plain: 'pi' };
 /** The member the QM person is in the qm-native brain, made its owner (PREREGISTRATION.md, QM). */
@@ -20,6 +27,9 @@ export const QM_BRAIN_MEMBER = 'first-wow-user';
 export const QM_ACTOR_ID = 'U0FIRSTWOW';
 /** The registration every gbrain arm must carry after setup (decision G): the serve argv after gbrain's own path. */
 export const REGISTRATION: Record<string, string[]> = { 'claude-code': ['serve', '--surface', 'starter', '--advertise', 'verbs'], codex: ['serve', '--surface', 'full'] };
+/** The serve argv setup registers for a harness; a C2 cell's claude_code_advertise widens Claude Code's listing to the starter tools. */
+export const registrationFor = (harness: string, claudeCodeAdvertise?: 'starter'): string[] =>
+  harness === 'claude-code' && claudeCodeAdvertise ? ['serve', '--surface', 'starter', '--advertise', claudeCodeAdvertise] : REGISTRATION[harness]!;
 /** The question session's turn budget; a timeout counts at this cap. */
 export const QUESTION_BUDGET_S = 600;
 export const SETUP_TIMEOUT_S = 180;
@@ -58,7 +68,13 @@ export interface FirstWowCellConfig {
   suggestion_switch?: boolean;
   /** "coding": the first session after setup is a coding check task (scripts/gbrain-first-wow/coding.ts) instead of the three
    *  questions, on the defaults and full arms of Claude Code and Codex. Questions by default. */
-  task?: 'questions' | 'coding';
+  task?: 'questions' | 'coding' | 'correction';
+  /** The C2 coding check only (task "coding" on the defaults arm): the owner saves CODING_CHECK_RULES as 30 confirmed standing
+   *  rules before the session, and "on" also switches rules.session_start on (scripts/c2-standing-rules/items.ts). */
+  standing_rules?: 'on' | 'off';
+  /** C2 correction cells only: Claude Code's gbrain setup lists the starter tools (--advertise starter) instead of the shipped
+   *  default's memory verbs, so `correct` is listed (the C2 plan's dated fallback, not the shipped default). */
+  claude_code_advertise?: 'starter';
 }
 
 const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'repetitions', 'ceiling', 'harness_mode', 'network', 'utility_models', 'tasks', 'first_wow']);
@@ -78,13 +94,23 @@ export function checkFirstWowCell(c: { id: string; harness: string; slice: strin
   if (!Array.isArray(c.tasks) || !c.tasks.length || c.tasks.some((t) => typeof t !== 'string' || seedOfTask(t) === null)) throw bad('tasks must list seeds as "seed-NNNN" (scripts/gbrain-first-wow/fixtures.ts)');
   const f = c.first_wow as Partial<FirstWowCellConfig> | undefined;
   if (!f || typeof f !== 'object' || Array.isArray(f)) throw bad('a first-wow cell needs first_wow: {arm[, gbrain_commit, gbrain_version, image]}');
-  const unknown = Object.keys(f).filter((k) => !['arm', 'gbrain_commit', 'gbrain_version', 'image', 'provider_read', 'suggestion_switch', 'task'].includes(k));
+  const unknown = Object.keys(f).filter((k) => !['arm', 'gbrain_commit', 'gbrain_version', 'image', 'provider_read', 'suggestion_switch', 'task', 'standing_rules', 'claude_code_advertise'].includes(k));
   if (unknown.length) throw bad(`first_wow has unknown key(s) ${unknown.join(', ')}`);
   const arms = ARMS_BY_HARNESS[c.harness]!;
   if (!arms.includes(f.arm as FirstWowArm)) throw bad(`first_wow.arm must be one of ${arms.join(', ')} on ${c.harness} (got ${JSON.stringify(f.arm)})`);
   if (f.provider_read !== undefined && (f.arm !== 'qm-native' || !['recall', 'query'].includes(f.provider_read))) throw bad(`first_wow.provider_read is recall or query, on the qm-native arm only (got ${JSON.stringify(f.provider_read)} on ${f.arm})`);
-  if (f.suggestion_switch !== undefined && (f.suggestion_switch !== true || !['defaults', 'pr1', 'full'].includes(f.arm as string))) throw bad(`first_wow.suggestion_switch is true on the defaults, pr1 and full arms only (got ${JSON.stringify(f.suggestion_switch)} on ${f.arm})`);
-  if (f.task !== undefined && !(f.task === 'questions' || (f.task === 'coding' && c.harness !== 'qm' && ['defaults', 'full'].includes(f.arm as string)))) throw bad(`first_wow.task is "questions", or "coding" on the defaults and full arms of Claude Code and Codex (got ${JSON.stringify(f.task)} on ${c.harness} ${f.arm})`);
+  const c2 = C2_ARMS.includes(f.arm as FirstWowArm);
+  if (f.suggestion_switch !== undefined && (f.suggestion_switch !== true || !['defaults', 'pr1', 'full', ...C2_ARMS].includes(f.arm as string))) throw bad(`first_wow.suggestion_switch is true on the defaults, pr1, full and C2 arms only (got ${JSON.stringify(f.suggestion_switch)} on ${f.arm})`);
+  if (c2 !== (f.task === 'correction')) throw bad(`first_wow.task "correction" goes with the C2 arms ${C2_ARMS.join(', ')} and only with them (got ${JSON.stringify(f.task)} on ${f.arm})`);
+  if (f.task !== undefined && !(f.task === 'questions' || f.task === 'correction' || (f.task === 'coding' && c.harness !== 'qm' && ['defaults', 'full'].includes(f.arm as string)))) throw bad(`first_wow.task is "questions", or "coding" on the defaults and full arms of Claude Code and Codex (got ${JSON.stringify(f.task)} on ${c.harness} ${f.arm})`);
+  if (f.standing_rules !== undefined && (!['on', 'off'].includes(f.standing_rules) || f.task !== 'coding' || f.arm !== 'defaults' || f.suggestion_switch !== true)) throw bad(`first_wow.standing_rules is "on" or "off", on a coding cell of the defaults arm with suggestion_switch true (got ${JSON.stringify(f.standing_rules)} on ${f.arm}, task ${JSON.stringify(f.task)})`);
+  if (c2) {
+    const um = (c as { utility_models?: unknown }).utility_models;
+    const want = PROVIDER_OF[otherHarness(c.harness)]!;
+    if (!Array.isArray(um) || um.length !== 1 || typeof um[0] !== 'string' || !um[0].startsWith(want + ':')) throw bad(`a C2 correction cell names session 2's model as its one utility_models entry, a ${want} model for ${otherHarness(c.harness)} (got ${JSON.stringify(um)})`);
+    if (f.image !== undefined) throw bad('a C2 correction cell runs the two harnesses\' gbrain images of its commit; drop first_wow.image');
+  }
+  if (f.claude_code_advertise !== undefined && (!c2 || f.claude_code_advertise !== 'starter')) throw bad(`first_wow.claude_code_advertise is "starter", on C2 correction cells only (got ${JSON.stringify(f.claude_code_advertise)} on ${f.arm})`);
   if (f.arm === 'plain') { if (f.gbrain_commit !== undefined || f.gbrain_version !== undefined) throw bad('the plain arm runs no gbrain; drop gbrain_commit and gbrain_version'); return; }
   if (typeof f.gbrain_commit !== 'string' || !/^[0-9a-f]{40}$/.test(f.gbrain_commit)) throw bad(`first_wow.gbrain_commit must be the full 40-character gbrain commit (got ${JSON.stringify(f.gbrain_commit)})`);
   if (typeof f.gbrain_version !== 'string' || !/^\d+(\.\d+){2,3}$/.test(f.gbrain_version)) throw bad(`first_wow.gbrain_version must be gbrain's package version, such as "0.60.773.0" (got ${JSON.stringify(f.gbrain_version)})`);
@@ -94,6 +120,8 @@ export const taskForSeed = (seed: number): string => `seed-${String(seed).padSta
 export function seedOfTask(task: string): number | null { const m = /^seed-(\d{4})$/.exec(task); return m ? Number(m[1]) : null; }
 export const imageFor = (cell: { harness: string; first_wow?: FirstWowCellConfig }): string =>
   cell.first_wow!.image ?? (cell.first_wow!.arm === 'plain' || cell.harness === 'qm' ? `harness-eval/${cell.harness}:dev` : `harness-eval/${cell.harness}-gbrain:${cell.first_wow!.gbrain_commit!.slice(0, 12)}`);
+/** A C2 correction cell's session 2 image: the other harness's gbrain image of the same commit. */
+export const secondImageFor = (cell: { harness: string; first_wow?: FirstWowCellConfig }): string => `harness-eval/${otherHarness(cell.harness)}-gbrain:${cell.first_wow!.gbrain_commit!.slice(0, 12)}`;
 /** qm-native's brain host: the Claude Code gbrain image of the commit, for its gbrain and bun only (Claude Code never starts there). */
 export const brainHostImage = (commit: string): string => `harness-eval/claude-code-gbrain:${commit.slice(0, 12)}`;
 
@@ -129,16 +157,15 @@ export function accessCheckOk(stdout: string, imported: boolean, member = QM_BRA
 }
 
 /** The first setup run of a gbrain arm (the full arm's later runs are the accept commands setup prints). */
-export function setupArgv(harness: string, arm: FirstWowArm, suggestionSwitch = false): string[] {
-  const pin = harness === 'codex' ? ['--surface', 'full'] : ['--surface', 'starter', '--advertise', 'verbs'];
-  const history = arm === 'defaults' ? ['--history', 'none'] : arm === 'pr1' ? ['--history', '30'] : [];
+export function setupArgv(harness: string, arm: FirstWowArm, suggestionSwitch = false, claudeCodeAdvertise?: 'starter'): string[] {
+  const pin = registrationFor(harness, claudeCodeAdvertise).slice(1);
+  const history = arm === 'defaults' || C2_ARMS.includes(arm) ? ['--history', 'none'] : arm === 'pr1' ? ['--history', '30'] : [];
   const suggestion = suggestionSwitch && arm !== 'full' ? ['--no-suggestion'] : [];
   return ['gbrain', 'setup', harness, ...pin, ...history, ...suggestion, '--json'];
 }
 
 /** The gbrain MCP entry the harness config holds after setup: its args, and whether they end in the pinned serve argv. */
-export function readRegistration(harness: string, home: string): { file: string; args: string[] | null; ok: boolean } {
-  const want = REGISTRATION[harness]!;
+export function readRegistration(harness: string, home: string, want: string[] = REGISTRATION[harness]!): { file: string; args: string[] | null; ok: boolean } {
   const check = (args: string[] | null) => !!args && args.length === want.length + 1 && want.every((w, i) => args[i + 1] === w);
   if (harness === 'claude-code') {
     const file = join(home, '.claude', '.claude.json');
