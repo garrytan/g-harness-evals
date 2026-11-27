@@ -25,7 +25,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { CompanyBrainManifest, CompanyGrant } from '../../gbrain/build-brain.ts';
@@ -229,7 +229,7 @@ function replyParts(result: Record<string, unknown> | null): { rest: string; hot
 export function pageRows(result: Record<string, unknown> | null, fail: (what: string) => Error, refused?: () => void): Array<{ slug: string; source_id: string }> {
   if (!result) throw fail('gave no list_pages reply, so the listing is unverified');
   if (result.isError === true && refused && /"code"[ ]*:[ ]*"permission_denied"/.test(replyText(result))) { refused(); return []; }
-  if (result.isError === true) throw fail(`answered list_pages with an error (${replyText(result).slice(0, 300)}), so the listing is unverified`);
+  if (result.isError === true) throw fail(`answered list_pages with an error (${replyCode(result)}; the reply text is withheld, since it can carry upstream detail), so the listing is unverified`);
   const content = Array.isArray(result.content) ? result.content as Array<{ text?: unknown }> : [];
   for (const c of content) {
     if (typeof c.text !== 'string' || !c.text.trim().startsWith('[')) continue;
@@ -239,6 +239,10 @@ export function pageRows(result: Record<string, unknown> | null, fail: (what: st
 }
 
 const replyText = (result: Record<string, unknown>) => (Array.isArray(result.content) ? (result.content as Array<{ text?: unknown }>).map((c) => String(c.text ?? '')).join(' ') : '');
+
+/** An error reply's gbrain error code when it states one as a short token (permission_denied, internal_error); nothing else of
+ *  the reply text is kept, since a failed call can carry upstream error text (a database message, a URL, a header). */
+const replyCode = (result: Record<string, unknown>) => `code ${/"code"[ ]*:[ ]*"([a-z][a-z0-9_]{0,39})"/.exec(replyText(result))?.[1] ?? 'none stated'}`;
 
 async function rpc(url: string, token: string, name: string, args: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   const res = await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
@@ -327,17 +331,90 @@ export function leakLayout(split: 'dev' | 'heldout', manifestSha256: string, ing
   return { sidecar: sidecarLayout({ split, ...LEAK_PREFLIGHT_SIDECAR }), manifest_sha256: manifestSha256, ingest_tokens_sha256: ingestTokensSha256, ...(channelRemember === 'conversation' ? { channel_remember: 'conversation' as const } : {}) };
 }
 
-type LeakPreflightOptions = { image: string; split: 'dev' | 'heldout'; arm: LeakArm; worldPath: string; record: string; channelRemember?: LeakChannelRemember; log?: (l: string) => void };
+type LeakPreflightOptions = { image: string; split: 'dev' | 'heldout'; arm: LeakArm; worldPath: string; record: string; channelRemember?: LeakChannelRemember; log?: (l: string) => void; keep?: string };
 
 /** Runs one arm's leak preflight. The sidecar's files (its token, the member and ingest tokens, the manifest) live in a private
- *  temporary directory that is removed on every exit, never under the run or results directory. */
+ *  temporary directory that is removed on every exit, never under the run or results directory. With keep, the sidecar's
+ *  manifest.json and ingest-tokens.json are copied there first, as a preflight-gbrain-member-<split> directory holds them, so
+ *  merge-shards.ts can compare the record's layout with other shards (it never copies ingest-tokens.json off the shard). */
 export async function runLeakPreflight(o: LeakPreflightOptions): Promise<{ record: LeakPreflightRecord; secrets: string[] }> {
   const out = mkdtempSync(join(tmpdir(), `he-leak-preflight-${o.arm}-${o.split}-`));
   try {
     return await leakPreflightIn(out, o);
   } finally {
+    if (o.keep) {
+      mkdirSync(o.keep, { recursive: true });
+      for (const name of ['manifest.json', 'ingest-tokens.json']) if (existsSync(join(out, 'gbrain', name))) copyFileSync(join(out, 'gbrain', name), join(o.keep, name));
+    }
     rmSync(out, { recursive: true, force: true });
   }
+}
+
+/** The first 12 characters of an image id without its sha256: prefix, for file names. */
+const shortId = (id: unknown) => (typeof id === 'string' ? id.replace(/^sha256:/, '').replace(/[^a-z0-9]/g, '').slice(0, 12) : '') || 'unknown';
+
+/** The leak preflight of every live-ingestion arm, keyed scope|split[|conversation] as runner/run.ts lists them, into runDir:
+ *  one record per arm, refused (thrown with its HE-GBRAIN code) on any problem, then the two arms of a split checked for one
+ *  brain layout. Keyless and lease-free: no metering proxy, no model call.
+ *
+ *  resume (internal-task): a shard resumed on a new VM rebuilds its gbrain image, which gets a new image id, so its records name an
+ *  id the run no longer uses and run refuses (HE-GBRAIN-020). With resume, nothing runs when every record exists and names
+ *  the image id given, and it refuses (HE-GBRAIN-020) when a record made on that image id failed, so a failing check is never
+ *  rerun until it passes; otherwise every arm is run again on that image. Each earlier record is kept beside the new one as
+ *  <record>.image-<first 12 of its image id>.json, and the new sidecar's manifest.json and ingest-tokens.json are kept under
+ *  preflight-leak-<scope>-<split>[-conversation]-<first 12 of the new id>/ for merge-shards.ts's cross-shard layout check. */
+export async function preflightLeakArms(o: { keys: string[]; runDir: string; image: string; worldPath: string; log: (l: string) => void; resume?: { imageId: string }; run?: typeof runLeakPreflight }): Promise<{ ran: boolean; kept: string[] }> {
+  const run = o.run ?? runLeakPreflight;
+  const arms = o.keys.map((key) => {
+    const [arm, split, remember] = key.split('|') as [LeakArm, 'dev' | 'heldout', 'conversation' | undefined];
+    return { arm, split, remember, path: join(o.runDir, leakRecordName(arm, split, remember)) };
+  });
+  const kept: string[] = [];
+  if (o.resume) {
+    const read = (p: string) => { try { return JSON.parse(readFileSync(p, 'utf8')) as { image_id?: unknown; ok?: unknown }; } catch { return {}; } };
+    const idOf = (p: string) => read(p).image_id;
+    const failed = arms.filter((a) => existsSync(a.path) && idOf(a.path) === o.resume!.imageId && read(a.path).ok !== true);
+    if (failed.length) throw new RunnerError(LEAK_CODES.record, `the leak preflight already failed on image id ${o.resume.imageId} (${failed.map((a) => a.path).join(', ')}), so it is not run again on that image; read the record, fix the image and rebuild it; ${LEAK_RECOVERY}`);
+    const stale = arms.filter((a) => !existsSync(a.path) || idOf(a.path) !== o.resume!.imageId);
+    if (!stale.length) {
+      for (const split of [...new Set(arms.map((a) => a.split))]) {
+        const [open, rules] = (['open', 'member-sources'] as const).map((arm) => arms.find((a) => a.arm === arm && a.split === split));
+        const problem = open && rules ? layoutProblem(JSON.parse(readFileSync(open.path, 'utf8')) as LeakPreflightRecord, JSON.parse(readFileSync(rules.path, 'utf8')) as LeakPreflightRecord) : null;
+        if (problem) throw new RunnerError(LEAK_CODES.layout, problem);
+      }
+      o.log(`leak preflight: the records ${arms.map((a) => leakRecordName(a.arm, a.split, a.remember)).join(', ')} were made on image id ${o.resume.imageId}, the image this resume uses; nothing rerun`);
+      return { ran: false, kept };
+    }
+    for (const a of arms.filter((x) => existsSync(x.path))) {
+      const base = a.path.replace(/\.json$/, `.image-${shortId(idOf(a.path))}`);
+      let to = `${base}.json`;
+      for (let n = 2; existsSync(to); n++) to = `${base}-${n}.json`;
+      renameSync(a.path, to);
+      kept.push(to);
+    }
+    o.log(`leak preflight: ${stale.map((a) => leakRecordName(a.arm, a.split, a.remember)).join(', ')} ${stale.length === 1 ? 'is' : 'are'} missing or made on another image id than ${o.resume.imageId}, so every arm runs again on it (keyless, no lease)${kept.length ? `; the earlier records are kept as ${kept.join(', ')}` : ''}`);
+  }
+  const done = new Map<string, LeakPreflightRecord>();
+  for (const { arm, split, remember, path } of arms) {
+    const keep = o.resume ? join(o.runDir, `preflight-leak-${arm}-${split}${remember ? '-conversation' : ''}-${shortId(o.resume.imageId)}`) : undefined;
+    const { record, secrets } = await run({ image: o.image, split, arm, worldPath: o.worldPath, record: path, ...(remember ? { channelRemember: remember } : {}), log: o.log, ...(keep ? { keep } : {}) });
+    writeLeakRecord(path, record, secrets);
+    if (!record.ok) {
+      const carry = record.problems.filter((p) => p.check === 'write-carry');
+      const code = carry.length === record.problems.length ? LEAK_CODES.write_carry : LEAK_CODES[arm];
+      const msg = leakMessage(code, { arm, split, image: o.image, image_id: record.image_id, commit: record.gbrain_commit, record: path, fix: leakFix(carry.length === record.problems.length ? 'write_carry' : arm, { image: o.image, split, commit: record.gbrain_commit }) }, record.problems);
+      throw new RunnerError(code, msg.slice(code.length + 1));
+    }
+    done.set(`${arm}|${split}`, record);
+    const probes = Object.entries(record.informational).filter(([k]) => k.startsWith('write_carry_')).map(([k, v]) => `${k} ${(v as { error?: string }).error ? 'error' : Object.values((v as { crossed?: Record<string, string[]> }).crossed ?? {}).some((x) => x.length) ? 'crosses' : 'holds'}`).join(', ');
+    o.log(`leak preflight scope=${arm} split=${split} image id=${record.image_id}: ${record.summary.facts} scripted facts ingested into their own sources (${record.summary.database_only} database-only), ${record.summary.askers} askers over search, query, recall, get_page, list_pages and hot memory, ${arm === 'open' ? 'every asker served every fact (the leak path exists)' : 'own returned and nothing outside the grant; write carry (T8) holds'}; informational: ${probes || 'none'}${record.channel_carry ? `; channel remember conversation: ${record.channel_carry.writer}'s remember in ${record.channel_carry.channel} landed in ${record.channel_carry.write.landed_in}, came back to its ${record.channel_carry.readers.length} readers and to no one else` : ''}; record ${path}`);
+  }
+  for (const split of [...new Set(arms.map((a) => a.split))]) {
+    const open = done.get(`open|${split}`), rules = done.get(`member-sources|${split}`);
+    const problem = open && rules ? layoutProblem(open, rules) : null;
+    if (problem) throw new RunnerError(LEAK_CODES.layout, problem);
+  }
+  return { ran: true, kept };
 }
 
 async function leakPreflightIn(out: string, o: LeakPreflightOptions): Promise<{ record: LeakPreflightRecord; secrets: string[] }> {

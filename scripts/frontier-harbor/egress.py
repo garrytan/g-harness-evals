@@ -1,4 +1,4 @@
-"""Harbor 0.24.0 docker environment with the frontier blocklist (HARN-50 plan, Contamination, keys and fairness).
+"""Harbor 0.24.0 docker environment with the frontier blocklist (internal-task plan, Contamination, keys and fairness).
 
 Harbor's docker egress control knows public, no-network and allowlist modes and starts its sidecar only for a
 non-public policy. TB2.1 tasks run public. This environment always starts the sidecar, built from egress-sidecar/

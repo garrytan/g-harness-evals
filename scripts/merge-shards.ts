@@ -37,7 +37,7 @@
 //                      trial ids and trial directories must not overlap; shards.json's task_halves names those cells' shards
 //   <name>.ledger.sqlite, <name>.proxy.log, <name>.proxy-usage.ndjson, <name>.ablation.ndjson (prompt archaeology), <name>.run-summary.json, <name>.run.log,
 //   <name>.recovery.json (to-trials.ts recover's counts and spend, which analyze.ts reads for a recovered shard),
-//   <name>.reconcile*.json, <name>.leak-preflight-<scope>-<split>.json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.laneb/ (a Lane B
+//   <name>.reconcile*.json, <name>.leak-preflight-<scope>-<split>[-conversation].json, <name>.preflight-*/ (without tokens.json or ingest-tokens.json: the brain's tokens stay on the shard), <name>.laneb/ (a Lane B
 //                      shard's Lane B run root: Harbor jobs, Lane B proxy sessions and ledger, docs/gstack-laneb.md), <name>.gbrain-install/ (the first shard's gbrain-install/ is also copied
 //                      under its own name), <name>.shard.json: each shard's own files under its name
 //   set-worlds.json    the shards' set-world pins (runner/run.ts SET_WORLDS_FILE), which must be identical; absent when no
@@ -271,7 +271,9 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   // Each shard builds its own image and brain, so its manifest.json carries its own built_at and import timings and its
   // ingest tokens are minted fresh: the record's hashes match only within one shard. Records from one shard are compared as
   // they are; across shards each record is compared through its shard's own copies of the files it hashed (crossShardLayout).
-  const leak = shards.flatMap((s) => readdirSync(s.dir).filter((f) => /^leak-preflight-(open|member-sources)-[a-z]+\.json$/.test(f)).map((f) => {
+  // A shard resumed on a new VM (internal-task) also holds the records of its first image, kept as <record>.image-<id>.json: they
+  // are compared too, through crossShardLayout, since the two images are separate builds.
+  const leak = shards.flatMap((s) => readdirSync(s.dir).filter((f) => /^leak-preflight-(open|member-sources)-[a-z]+(-conversation)?(\.image-[a-z0-9]+(-\d+)?)?\.json$/.test(f)).map((f) => {
     const at = `${s.name}/${f}`;
     const record = readJsonFile<LeakPreflightRecord>(join(s.dir, f));
     return { at, shard: s.name, dir: s.dir, record };
@@ -280,7 +282,7 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
     const same = leak.filter((x) => x.record.split === split);
     const first = same.find((x) => x.record.arm === 'open') ?? same[0]!;
     for (const x of same) {
-      const problem = x.shard === first.shard ? layoutProblem(first.record, x.record) : layoutProblem(crossShardLayout(first.dir, first.record, first.at), crossShardLayout(x.dir, x.record, x.at));
+      const problem = x.shard === first.shard && x.record.image_id === first.record.image_id ? layoutProblem(first.record, x.record) : layoutProblem(crossShardLayout(first.dir, first.record, first.at), crossShardLayout(x.dir, x.record, x.at));
       if (problem) throw new MergeError(`${problem} (${first.at} against ${x.at}): every shard's leak preflight of a split must record one brain layout`);
     }
   }

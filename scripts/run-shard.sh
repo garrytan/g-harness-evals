@@ -57,7 +57,9 @@
 # its "resumes" list; it refuses a HEAD other than the recorded commit unless --amendment names HEAD (a dated amendment in
 # the preregistration, committed before the cells it affects), and it skips preflight when <out>/preflight.log already
 # says PREFLIGHT: ok, because the $0.05 preflight lease is closed in the ledger and a closed lease is never reopened
-# (HE-PROXY-003). preflight itself is scoped to this shard's cells (--cells), so a shard builds only its own images.
+# (HE-PROXY-003). preflight itself is scoped to this shard's cells (--cells), so a shard builds only its own images. A skipped
+# preflight is followed by runner/run.ts leak-preflight (internal-task), which reruns only the keyless leak preflight, with no lease,
+# when the rebuilt gbrain image's id differs from the one the leak preflight records name.
 #
 # The embedded image build and preflight's embedded probe need OPENAI_API_KEY in this shell for the metering proxy only;
 # the run needs ANTHROPIC_API_KEY the same way, and a Particle or OpenRouter cell PARTICLE_API_KEY or OPENROUTER_API_KEY.
@@ -371,6 +373,12 @@ if [ ! -f "$out/manifest.json" ]; then
 fi
 if [ "$resume" -eq 1 ] && grep -q '^PREFLIGHT: ok' "$out/preflight.log" 2>/dev/null; then
   log "preflight skipped: $out/preflight.log already says PREFLIGHT: ok and the preflight lease is closed (a resume reuses the images it passed)"
+  # internal-task: a resume on a new VM rebuilt the gbrain image under a new image id, which the leak preflight records no longer
+  # name, so the keyless leak preflight (no lease) runs again for this shard's live-ingestion cells when a record is missing
+  # or names another image id; the earlier records are kept beside the new ones. Other cells print one line and pass.
+  log "leak-preflight --cells $cells"
+  bun runner/run.ts leak-preflight --manifest "$out/manifest.json" --cells "$cells" --gbrain-image "$gbrain_image" ${sealed[@]+"${sealed[@]}"} >> "$out/leak-preflight-resume.log" 2>&1 || { show_tail "$out/leak-preflight-resume.log" 30; log "leak preflight on resume failed; no trial ran"; exit 2; }
+  grep -E '^(GBRAIN|LEAK):' "$out/leak-preflight-resume.log" | tail -n 20 | tee -a "$out/run-shard.log" >&2
 else
   log "preflight --cells $cells"
   bun runner/run.ts preflight --manifest "$out/manifest.json" --cells "$cells" --gbrain-image "$gbrain_image" ${sealed[@]+"${sealed[@]}"} > "$out/preflight.log" 2>&1 || { show_tail "$out/preflight.log" 30; log "preflight failed"; exit 2; }

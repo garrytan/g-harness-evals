@@ -76,6 +76,7 @@
  *     [--usage-log <file>] [--allow-models openai:gpt-4.1-mini,...] [--max-output-tokens 32768] [--free-count-tokens]
  *     [--forbidden-markers <file>] [--streaming meter|refuse] [--upstream openai=http://...] [--new-run] [--control-token <t>] [--ablation-log <file>] [--log-sections]
  *     [--route-texts <file.json>] [--refuse-hosted-tools] [--capture-bodies <dir> [--capture-max-bytes <n>]] [--google-via openrouter]
+ *     [--port-file <file>]
  *   bun runner/proxy/metering-proxy.ts summary --budget-ledger <file> --run-id <id> [--usage-log <file>]
  *
  * One lease ledger can hold a cell's reruns: each run id is its own lease, the
@@ -174,7 +175,7 @@
  * on an install slot (HE-PROXY-011). `summary` adds per-key install totals (installTotals). A slot bound without `install`
  * behaves exactly as before.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { BudgetExceededError, BudgetRun, geminiStreamIncomplete, jsonOrNull, ledgerStatus, priceRequest, readBody, reservationUsd, sseIncomplete, sseUsage, streamUsageCost, unbilledAnswer, usageCost, type BudgetAllowance } from '../ledger/budget-ledger.ts';
 
@@ -627,15 +628,18 @@ function upstreamError(body: unknown): Pick<UsageLine, 'error_code' | 'error_typ
 /** Anything in an error body shaped like a credential: a Google, OpenAI-style, xAI or OpenRouter key, a per-trial token, a bearer. */
 const KEY_SHAPED = /AIza[0-9A-Za-z_-]{20,}|\b(?:sk|xai)-[A-Za-z0-9_-]{16,}|trial-token:[A-Za-z0-9._:-]+|Bearer\s+[A-Za-z0-9._~+/=-]{8,}/g;
 const ERROR_BODY_MAX = 8_000;
+const RETRY_AFTER = /^(?:\d{1,10}|(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT)$/;
 /** Amendment 2 of frontier-shootout-2026-11, ruling C: what a usage line keeps of a non-2xx answer. Its Retry-After header, and
  *  its body (Google's error.code, error.message, error.status and error.details with the quota and retry details; OpenRouter's
  *  error.message and error.metadata with provider_name and raw), parsed when it is JSON and no longer than 8,000 characters,
- *  else as text cut there. The provider key, the slot's token and anything shaped like a key are masked first. Logging only. */
+ *  else as text cut there. The provider key, the slot's token and anything shaped like a key are masked first. Retry-After is
+ *  kept only in the two forms RFC 9110 gives it, whole seconds or an HTTP date (IMF-fixdate), so no other header text reaches
+ *  the line. Logging only. */
 export function errorFacts(retryAfter: string | null, text: string, secrets: ReadonlyArray<string | null | undefined>): Pick<UsageLine, 'retry_after' | 'error_body' | 'error_text'> {
   let masked = text;
   for (const s of secrets) if (s && s.length >= 8) masked = masked.split(s).join('[masked]');
   masked = masked.replace(KEY_SHAPED, '[masked]');
-  const retry = retryAfter !== null && /^[\x20-\x7e]{1,64}$/.test(retryAfter) ? { retry_after: retryAfter } : {};
+  const retry = retryAfter !== null && RETRY_AFTER.test(retryAfter) ? { retry_after: retryAfter } : {};
   const body = masked.length <= ERROR_BODY_MAX ? jsonOrNull(masked) : null;
   if (body !== null && typeof body === 'object') return { ...retry, error_body: body };
   return { ...retry, ...(masked.trim() ? { error_text: masked.slice(0, ERROR_BODY_MAX) } : {}) };
@@ -1248,6 +1252,8 @@ export interface ProxyCliArgs {
   host: string; port: number; ledger: string; leaseUsd: number; runId: string; usageLog: string | null;
   allowModels: string[] | null; maxOutputTokens: number | null; forbiddenMarkers: string[]; streaming: 'meter' | 'refuse'; upstream: Partial<Record<ProviderName, string>>; newRun: boolean;
   controlToken: string | null; freeCountTokens: boolean; ablationLog: string | null; logSections: boolean;
+  /** --port-file <file>: once listening, the bound port is written there (atomically), so a caller can pass --listen host:0. */
+  portFile: string | null;
   /** internal-task: --refuse-hosted-tools, off without it. */
   refuseHostedTools: boolean;
   /** internal-task: --capture-bodies <dir> and --capture-max-bytes <n>, null without them. */
@@ -1300,6 +1306,7 @@ export function parseProxyArgs(argv: string[]): ProxyCliArgs {
     routeTexts,
     ablationLog: one('--ablation-log') ?? null,
     googleVia: googleVia as typeof VIA_OPENROUTER | null,
+    portFile: one('--port-file') ?? null,
   };
 }
 
@@ -1330,6 +1337,7 @@ if (import.meta.main) {
     } else {
       const a = parseProxyArgs(argv);
       const proxy = startLeaseProxy(a);
+      if (a.portFile) { writeFileSync(a.portFile + '.tmp', String(proxy.port)); renameSync(a.portFile + '.tmp', a.portFile); }
       const keys = (Object.keys(KEY_ENV) as ProviderName[]).filter(p => process.env[KEY_ENV[p]]);
       process.stderr.write(`[metering-proxy] lease ${a.runId} $${a.leaseUsd.toFixed(2)} on ${a.host}:${proxy.port}; providers with keys: ${keys.join(', ') || 'none'}; ledger ${a.ledger}\n`);
       const stop = () => { proxy.stop(); process.stderr.write(`[metering-proxy] stopped: ${JSON.stringify(proxy.status())}\n`); process.exit(0); };

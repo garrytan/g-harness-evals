@@ -19,6 +19,11 @@
  *       [--turn-grace-s <n>] [--harness-env K=V ...] [--capture-upstream anthropic|openai=<url> ...] [--capture-dns <ip>]
  *       [--cursor-offline] [--task-half 1|2]
  *   bun runner/run.ts check-sections --manifest results/<run-id>/manifest.json
+ *   bun runner/run.ts leak-preflight --manifest results/<run-id>/manifest.json [--cells a,b] [--gbrain-image <tag>]
+ *
+ * leak-preflight (internal-task) is a resumed shard's keyless leak preflight: scripts/run-shard.sh --resume skips preflight, whose
+ * lease is closed, but the resumed VM's gbrain image has a new id, so the live-ingestion cells' leak preflight runs again on it,
+ * with no lease, whenever a record is missing or names another image id. The earlier records are kept beside the new ones.
  *
  * check-sections (internal-task) is the one-trial smoke's check for cells with log_sections: every forwarded chat line of those
  * cells' trials in the run's proxy-usage.ndjson carries sections and the cache-write fields, else exit 2 (HE-PROXY-005). A manifest with no such
@@ -133,6 +138,12 @@ export function resolveGbrain(c: GbrainCellConfig): ResolvedGbrain {
 /** internal-task: the models gbrain's own route may call for a cell, the extraction model first; empty without llm "proxy". */
 export function gbrainLlmModels(g: Pick<ResolvedGbrain, 'llm' | 'extraction_model' | 'llm_models'> | null | undefined): string[] {
   return g?.llm === 'proxy' && g.extraction_model ? [...new Set([g.extraction_model, ...(g.llm_models ?? [])])] : [];
+}
+
+/** internal-task: the leak preflight's arms for these cells, one key scope|split[|conversation] per live-ingestion member-brain cell
+ *  under scope open or member-sources, sorted. preflight runs them, leak-preflight reruns them on a resume, run checks them. */
+export function leakArmKeys(cells: Cell[]): string[] {
+  return [...new Set(cells.filter((c) => c.gbrain?.brain === 'member' && c.gbrain.ingest === 'live' && (c.gbrain.scope === 'open' || c.gbrain.scope === 'member-sources')).map((c) => `${c.gbrain!.scope}|${c.split}${c.gbrain!.channel_remember === 'conversation' ? '|conversation' : ''}`))].sort();
 }
 
 /** internal-task: every live-ingestion open or rules cell (scope "member-sources") must start the sidecar the leak preflight checked
@@ -1228,32 +1239,12 @@ async function main(argv: string[]): Promise<number> {
         }
         // internal-task: the leak preflight of every live-ingestion member-brain cell, per arm and split, before any trial (keyless,
         // fail-closed). Both arms on a split must also serve the same brain layout.
-        const leakArms = [...new Set(gbrainCells.filter((c) => c.gbrain!.brain === 'member' && c.gbrain!.ingest === 'live' && (c.gbrain!.scope === 'open' || c.gbrain!.scope === 'member-sources')).map((c) => `${c.gbrain!.scope}|${c.split}${c.gbrain!.channel_remember === 'conversation' ? '|conversation' : ''}`))].sort();
+        const leakArms = leakArmKeys(gbrainCells);
         if (leakArms.length) {
-          const { runLeakPreflight, writeLeakRecord, leakMessage, leakFix, layoutProblem, leakRecordName, LEAK_CODES } = await import('./trial/gbrain-leak-preflight.ts');
+          const { preflightLeakArms } = await import('./trial/gbrain-leak-preflight.ts');
           const cellLayout = await leakCellLayoutProblem(gbrainCells);
           if (cellLayout) throw new RunnerError('HE-GBRAIN-021', cellLayout);
-          const done = new Map<string, import('./trial/gbrain-leak-preflight.ts').LeakPreflightRecord>();
-          for (const key of leakArms) {
-            const [arm, split, remember] = key.split('|') as ['open' | 'member-sources', 'dev' | 'heldout', 'conversation' | undefined];
-            const path = join(runDir, leakRecordName(arm, split, remember));
-            const { record, secrets } = await runLeakPreflight({ image, split, arm, worldPath: setWorld?.path ?? (sealed ? sealed.worldPath : DEFAULT_WORLD_PATH), record: path, ...(remember ? { channelRemember: remember } : {}), log: (l) => console.log(`GBRAIN: ${l}`) });
-            writeLeakRecord(path, record, secrets);
-            if (!record.ok) {
-              const carry = record.problems.filter((p) => p.check === 'write-carry');
-              const code = carry.length === record.problems.length ? LEAK_CODES.write_carry : LEAK_CODES[arm];
-              const msg = leakMessage(code, { arm, split, image, image_id: record.image_id, commit: record.gbrain_commit, record: path, fix: leakFix(carry.length === record.problems.length ? 'write_carry' : arm, { image, split, commit: record.gbrain_commit }) }, record.problems);
-              throw new RunnerError(code, msg.slice(code.length + 1));
-            }
-            done.set(`${arm}|${split}`, record);
-            const probes = Object.entries(record.informational).filter(([k]) => k.startsWith('write_carry_')).map(([k, v]) => `${k} ${(v as { error?: string }).error ? 'error' : Object.values((v as { crossed?: Record<string, string[]> }).crossed ?? {}).some((x) => x.length) ? 'crosses' : 'holds'}`).join(', ');
-            console.log(`GBRAIN: leak preflight scope=${arm} split=${split} image id=${record.image_id}: ${record.summary.facts} scripted facts ingested into their own sources (${record.summary.database_only} database-only), ${record.summary.askers} askers over search, query, recall, get_page, list_pages and hot memory, ${arm === 'open' ? 'every asker served every fact (the leak path exists)' : 'own returned and nothing outside the grant; write carry (T8) holds'}; informational: ${probes || 'none'}${record.channel_carry ? `; channel remember conversation: ${record.channel_carry.writer}'s remember in ${record.channel_carry.channel} landed in ${record.channel_carry.write.landed_in}, came back to its ${record.channel_carry.readers.length} readers and to no one else` : ''}; record ${path}`);
-          }
-          for (const split of [...new Set(leakArms.map((k) => k.split('|')[1]!))]) {
-            const open = done.get(`open|${split}`), rules = done.get(`member-sources|${split}`);
-            const problem = open && rules ? layoutProblem(open, rules) : null;
-            if (problem) throw new RunnerError(LEAK_CODES.layout, problem);
-          }
+          await preflightLeakArms({ keys: leakArms, runDir, image, worldPath: setWorld?.path ?? (sealed ? sealed.worldPath : DEFAULT_WORLD_PATH), log: (l) => console.log(`GBRAIN: ${l}`) });
         }
         for (const split of companySplits) {
           const scope = gbrainCells.some((c) => c.gbrain!.brain === 'company' && c.split === split && (c.gbrain!.scope === 'member' || c.gbrain!.scope === 'member-sources')) ? 'member' : 'none';
@@ -1285,6 +1276,35 @@ async function main(argv: string[]): Promise<number> {
       }
     }
     console.log(`PREFLIGHT: ok run=${m.run_id} trials=${m.trials.length}`);
+    return 0;
+  }
+  // internal-task: a shard resumed on a new VM rebuilds its gbrain image under a new image id, and its preflight is skipped, since the
+  // preflight lease is closed and a closed lease is never reopened (HE-PROXY-003). leak-preflight reruns only the keyless leak
+  // preflight of the --cells' live-ingestion arms, with no lease, when a record is missing or names another image id; the
+  // earlier records are kept beside the new ones (runner/trial/gbrain-leak-preflight.ts preflightLeakArms).
+  if (cmd === 'leak-preflight') {
+    const { manifest: loaded } = loadManifest(flag('--manifest'));
+    const runDir = dirname(flag('--manifest')!);
+    const scope = flag('--cells')?.split(',').map((s) => s.trim()).filter(Boolean);
+    const unknown = (scope ?? []).filter((id) => !loaded.cells.some((c) => c.id === id));
+    if (unknown.length) throw new RunnerError('HE-RUN-002', `--cells names ${unknown.join(', ')}, not in the manifest; the cells are ${loaded.cells.map((c) => c.id).join(', ')}`);
+    const gbrainCells = loaded.cells.filter((c) => c.gbrain && (scope ? scope.includes(c.id) : true));
+    const keys = leakArmKeys(gbrainCells);
+    if (!keys.length) { console.log(`LEAK: no live-ingestion open or member-sources cell in ${scope ? `--cells ${scope.join(',')}` : 'the manifest'}; nothing to check`); return 0; }
+    const sealed = sealedContextFor(loaded, flag, runDir);
+    if (sealed) installSealedGuard(sealed, join(runDir, 'sealed-console.log'), 'leak-preflight');
+    const setWorld = gbrainSetWorld(gbrainCells);
+    const image = flag('--gbrain-image') ?? setWorld?.image ?? (sealed ? sealedImageTag(sealed.receipt) : DEFAULT_GBRAIN_IMAGE);
+    const { gbrainImagePresent } = await import('./trial/gbrain.ts');
+    if (!gbrainImagePresent(image)) throw new RunnerError('HE-GBRAIN-002', `gbrain sidecar image ${image} is not present for cells ${gbrainCells.map((c) => c.id).join(', ')}; fix: build it as the shard does (scripts/run-shard.sh) before the resume's run`);
+    const cellLayout = await leakCellLayoutProblem(gbrainCells);
+    if (cellLayout) throw new RunnerError('HE-GBRAIN-021', cellLayout);
+    const imageId = spawnSync('docker', ['image', 'inspect', '-f', '{{.Id}}', image], { encoding: 'utf8' }).stdout?.trim() ?? '';
+    if (!imageId) throw new RunnerError('HE-GBRAIN-002', `docker image inspect gave no id for ${image}; the leak preflight cannot say which image it checked`);
+    const { preflightLeakArms } = await import('./trial/gbrain-leak-preflight.ts');
+    const { DEFAULT_WORLD_PATH } = await import('./trial/world.ts');
+    const { ran, kept } = await preflightLeakArms({ keys, runDir, image, worldPath: setWorld?.path ?? (sealed ? sealed.worldPath : DEFAULT_WORLD_PATH), resume: { imageId }, log: (l) => console.log(`GBRAIN: ${l}`) });
+    console.log(`LEAK: ok ${keys.map((k) => k.replace(/\|/g, ' ')).join(', ')} on image id ${imageId}: ${ran ? `rerun on this image${kept.length ? `, earlier records kept as ${kept.map((p) => basename(p)).join(', ')}` : ''}` : 'the records already name this image'}`);
     return 0;
   }
   if (cmd === 'run') {
@@ -1345,7 +1365,7 @@ async function main(argv: string[]): Promise<number> {
         console.log(`GBRAIN: access=rules ${aclSplits.join(', ')}: the access preflight passed on image id ${imageId}, the image this run uses`);
       }
       // internal-task: a live-ingestion member-brain cell (scope open or member-sources) runs only on the image its leak preflight passed on.
-      const leakArms = [...new Set(manifest.cells.filter((c) => c.gbrain?.brain === 'member' && c.gbrain.ingest === 'live' && (c.gbrain.scope === 'open' || c.gbrain.scope === 'member-sources') && (cells ? cells.includes(c.id) : true)).map((c) => `${c.gbrain!.scope}|${c.split}${c.gbrain!.channel_remember === 'conversation' ? '|conversation' : ''}`))];
+      const leakArms = leakArmKeys(manifest.cells.filter((c) => (cells ? cells.includes(c.id) : true)));
       if (leakArms.length) {
         const { leakRecordProblem, leakRecordName } = await import('./trial/gbrain-leak-preflight.ts');
         const cellLayout = await leakCellLayoutProblem(manifest.cells.filter((c) => c.gbrain && (cells ? cells.includes(c.id) : true)));
@@ -1391,7 +1411,7 @@ async function main(argv: string[]): Promise<number> {
     console.log(`SECTIONS: ok run=${manifest.run_id} cells=${cells.join(',')} chat_lines=${lines.filter((l) => l.outcome === 'forwarded' && typeof l.sections === 'object').length}`);
     return 0;
   }
-  throw new RunnerError('HE-RUN-002', 'usage: bun runner/run.ts plan|dry-run --prereg <file> | plan|dry-run --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id> | preflight --manifest <file> | run --manifest <file> [options] [--sealed-root <dir> --opening-receipt <file>] | check-sections --manifest <file>');
+  throw new RunnerError('HE-RUN-002', 'usage: bun runner/run.ts plan|dry-run --prereg <file> | plan|dry-run --replication-of <run id> --cells <id,id> --reps <n> --run-id <new id> | preflight --manifest <file> | run --manifest <file> [options] [--sealed-root <dir> --opening-receipt <file>] | check-sections --manifest <file> | leak-preflight --manifest <file> [--cells a,b] [--gbrain-image <tag>]');
 }
 
 if (import.meta.main) {

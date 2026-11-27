@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BudgetRun, closeLedgers, ledgerStatus } from '../runner/ledger/budget-ledger.ts';
 import { canonicalLookup, priceOnDate } from '../runner/pricing/model-pricing.ts';
-import { MeteringProxy, type UsageLine } from '../runner/proxy/metering-proxy.ts';
+import { errorFacts, MeteringProxy, type UsageLine } from '../runner/proxy/metering-proxy.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'gemini-direct-metering-'));
 const KEY = ['AIza', 'Sy', 'Q'.repeat(33)].join('');
@@ -121,4 +121,13 @@ describe('Gemini 4 Carbon and Hydrogen lines on the google route', () => {
       } finally { p.stop(); }
     });
   }
+});
+
+describe('errorFacts keeps Retry-After only as whole seconds or an HTTP date', () => {
+  test('31 and an IMF-fixdate are kept; any other header text, a key included, is dropped', () => {
+    expect(errorFacts('31', '', []).retry_after).toBe('31');
+    expect(errorFacts('Wed, 21 Oct 2026 07:28:00 GMT', '', []).retry_after).toBe('Wed, 21 Oct 2026 07:28:00 GMT');
+    for (const v of ['2.5', '-1', '31s', 'soon', KEY, 'Bearer ' + TOKEN, '31; key=' + KEY, 'Wed, 21 Oct 2026 07:28:00 PST', '12345678901']) expect(errorFacts(v, '', [KEY]).retry_after).toBeUndefined();
+    expect(errorFacts(null, '', []).retry_after).toBeUndefined();
+  });
 });

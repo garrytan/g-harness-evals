@@ -5,7 +5,7 @@
 
 import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -15,7 +15,7 @@ import { gradeTrial, trialGbrainExposure, trialLeakTags } from '../runner/grade/
 import { evaluatePredicate, gbrainExposure, gbrainExposureDetail, loadWorldData, replyLeaks, unquoteFact, type GradeContext } from '../runner/grade/predicates.ts';
 import { loadTask, parseTask, type Predicate, type Task } from '../runner/grade/task.ts';
 import { DEFAULT_WORLD_PATH, playScript } from '../runner/grade/play.ts';
-import { HARNESS_MEMORY_LIMITS, loadHarnessMemory, snapshotHarnessMemory } from '../runner/trial/harness-memory.ts';
+import { HARNESS_MEMORY_LIMITS, loadHarnessMemory, readNoFollow, snapshotHarnessMemory } from '../runner/trial/harness-memory.ts';
 import { makeTrialDirs, responseFile, writeAtomic, type Harness } from '../runner/trial/harness.ts';
 import { loadTask as loadRunnerTask } from '../runner/trial/task.ts';
 import { runTurns } from '../runner/trial/turns.ts';
@@ -677,4 +677,53 @@ hidden_fact = "forecast"
     const files = JSON.parse(readFileSync(join(big.root, 'harness-memory', 'snapshots.jsonl'), 'utf8').trim()).files;
     expect(files.map((f: { path: string; unreadable?: string; bytes?: number }) => [f.path, f.unreadable ?? f.bytes])).toEqual([['state/hermes/memories/BIG.md', 'over_file_cap'], ['state/hermes/memories/MEMORY.md', 9]]);
   });
+
+  test('a directory swapped for a symlink after the walk is not followed out of the mount: the read checks where the open file really is', () => {
+    const dirs = makeTrialDirs(join(tmp, 'snap-swap'));
+    const mem = join(dirs.state, 'hermes', 'memories');
+    mkdirSync(mem, { recursive: true });
+    writeFileSync(join(mem, 'MEMORY.md'), '212 seats');
+    const root = realpathSync(dirs.state);
+    expect(readNoFollow(root, join(mem, 'MEMORY.md'), 1 << 20).toString()).toBe('212 seats');
+    const outside = join(tmp, 'snap-swap-outside');
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, 'MEMORY.md'), 'a file outside the trial');
+    renameSync(mem, mem + '.walked');
+    symlinkSync(outside, mem);
+    let code = 'read';
+    try { readNoFollow(root, join(mem, 'MEMORY.md'), 1 << 20); } catch (e) { code = (e as NodeJS.ErrnoException).code ?? 'error'; }
+    expect(code).toBe('outside_mount');
+    rmSync(mem);
+    renameSync(mem + '.walked', mem);
+    let swapped = 'read';
+    const restore = () => { renameSync(mem, mem + '.walked'); symlinkSync(outside, mem); };
+    const back = () => { rmSync(mem); renameSync(mem + '.walked', mem); };
+    restore();
+    try { readNoFollow(root, join(mem, 'MEMORY.md'), 1 << 20, back); } catch (e) { swapped = (e as NodeJS.ErrnoException).code ?? 'error'; }
+    expect(swapped).toBe('swapped');
+  });
+
+  test('a snapshot cut short by the depth cap or the directory-entry cap says which cap stopped it', () => {
+    const line = (d: { root: string }) => JSON.parse(readFileSync(join(d.root, 'harness-memory', 'snapshots.jsonl'), 'utf8').trim().split('\n').at(-1)!);
+    const deep = makeTrialDirs(join(tmp, 'snap-depth'));
+    let d = join(deep.state, 'hermes', 'memories');
+    writeFileSync((mkdirSync(d, { recursive: true }), join(d, 'MEMORY.md')), 'kept');
+    for (let i = 0; i <= HARNESS_MEMORY_LIMITS.depth; i++) d = join(d, `d${i}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'DEEP.md'), 'too deep');
+    expect(snapshotHarnessMemory('hermes', deep, 1)).toEqual({ files: 1 });
+    expect([line(deep).truncated, line(deep).truncated_by]).toEqual([true, ['depth']]);
+    const wide = makeTrialDirs(join(tmp, 'snap-wide'));
+    const mem = join(wide.state, 'hermes', 'memories');
+    mkdirSync(mem, { recursive: true });
+    writeFileSync(join(mem, 'A.md'), 'first');
+    for (let i = 0; i < HARNESS_MEMORY_LIMITS.entries; i++) writeFileSync(join(mem, `n${i}`), '');
+    writeFileSync(join(mem, 'zz.md'), 'past the entry cap');
+    expect(snapshotHarnessMemory('hermes', wide, 1)).toEqual({ files: 1 });
+    expect([line(wide).files.map((f: { path: string }) => f.path), line(wide).truncated_by]).toEqual([['state/hermes/memories/A.md'], ['entries']]);
+    const plain = makeTrialDirs(join(tmp, 'snap-plain'));
+    writeFileSync((mkdirSync(join(plain.state, 'hermes', 'memories', 'empty', 'deeper'), { recursive: true }), join(plain.state, 'hermes', 'memories', 'MEMORY.md')), 'x');
+    snapshotHarnessMemory('hermes', plain, 1);
+    expect(line(plain).truncated).toBeUndefined();
+  }, 30_000);
 });

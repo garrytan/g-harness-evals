@@ -2,7 +2,7 @@
 // round, the frozen-dev read) merges with only those cells planned, and the merged manifest.json is restricted to them.
 
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -105,6 +105,42 @@ describe('merge-shards: leak preflight receipts (Amendment 1, 2026-11-22)', () =
     const root = dir();
     const shards = [{ name: 's1', dir: built(root, 's1', ['a', 'b'], ['open'], { built_at: '2026-11-24T01:00:00Z', sources: ['private-a', 'public'], tokenSeed: 'x' }) }, { name: 's2', dir: built(root, 's2', ['c'], ['member-sources'], { built_at: '2026-11-25T02:00:00.5Z', sources: ['private-a', 'public'], tokenSeed: 'y' }) }];
     expect(() => planMerge(join(root, 'out'), shards)).not.toThrow();
+  });
+
+  test('a channel-remember (-conversation) record is compared too: one whose layout differs across shards is refused', () => {
+    const root = dir();
+    const s1 = built(root, 'c1', ['a', 'b'], ['open'], { built_at: '2026-11-24T01:00:00Z', sources: ['private-a', 'public'], tokenSeed: 'x' });
+    const s2 = built(root, 'c2', ['c'], [], { built_at: '2026-11-24T01:00:00Z', sources: ['private-a', 'public'], tokenSeed: 'x', grants: [{ member: 'a', sources: ['private-a', 'public'] }] });
+    const hashOf = (f: string) => sha(readFileSync(join(s2, 'preflight-gbrain-member-dev', f), 'utf8'));
+    writeFileSync(join(s2, 'leak-preflight-member-sources-dev-conversation.json'), JSON.stringify({ ...record('member-sources', hashOf('manifest.json'), hashOf('ingest-tokens.json')), layout: { sidecar: { brain: 'member' }, manifest_sha256: hashOf('manifest.json'), ingest_tokens_sha256: hashOf('ingest-tokens.json'), channel_remember: 'conversation' } }));
+    expect(() => planMerge(join(root, 'out'), [{ name: 's1', dir: s1 }, { name: 's2', dir: s2 }])).toThrow(/manifest_sha256 differ.*\(s1\/leak-preflight-open-dev\.json against s2\/leak-preflight-member-sources-dev-conversation\.json\)/);
+  });
+
+  test('a shard resumed on a new image (internal-task) compares its new and kept records through their preflight copies; a kept record whose layout differs is refused', () => {
+    const root = dir();
+    const layout = (d: string, sub: string, builtAt: string, seed: string, grants = [{ member: 'a', sources: ['private-a'] }]) => {
+      const p = join(d, sub);
+      mkdirSync(p, { recursive: true });
+      const manifest = JSON.stringify({ schema_version: 3, built_at: builtAt, grants, imports: { 'private-a': { pages: 2, duration_s: 3 }, public: { pages: 2, duration_s: 4 } } });
+      const tokens = JSON.stringify({ schema_version: 1, brain: 'member', split: 'dev', sources: { 'private-a': `tok-${seed}-a`, public: `tok-${seed}-p` } });
+      writeFileSync(join(p, 'manifest.json'), manifest);
+      writeFileSync(join(p, 'ingest-tokens.json'), tokens);
+      return { manifest: sha(manifest), tokens: sha(tokens) };
+    };
+    const resumed = (name: string, oldGrants?: Array<{ member: string; sources: string[] }>) => {
+      const d = shard(root, name, ['a', 'b', 'c']);
+      const first = layout(d, 'preflight-gbrain-member-dev', '2026-11-24T01:00:00Z', 'old', oldGrants);
+      const now = layout(d, 'preflight-leak-open-dev-bbbbbbbbbbbb', '2026-11-25T09:00:00Z', 'new');
+      writeFileSync(join(d, 'leak-preflight-open-dev.image-aaaaaaaaaaaa.json'), JSON.stringify({ ...record('open', first.manifest, first.tokens), image_id: 'sha256:' + 'a'.repeat(64) }));
+      writeFileSync(join(d, 'leak-preflight-open-dev.json'), JSON.stringify({ ...record('open', now.manifest, now.tokens), image_id: 'sha256:' + 'b'.repeat(64) }));
+      return d;
+    };
+    const out = join(root, 'out');
+    mergeShards(out, [{ name: 's1', dir: resumed('r1') }]);
+    expect(JSON.parse(readFileSync(join(out, 's1.leak-preflight-open-dev.image-aaaaaaaaaaaa.json'), 'utf8')).image_id).toBe('sha256:' + 'a'.repeat(64));
+    expect(existsSync(join(out, 's1.preflight-leak-open-dev-bbbbbbbbbbbb', 'manifest.json'))).toBe(true);
+    expect(existsSync(join(out, 's1.preflight-leak-open-dev-bbbbbbbbbbbb', 'ingest-tokens.json'))).toBe(false);
+    expect(() => planMerge(join(root, 'out2'), [{ name: 's1', dir: resumed('r2', [{ member: 'a', sources: ['private-a', 'public'] }]) }])).toThrow(/manifest_sha256 differ/);
   });
 
   test('within one shard the records are compared byte for byte, and a record whose files its shard lacks is refused', () => {

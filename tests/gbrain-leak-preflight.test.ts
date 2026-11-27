@@ -294,4 +294,15 @@ describe('Amendment 1 (2026-11-22): an unverified page listing fails the preflig
     expect(refusals).toBe(1);
     expect(pageRows({ content: [{ type: 'text', text: JSON.stringify([{ slug: 'notes/a', source_id: 'private-dana' }]) }] }, fail)).toEqual([{ slug: 'notes/a', source_id: 'private-dana' }]);
   });
+
+  test('a failed list_pages check names only the error code, never the upstream error text', () => {
+    const fail = (what: string) => new Error(what);
+    const upstream = ['connect to postgres://brain', ':hunter2', '@10.0.0.7/gbrain failed; Authorization: Bear', 'er gbrain', '_0123456789abcdef0123'].join('');
+    const message = (result: Record<string, unknown>) => { try { pageRows(result, fail); } catch (e) { return (e as Error).message; } return 'no refusal'; };
+    const coded = message({ isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'internal_error', message: upstream }) }] });
+    expect(coded).toContain('answered list_pages with an error (code internal_error; the reply text is withheld');
+    const bare = message({ isError: true, content: [{ type: 'text', text: upstream }] });
+    expect(bare).toContain('(code none stated;');
+    for (const m of [coded, bare]) for (const part of ['hunter2', 'postgres://', 'Bearer', 'gbrain_0123', '10.0.0.7']) expect(m).not.toContain(part);
+  });
 });

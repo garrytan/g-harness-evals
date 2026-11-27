@@ -1,4 +1,4 @@
-"""Delivery arms for the frontier Harbor path (HARN-61): are gstack's /review and /ship steps followed when a card carrying
+"""Delivery arms for the frontier Harbor path (internal-task): are gstack's /review and /ship steps followed when a card carrying
 them is delivered by hook or startup file? One arm per cell, set by the job's agent kwarg "delivery"; a job without the
 kwarg (every existing cell) changes nothing. No Harbor import, so keyless tests can render every arm
 (tests/frontier-delivery.test.ts).
@@ -7,7 +7,7 @@ kwarg (every existing cell) changes nothing. No Harbor import, so keyless tests 
   skill    gstack installed for the host from the pinned commit (delivery-pin.json), in gstack's unattended mode, as the
            host's global skills, plus the fixed told sentence before the task instruction. Pi has no gstack host, so its
            skill arm links gstack's Claude Code skills into Pi's agent skills directory: "manual install, not a gstack
-           route" (HARN-61 d2).
+           route" (internal-task d2).
   hook     the card on every model request, tool follow-ups included (d1), through the harness's per-step mechanism.
   startup  the same card bytes in the harness's global startup file.
   placebo  the hook route carrying the placebo text instead of the card (harnesses/routes/placebo.md unless the cell

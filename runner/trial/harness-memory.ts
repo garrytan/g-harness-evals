@@ -16,9 +16,12 @@
 // Each snapshot is bounded (Amendment 1, 2026-11-22; HARNESS_MEMORY_LIMITS): the walk stops at a depth and a file count, a
 // file over the per-file size or past the snapshot's total is listed as skipped with its reason instead of copied, and the
 // line says truncated when the walk stopped early, so a large or hostile memory tree cannot stall the runner or fill its disk.
+// The walk also stops after a number of directory entries, and the line names every cap that stopped it (truncated_by: depth,
+// entries, files). A file is read only after its open descriptor is shown to be the file the path resolves to inside the mount,
+// so a directory swapped for a symlink between the walk and the read cannot make the copy read outside the mount.
 
 import { createHash } from 'node:crypto';
-import { appendFileSync, closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { dirname, join, relative, sep } from 'node:path';
 import type { HarnessMemorySnapshot } from '../contracts.ts';
@@ -31,34 +34,52 @@ export const HARNESS_MEMORY_PATHS: Readonly<Record<string, ReadonlyArray<{ dir: 
 
 export const HARNESS_MEMORY_DIR = 'harness-memory';
 
-/** The bounds on one snapshot: directory depth below a listed path, Markdown files listed, bytes per file and bytes copied. */
-export const HARNESS_MEMORY_LIMITS = { depth: 8, files: 200, fileBytes: 1 << 20, totalBytes: 16 << 20 };
+/** The bounds on one snapshot: directory depth below a listed path, directory entries visited, Markdown files listed, bytes per
+ *  file and bytes copied. */
+export const HARNESS_MEMORY_LIMITS = { depth: 8, entries: 10_000, files: 200, fileBytes: 1 << 20, totalBytes: 16 << 20 };
 
-/** The Markdown files under path, depth first in name order, stopping once found holds more than the file cap. */
-function markdownFiles(root: string, path: string, found: string[], depth = 0): void {
-  if (found.length > HARNESS_MEMORY_LIMITS.files || depth > HARNESS_MEMORY_LIMITS.depth) return;
+type Cap = 'depth' | 'entries' | 'files';
+type Walk = { found: string[]; entries: number; capped: Set<Cap> };
+
+const inside = (root: string, real: string) => real === root || real.startsWith(root + sep);
+
+/** The Markdown files under path, depth first in name order, stopping once found holds more than the file cap, once the walk has
+ *  visited the entry cap, or below the depth cap; each cap that cut the walk short is added to capped. */
+function markdownFiles(root: string, path: string, walk: Walk, depth = 0): void {
+  if (walk.found.length > HARNESS_MEMORY_LIMITS.files) { walk.capped.add('files'); return; }
+  if (walk.entries >= HARNESS_MEMORY_LIMITS.entries) { walk.capped.add('entries'); return; }
+  walk.entries++;
   try {
     if (!existsSync(path)) return;
     const st = lstatSync(path);
     if (st.isSymbolicLink()) return;
-    const real = realpathSync(path);
-    if (real !== root && !real.startsWith(root + sep)) return;
-    if (st.isFile()) { if (path.endsWith('.md')) found.push(path); return; }
+    if (!inside(root, realpathSync(path))) return;
+    if (st.isFile()) { if (path.endsWith('.md')) walk.found.push(path); return; }
     if (!st.isDirectory()) return;
-    for (const name of readdirSync(path).sort()) markdownFiles(root, join(path, name), found, depth + 1);
+    const names = readdirSync(path).sort();
+    if (depth >= HARNESS_MEMORY_LIMITS.depth) { if (names.length) walk.capped.add('depth'); return; }
+    for (const name of names) markdownFiles(root, join(path, name), walk, depth + 1);
   } catch {
     // An unreadable entry is left out; the harness may be rewriting it.
   }
 }
 
 /** Reads a file opened without following a final symlink, checking on the open descriptor that it is a regular file within
- *  the size cap (so a file swapped after the walk is checked as opened); throws with a code the snapshot records. */
-function readNoFollow(file: string, room: number): Buffer {
+ *  the size cap (so a file swapped after the walk is checked as opened), and that it is the file the path now resolves to
+ *  inside root: O_NOFOLLOW guards only the last component, so a directory on the path swapped for a symlink after the walk
+ *  would otherwise open a file outside the mount. Throws with a code the snapshot records. afterOpen runs between the open
+ *  and the checks, so a test can swap the path there. */
+export function readNoFollow(root: string, file: string, room: number, afterOpen?: () => void): Buffer {
   const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
+    afterOpen?.();
     const st = fstatSync(fd);
     const fail = (code: string) => Object.assign(new Error(code), { code });
     if (!st.isFile()) throw fail('not_a_file');
+    const real = realpathSync(file);
+    if (!inside(root, real)) throw fail('outside_mount');
+    const now = statSync(real);
+    if (now.dev !== st.dev || now.ino !== st.ino) throw fail('swapped');
     if (st.size > HARNESS_MEMORY_LIMITS.fileBytes) throw fail('over_file_cap');
     if (st.size > room) throw fail('over_snapshot_cap');
     const body = Buffer.alloc(st.size);
@@ -80,7 +101,7 @@ export function snapshotHarnessMemory(harness: string, dirs: TrialDirs, afterTur
   const out = join(dirs.root, HARNESS_MEMORY_DIR);
   const files: Array<{ path: string; bytes: number; sha256: string } | { path: string; unreadable: string }> = [];
   let copied = 0;
-  let truncated = false;
+  const capped = new Set<Cap>();
   try {
     for (const p of paths) {
       let root: string;
@@ -89,14 +110,14 @@ export function snapshotHarnessMemory(harness: string, dirs: TrialDirs, afterTur
       } catch {
         continue;
       }
-      const found: string[] = [];
-      markdownFiles(root, join(dirs[p.dir], p.path), found);
+      const walk: Walk = { found: [], entries: 0, capped };
+      markdownFiles(root, join(dirs[p.dir], p.path), walk);
       const room = HARNESS_MEMORY_LIMITS.files - files.length;
-      if (found.length > room) truncated = true;
-      for (const file of found.slice(0, Math.max(0, room))) {
+      if (walk.found.length > room) capped.add('files');
+      for (const file of walk.found.slice(0, Math.max(0, room))) {
         const rel = join(p.dir, relative(dirs[p.dir], file));
         try {
-          const body = readNoFollow(file, HARNESS_MEMORY_LIMITS.totalBytes - copied);
+          const body = readNoFollow(root, file, HARNESS_MEMORY_LIMITS.totalBytes - copied);
           copied += body.length;
           const dest = join(out, `after-turn-${afterTurn}`, rel);
           mkdirSync(dirname(dest), { recursive: true });
@@ -108,7 +129,7 @@ export function snapshotHarnessMemory(harness: string, dirs: TrialDirs, afterTur
       }
     }
     mkdirSync(out, { recursive: true });
-    appendFileSync(join(out, 'snapshots.jsonl'), JSON.stringify({ after_turn: afterTurn, files, ...(truncated ? { truncated: true } : {}) }) + '\n');
+    appendFileSync(join(out, 'snapshots.jsonl'), JSON.stringify({ after_turn: afterTurn, files, ...(capped.size ? { truncated: true, truncated_by: [...capped].sort() } : {}) }) + '\n');
   } catch {
     // The trial's own record matters more than this diagnostic copy.
   }

@@ -28,7 +28,7 @@
 // internal-task: a run of cells with log_sections starts the proxy with --log-sections and checks /__proxy/status says so before
 // any trial; sectionsSmokeProblems is the check the one-trial smoke runs on its usage log (bun runner/run.ts check-sections).
 
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Meter, RouteTexts, SlotLimits, UsageLine } from '../proxy/metering-proxy.ts';
@@ -90,13 +90,6 @@ export function proxyProcessEnv(opts: Pick<RunProxyOptions, 'env' | 'capture'>, 
 /** A trial id as a path segment and a container name: letters, digits, dot, underscore, dash. */
 export const trialSlug = (trialId: string) => trialId.replace(/[^A-Za-z0-9._-]+/g, '-');
 
-async function freePort(): Promise<number> {
-  const probe = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response() });
-  const port = probe.port!;
-  probe.stop(true);
-  return port;
-}
-
 export class RunProxy {
   private constructor(
     private readonly proc: ReturnType<typeof Bun.spawn>,
@@ -114,12 +107,16 @@ export class RunProxy {
 
   static async start(opts: RunProxyOptions): Promise<RunProxy> {
     mkdirSync(opts.runDir, { recursive: true });
-    const port = await freePort();
     const host = listenHost(opts.reachableFromContainers, opts.gatewayAddress);
+    // The proxy binds port 0 itself and writes the port it got to proxy.port, so no other process can take the port between a
+    // probe here and the proxy's own bind (the old probe-and-release race: "Failed to start server. Is port N in use?").
+    const portFile = join(opts.runDir, 'proxy.port');
+    rmSync(portFile, { force: true });
+    let port = 0;
     const controlToken = randomBytes(16).toString('base64url');
     const usageLog = join(opts.runDir, 'proxy-usage.ndjson');
     const logFd = openSync(join(opts.runDir, 'proxy.log'), 'a');
-    const args = [process.execPath, join('runner', 'proxy', 'metering-proxy.ts'), '--listen', `${host}:${port}`,
+    const args = [process.execPath, join('runner', 'proxy', 'metering-proxy.ts'), '--listen', `${host}:0`, '--port-file', portFile,
       '--budget-ledger', opts.ledgerPath, '--lease-usd', String(opts.leaseUsd), '--run-id', opts.runId,
       '--usage-log', usageLog, '--control-token', controlToken];
     if (opts.allowModels.length) args.push('--allow-models', opts.allowModels.join(','));
@@ -138,7 +135,9 @@ export class RunProxy {
     const deadline = Date.now() + (opts.startTimeoutMs ?? 20_000);
     while (Date.now() < deadline) {
       if (proc.exitCode !== null) break;
+      if (existsSync(portFile)) port = Number(readFileSync(portFile, 'utf8').trim()) || 0;
       try {
+        if (!port) throw new Error('no port yet');
         const res = await fetch(`http://${host}:${port}/__proxy/status`);
         if (res.ok) {
           const logSections = ((await res.json()) as { log_sections?: unknown }).log_sections === true;
@@ -153,7 +152,7 @@ export class RunProxy {
     proc.kill('SIGKILL');
     await proc.exited;
     const tail = existsSync(join(opts.runDir, 'proxy.log')) ? readFileSync(join(opts.runDir, 'proxy.log'), 'utf8').trim().split('\n').slice(-3).join(' | ') : '';
-    throw new RunnerError('HE-PROXY-003', `the metering proxy did not start on ${host}:${port} (ledger ${opts.ledgerPath}, lease $${opts.leaseUsd}): ${tail}; fix: read ${join(opts.runDir, 'proxy.log')}; a lease left open by another run id needs --new-lease`);
+    throw new RunnerError('HE-PROXY-003', `the metering proxy did not start on ${host}${port ? `:${port}` : ' (it wrote no port to proxy.port)'} (ledger ${opts.ledgerPath}, lease $${opts.leaseUsd}): ${tail}; fix: read ${join(opts.runDir, 'proxy.log')}; a lease left open by another run id needs --new-lease`);
   }
 
   /** The base URL a client gets: <origin>/<slot>/<provider>; the client appends its usual path. forContainer picks the
