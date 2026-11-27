@@ -10,7 +10,8 @@
  * 2. prepare.sh prints the same lines for a Sol URL as for an Opus URL, and adapter.sh run on a Sol cell (stand-ins for curl and
  *    qm-api.mjs) posts the turn and registers no custom provider, with no token in a log or a temp file.
  * 3. The stacks of an Opus, a Particle and a Sol cell (prepare.sh lines, compose files loaded, core and task environments, from
- *    "docker compose config") equal fixtures/qm-openai/golden/stack-environments.json, written from main at 2a47028c6b.
+ *    "docker compose config") equal fixtures/qm-openai/golden/stack-environments.json, written from main at 2a47028c6b and
+ *    rewritten for the QM 7689355c (now 77024e79) re-pin, which adds only the private-network origin variables (make-golden.ts).
  * 4. With harness-eval/qm:dev and qm-sandbox:dev built at the pin, one run turn through compose.yaml and compose.openai.yaml
  *    against a fake Responses endpoint (fixtures/openai-branch/fake-openai.ts): every request is a streamed POST /v1/responses
  *    with the dummy token, the agent turn names gpt-6.1-sol with effort medium and max_output_tokens 128000, side calls name

@@ -12,6 +12,8 @@ export const WORLD_MCP_TOOLS = [
   'calendar_list', 'calendar_create', 'mail_list', 'mail_send_draft', 'request_approval', 'clock_now', 'whoami',
 ] as const;
 
+/** internal-task arm N: served only when the world has a notes store (WorldService.notesOn), to the bot only. */
+export const WORLD_MCP_NOTES_TOOLS = ['notes_list', 'notes_read', 'notes_write'] as const;
 /** Added to WORLD_MCP_TOOLS only in a world started with timers on (a task with [clock] timers = true). */
 export const TIMER_TOOLS = ['timer_set', 'timer_list', 'timer_cancel'] as const;
 
@@ -180,6 +182,26 @@ export function buildMcpServer(service: WorldService, actor: Member): McpServer 
     return { pending_id: p.id, status: p.status, requested_at: p.requested_at };
   }));
 
+  if (service.notesOn && actor.id === service.bot?.id) {
+    server.registerTool('notes_list', {
+      description: 'Your notes store: one markdown file per person, named by person id. Lists every file with its size.',
+      inputSchema: {},
+    }, async () => run(() => service.notesList(actor, 'mcp')));
+
+    server.registerTool('notes_read', {
+      description: "Read one person's notes file by person id.",
+      inputSchema: { person: z.string().describe('Person id, as notes_list or list_members shows it') },
+    }, async (args) => run(() => service.notesRead(actor, 'mcp', args.person)));
+
+    server.registerTool('notes_write', {
+      description: "Write one person's notes file by person id (lowercase letters, digits and hyphens). Replaces the file, or adds to its end with append true; a new person id starts a new file.",
+      inputSchema: {
+        person: z.string().describe('Person id, as notes_list or list_members shows it'),
+        text: z.string().min(1).describe('Markdown'),
+        append: z.boolean().optional().describe('Add to the end of the file instead of replacing it; default false'),
+      },
+    }, async (args) => run(() => service.notesWrite(actor, 'mcp', { person: args.person, text: args.text, ...(args.append !== undefined ? { append: args.append } : {}) })));
+  }
   if (!service.timers) return server;
   const timerView = (t: { id: string; due: string; reason: string; note: string | null; status: string }) => ({ id: t.id, due: t.due, reason: t.reason, note: t.note, status: t.status });
 

@@ -86,6 +86,9 @@ export interface WorldFile {
   bytes: number;
   sha256: string;
   body: string;
+  /** owner-identity (internal-task): false for a raw file the world serves through its file tools and no brain imports (an import
+   *  folder's export files, which have no corpus page). Absent, the file is a brain page like any other. */
+  brain?: false;
 }
 
 export interface CalendarEvent {
@@ -138,4 +141,7 @@ export interface World {
   files: WorldFile[];
   calendar: CalendarEvent[];
   mail: Mail[];
+  /** owner-identity (internal-task): the bot is this member's personal agent and reads every file the member can read. Absent, the bot
+   *  reads files under the ordinary rules. */
+  bot_reads_files_of?: string;
 }

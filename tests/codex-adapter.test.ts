@@ -65,6 +65,9 @@ case "$prompt" in
   *'[stub:crash]'*)
     echo "thread 'main' panicked" >&2
     exit 101 ;;
+  *'[stub:session-end]'*)
+    GBRAIN_HOOK_LAUNCHER=/stub/gbrain-hook nohup sh -c 'sleep 1; echo banked > "$STUB_LOG.banked"' > /dev/null 2>&1 &
+    setsid sleep 3017 > /dev/null 2>&1 & ;;
   *'[stub:sleep]'*)
     setsid sleep 3017 &
     sleep 3029 &
@@ -225,6 +228,14 @@ describe('codex adapter, process level (stub codex)', () => {
     const r = run(t, { HE_TIME_BUDGET_S: '2' });
     expect(r.status, r.stderr).toBe(124);
     expect(Date.now() - started).toBeLessThan(15_000);
+    expect(survivors()).toBe('');
+  });
+
+  test('gbrain\'s detached SessionEnd capture finishes before the sweep, which still kills the turn\'s other processes', () => {
+    const t = trial('hello [stub:session-end]');
+    const r = run(t);
+    expect(r.status, r.stderr).toBe(0);
+    expect(readFileSync(t.stubLog + '.banked', 'utf8')).toBe('banked\n');
     expect(survivors()).toBe('');
   });
 

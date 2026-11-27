@@ -164,6 +164,44 @@ Not done: the `admin` and `web-ui` services, Slack, the egress proxy, and the mo
 - **Checked:** `tests/timer-turn-adapters.test.ts`, the qm lane, with both images built at this pin: serve registers the world, the fake model sets a timer through QM's `mcp_call` to the world's `timer_set`, the runner delivers the timer turn, QM sends the model the conversation of `dm:<member>` with the first turn in it, and the reply `NOTHING_TO_SAY` is withheld. `harnesses/clock-capabilities.json` marks QM certified. QM's Anthropic housekeeping calls (`claude-haiku-5-5`) need the cell to list that model in `utility_models`, as before.
 - **Not re-checked at this pin:** the gbrain memory provider's OAuth and the S1 edition driver.
 
+## Re-pin to main 7689355c (2026-11-21, internal-task; superseded by 77024e79 when main moved there first)
+
+**Why:** internal-task-a ruled that the owner-identity eval (internal-task-b) runs QM at current QM main, so QM's multi-user `serve` entry works. At `90e4ced7` it exits before `ready` (below). QM's owners added `PRIVATE_NETWORK_ALLOWED_ORIGINS` on 2026-11-08 ([#3206](https://github.com/yc-software/qm/pull/3206), merge `198faa2b`). `7689355c` (2026-11-21 03:20 UTC) is the newest main commit, 856 commits after `90e4ced7`.
+
+**What the setting does** (QM `docs/mcp-connectors.md`, `src/util/network.ts` at the pin):
+
+- Core's guarded fetch refuses private addresses for MCP servers, their OAuth endpoints, decision providers and custom model providers.
+- An origin listed in `PRIVATE_NETWORK_ALLOWED_ORIGINS` (comma-separated `scheme://host:port`, no path, no CIDR) may reach a private address. Every other origin is still refused.
+- Loopback, link-local and cloud metadata addresses are never allowed. Core refuses to start with one in the list.
+
+**How the trial sets it.**
+
+- The world binds the Docker bridge gateway, and containers reach it as `host.docker.internal:<port>`, a port picked at trial start. That is a private address, not loopback.
+- `prepare.sh` already runs with the trial's variables before the stack starts. It now prints `QM_PRIVATE_NETWORK_ALLOWED_ORIGINS`: the origin of `HE_WORLD_MCP_URL`, of `HE_GBRAIN_MCP_URL` in a gbrain cell (the world's `/gbrain` tap, so usually the same origin, listed once) and, on a Particle cell, of `HE_MODEL_BASE_URL`. A loopback or unparseable URL exits 2. With none set (a `run` cell on Anthropic or OpenAI) nothing is printed.
+- `compose.yaml` hands it to core as `PRIVATE_NETWORK_ALLOWED_ORIGINS` and to the task container. This rig writes no `qm.config.jsonc`, so compose's environment is QM's `env.core`.
+- `adapter.sh serve` logs the list and refuses (exit 2) to register a server whose origin is not in it. Each server is registered at the URL the list was built from.
+- **Why Particle cells need it too:** QM now sends every custom-provider model call through the same guard (`src/model/model-runtime.ts`). Without the proxy's origin, the keyless Particle turn failed: `[model] custom provider particle: host.docker.internal resolves to a private network address; a deployment operator can allow this exact origin with PRIVATE_NETWORK_ALLOWED_ORIGINS`. Anthropic and OpenAI cells use QM's built-in providers, which the guard does not cover, so their proxy origin is not listed.
+
+**Changed in QM, adapted here.**
+
+- **Core build.** `deploy/core/Dockerfile` no longer copies `plugins/web-ui/server` or `plugins/web-ui/src/app-edit.ts` and now copies `desktop/assets/becalmed-off-halfway-rock.webp`. `Dockerfile` follows it. The base image digest is unchanged. `local/Dockerfile`, `fly/Dockerfile` and `scripts/local-sandbox-build.sh` are unchanged, so `Dockerfile.sandbox` changes only its commit.
+- **Private addresses**, above.
+
+**Changed in QM, no adapter change needed.**
+
+- **MCP registration.** `PUT /v1/admin/mcp-servers/:id` now merges the body over a stored server with the same id. Each trial starts with an empty database, so nothing is merged. The response is still `{ok, server, tools}`.
+- **Turn request.** `POST /v1/turns` now requires `surface` to be a string. The adapter sends `harness-eval`.
+- **Tenancy.** Admin and memory routes now resolve a tenant and pass it to the audit log. With one org and the signature alone in development mode, the adapter's admin calls still pass.
+- **Session titles (housekeeping).** QM now names `claude-sonnet-5-5` for session titles (`TITLE_MODEL_ID`, `src/agent/session-title-prompt.ts`, [#3115](https://github.com/yc-software/qm/pull/3115)) and falls back to the utility model only when that model has no route. On an Anthropic cell whose model is not Sonnet 5.5, list `anthropic:claude-sonnet-5-5` in the cell's `utility_models` (harness housekeeping, shipped default). Otherwise the proxy refuses it (403) and the runner records the trial `model_error` (HE-MODEL-001). The Haiku 5.5 capture below hit exactly that: 4 Sonnet 5.5 requests refused.
+
+**Keyless checks at `7689355c`** (2026-11-21, fake model endpoints, no model key in any container, $0):
+
+- **Images.** Core `harness-eval/qm:dev` and sandbox `harness-eval/qm-sandbox:dev`, both labelled `harness-eval.commit=7689355c2fad9b49e82d34102878298794ab23b1`; both builds printed `qm checkout 7689355c2fad9b49e82d34102878298794ab23b1`. Local image ids only.
+- **Serve smoke** (`bun harnesses/serve-smoke.ts --harness qm --fake-upstream`): ready after 19.8 s. `adapter.sh` logged `core's private-network origins: http://host.docker.internal:8791`, then `world-MCP registered with core`: HTTP 200, 15 world tools. Three turns exited 0. Their replies were empty because the smoke's fake answers unstreamed and Pi streams, so this run proves registration, not replies.
+- **Anatomy capture** through the runner (`scripts/anatomy/capture.ts --harness qm --scenario plain --egress off`, Haiku 5.5 on the streaming fake): the world on port 38063, origin `http://host.docker.internal:38063` listed, world MCP registered, ready, both turns exit 0, reply `ok`. The trial was `model_error` only because of the refused Sonnet 5.5 title calls above.
+- **Tests.** The `run` turn on Particle and on GPT-6.1 Sol against their fakes passed in the built images (`tests/particle-branch.test.ts`, `tests/qm-openai-branch.test.ts`).
+- **Not re-checked at this pin:** a gbrain cell's gbrain MCP registration (no gbrain image built), the memory-provider preflight, the `pi-strict` and `pi-command-deny` settings, a sandbox command, and the skill-arm images.
+
 ## Re-pin to main 90e4ced7 (2026-11-06, internal-task pilot amendment)
 
 **The S1 edition driver runs at `90e4ced7`; the adapter's `serve` entry does not.** The pilot amendment of [qm-s1-edition](../../docs/benchmarks/2026-11-06-qm-s1-edition/PREREGISTRATION.md#amendments) pins the newest QM main, 265 commits after `b6786d67`.
@@ -322,6 +360,10 @@ Both images and `pin.json` name QM `77024e79`. Anthropic cells now list `claude-
 ### 2026-11-21: re-pinned to main 198faa2b (timer turns)
 
 Both images and `pin.json` name QM `198faa2b`, the first commit with `PRIVATE_NETWORK_ALLOWED_ORIGINS`; the runner lists the world's origin there, so `serve` registers the world MCP server, and QM is certified for timer turns (the Re-pin to main 198faa2b section). Why: the week-long timers tasks need QM in serve mode on a branch that has the timer code.
+
+### 2026-11-21: re-pinned to main 7689355c (internal-task)
+
+Both images and `pin.json` name QM `7689355c`, the core build follows QM's new copy list, and `prepare.sh`, `compose.yaml` and `adapter.sh` give core the exact private origins the trial registers (`PRIVATE_NETWORK_ALLOWED_ORIGINS`). The "Re-pin to main 7689355c" section says what changed and what was checked. Why: internal-task ruled that the owner-identity eval runs QM at current main, where `serve` can register the world MCP server.
 
 ### 2026-11-08: no OpenRouter cells (internal-task)
 

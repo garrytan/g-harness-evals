@@ -60,6 +60,7 @@ if (mode === 'turn') {
     surface: 'harness-eval',
     actor: job.actor,
     conversation: job.conversation,
+    ...(job.origin ? { origin: job.origin } : {}),
     text: readFileSync(job.text_file, 'utf8'),
     ...(job.origin ? { origin: job.origin } : {}),
   });

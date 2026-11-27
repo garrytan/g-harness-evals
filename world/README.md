@@ -134,6 +134,10 @@ meeting and mail whole, so grading reads the same records with or without expiry
 `fact_readable_at_ask` rebuilds the bot's view at an ask turn from the `admin.expire` events and the task's
 `[world] retire` (docs/tasks.md).
 
+## Notes store (owner-identity arm N)
+
+A world started with a notes directory (`notes` in `createWorldServer`, `Cell.notes` in the runner) serves the bot `notes_list`, `notes_read` and `notes_write`: one `<person id>.md` file per person, seeded from the set's people pages (`world/services/notes.ts`). Other members get no notes tools, and `WorldService` refuses them anyway. A person id is a plain id, so no call reaches outside the directory; a write after the fence, or one that would make a file larger than 64 KB, is refused. Calls log as `notes.list`, `notes.read` and `notes.write`. A world without a notes directory lists exactly the tools it did before.
+
 ## The event log
 
 `<out>/events.jsonl`, one JSON object per line, appended and never rewritten:

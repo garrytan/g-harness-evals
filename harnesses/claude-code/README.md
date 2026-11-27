@@ -77,7 +77,15 @@ Keyless, against a fake Anthropic endpoint and through the metering proxy in lea
 
 **Paid trials so far:** the 200 counted trials of run `host-harness-pilot-2026-10` ([report](../../docs/benchmarks/2026-10-30-host-harness-pilot/report.md)), on `claude-haiku-5-5` through the CLI (`claude -p`), in a no-brain cell and a gbrain `told` cell. No Agent SDK cell has run.
 
+## Owner identity family C (internal-task)
+
+With `HE_OI_CAPTURE_B64` set, `capture/wire-capture.cjs` adds gbrain's SessionEnd capture hook to `settings.json` before `ready`, in the shape `gbrain bootstrap harness` writes. It also writes the plan that `capture/launch-workers.sh` (`/opt/harness/capture/` in the image) reads. When the owner asks for it, the harness runs the launcher from its own shell. The launcher starts four headless `claude -p` workers as children of the harness's session: two with `GBRAIN_SESSION_AGENT` set and two left to gbrain's detection. It runs only with the default config and `HE_GBRAIN_INSTALL=gbrain-installer`; anything else is HE-ADAPTER-008. Both files are byte-identical in the Claude Code and Codex folders. See [owner-identity.md](../../docs/owner-identity.md), "Family C".
+
 ## Changelog
+
+### 2026-11-19: owner identity family C (internal-task PR 1c)
+
+Added "Owner identity family C": `HE_OI_CAPTURE_B64` wires gbrain's SessionEnd capture hook and the worker launcher, and the image copies `capture/`. Why: family C measures whether gbrain's session capture keeps a worker's brief about "the user" off the owner.
 
 ### 2026-11-01: the Agent SDK driver (internal-task, H10 PR 4)
 

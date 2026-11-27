@@ -24,6 +24,7 @@
 - [Rules-fix tasks: eleven Python libraries](#rules-fix-tasks-eleven-python-libraries)
 - [Rules-at-scale: public rules files used as filler](#rules-at-scale-public-rules-files-used-as-filler)
 - [MCP servers in the tools-at-scale catalog](#mcp-servers-in-the-tools-at-scale-catalog)
+- [12dicts: English word list](#12dicts-english-word-list)
 
 ## OpenClaw
 
@@ -107,7 +108,7 @@ SOFTWARE.
 ## QM
 
 - **What:** an agent harness under test. We captured its system prompts, its session-title prompt and its tool schemas.
-- **Versions:** v0.1.15, commit `7417aa2a` (every published cell), main at `b6786d675f83d9a818c5d5335cc017ffea9ec7a7` (keyless captures only), and main at `90e4ced75dba0f711e9737e5bb2f2d718870fb0f` (the internal-task pilot amendment's pin) ([harnesses/qm/pin.json](harnesses/qm/pin.json)).
+- **Versions:** v0.1.15, commit `7417aa2a` (every published cell), main at `b6786d675f83d9a818c5d5335cc017ffea9ec7a7` (keyless captures only), main at `90e4ced75dba0f711e9737e5bb2f2d718870fb0f` (the internal-task-a pilot amendment's pin), and main at `77024e79699565296bdde10974ae3d26fd393df8` (the crew's one QM pin, which the owner-identity eval also runs, internal-task-b) ([harnesses/qm/pin.json](harnesses/qm/pin.json)).
 - **Upstream:** https://github.com/yc-software/qm
 - **Licence:** MIT (the same text at both commits).
 - **Copyright:** Copyright (c) 2026 QM contributors
@@ -766,3 +767,11 @@ We use these benchmarks' task ids and public numbers. We don't redistribute thei
 - **Versions and upstreams:** one row per server, with its repository, commit and SPDX id, in [tasks/mcp-at-scale/catalog/README.md](tasks/mcp-at-scale/catalog/README.md).
 - **Licences:** MIT, Apache-2.0, MPL-2.0, or Apache-2.0 AND MIT, per server. Each server's licence text, any Apache-2.0 NOTICE file, and our modification notices (trimmed tool lists, renamed servers) are in `tasks/mcp-at-scale/catalog/LICENSES/`.
 - **Where its text sits here:** `tasks/mcp-at-scale/catalog/servers/*.json`.
+
+## 12dicts: English word list
+
+- **What:** the words of 5 to 11 letters from the 2of12 list, used only to refuse invented tokens that are real English words.
+- **Version:** 12dicts 6.0.2 (American/2of12.txt).
+- **Licence:** released to the public domain by its compiler, who asks for acknowledgment.
+- **Copyright:** none claimed; compiled by Alan Beale.
+- **Paths that carry it:** `world/owner-identity/english-words.txt`.

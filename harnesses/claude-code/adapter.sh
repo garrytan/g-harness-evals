@@ -435,6 +435,44 @@ if [ -n "$sas_config" ]; then
   sas_arm_json=",\"sas_arm\":${sas_line#ok }"
 fi
 
+# owner-identity (internal-task): HE_OWNER_CARD_B64 is the cell's owner card (Cell.owner_card, base64 of the set's world/owner-card.md,
+# runner/trial/owner-card.ts). It is appended to $CLAUDE_CONFIG_DIR/CLAUDE.md (Claude Code's user memory) after anything the gbrain installer wrote there: a blank line
+# when the file already has bytes, the card, a newline. $HE_LOG_DIR/owner-card.json records the card's sha256 and length, the file,
+# whether it existed and its sha256 after; ready carries owner_card. A card that is empty, over 4,000 bytes or not canonical base64
+# is HE-ADAPTER-007, exit 2 before ready. Unset, nothing here runs.
+owner_card_json=''
+if [ -n "${HE_OWNER_CARD_B64:-}" ]; then
+  set +e
+  owner_card_line=$(node - "$CLAUDE_CONFIG_DIR/CLAUDE.md" "$HE_LOG_DIR/owner-card.json" <<'JS'
+const fs = require("fs"), path = require("path"), crypto = require("crypto");
+const [file, recPath] = process.argv.slice(2);
+const b64 = process.env.HE_OWNER_CARD_B64;
+const card = Buffer.from(b64, "base64");
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const rec = { file, card_sha256: sha(card), card_bytes: card.length, existed: fs.existsSync(file) };
+if (!card.length || card.length > 4000 || card.toString("base64") !== b64) {
+  Object.assign(rec, { status: "error", code: "HE-ADAPTER-007", error: "HE_OWNER_CARD_B64 is empty, over 4,000 bytes or not canonical base64" });
+  fs.writeFileSync(recPath, JSON.stringify(rec) + "\n");
+  console.log("HE-ADAPTER-007 " + rec.error);
+  process.exit(2);
+}
+fs.mkdirSync(path.dirname(file), { recursive: true });
+const before = rec.existed ? fs.readFileSync(file) : Buffer.alloc(0);
+const after = Buffer.concat([before, Buffer.from(before.length ? "\n\n" : ""), card, Buffer.from("\n")]);
+fs.writeFileSync(file, after);
+Object.assign(rec, { bytes_before: before.length, file_sha256: sha(after), status: "ok", code: null });
+fs.writeFileSync(recPath, JSON.stringify(rec) + "\n");
+console.log("ok " + rec.card_sha256 + " " + rec.existed);
+JS
+)
+  owner_card_code=$?
+  set -e
+  log "owner card: ${owner_card_line:-HE-ADAPTER-007 the owner card could not be written; see stderr.log}"
+  [ "$owner_card_code" -eq 0 ] || exit 2
+  read -r _ owner_card_sha owner_card_existed <<< "$owner_card_line"
+  owner_card_json=$(printf ',"owner_card":{"file":"%s","card_sha256":"%s","appended_to_existing":%s}' "$CLAUDE_CONFIG_DIR/CLAUDE.md" "$owner_card_sha" "$owner_card_existed")
+fi
+
 # internal-task, the skill-resolver arms (scripts/skill-resolver/ARMS.md). HE_HARNESS_CONFIG skills-<arm> reads the kit at
 # ${HE_SKILL_KIT_DIR:-/opt/skill-resolver} (scripts/skill-resolver/build-kit.ts):
 #   skills-native      the catalog in $CLAUDE_CONFIG_DIR/skills; a UserPromptSubmit lane of its own runs the hook wrapper with
@@ -657,6 +695,30 @@ let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
   log "MCP server $name: tools/list answered $tools tools; wired into $mcp_config"
 done
 
+# owner identity family C (internal-task, docs/owner-identity.md "Family C"): HE_OI_CAPTURE_B64 is the task's capture plan (the runner's
+# runner/trial/oi-capture.ts, from the task's capture.json). capture/wire-capture.cjs beside this file adds gbrain's SessionEnd
+# capture hook to settings.json in the shape `gbrain bootstrap harness` writes, with the gbrain binary and hook launcher the installer
+# view placed, and writes the plan /opt/harness/capture/launch-workers.sh reads into /tmp/he-oi-capture (container-local): the
+# workers' briefs and GBRAIN_SESSION_AGENT labels and worker.env, the variables these turns carry. The owner's last turn asks the
+# harness to run the launcher, so the workers are headless claude -p sessions under this harness's own session. It runs only with
+# the default route, the cli driver and HE_GBRAIN_INSTALL=gbrain-installer; anything else, or a failed wiring, is HE-ADAPTER-008 and
+# exit 2 before ready, recorded in $HE_LOG_DIR/oi-capture.json. ready carries oi_capture. Unset, nothing here runs.
+oi_capture_json=''
+if [ -n "${HE_OI_CAPTURE_B64:-}" ]; then
+  if [ "$route" != default ] || [ "$route_driver" != cli ] || [ -n "$skill_arm" ] || [ "$install_mode" = 1 ] || [ "${HE_GBRAIN_INSTALL:-}" != gbrain-installer ]; then
+    log "HE-ADAPTER-008 family C capture runs with the default route, the cli driver and HE_GBRAIN_INSTALL=gbrain-installer only (HE_HARNESS_CONFIG=${route_config:-default}, HE_GBRAIN_INSTALL=${HE_GBRAIN_INSTALL:-unset})"
+    exit 2
+  fi
+  set +e
+  oi_capture_line=$(node "$harness_dir/capture/wire-capture.cjs" claude-code "$HE_SESSION_STATE_DIR" "$CLAUDE_CONFIG_DIR" "$HE_LOG_DIR" /tmp/he-oi-capture "$HE_WORKSPACE_DIR" "$mcp_config")
+  oi_capture_code=$?
+  set -e
+  log "family C capture: ${oi_capture_line:-HE-ADAPTER-008 the capture wiring failed before it could report; see stderr.log}"
+  [ "$oi_capture_code" -eq 0 ] || exit 2
+  read -r _ oi_capture_hook oi_capture_workers <<< "$oi_capture_line"
+  oi_capture_json=$(printf ',"oi_capture":{"hook_file":"%s","workers":%s,"launcher":"%s","record":"%s"}' "$oi_capture_hook" "$oi_capture_workers" "$harness_dir/capture/launch-workers.sh" "$HE_LOG_DIR/oi-capture.json")
+fi
+
 turn_pid=''
 
 # Stop a turn's session: SIGTERM to every process in it, SIGKILL to whatever is left after the grace.
@@ -803,7 +865,7 @@ fs.renameSync(resp + ".tmp", resp);' "$@"
 }
 
 printf '{"harness":"claude-code","version":"%s","trial":"%s","ready_at":"%s","session_keys":"claude -p --session-id|--resume UUIDv5(dm:<member> | channel:<id>)","mcp_servers":"%s","adapter_sha256":"%s"%s}\n' \
-  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$sdk_json$skill_arm_json$sas_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
+  "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$owner_card_json$sdk_json$skill_arm_json$sas_arm_json$install_json$oi_capture_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

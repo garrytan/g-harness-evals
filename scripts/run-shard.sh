@@ -10,7 +10,10 @@
 #   scripts/run-shard.sh --prereg docs/benchmarks/<run>/prereg.json --name <shard> --cells a,b --lease-usd <n>
 #                        [--out results/<run-id>] [--embedded] [--gbrain-image <tag>] [--skip-build] [--resume]
 #                        [--amendment <commit>] [--max-output-tokens <n>] [--sealed-root <dir> --opening-receipt <file>]
-#                        [--clean-arm-preflight] [--cursor-offline] [--skill-root <dir>]
+#                        [--clean-arm-preflight] [--cursor-offline] [--skill-root <dir>] [--task-half 1|2]
+#
+# --task-half (internal-task, R113) runs one stage of a run planned in two: runner/run.ts run --task-half, half of every task
+# family of the shard's cells. The other half runs later from a new dest at the same commit, and merge-shards.ts joins them.
 #
 # Cursor shards (harness cursor, harnesses/cursor/README.md): a shard whose cells run the Cursor CLI runs only Cursor cells
 # (scripted cells aside) and needs CURSOR_API_KEY in this shell; without it the shard stops with exit 2 before any build.
@@ -87,7 +90,7 @@
 set -euo pipefail
 
 prereg="" name="" cells="" lease="" out="" embedded=0 gbrain_image="harness-eval/gbrain:dev" skip_build=0 resume=0 amendment="" max_output_tokens=128000
-sealed_root="" opening_receipt="" clean_arm=0 cursor_offline=0 skill_root=""
+sealed_root="" opening_receipt="" clean_arm=0 cursor_offline=0 skill_root="" task_half=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --prereg) prereg="$2"; shift 2 ;;
@@ -106,6 +109,7 @@ while [ $# -gt 0 ]; do
     --clean-arm-preflight) clean_arm=1; shift ;;
     --cursor-offline) cursor_offline=1; shift ;;
     --skill-root) skill_root="$2"; shift 2 ;;
+    --task-half) task_half="$2"; [ "$task_half" = 1 ] || [ "$task_half" = 2 ] || { echo "run-shard: --task-half takes 1 or 2" >&2; exit 2; }; shift 2 ;;
     *) echo "run-shard: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -349,6 +353,7 @@ PY
 else
   sealed_json=""
   [ -z "$sealed_root" ] || sealed_json=$(printf ', "sealed": true, "opening_receipt_sha256": "%s"' "$(sha256sum "$opening_receipt" | cut -d' ' -f1)")
+  [ -z "$task_half" ] || sealed_json="$sealed_json, \"task_half\": $task_half"
   printf '{"name": "%s", "machine": "%s", "commit": "%s", "cells": "%s", "lease_usd": %s, "started_at": "%s", "images": {%s}%s}\n' \
     "$name" "$(hostname)" "$commit" "$cells" "$lease" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$images" "$sealed_json" > "$out/shard.json"
 fi
@@ -396,6 +401,7 @@ prune_pid=$!
 run_args=(run --manifest "$out/manifest.json" --cells "$cells" --lease-usd "$lease" --max-output-tokens "$max_output_tokens" --gbrain-image "$gbrain_image" ${sealed[@]+"${sealed[@]}"})
 [ "$resume" -eq 1 ] || [ -f "$out/trials.jsonl" ] && run_args+=(--resume)
 [ "$cursor_offline" -eq 0 ] || run_args+=(--cursor-offline)
+[ -z "$task_half" ] || run_args+=(--task-half "$task_half")
 log "run ${run_args[*]}"
 set +e
 if [ "$cursor" -eq 1 ] && [ "$cursor_offline" -eq 0 ]; then

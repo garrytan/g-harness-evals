@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { HarnessMode, Termination, TrialRecord } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import { SET_WORLDS_FILE, cellModels, gbrainSetWorld, isSealedCell, setWorldPath, setWorldPinProblem, setWorldPins, type Cell, type Manifest, type Trial } from '../run.ts';
+import { SET_WORLDS_FILE, cellModels, gbrainLlmModels, gbrainSetWorld, isSealedCell, resolveGbrain, setWorldPath, setWorldPinProblem, setWorldPins, type Cell, type Manifest, type Trial } from '../run.ts';
 import { HarnessNotStarted, type InternalNetwork, ensureInternalNetwork, internalNetworkName, removeInternalNetwork } from './docker.ts';
 import { RunProxy, reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { defaultPreambleFor, loadPreamble } from './task.ts';
@@ -58,6 +58,8 @@ export interface RunOptions {
   stopOnCap?: boolean;
   /** Only these cell ids. */
   cells?: string[];
+  /** Only these task ids (runner/run.ts run --task-half). */
+  tasks?: string[];
   ledgerPath?: string;
   leaseUsd?: number;
   newLease?: boolean;
@@ -142,8 +144,9 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   mkdirSync(runDir, { recursive: true });
   const logFile = join(runDir, 'run.log');
   const log = (line: string) => { const stamped = `${new Date().toISOString()} ${line}`; appendFileSync(logFile, stamped + '\n'); opts.log?.(line); };
-  const cells = new Map(manifest.cells.map((c) => [c.id, c]));
   const sealedPath = (cell: Cell, p: string | undefined) => (p !== undefined && opts.sealedRoot && isSealedCell(cell, opts.sealedSet) ? join(opts.sealedRoot, p) : p);
+  // A sealed cell's owner card (world/owner-card.md, runner/run.ts HELDOUT_OWNER_CARD) is its bank's, in the sealed root.
+  const cells = new Map(manifest.cells.map((c) => [c.id, c.owner_card ? { ...c, owner_card: sealedPath(c, c.owner_card) } : c]));
   const done = new Set(opts.resume ? readRecords(runDir).map((r) => r.trial_id) : []);
   if (!opts.resume && existsSync(join(runDir, 'trials.jsonl')) && readRecords(runDir).length) throw new RunnerError('HE-RUN-003', `${join(runDir, 'trials.jsonl')} already holds trials; fix: pass --resume to continue this run, or plan a new run id`);
   const pinFile = join(runDir, SET_WORLDS_FILE);
@@ -155,7 +158,7 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     const pins = setWorldPins(manifest.cells, repoRoot);
     if (Object.keys(pins).length) writeAtomic(pinFile, JSON.stringify(pins, null, 1) + '\n');
   }
-  const selected = manifest.trials.filter((t) => !opts.cells || opts.cells.includes(t.cell));
+  const selected = manifest.trials.filter((t) => (!opts.cells || opts.cells.includes(t.cell)) && (!opts.tasks || opts.tasks.includes(t.task)));
   const pending = selected.filter((t) => !done.has(t.id));
   const skipped = selected.filter((t) => done.has(t.id)).map((t) => t.id);
   // A torn not-started.jsonl line is HE-RUN-007 here, before any lease or append, not after the trials ran.
@@ -253,10 +256,12 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
       // A cell with embeddings on sends the sidecar's query embeddings through the same proxy, so the embedding model
       // joins the allowlist and the proxy binds every interface (the sidecar is a container whatever the harness mode).
       const embeddingModels: string[] = [...new Set(manifest.cells.map((c) => c.gbrain?.embeddings ?? 'off').filter((m) => m !== 'off'))];
+      // internal-task: gbrain's own model route joins the allowlist the same way; its slot is a container's whatever the harness mode.
+      const sidecarModels: string[] = [...new Set(manifest.cells.flatMap((c) => gbrainLlmModels(c.gbrain ? resolveGbrain(c.gbrain) : null)))];
       proxy = await RunProxy.start({
         runId: manifest.run_id, runDir, ledgerPath: opts.ledgerPath ?? join(runDir, 'ledger.sqlite'), leaseUsd: opts.leaseUsd ?? manifest.spend_cap_usd,
-        allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels])], maxOutputTokens: opts.maxOutputTokens,
-        reachableFromContainers: docker || embeddingModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture, ...(opts.proxyUpstream ? { upstream: opts.proxyUpstream } : {}), logSections,
+        allowModels: [...new Set([...manifest.cells.flatMap(cellModels), ...embeddingModels, ...sidecarModels])], maxOutputTokens: opts.maxOutputTokens,
+        reachableFromContainers: docker || embeddingModels.length > 0 || sidecarModels.length > 0, ...(network ? { gatewayAddress: network.gateway } : {}), env: opts.proxyEnv, newRun: opts.newLease, capture: opts.capture, ...(opts.proxyUpstream ? { upstream: opts.proxyUpstream } : {}), logSections,
         routeTexts: routeTextsFor(manifest.cells, opts.repoRoot),
         ...(manifest.cells.some((c) => c.ablation) ? { ablationLog: true } : {}),
       });

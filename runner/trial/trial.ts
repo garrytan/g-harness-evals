@@ -20,10 +20,10 @@
 // record's ablation field. The filter's outcome never changes the termination: the primary analysis is intention to treat.
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import type { GradeResult, HarnessMode, Termination, TrialAblation, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialRecord, TrialUsage, TimerTurnWindow, TurnWindow } from '../contracts.ts';
+import { dirname, join, resolve } from 'node:path';
+import type { GbrainLlmReceipt, GradeResult, HarnessMode, Termination, TrialAblation, TrialGbrainDrain, TrialEvidence, TrialEmbeddingUsage, TrialGbrain, TrialGbrainEvents, TrialGbrainInstall, TrialNotes, TrialOwnerCard, TrialRecord, TrialUsage, TimerTurnWindow, TurnWindow } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
-import { cellModels, taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
+import { cellModels, gbrainLlmModels, taskDirFor, resolveGbrain, type Cell, type ResolvedGbrain, type Trial } from '../run.ts';
 import type { WorldEvent } from '../../world/services/events.ts';
 import type { World } from '../../world/types.ts';
 import { loadScript, startScriptedHarness } from '../scripted/executor.ts';
@@ -31,12 +31,17 @@ import { type InternalNetwork, startComposeHarness, startDockerHarness } from '.
 import { snapshotHarnessMemory } from './harness-memory.ts';
 import { type GbrainSidecar, type InstallViewManifest, checkCompanyGrants, checkCompanyTokens, checkIngestTokens, exportInstallView, startGbrainSidecar, verifyInstallView } from './gbrain.ts';
 import { GBRAIN_WRITE_TOOLS, type GbrainUpstream } from '../../world/services/gbrain-tap.ts';
+import { drainGbrain, drainProblem, gbrainLlmOn } from './gbrain-drain.ts';
+import { dumpNotesStore, storePath, writeStore } from '../grade/owner-identity-store.ts';
+import { gradeOwnerIdentityFiles } from '../grade/owner-identity.ts';
+import { captureEnv, captureLines, checkCapture, corpusDirOf } from './oi-capture.ts';
+import { ownerCardCheck, qmSenderSignal } from './owner-card.ts';
 import { tokenMembers } from '../../gbrain/build-brain.ts';
 import { isQmMemoryProvider, memoryProviderWiring, type QmProviderBlock, type QmProviderWiring } from '../../harnesses/qm/memory-provider.ts';
 import { canReadFile } from '../grade/predicates.ts';
 import { HarnessGone, type Harness, makeTrialDirs, startProcessHarness, writeAtomic } from './harness.ts';
 import type { SlotLimits } from '../proxy/metering-proxy.ts';
-import { RunProxy, embeddingUsage, reconcile, summarizeAblation, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
+import { GBRAIN_CALLER, RunProxy, embeddingUsage, gbrainLlmUsage, reconcile, summarizeAblation, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { wireOfModel } from '../proxy/ablate.ts';
 import { loadTask, type TaskSpec } from './task.ts';
 import { flushIngestAfterFence, runTurns, type TurnLoopResult } from './turns.ts';
@@ -120,6 +125,8 @@ export interface TrialOptions {
   /** A Cursor cell (runner/trial/cursor.ts): the egress allowlist's URL, set as the container's HTTPS_PROXY, and the key,
    *  which goes to the container's docker run alone, by name. */
   cursor?: { proxyUrl: string; key: string };
+  /** internal-task: the bound on the facts drain's wait for gbrain to go quiet on a cell with gbrain's model on (default 120 s). */
+  gbrainDrainTimeoutS?: number;
 }
 
 export interface TrialContext {
@@ -167,10 +174,12 @@ const EMPTY_GRADE: GradeResult = { grade: 'n/a', predicates: [], consent_violati
  *  Amendment 2 to v02-heldout-2026-10 (2026-10-25): a cell may preregister utility_models, the models its harness is
  *  documented to call for its own housekeeping (QM's and OpenClaw's Haiku request per turn); those are the trial's own too,
  *  forwarded when the allowlist admits them and priced into the trial (usage.by_model shows them). */
-export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>, embeddingModel: string = 'off', utilityModels: readonly string[] = []): string[] {
+export function foreignModels(cellModel: string, byModel: Record<string, unknown>, lines: Array<{ outcome: string; model: string | null; provider: string }>, embeddingModel: string = 'off', utilityModels: readonly string[] = [], sidecarModels: readonly string[] = []): string[] {
   const own = new Set([cellModel.toLowerCase(), embeddingModel.toLowerCase(), ...utilityModels.map((m) => m.toLowerCase())]);
+  // internal-task: by_model also holds gbrain's own calls, which only the sidecar's slot forwards; its refused lines are not passed in.
+  const sidecar = new Set(sidecarModels.map((m) => m.toLowerCase()));
   const seen = new Set<string>();
-  for (const k of Object.keys(byModel)) if (!own.has(k.toLowerCase())) seen.add(k);
+  for (const k of Object.keys(byModel)) if (!own.has(k.toLowerCase()) && !sidecar.has(k.toLowerCase())) seen.add(k);
   for (const l of lines) if (l.outcome === 'refused' && l.model && !own.has(`${l.provider}:${l.model}`.toLowerCase())) seen.add(`${l.provider}:${l.model}`);
   return [...seen].sort();
 }
@@ -232,6 +241,8 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   const gbrainToken = trialToken(trial.id);
   const [provider, modelName] = cell.model.includes(':') ? [cell.model.slice(0, cell.model.indexOf(':')), cell.model.slice(cell.model.indexOf(':') + 1)] : ['none', cell.model];
 
+  // internal-task family C: a capture task (capture.json beside task.toml) needs a claude-code or codex cell with gbrain's model and installer (HE-TASK-006).
+  const captureVars = captureEnv(task.dir, cell);
   if (cell.gbrain && mode === 'scripted') throw new RunnerError('HE-GBRAIN-001', `cell ${cell.id} carries gbrain but runs scripted; a script has no harness to call the brain. fix: drop gbrain from the cell or run it in docker or process mode`);
   // A process-mode harness runs as the runner's user beside the trial directory, so it could read the per-source ingest
   // tokens and write every member's private source directly, past the tap; the member brain's tokens stay docker-only.
@@ -240,9 +251,16 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   // An internal cell's world, sidecar and harness container use the run's internal network and its gateway.
   if (cell.network === 'internal' && (!docker || !opts.network)) throw new RunnerError('HE-NET-001', `cell ${cell.id} has network "internal" but the trial ${docker ? 'was given no internal network' : `runs in ${mode} mode`}; fix: run it through executeRun in docker mode`);
   const network = cell.network === 'internal' ? opts.network : undefined;
-  const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker, ...(task.world?.retire?.length ? { retire: task.world.retire } : {}), ...(task.clock?.timers ? { timers: true } : {}), ...(network ? { gatewayAddress: network.gateway } : {}) });
+  // internal-task arm N: the bot's notes store lives beside the owner-identity store, outside every directory the harness mounts.
+  const notesDir = cell.notes ? join(dirs.root, 'owner-identity', 'notes') : null;
+  const world = new TrialWorld({ trialId: trial.id, split: cell.split, actors: task.actors, outDir: dirs.root, worldPath: opts.worldPath, reachableFromContainers: docker, ...(task.world?.retire?.length ? { retire: task.world.retire } : {}), ...(task.clock?.timers ? { timers: true } : {}), ...(network ? { gatewayAddress: network.gateway } : {}), ...(notesDir ? { notesDir } : {}) });
   log(`world for ${trial.id} at ${world.localUrl} (harness sees ${world.harnessUrl}); ${task.turns.length} turns, budget ${task.time_budget_s} s per turn`);
   const proxy = mode === 'scripted' ? null : ctx.proxy;
+  // internal-task: an owner-identity task (gold.json beside task.toml, people.json beside the world) has no predicates; it is graded
+  // from the dumped store, and its harness slot keeps the forwarded request bodies in the proxy's memory for the owner card check.
+  const gold = join(task.dir, 'gold.json');
+  const people = join(dirname(world.worldPath), 'people.json');
+  const storeGraded = existsSync(gold) && existsSync(people);
 
   // The gbrain sidecar starts before the harness so the tap is live by the time the harness registers it;
   // it is stopped after the world is fenced, so a late call cannot land in the brain unrecorded. A sidecar that does not
@@ -251,16 +269,22 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let infraError: string | null = null;
   const gbrain: ResolvedGbrain | null = cell.gbrain ? resolveGbrain(cell.gbrain) : null;
   let installView: InstallViewManifest | null = null;
+  // internal-task: the models gbrain's own route may call (the extraction model first), and the sidecar fault that ends the trial before the harness starts.
+  const sidecarModels = gbrainLlmModels(gbrain);
+  let examFault: string | null = null;
   const memoryProvider = isQmMemoryProvider(cell);
   let providerWiring: QmProviderWiring | null = null;
   if (cell.gbrain && gbrain) {
     try {
       if (gbrain.embeddings !== 'off' && !proxy) throw new RunnerError('HE-GBRAIN-005', `cell ${cell.id} has embeddings ${gbrain.embeddings} but the trial runs without a metering proxy; the sidecar's embedding calls must be metered`);
-      // The sidecar slot exists only while an embedded brain needs it; a keyword brain makes no provider call and gets no slot.
-      if (gbrain.embeddings !== 'off') await proxy!.bind(gbrainSlot, key, gbrainToken, [gbrain.embeddings]);
+      if (gbrain.llm === 'proxy' && !proxy) throw new RunnerError('HE-GBRAIN-002', `cell ${cell.id} has gbrain.llm "proxy" but the trial runs without a metering proxy; gbrain's own model calls must be metered`);
+      // The sidecar slot exists only while an embedded brain or gbrain's own model route needs it; a keyword brain makes no provider
+      // call and gets no slot. internal-task: the model route's slot also takes the caller tag, so its usage lines split from the harness's.
+      if (gbrain.embeddings !== 'off' || sidecarModels.length) await proxy!.bind(gbrainSlot, key, gbrainToken, [...(gbrain.embeddings !== 'off' ? [gbrain.embeddings] : []), ...sidecarModels], undefined, false, {}, false, sidecarModels.length ? GBRAIN_CALLER : undefined);
       sidecar = await startGbrainSidecar({ trialId: trial.id, trialSlug: slot, split: cell.split, outDir: join(dirs.root, 'gbrain'), image: opts.gbrainImage, brain: gbrain.brain, scope: gbrain.scope, ingest: gbrain.ingest, ...(gbrain.access ? { access: gbrain.access } : {}), ...(gbrain.channel_remember ? { channelRemember: gbrain.channel_remember } : {}),
         ...(gbrain.serves ? { serves: gbrain.serves, servesMembers: tokenMembers(world.world, cell.split).map((m) => m.id) } : {}), ...(gbrain.labels ? { labels: gbrain.labels } : {}),
-        surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}), ...(network ? { network } : {}), log });
+        surface: gbrain.surface, embeddings: gbrain.embeddings, ...(gbrain.embeddings !== 'off' ? { openaiBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'openai', true), proxyToken: gbrainToken } : {}),
+        ...(gbrain.llm === 'proxy' ? { llm: 'proxy' as const, anthropicBaseUrl: proxy!.baseUrlFor(gbrainSlot, 'anthropic', true), proxyToken: gbrainToken, extractionModel: gbrain.extraction_model, extractionPin: gbrain.extraction_pin === true } : {}), ...(network ? { network } : {}), log });
       // Under member scope the tap needs a granted token for every member who will take a turn (HE-GBRAIN-004).
       if (sidecar.scope === 'member' || sidecar.scope === 'member-sources') checkCompanyTokens(sidecar.tokens, cell.split, task.actors, join(dirs.root, 'gbrain', 'tokens.json'), sidecar.brain === 'bot-visible' ? ['bot-visible'] : undefined);
       // gbrain#7481: under scope "sources" the tap needs a source grant for every member who will take a turn (HE-GBRAIN-004).
@@ -277,8 +301,9 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       }
     } catch (e) {
       if (!(e instanceof RunnerError)) { if (sidecar) await sidecar.stop(5_000).catch(() => undefined); if (proxy) { await proxy.finalize(key).catch(() => undefined); await proxy.unbind(slot).catch(() => undefined); await proxy.unbind(gbrainSlot).catch(() => undefined); } world.stop(); throw e; }
-      infraError = e.message;
-      log(infraError);
+      // internal-task: gbrain resolving another extraction model than the cell names is the exam's fault, not the harness's or the machine's.
+      if (e.code === 'HE-GBRAIN-022') examFault = e.message; else infraError = e.message;
+      log(e.message);
     }
     if (sidecar && !infraError) {
       if (memoryProvider) {
@@ -313,6 +338,8 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     ...(installViewPath && installKind ? { HE_GBRAIN_INSTALL: installKind, HE_GBRAIN_SPLIT: cell.split, HE_GBRAIN_INSTALL_DIR: docker ? '/he-gbrain-install' : resolve(installViewPath) } : {}),
     ...(docker ? {} : { HE_WORKSPACE_DIR: resolve(dirs.workspace) }),
     ...(opts.cursor ? cursorEgressEnv(opts.cursor.proxyUrl) : {}),
+    ...(cell.owner_card ? { HE_OWNER_CARD_B64: readFileSync(resolve(opts.repoRoot ?? '.', cell.owner_card)).toString('base64') } : {}),
+    ...captureVars,
     ...(opts.harnessEnv ?? {}),
   };
 
@@ -331,16 +358,21 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
   let ablation: TrialAblation | undefined;
   let capStop = false;
   let modelMismatch = false;
+  let drainRecord: TrialGbrainDrain | undefined;
+  let notesStore: ReturnType<typeof dumpNotesStore> | null = null;
+  let drainError: string | null = null;
+  let ownerCard: TrialOwnerCard | undefined;
   const paths: Record<string, string> = { dir: dirs.root, trial_json: join(dirs.root, 'trial.json'), events: join(dirs.root, 'events.jsonl'), turns: join(dirs.root, 'turns.jsonl'), snapshot: join(dirs.root, 'snapshot.json'), grade: join(dirs.root, 'grade.json'), logs: dirs.logs };
   if (proxy) { paths.usage = join(dirs.root, 'usage.json'); paths.reconcile = join(dirs.root, 'reconcile.json'); }
   if (sidecar) paths.gbrain = join(dirs.root, 'gbrain');
 
   try {
     // The harness slot is bound inside the cleanup try, so nothing thrown from here on can leave a live token behind.
-    if (proxy) await proxy.bind(slot, key, token, cellModels(cell), cell.ablation ? { ...cell.ablation, map: resolve(opts.repoRoot ?? '.', cell.ablation.map), ...(cell.utility_models ? { utility_models: cell.utility_models } : {}) } : undefined, cellRoute(cell) !== null, opts.slotLimits);
+    if (proxy) await proxy.bind(slot, key, token, cellModels(cell), cell.ablation ? { ...cell.ablation, map: resolve(opts.repoRoot ?? '.', cell.ablation.map), ...(cell.utility_models ? { utility_models: cell.utility_models } : {}) } : undefined, cellRoute(cell) !== null, storeGraded ? { ...opts.slotLimits, collect_requests: true } : opts.slotLimits);
     writeFileSync(paths.turns!, '');
     try {
       if (infraError) throw new HarnessGone(null, infraError);
+      if (examFault) throw new HarnessGone(null, examFault);
       if (mode === 'scripted') {
         if (!trial.script) throw new RunnerError('HE-SCRIPT-001', `trial ${trial.id} is scripted but names no script`);
         harness = startScriptedHarness({ script: loadScript(trial.script), dirs, mcpUrl: `${world.localUrl}/mcp`, botToken: world.botToken });
@@ -363,12 +395,15 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       try { readyTurnHook = String((JSON.parse(readFileSync(join(dirs.logs, 'ready'), 'utf8')) as { gbrain_install?: { turn_hook?: string } }).gbrain_install?.turn_hook ?? 'absent from ready'); } catch { readyTurnHook = 'unreadable ready file'; }
     } catch (e) {
       if (!(e instanceof HarnessGone)) throw e;
-      readyFailure = e;
-      error = infraError ?? `HE-ADAPTER-002 ${e.message}`;
-      if (!infraError) log(error);
+      if (examFault) { endedEarly = 'exam_fault'; error = examFault; }
+      else {
+        readyFailure = e;
+        error = infraError ?? `HE-ADAPTER-002 ${e.message}`;
+        if (!infraError) log(error);
+      }
     }
 
-    if (!readyFailure) {
+    if (!readyFailure && !examFault) {
       // internal-task: Hermes's and OpenClaw's own memory files, before the first turn and after each (runner/trial/harness-memory.ts).
       const memory = (n: number) => { if (mode !== 'scripted') snapshotHarnessMemory(cell.harness, dirs, n); };
       memory(0);
@@ -392,7 +427,28 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     const snapshot = await world.snapshot();
     writeAtomic(paths.snapshot!, JSON.stringify(snapshot, null, 1) + '\n');
     if (harness) await harness.stop(opts.stopGraceS * 1000);
+    // internal-task family C: what gbrain's SessionEnd hook banked in the harness's state dir, checked against the gold sessions.
+    const captureCorpus = captureVars.HE_OI_CAPTURE_B64 ? corpusDirOf(dirs.state) : undefined;
+    if (captureCorpus) {
+      paths.owner_identity_capture = join(dirs.root, 'owner-identity', 'capture.json');
+      try { for (const line of captureLines(checkCapture({ taskDir: task.dir, stateDir: dirs.state, logsDir: dirs.logs, out: paths.owner_identity_capture }))) log(`family C capture: ${line}`); }
+      catch (e) { log(`family C capture check: ${(e as Error).message}`); }
+    }
+    // internal-task: with gbrain's model on, gbrain finishes its extraction before the sidecar goes and the store is dumped from the stopped brain.
+    if (sidecar && gbrainLlmOn(cell.gbrain)) {
+      const drained = await drainGbrain({ sidecar, trialId: trial.id, trialDir: dirs.root, since: started_at, log, ...(captureCorpus ? { corpusDir: captureCorpus } : {}), ...(opts.gbrainDrainTimeoutS ? { timeoutMs: opts.gbrainDrainTimeoutS * 1000 } : {}) });
+      drainRecord = drained.record;
+      if (drained.store) paths.owner_identity_store = storePath(dirs.root);
+      drainError = drainProblem(trial.id, drained.record);
+      if (drainError) log(drainError);
+    }
     if (sidecar) await sidecar.stop();
+    // internal-task arm N: the fence refuses every notes write, so the store is final here; it is graded the way a gbrain store is.
+    if (notesDir) {
+      notesStore = dumpNotesStore(notesDir);
+      paths.notes = notesDir;
+      paths.owner_identity_store = writeStore(storePath(dirs.root), notesStore);
+    }
 
     if (proxy) {
       const meter = await proxy.finalize(key);
@@ -400,7 +456,7 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
       const summary = summarizeUsage(key, meter, lines);
       usage = summary.usage;
       capStop = summary.cap_stop;
-      const foreign = foreignModels(cell.model, usage.by_model, lines, gbrain?.embeddings ?? 'off', cell.utility_models ?? []);
+      const foreign = foreignModels(cell.model, usage.by_model, lines.filter((l) => l.caller !== GBRAIN_CALLER), gbrain?.embeddings ?? 'off', cell.utility_models ?? [], sidecarModels);
       if (foreign.length) {
         modelMismatch = true;
         const msg = `HE-MODEL-001 trial ${trial.id} ran model(s) ${foreign.join(', ')} beside the cell's ${cell.model} (by_model and refused usage lines); the trial is model_error; fix: check the harness's model mapping (QM: PI_MODEL, set from HE_MODEL_NAME), fix the cell's model, or preregister the harness's documented housekeeping model in the cell's utility_models`;
@@ -415,13 +471,31 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
         writeAtomic(paths.ablation, receipts.map((l) => JSON.stringify(l) + '\n').join(''));
         ablation = summarizeAblation(cell.ablation, wireOfModel(cell.model)!, receipts);
       }
+      // internal-task: did the owner card reach the first agent-loop request? Arms N and G carry the cell's card; a cell without one
+      // (arm B) is checked against the set's card, which must be absent.
+      if (storeGraded) {
+        try {
+          const { requests } = await proxy.requests(key);
+          const cardPath = cell.owner_card ? resolve(opts.repoRoot ?? '.', cell.owner_card) : join(dirname(world.worldPath), 'owner-card.md');
+          let ready: unknown = null;
+          try { ready = JSON.parse(readFileSync(join(dirs.logs, 'ready'), 'utf8')); } catch { ready = null; }
+          ownerCard = ownerCardCheck({ card: existsSync(cardPath) ? readFileSync(cardPath) : null, expected: !!cell.owner_card, ready, requests, cellModel: cell.model });
+          log(`owner card: expected ${ownerCard.expected}, ready ${ownerCard.ready ? 'names it' : 'names none'}, first request ${ownerCard.first_request} (${ownerCard.lines_found}/${ownerCard.lines} lines), ok ${ownerCard.ok}`);
+        } catch (e) { log(`owner card check failed: ${(e as Error).message}`); }
+      }
     }
 
-    if (windows.length) {
+    // internal-task: an owner-identity task's grade.json keeps the n/a grade.
+    if (windows.length && !storeGraded) {
       const evidence: TrialEvidence = { trial_id: trial.id, task_dir: task.dir, split: cell.split, world_path: world.worldPath, bot_member: world.botMember.id, snapshot, events: world.events, turns: windows, ...(task.clock?.timers ? { timer_turns: timerWindows, redelivery_turns: week.redelivery_windows } : {}) };
       grade = await ctx.grade(evidence);
     }
     writeAtomic(paths.grade!, JSON.stringify(grade, null, 1) + '\n');
+    if (paths.owner_identity_store && storeGraded) {
+      paths.owner_identity_verdicts = join(dirs.root, 'owner-identity', 'verdicts.json');
+      try { gradeOwnerIdentityFiles({ store: paths.owner_identity_store, gold, people, out: paths.owner_identity_verdicts, reply: answerText(world.events, world.botMember.id, windows.at(-1)), arm: cell.notes ? 'N' : cell.gbrain ? (cell.owner_card ? 'G' : 'B') : null }); }
+      catch (e) { log(`owner-identity grader: ${(e as Error).message}`); }
+    }
   } finally {
     if (harness) await harness.stop(opts.stopGraceS * 1000).catch(() => undefined);
     if (sidecar) await sidecar.stop().catch(() => undefined);
@@ -445,9 +519,17 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     if (!check.ok && !infraError && !readyFailure) semanticError = `HE-GBRAIN-005 trial ${trial.id}: ${check.reason}; the trial is infra_error and leaves the rung (docs/gbrain-arm.md, "The install ladder"); fix: read <trial dir>/gbrain/serve.log and the proxy's usage lines for ${key}`;
   }
   if (semanticError) { error = semanticError; log(semanticError); }
+  if (gbrainRecord && gbrain?.llm === 'proxy') {
+    const receiptPath = join(dirs.root, 'gbrain', 'llm.json');
+    const receipt = existsSync(receiptPath) ? JSON.parse(readFileSync(receiptPath, 'utf8')) as GbrainLlmReceipt : null;
+    gbrainRecord.llm = { mode: 'proxy', expected_extraction_model: gbrain.extraction_model!, ...(receipt ? { receipt } : {}), ...(proxy ? { usage: gbrainLlmUsage(proxy.usageLines(key)) } : {}) };
+  }
+  if (gbrainRecord && drainRecord) gbrainRecord.drain = drainRecord;
+  if (drainError) error = error ? `${error}; ${drainError}` : drainError;
+  const senderSignal = storeGraded && cell.harness === 'qm' ? qmSenderSignal(dirs.logs) : null;
 
   const exits = windows.map((w) => w.exit);
-  const decided = trialTermination({ cellModel: cell.model, fromExits: classify([...exits, ...timerWindows.map((w) => w.exit), ...week.redelivery_windows.map((w) => w.exit)], readyFailure, endedEarly, grade.approval_stop, restartFailure), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError) || dockerFailure(readyFailure, restartFailure) });
+  const decided = trialTermination({ cellModel: cell.model, fromExits: classify([...exits, ...timerWindows.map((w) => w.exit), ...week.redelivery_windows.map((w) => w.exit)], readyFailure, endedEarly, grade.approval_stop, restartFailure), since: started_at, lines: proxy ? proxy.usageLines(key) : [], capStop, modelMismatch, infra: !!(infraError || semanticError || drainError) || dockerFailure(readyFailure, restartFailure) });
   if (decided.note) { log(decided.note); error = error ? `${error}; ${decided.note}` : decided.note; }
   const termination = decided.termination;
   const ended = Date.now();
@@ -463,8 +545,12 @@ export async function runTrial(ctx: TrialContext): Promise<TrialRecord> {
     } } : {}),
     usage, wall_ms: ended - started, started_at, ended_at: new Date(ended).toISOString(), paths,
     ...(error ? { error } : {}),
+    ...(drainError && termination === 'infra_error' ? { infra_class: 'gbrain_extraction_dropped' as const } : {}),
     ...(gbrainRecord ? { gbrain: gbrainRecord } : {}),
+    ...(notesDir ? { notes: notesSummary(world.events, notesStore?.notes.length ?? 0) } : {}),
     ...(ablation ? { ablation } : {}),
+    ...(ownerCard ? { owner_card: ownerCard } : {}),
+    ...(senderSignal ? { sender_signal: senderSignal } : {}),
   };
 }
 
@@ -485,6 +571,32 @@ export function gbrainUpstream(sidecar: Pick<GbrainSidecar, 'url' | 'token' | 't
  *  for QM's memory-provider config, where gbrain reaches QM only through MEMORY_PROVIDER_CONFIG. */
 export function gbrainHarnessEnv(sidecar: object | null, harnessUrl: string, botToken: string, memoryProvider: boolean): Record<string, string> {
   return sidecar && !memoryProvider ? { HE_GBRAIN_MCP_URL: `${harnessUrl}/gbrain`, HE_GBRAIN_MCP_TOKEN: botToken } : {};
+}
+
+/** The owner-identity answer text for a turn: the reply the runner posted plus every message the bot posted itself during that
+ *  turn, read from the world event log, so a harness that answers in the DM through the world's Slack is graded on what it posted. */
+export function answerText(events: WorldEvent[], bot: string, w: TurnWindow | undefined): string | null {
+  if (!w) return null;
+  const posts = events
+    .filter((e) => e.actor === bot && e.tool === 'chat.postMessage' && e.kind === 'write' && e.outcome === 'ok' && e.seq > w.started_seq && e.seq <= w.ended_seq)
+    .map((e) => String((e.args as { text?: unknown } | undefined)?.text ?? ''));
+  const parts = [w.reply_withheld ? null : w.reply_text, ...posts].filter((s): s is string => !!s);
+  return parts.length ? parts.join('\n') : null;
+}
+
+/** internal-task arm N: the notes store's activity over a trial, from the world's notes.* events (TrialNotes). */
+export function notesSummary(events: WorldEvent[], files: number): TrialNotes {
+  const notes = events.filter((e) => e.tool.startsWith('notes.'));
+  const writes = notes.filter((e) => e.tool === 'notes.write' && e.outcome === 'ok');
+  const seed = events.find((e) => e.tool === 'admin.notes_seed');
+  return {
+    seeded: Number((seed?.effect as { files?: unknown } | undefined)?.files ?? 0),
+    writes: writes.length,
+    persons_written: [...new Set(writes.map((e) => String((e.args as { person?: unknown }).person)))].sort(),
+    reads: notes.filter((e) => (e.tool === 'notes.list' || e.tool === 'notes.read') && e.outcome === 'ok').length,
+    denied: notes.filter((e) => e.outcome === 'denied').length,
+    files,
+  };
 }
 
 export function ingestedCounts(ingests: WorldEvent[]): { ok: number; skipped: number; failed: number } {

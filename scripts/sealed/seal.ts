@@ -9,6 +9,8 @@
  *        [--corpus <dir holding heldout/<slug>.md>] [--custody <isolated custody clone>]
  *        [--recipient <file or age1...>, default sealed/recipient.txt] [--repo <public checkout, default .>] [--remote origin]
  *        [--exposures <file.json>] [--custodian <name, default scripts/sealed/seal.ts>]
+ *   bun scripts/sealed/seal.ts --task-set <set> --tasks <plaintext held-out tree> --world <the set's own world directory>
+ *        --corpus <dir holding heldout/<slug>.md> [the options above]
  *   bun scripts/sealed/seal.ts --from-backup <file.tar.age> --sha256 <hex> [--include <path> ...] [--identity <drive copy>]
  *        --task-set <set> --tasks <path> --slice <path> [--corpus <path>] [the options above]
  *
@@ -35,6 +37,14 @@
  * openings ledger of an existing manifest is carried through. A bundle already on the custody branch is never replaced (new content is a new set). The public manifest is
  * written but not committed: the output names it. The output names paths and digests only.
  *
+ * --world <dir> (multiuser, instead of --slice): a set that brings its own world rather than a slice of the public one (the
+ * owner-identity banks, world/owner-identity/generate.ts). <dir>/world.json is a whole world with its own world_id and every
+ * record in the held-out split (ownWorldProblems); it is packed as world/slice.json, so world_slice_sha256 commits to it, and
+ * every other regular file in <dir> (people.json, owner-card.md, coverage.json) is packed at world/<name> with its sha256
+ * under sealed.own_world. The public-world checks of a slice do not apply, and the manifest records world_manifest_sha256
+ * and world_json_sha256 as null, since the set is not written against world/seed/world.json. --world does not go with
+ * --from-backup.
+ *
  * --kind repo (default multiuser): seals a repository task set (tasks/repo/<set>/, the gstack-native format) from
  * --tasks alone, with no --slice and no --corpus (both refused): a repo set has no world, so the manifest says "kind":
  * "repo", records world_slice_sha256, heldout_corpus_sha256, world_manifest_sha256 and world_json_sha256 as null and says
@@ -53,8 +63,8 @@ import { constants } from 'node:os';
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { randomBytes } from 'node:crypto';
-import { corpusDigest, decryptWith, encryptTo, OPAQUE_SALT_FILE, packTar, safeRelPath, sha256, sliceProblems, sliceRecords, WORLD_COLLECTIONS, type TarEntry, type WorldSlice } from '../../runner/heldout/sealed.ts';
-import { BACKUPS_FILE, heldoutSet, openingsLedger, readManifest, recordedBackups, SET_KINDS, treeFiles, walk, type BackupCommitment, type Exposure, type HeldoutManifest, type SetKind } from '../seal-heldout.ts';
+import { corpusDigest, decryptWith, encryptTo, OPAQUE_SALT_FILE, ownWorldProblems, packTar, safeRelPath, sha256, sliceProblems, sliceRecords, WORLD_COLLECTIONS, type TarEntry, type WorldSlice } from '../../runner/heldout/sealed.ts';
+import { BACKUPS_FILE, heldoutSet, openingsLedger, OWN_WORLD_PATH, readManifest, recordedBackups, SET_KINDS, treeFiles, walk, type BackupCommitment, type Exposure, type HeldoutManifest, type SetKind } from '../seal-heldout.ts';
 import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, DEFAULT_CUSTODY_CLONE, ESCROW_FILE, insideGitTree, liveSharersCurrent, PUBLIC_TREES, readAccessLog, syncCustody } from './custody.ts';
 import { custodyIdentity } from './identity.ts';
 import { backupEntries, INTAKE_ROOT, makeIntakeDir, removeIntakeDir, sweepStaleIntake, writeBackup } from './intake.ts';
@@ -93,8 +103,10 @@ export interface SealOptions {
   /** multiuser (the default) or repo (no slice, no corpus, an optional generator). */
   kind?: SetKind;
   tasks: string;
-  /** The world slice; required for a multiuser set, refused for a repo set. */
+  /** The world slice; a multiuser set takes it or world, a repo set neither. */
   slice?: string;
+  /** A multiuser set's own world directory: world.json (packed as world/slice.json) and the files beside it (world/<name>). */
+  world?: string;
   corpus?: string;
   /** A repo set's generator directory, packed at generator/ in the bundle. */
   generator?: string;
@@ -152,12 +164,12 @@ export async function sealSet(o: SealOptions): Promise<{ manifest: HeldoutManife
   const kind: SetKind = o.kind ?? 'multiuser';
   if (!(SET_KINDS as readonly string[]).includes(kind)) fail(`--kind must be ${SET_KINDS.join(' or ')} (got ${JSON.stringify(kind)})`);
   if (!/^[a-z0-9][a-z0-9.-]*$/.test(o.set) || ['v0.1', ...PUBLIC_TREES].includes(o.set)) fail(`--task-set must name a set other than v0.1, runner, tasks or docs, such as v0.3 (got ${JSON.stringify(o.set)}); a custody clone holding runner/, tasks/ or docs/ is refused as a public tree`);
-  if (kind === 'repo' && (o.slice || o.corpus)) fail('--kind repo seals a repository task set, which has no world slice and no corpus pages; drop --slice and --corpus');
-  if (kind === 'multiuser' && !o.slice) fail('--slice is required for a multiuser set (its held-out world records)');
+  if (kind === 'repo' && (o.slice || o.world || o.corpus)) fail('--kind repo seals a repository task set, which has no world slice and no corpus pages; drop --slice, --world and --corpus');
+  if (kind === 'multiuser' && !o.slice === !o.world) fail('a multiuser set takes --slice (its held-out records of the public world) or --world (its own world directory), exactly one');
   if (kind === 'multiuser' && o.generator) fail('--generator goes with --kind repo; a multiuser bundle holds no generator/');
   const other: SetKind = kind === 'repo' ? 'multiuser' : 'repo';
   if (existsSync(join(repo, 'tasks', other, o.set))) fail(`set name ${o.set} is already used by tasks/${other}/ in the checkout; set names are unique across kinds`);
-  for (const [k, p] of [['--tasks', o.tasks], ['--slice', o.slice], ['--corpus', o.corpus], ['--generator', o.generator]] as const) if (p && inside(p, repo)) fail(`${k} ${p} is inside the public checkout; sealed plaintext is written and kept outside it`);
+  for (const [k, p] of [['--tasks', o.tasks], ['--slice', o.slice], ['--world', o.world], ['--corpus', o.corpus], ['--generator', o.generator]] as const) if (p && inside(p, repo)) fail(`${k} ${p} is inside the public checkout; sealed plaintext is written and kept outside it`);
   const recipient = readRecipient(o.recipient);
   if (!/^age1[0-9a-z]+$/.test(recipient)) fail(`the recipient must be a public age recipient (age1...); got a value of ${recipient.length} characters from ${existsSync(o.recipient) ? o.recipient : 'the argument'}`);
   const set = heldoutSet(o.set, repo, kind);
@@ -182,7 +194,26 @@ export async function sealSet(o: SealOptions): Promise<{ manifest: HeldoutManife
     if (unlabelled.length) fail(`${unlabelled.length} repo task(s) have no environment/Dockerfile whose last instruction is ${SEALED_LABEL_LINE} (${unlabelled.join(', ')}); cleanup.ts finds held-out images by that label, so the set cannot be sealed`);
   }
   let sliceBytes: Buffer | null = null;
-  if (kind === 'multiuser') {
+  const ownWorld: Record<string, string> = {};
+  const ownWorldEntries: TarEntry[] = [];
+  if (o.world) {
+    const pub = JSON.parse(readFileSync(join(repo, 'world', 'seed', 'world.json'), 'utf8')) as World;
+    const dir = resolve(o.world);
+    if (!lstatSync(join(dir, 'world.json'), { throwIfNoEntry: false })?.isFile()) fail(`--world ${dir} holds no regular file world.json`);
+    sliceBytes = readFileSync(join(dir, 'world.json'));
+    let world: WorldSlice;
+    try { world = JSON.parse(sliceBytes.toString('utf8')) as WorldSlice; } catch { fail(`--world ${dir}/world.json is not JSON`); }
+    const problems = ownWorldProblems(world!, pub);
+    if (problems.length) fail(`the set's own world is not one a held-out set can bring: ${problems.slice(0, 5).join('; ')}`, problems.length);
+    for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (e.name === 'world.json') continue;
+      const path = `world/${e.name}`;
+      if (!e.isFile() || !OWN_WORLD_PATH.test(path)) fail(`--world ${dir} holds ${JSON.stringify(e.name)}, which is not a regular file a bundle may carry beside world.json (letters, digits, ".", "_", "-"; never slice.json)`);
+      const data = new Uint8Array(readFileSync(join(dir, e.name)));
+      ownWorldEntries.push({ path, data });
+      ownWorld[path] = sha256(data);
+    }
+  } else if (kind === 'multiuser') {
     const pubText = readFileSync(join(repo, 'world', 'seed', 'world.json'), 'utf8');
     const pub = JSON.parse(pubText) as World;
     sliceBytes = readFileSync(o.slice!);
@@ -219,7 +250,7 @@ export async function sealSet(o: SealOptions): Promise<{ manifest: HeldoutManife
     }
   };
   add(tasksDir, `tasks/${kind}/${o.set}/heldout/`);
-  if (sliceBytes) entries.push({ path: 'world/slice.json', data: new Uint8Array(sliceBytes) });
+  if (sliceBytes) entries.push({ path: 'world/slice.json', data: new Uint8Array(sliceBytes) }, ...ownWorldEntries);
   entries.push({ path: OPAQUE_SALT_FILE, data: new TextEncoder().encode(randomBytes(32).toString('hex') + '\n') });
   const generatorDir = o.generator ? resolve(o.generator) : undefined;
   if (generatorDir) {
@@ -261,7 +292,7 @@ export async function sealSet(o: SealOptions): Promise<{ manifest: HeldoutManife
     stage: () => { mkdirSync(dirname(bundlePath), { recursive: true }); writeFileSync(bundlePath, ciphertext); return [bundleRel]; },
   });
 
-  const worldManifest = kind === 'multiuser' ? readFileSync(join(repo, 'world', 'seed', 'MANIFEST.json'), 'utf8') : null;
+  const worldManifest = kind === 'multiuser' && !o.world ? readFileSync(join(repo, 'world', 'seed', 'MANIFEST.json'), 'utf8') : null;
   const keep: Partial<HeldoutManifest> = Object.fromEntries((['opening_budget', 'alpha_per_opening', 'status', 'openings', 'exposures'] as const).filter((k) => previous?.[k] !== undefined).map((k) => [k, previous![k]]));
   if (o.exposures?.length) {
     const known = new Set((keep.exposures ?? []).map((e) => JSON.stringify(e)));
@@ -284,6 +315,7 @@ export async function sealSet(o: SealOptions): Promise<{ manifest: HeldoutManife
       bundle: bundleRel,
       sealed_at: now(),
       ...(Object.keys(extras).length ? { extras } : {}),
+      ...(o.world ? { own_world: ownWorld } : {}),
     },
     world_manifest_sha256: worldManifest === null ? null : sha256(worldManifest),
     world_json_sha256: worldManifest === null ? null : (JSON.parse(worldManifest) as { world_json_sha256?: string }).world_json_sha256 ?? '',
@@ -308,6 +340,7 @@ export async function sealFromBackup(o: BackupSealOptions): Promise<Awaited<Retu
   const log = o.log ?? (() => {});
   const fail = (msg: string): never => { throw new SealRefusal(msg); };
   const want = (o.sha256 ?? '').toLowerCase();
+  if (o.world) fail('--world seals a set from its own world directory in plaintext; it does not go with --from-backup');
   if (!want) fail('--from-backup needs --sha256, the sha256 of the backup file; nothing was decrypted');
   if (!/^[0-9a-f]{64}$/.test(want)) fail('--sha256 must be 64 hex characters; nothing was decrypted');
   const backupsPath = join(resolve(o.repo), BACKUPS_FILE);
@@ -405,23 +438,24 @@ if (import.meta.main) {
   const argv = process.argv.slice(2);
   const flag = (n: string) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : undefined; };
   const repo = flag('repo') ?? join(import.meta.dir, '..', '..');
-  const need = ['task-set', 'tasks', ...(flag('kind') === 'repo' ? [] : ['slice'])].filter((k) => !flag(k));
+  const need = ['task-set', 'tasks', ...(flag('kind') === 'repo' || flag('world') ? [] : ['slice'])].filter((k) => !flag(k));
   const include = argv.flatMap((a, i) => (a === '--include' && argv[i + 1] ? [argv[i + 1]!] : []));
-  const usage = 'usage: bun scripts/sealed/seal.ts --task-set <set> --tasks <dir> --slice <slice.json> [--corpus <dir>] | --kind repo --task-set <set> --tasks <dir> [--generator <dir>]; then [--exposures <file.json>] [--custodian <name>] [--custody <clone>] [--recipient sealed/recipient.txt] [--remote origin]; from an author\'s encrypted backup add --from-backup <file.tar.age> --sha256 <hex> [--include <path> ...] [--identity <drive copy>], with --tasks, --slice, --corpus and --include as paths under the unpacked backup';
-  const known = new Set(['repo', 'task-set', 'kind', 'tasks', 'slice', 'corpus', 'generator', 'exposures', 'custodian', 'custody', 'recipient', 'remote', 'from-backup', 'sha256', 'include', 'identity']);
+  const usage = 'usage: bun scripts/sealed/seal.ts --task-set <set> --tasks <dir> --slice <slice.json> [--corpus <dir>] | --task-set <set> --tasks <dir> --world <own world dir> --corpus <dir> | --kind repo --task-set <set> --tasks <dir> [--generator <dir>]; then [--exposures <file.json>] [--custodian <name>] [--custody <clone>] [--recipient sealed/recipient.txt] [--remote origin]; from an author\'s encrypted backup add --from-backup <file.tar.age> --sha256 <hex> [--include <path> ...] [--identity <drive copy>], with --tasks, --slice, --corpus and --include as paths under the unpacked backup';
+  const known = new Set(['repo', 'task-set', 'kind', 'tasks', 'slice', 'world', 'corpus', 'generator', 'exposures', 'custodian', 'custody', 'recipient', 'remote', 'from-backup', 'sha256', 'include', 'identity']);
   const unknown = argv.filter((a, i) => i % 2 === 0 && !(a.startsWith('--') && known.has(a.slice(2))));
   if (unknown.length || argv.length % 2) { console.error(`HE-RUN-002 ${unknown.length ? `unknown argument(s) ${unknown.join(' ')}` : 'a flag without a value'}; every flag takes one value; ${usage}`); process.exit(2); }
   const flags = argv.filter((_, i) => i % 2 === 0);
   const repeated = [...new Set(flags.filter((a, i) => a !== '--include' && flags.indexOf(a) !== i))];
   if (repeated.length) { console.error(`HE-RUN-002 ${repeated.join(' ')} given more than once; only --include repeats; ${usage}`); process.exit(2); }
   if (need.length) { console.error(`HE-RUN-002 missing --${need.join(', --')}; ${usage}`); process.exit(2); }
+  if (flag('from-backup') && flag('world')) { console.error(`HE-RUN-002 --world does not go with --from-backup; ${usage}`); process.exit(2); }
   if (!flag('from-backup') && (include.length || flag('sha256') || flag('identity'))) { console.error(`HE-RUN-002 --include, --sha256 and --identity go with --from-backup; ${usage}`); process.exit(2); }
   if (flag('from-backup') && !flag('sha256')) { console.error(`HE-RUN-002 --from-backup needs --sha256 <hex>, the sha256 of the backup file the author sent; nothing was decrypted; ${usage}`); process.exit(2); }
   if (flag('from-backup') && !/^[0-9a-fA-F]{64}$/.test(flag('sha256')!)) { console.error(`HE-RUN-002 --sha256 must be 64 hex characters; nothing was decrypted; ${usage}`); process.exit(2); }
   try {
     const exposures = flag('exposures') ? JSON.parse(readFileSync(flag('exposures')!, 'utf8')) as Exposure[] : undefined;
     if (exposures !== undefined && !Array.isArray(exposures)) throw new SealRefusal('--exposures must hold a JSON list of exposures');
-    const base = { repo, set: flag('task-set')!, kind: flag('kind') as SetKind | undefined, tasks: flag('tasks')!, slice: flag('slice'), corpus: flag('corpus'), generator: flag('generator'), custody: flag('custody'), recipient: flag('recipient') ?? join(repo, 'sealed', 'recipient.txt'), remote: flag('remote'), exposures, custodian: flag('custodian') };
+    const base = { repo, set: flag('task-set')!, kind: flag('kind') as SetKind | undefined, tasks: flag('tasks')!, slice: flag('slice'), world: flag('world'), corpus: flag('corpus'), generator: flag('generator'), custody: flag('custody'), recipient: flag('recipient') ?? join(repo, 'sealed', 'recipient.txt'), remote: flag('remote'), exposures, custodian: flag('custodian') };
     const r = flag('from-backup')
       ? await sealFromBackup({ ...base, backup: flag('from-backup')!, sha256: flag('sha256')!, include, identityPath: flag('identity'), log: (l) => console.log(l) })
       : await (async () => {
@@ -432,7 +466,7 @@ if (import.meta.main) {
       })();
     const s = r.manifest.sealed!;
     const short = (x: string | null | undefined) => (x ? x.slice(0, 12) : 'none');
-    console.log(`sealed set ${flag('task-set')}${r.manifest.kind === 'repo' ? ' (repo)' : ''}: ${s.task_count} tasks, tree ${r.manifest.tree_sha256.slice(0, 12)}, bundle ${s.bundle_sha256.slice(0, 12)}, world slice ${short(s.world_slice_sha256)}, corpus ${short(s.heldout_corpus_sha256)}${r.manifest.kind === 'repo' ? `, generator ${short(s.generator_sha256)}` : ''}${s.extras ? `, ${Object.keys(s.extras).length} extra file(s)` : ''}`);
+    console.log(`sealed set ${flag('task-set')}${r.manifest.kind === 'repo' ? ' (repo)' : ''}: ${s.task_count} tasks, tree ${r.manifest.tree_sha256.slice(0, 12)}, bundle ${s.bundle_sha256.slice(0, 12)}, world slice ${short(s.world_slice_sha256)}, corpus ${short(s.heldout_corpus_sha256)}${r.manifest.kind === 'repo' ? `, generator ${short(s.generator_sha256)}` : ''}${s.extras ? `, ${Object.keys(s.extras).length} extra file(s)` : ''}${s.own_world ? `, its own world with ${Object.keys(s.own_world).length} file(s) beside world.json` : ''}`);
     console.log(`${s.bundle} pushed to ${CUSTODY_REF} in ${r.commit.slice(0, 12)}; next: commit ${relative(repo, r.manifestPath)} in a pull request to main; bun scripts/seal-heldout.ts --check must pass`);
     if (r.manifest.exposures && r.manifest.opening_budget === undefined) console.log('the manifest carries exposures but no openings ledger yet: add opening_budget, alpha_per_opening, status and openings before committing, or bun scripts/seal-heldout.ts --check fails');
   } catch (e) {

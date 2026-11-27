@@ -4,7 +4,9 @@
 // the pinned commit, and docker compose renders compose.yaml, plus compose.<provider>.yaml when it exists as
 // runner/trial/docker.ts merges it, with the prepare.sh lines and fixed placeholder paths and secrets ("docker compose config",
 // no daemon call). tests/qm-openai-branch.test.ts compares the checkout's stack against it, so a change for one cell model
-// cannot move another's. The file was written from main at 2a47028c6b:
+// cannot move another's. The file was written from main at 2a47028c6b and rewritten on 2026-11-21 from the QM 7689355c (now 77024e79)
+// re-pin tree (internal-task), whose only change is PRIVATE_NETWORK_ALLOWED_ORIGINS for core and QM_PRIVATE_NETWORK_ALLOWED_ORIGINS
+// for the task container (empty on the Opus and Sol cells, the proxy origin on the Particle cell):
 //
 //   mkdir /tmp/he-2a47028c6b && git archive 2a47028c6b harnesses/qm | tar -x -C /tmp/he-2a47028c6b
 //   bun tests/fixtures/qm-openai/make-golden.ts --from /tmp/he-2a47028c6b/harnesses

@@ -29,6 +29,7 @@
  *
  *   bun runner/heldout/openings.ts      print every set's derived openings
  */
+import { analysisConfigProblems, type AnalysisConfig } from '../../scripts/owner-identity/analysis-config.ts';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -53,7 +54,9 @@ import { DEFAULT_SET, heldoutSet, heldoutSets, liveSharers, liveTarget, openings
 export interface HeldoutClaim {
   id: string;
   sentence: string;
-  /** comparisons.json or comparisons.gbrain.json: export.ts makes these two from trials.jsonl and refuses any other source. */
+  /** comparisons.json, comparisons.gbrain.json or comparisons.owner-identity.json: export.ts makes these three from the raw results
+   *  (the third with scripts/owner-identity/analyze.ts, from each trial's owner-identity verdicts, any row P output under
+   *  <results>/row-p and the block's owner_identity config) and refuses any other source. */
   source: string;
   /** Dot path to the list of entries in that file, such as "comparisons" or "scopes.0.comparisons". */
   path: string;
@@ -83,7 +86,13 @@ export interface HeldoutBlock {
   candidate_sha256: string;
   /** Sealed sets: the claims the opening publishes one accept or reject for. */
   claims?: HeldoutClaim[];
+  /** Owner-identity runs (internal-task): the analysis config scripts/owner-identity/analyze.ts reads; required when a claim's
+   *  source is comparisons.owner-identity.json. */
+  owner_identity?: AnalysisConfig;
 }
+
+/** The claim sources export.ts makes. */
+export const CLAIM_SOURCES = ['comparisons.json', 'comparisons.gbrain.json', 'comparisons.owner-identity.json'] as const;
 
 interface PreregLike {
   run_id: string;
@@ -173,7 +182,7 @@ export function cellProblem(prereg: PreregLike): string | null {
  *  noninferiority claim, a known family and a well-formed requires_gate. With cells (the run's cell ids in order), a
  *  comparisons.json claim whose where names cells a and b must name cells of the run with a before b, the one order
  *  compare-run.ts compares them in. */
-export function claimProblems(claims: unknown, cells?: string[]): string[] {
+export function claimProblems(claims: unknown, cells?: string[], ownerIdentity?: unknown): string[] {
   if (!Array.isArray(claims) || !claims.length) return ['heldout.claims must be a non-empty list; a sealed opening publishes one preregistered accept or reject per claim'];
   const problems: string[] = [];
   const ids = new Set<string>();
@@ -183,7 +192,7 @@ export function claimProblems(claims: unknown, cells?: string[]): string[] {
     else if (ids.has(c.id)) problems.push(`${at}: id is not unique`);
     else ids.add(c.id);
     if (typeof c?.sentence !== 'string' || !c.sentence.trim()) problems.push(`${at}: sentence must be a non-empty string`);
-    if (c?.source !== 'comparisons.json' && c?.source !== 'comparisons.gbrain.json') problems.push(`${at}: source must be comparisons.json or comparisons.gbrain.json, the two export.ts makes (got ${JSON.stringify(c?.source)})`);
+    if (!(CLAIM_SOURCES as readonly unknown[]).includes(c?.source)) problems.push(`${at}: source must be ${CLAIM_SOURCES.slice(0, -1).join(', ')} or ${CLAIM_SOURCES.at(-1)}, the three export.ts makes (got ${JSON.stringify(c?.source)})`);
     if (typeof c?.path !== 'string' || !c.path) problems.push(`${at}: path must be a non-empty string`);
     if (!c?.where || typeof c.where !== 'object' || Array.isArray(c.where) || !Object.keys(c.where).length) problems.push(`${at}: where must be a non-empty object`);
     else if (Object.values(c.where).some((v) => typeof v !== 'string' && !(typeof v === 'number' && Number.isFinite(v)))) problems.push(`${at}: every where value must be a string or a finite number, the values a comparison entry is matched on`);
@@ -201,6 +210,10 @@ export function claimProblems(claims: unknown, cells?: string[]): string[] {
       else if (ia >= ib) problems.push(`${at}: where names a = ${w.a} and b = ${w.b}, but compare-run.ts compares b minus a with a before b in the run's cell order (${cells.join(', ')}); name a = ${w.b} and b = ${w.a} and flip the direction`);
     }
   });
+  if (claims.some((c: Partial<HeldoutClaim>) => c?.source === 'comparisons.owner-identity.json')) {
+    if (ownerIdentity === undefined) problems.push('heldout.owner_identity is missing: a comparisons.owner-identity.json claim needs the analysis config (sdd per comparison kind, and p_vs_g for a row P claim) that scripts/owner-identity/analyze.ts reads');
+    else problems.push(...analysisConfigProblems(ownerIdentity).map((x) => `heldout.${x}`));
+  }
   return problems;
 }
 
@@ -212,7 +225,7 @@ function blockProblem(prereg: PreregLike, sets: string[]): { code: string; messa
   if (sets.length !== 1 || block.set !== sets[0]) return { code: 'HE-HELDOUT-001', message: `run ${id}: heldout.set is ${JSON.stringify(block.set)} but its held-out cells run ${sets.join(', ')}; one run opens one held-out set. fix: name the set the cells run, or split the run` };
   if (block.label !== 'confirmatory' && block.label !== 'dev') return { code: 'HE-HELDOUT-001', message: `run ${id}: heldout.label must be "confirmatory" or "dev" (got ${JSON.stringify(block.label)})` };
   if (typeof block.candidate_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(block.candidate_sha256)) return { code: 'HE-HELDOUT-001', message: `run ${id}: heldout.candidate_sha256 must be the 64-hex sha256 of the candidate (docs/methodology.md item 14, R5); got ${JSON.stringify(block.candidate_sha256)}` };
-  const claimed = block.claims === undefined ? [] : claimProblems(block.claims, prereg.cells?.length ? prereg.cells.map((c) => String(c.id)) : undefined);
+  const claimed = block.claims === undefined ? [] : claimProblems(block.claims, prereg.cells?.length ? prereg.cells.map((c) => String(c.id)) : undefined, block.owner_identity);
   if (claimed.length) return { code: 'HE-HELDOUT-001', message: `run ${id}: ${claimed.join('; ')}` };
   if (block.label === 'dev' && !(typeof block.reason === 'string' && block.reason.trim())) return { code: 'HE-HELDOUT-004', message: `run ${id} is a dev opening of set ${block.set} with no reason; fix: say why it is not confirmatory in heldout.reason and in its ledger row (for example "later opening", "revise-then-retest", "in-sample for <change>")` };
   return null;

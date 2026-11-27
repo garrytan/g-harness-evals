@@ -16,6 +16,7 @@
  *   tasks/multiuser/<set>/heldout/<task>/...         the task tree
  *   tasks/multiuser/<set>/sealed-world/slice.json   the world slice, sealed-world/corpus/heldout/ its corpus pages,
  *                                                   sealed-world/extras/ the files sealed.extras lists (seal.ts --include), and
+ *                                                   sealed-world/world/ the own-world files sealed.own_world lists (seal.ts --world),
  *                                                   sealed-world/opaque-salt, which maps the opaque task ids back
  *   docs/benchmarks/<run>/results/                   each run's raw receipts, where every plaintext run keeps them
  * and rewrites the set's MANIFEST.json as a plaintext manifest (files and tasks listed, the same tree_sha256, ledger
@@ -92,7 +93,7 @@ export async function releaseSet(o: ReleaseOptions): Promise<{ runs: string[]; t
   const identity = await custodyIdentity({ identityPath: o.identityPath, escrowPath: join(clone, ESCROW_FILE), recipient: s.recipient, env: o.env });
   const entries = unpackTar(await decryptWith(identity, new Uint8Array(bundle)));
   const prefix = `tasks/${kind}/${o.set}/heldout/`;
-  const problem = bundleEntryProblem(entries, o.set, s.extras, kind);
+  const problem = bundleEntryProblem(entries, o.set, s.extras, kind, s.own_world);
   if (problem) fail(`${problem}; nothing was written`);
   const extraDir = join(repo, 'tasks', kind, o.set, kind === 'repo' ? 'sealed-bundle' : 'sealed-world');
   const staged = new Map<string, Uint8Array>();

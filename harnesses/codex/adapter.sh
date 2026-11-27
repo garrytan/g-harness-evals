@@ -445,6 +445,69 @@ if [ -n "$sas_config" ]; then
   sas_arm_json=",\"sas_arm\":${sas_line#ok }"
 fi
 
+# owner-identity (internal-task): HE_OWNER_CARD_B64 is the cell's owner card (Cell.owner_card, base64 of the set's world/owner-card.md,
+# runner/trial/owner-card.ts). It is appended to $CODEX_HOME/AGENTS.md (Codex's global instructions) after anything the gbrain installer wrote there: a blank line
+# when the file already has bytes, the card, a newline. $HE_LOG_DIR/owner-card.json records the card's sha256 and length, the file,
+# whether it existed and its sha256 after; ready carries owner_card. A card that is empty, over 4,000 bytes or not canonical base64
+# is HE-ADAPTER-007, exit 2 before ready. Unset, nothing here runs.
+owner_card_json=''
+if [ -n "${HE_OWNER_CARD_B64:-}" ]; then
+  set +e
+  owner_card_line=$(node - "$CODEX_HOME/AGENTS.md" "$HE_LOG_DIR/owner-card.json" <<'JS'
+const fs = require("fs"), path = require("path"), crypto = require("crypto");
+const [file, recPath] = process.argv.slice(2);
+const b64 = process.env.HE_OWNER_CARD_B64;
+const card = Buffer.from(b64, "base64");
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const rec = { file, card_sha256: sha(card), card_bytes: card.length, existed: fs.existsSync(file) };
+if (!card.length || card.length > 4000 || card.toString("base64") !== b64) {
+  Object.assign(rec, { status: "error", code: "HE-ADAPTER-007", error: "HE_OWNER_CARD_B64 is empty, over 4,000 bytes or not canonical base64" });
+  fs.writeFileSync(recPath, JSON.stringify(rec) + "\n");
+  console.log("HE-ADAPTER-007 " + rec.error);
+  process.exit(2);
+}
+fs.mkdirSync(path.dirname(file), { recursive: true });
+const before = rec.existed ? fs.readFileSync(file) : Buffer.alloc(0);
+const after = Buffer.concat([before, Buffer.from(before.length ? "\n\n" : ""), card, Buffer.from("\n")]);
+fs.writeFileSync(file, after);
+Object.assign(rec, { bytes_before: before.length, file_sha256: sha(after), status: "ok", code: null });
+fs.writeFileSync(recPath, JSON.stringify(rec) + "\n");
+console.log("ok " + rec.card_sha256 + " " + rec.existed);
+JS
+)
+  owner_card_code=$?
+  set -e
+  log "owner card: ${owner_card_line:-HE-ADAPTER-007 the owner card could not be written; see stderr.log}"
+  [ "$owner_card_code" -eq 0 ] || exit 2
+  read -r _ owner_card_sha owner_card_existed <<< "$owner_card_line"
+  owner_card_json=$(printf ',"owner_card":{"file":"%s","card_sha256":"%s","appended_to_existing":%s}' "$CODEX_HOME/AGENTS.md" "$owner_card_sha" "$owner_card_existed")
+fi
+
+# owner identity family C (internal-task, docs/owner-identity.md "Family C"): HE_OI_CAPTURE_B64 is the task's capture plan (the runner's
+# runner/trial/oi-capture.ts, from the task's capture.json). capture/wire-capture.cjs beside this file adds gbrain's SessionEnd
+# capture group to hooks.json and its trust table to config.toml in the shape `gbrain bootstrap harness` writes, with the gbrain
+# binary and hook launcher the installer view placed, and writes the plan /opt/harness/capture/launch-workers.sh reads into
+# /tmp/he-oi-capture (container-local): the workers' briefs and GBRAIN_SESSION_AGENT labels and worker.env, the variables these turns
+# carry (Codex's shell drops the token variables from its tools' environment, so the workers need them written). The owner's last
+# turn asks the harness to run the launcher, so the workers are headless codex exec sessions under this harness's own session. It runs
+# only with the default route and HE_GBRAIN_INSTALL=gbrain-installer; anything else, or a failed wiring, is HE-ADAPTER-008 and exit 2
+# before ready, recorded in $HE_LOG_DIR/oi-capture.json. ready carries oi_capture. Unset, nothing here runs.
+oi_capture_json=''
+if [ -n "${HE_OI_CAPTURE_B64:-}" ]; then
+  if [ "$route" != default ] || [ -n "$skill_arm" ] || [ "$install_mode" = 1 ] || [ "${HE_GBRAIN_INSTALL:-}" != gbrain-installer ]; then
+    log "HE-ADAPTER-008 family C capture runs with the default route and HE_GBRAIN_INSTALL=gbrain-installer only (HE_HARNESS_CONFIG=${route_config:-default}, HE_GBRAIN_INSTALL=${HE_GBRAIN_INSTALL:-unset})"
+    exit 2
+  fi
+  set +e
+  oi_capture_line=$(node "$harness_dir/capture/wire-capture.cjs" codex "$HE_SESSION_STATE_DIR" "$CODEX_HOME" "$HE_LOG_DIR" /tmp/he-oi-capture "$HE_WORKSPACE_DIR")
+  oi_capture_code=$?
+  set -e
+  log "family C capture: ${oi_capture_line:-HE-ADAPTER-008 the capture wiring failed before it could report; see stderr.log}"
+  [ "$oi_capture_code" -eq 0 ] || exit 2
+  read -r _ oi_capture_hook oi_capture_workers <<< "$oi_capture_line"
+  oi_capture_json=$(printf ',"oi_capture":{"hook_file":"%s","workers":%s,"launcher":"%s","record":"%s"}' "$oi_capture_hook" "$oi_capture_workers" "$harness_dir/capture/launch-workers.sh" "$HE_LOG_DIR/oi-capture.json")
+fi
+
 # internal-task, the skill-resolver arms (scripts/skill-resolver/ARMS.md). HE_HARNESS_CONFIG skills-<arm> reads the kit at
 # ${HE_SKILL_KIT_DIR:-/opt/skill-resolver} (scripts/skill-resolver/build-kit.ts):
 #   skills-native      the catalog in $CODEX_HOME/skills; a UserPromptSubmit group of its own in hooks.json, trusted by its own
@@ -595,6 +658,24 @@ sweep() {
   done
 }
 
+# gbrain's Codex SessionEnd hook (gbrain src/core/bootstrap/codex-hooks.ts) returns inside Codex's 3 s hook kill and leaves the
+# capture to a nohup'd grandchild that has GBRAIN_HOOK_LAUNCHER in its environment, so the capture outlives codex and carries the
+# turn's marker. Before the sweep, wait for those (at most $2 seconds) so they bank the session instead of being killed with the rest.
+drain_session_end() {
+  local p e live deadline=$((SECONDS + $2))
+  while :; do
+    live=0
+    for p in /proc/[0-9]*; do
+      [ "${p#/proc/}" = "$$" ] && continue
+      e=$'\n'$(tr '\0' '\n' 2>/dev/null < "$p/environ")$'\n' || continue
+      if [[ $e == *$'\n'"HE_CODEX_TURN=$1"$'\n'* && $e == *$'\n'GBRAIN_HOOK_LAUNCHER=* ]]; then live=1; break; fi
+    done
+    [ "$live" -eq 1 ] || return 0
+    if [ "$SECONDS" -ge "$deadline" ]; then log "turn $1: gbrain's SessionEnd capture still running after $2 s; the sweep kills it"; return 0; fi
+    sleep 0.2
+  done
+}
+
 record_thread() {
   local tmp="$threads.tmp.$$"
   { if [ -s "$threads" ]; then cat "$threads"; else echo '{}'; fi; } | jq --arg k "$1" --arg v "$2" '.[$k] = $v' > "$tmp"
@@ -656,6 +737,7 @@ codex_turn() {
   fi
   set +e; wait "$cpid"; code=$?; set -e
   cpid=''
+  [ "$stopped" -eq 1 ] || drain_session_end "$marker" 60
   sweep "$marker"
   cat "$err" >&2 || true
   status=$(jq -Rsc --arg code "$code" '
@@ -708,7 +790,7 @@ mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 # Install mode: the watcher starts before ready and stops by itself once this process is gone.
 if [ "$install_mode" = 1 ]; then bash "$HE_INSTALL_DIR/probe.sh" watch codex "$HE_LOG_DIR/install-watch.ndjson" $$ > /dev/null 2>> "$HE_LOG_DIR/install-watch.stderr.log" & fi
 printf '{"harness":"codex","version":"%s","trial":"%s","ready_at":"%s","session_keys":"codex exec (first turn of a key) | codex exec resume <thread id>; dm:<member> | channel:<id>","mcp_servers":%s,"adapter_sha256":"%s"%s}\n' \
-  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$skill_arm_json$sas_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
+  "$version" "$HE_TRIAL_ID" "$(now)" "$mcp_servers" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$owner_card_json$skill_arm_json$sas_arm_json$install_json$oi_capture_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

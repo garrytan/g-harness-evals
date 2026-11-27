@@ -776,6 +776,69 @@ PY
   skill_arm_json=$(printf ',"skill_arm":{"arm":"%s","catalog_hash":"%s","gbrain_catalog_hash":%s,"index_hash":%s,"skills_installed":%s,"hook":"%s"}' "${skill_config#skills-}" "$skill_catalog_hash" "$skill_gbrain_hash" "$skill_index_hash" "$skill_count" "$skill_hook_state")
 fi
 
+# owner-identity (internal-task): HE_OWNER_CARD_B64 is the cell's owner card (Cell.owner_card, base64 of the set's world/owner-card.md,
+# runner/trial/owner-card.ts). It goes where Hermes reads who its user is: $HERMES_HOME/memories/USER.md, the built-in user
+# profile. At the pin Hermes loads MEMORY.md and USER.md at every agent start (agent/agent_init.py _init_memory,
+# tools/memory_tool_store.py load_from_disk) and puts USER.md in the system prompt under "USER PROFILE (who the user is)"
+# (agent/system_prompt.py _memory_parts); SOUL.md is the agent's own identity (identity slot 1, agent/prompt_builder.py
+# load_soul_md), where route-startup and gbrain's installer write. The card is one entry after any entries already there,
+# separated by Hermes's entry delimiter "\n§\n". Hermes caps USER.md at memory.user_char_limit characters (1,375 by default,
+# hermes_cli/config_defaults.py) for the agent's own memory writes, so the cap in $HERMES_HOME/config.yaml becomes 1,375 plus
+# the card entry and its delimiter: the agent keeps the room it has in a cell with no card. A config.yaml that already has a
+# memory: section is refused. $HE_LOG_DIR/owner-card.json records the card's sha256 and length, the file, whether it existed,
+# its sha256 after and the limit; ready carries owner_card. A card that is empty, over 4,000 bytes or not canonical base64 is
+# HE-ADAPTER-007, exit 2 before ready, nothing written. Unset, nothing here runs.
+owner_card_json=''
+if [ -n "${HE_OWNER_CARD_B64:-}" ]; then
+  set +e
+  owner_card_line=$(python3 - "$HERMES_HOME/memories/USER.md" "$HERMES_HOME/config.yaml" "$HE_LOG_DIR/owner-card.json" <<'PY'
+import base64, binascii, hashlib, json, os, re, sys
+path, config, out = sys.argv[1:4]
+DELIM, DEFAULT_LIMIT = "\n§\n", 1375
+b64 = os.environ["HE_OWNER_CARD_B64"]
+try:
+    card = base64.b64decode(b64, validate=True)
+except (binascii.Error, ValueError):
+    card = b""
+sha = lambda b: hashlib.sha256(b).hexdigest()
+rec = {"file": path, "card_sha256": sha(card), "card_bytes": len(card), "existed": os.path.isfile(path)}
+def refuse(msg):
+    rec.update(status="error", code="HE-ADAPTER-007", error=msg)
+    open(out, "w").write(json.dumps(rec) + "\n")
+    print("HE-ADAPTER-007 " + msg)
+    sys.exit(2)
+if not card or len(card) > 4000 or base64.b64encode(card).decode() != b64:
+    refuse("HE_OWNER_CARD_B64 is empty, over 4,000 bytes or not canonical base64")
+try:
+    entry = card.decode("utf-8").strip()
+except UnicodeDecodeError:
+    refuse("the owner card is not UTF-8")
+if DELIM in "\n" + entry + "\n":
+    refuse("the owner card holds Hermes's memory entry delimiter, a line with only §")
+text = open(config, encoding="utf-8").read() if os.path.isfile(config) else ""
+if re.search(r"(?m)^memory:", text):
+    refuse("%s already has a memory: section; the owner card's user_char_limit would replace it" % config)
+limit = DEFAULT_LIMIT + len(entry) + len(DELIM)
+before = open(path, "rb").read() if rec["existed"] else b""
+existing = before.decode("utf-8").strip()
+after = ((existing + DELIM) if existing else "") + entry
+os.makedirs(os.path.dirname(path), exist_ok=True)
+open(path, "w", encoding="utf-8").write(after)
+with open(config, "a", encoding="utf-8") as f:
+    f.write(("" if not text or text.endswith("\n") else "\n") + "memory:\n  user_char_limit: %d\n" % limit)
+rec.update(bytes_before=len(before), file_sha256=sha(after.encode("utf-8")), user_char_limit={"default": DEFAULT_LIMIT, "set": limit, "config": config}, status="ok", code=None)
+open(out, "w").write(json.dumps(rec) + "\n")
+print("ok %s %s %d" % (rec["card_sha256"], "true" if rec["existed"] else "false", limit))
+PY
+)
+  owner_card_code=$?
+  set -e
+  log "owner card: ${owner_card_line:-HE-ADAPTER-007 the owner card could not be written; see stderr.log}"
+  [ "$owner_card_code" -eq 0 ] || exit 2
+  read -r _ owner_card_sha owner_card_existed owner_card_limit <<< "$owner_card_line"
+  owner_card_json=$(printf ',"owner_card":{"file":"%s","setting":"user profile (memories/USER.md)","card_sha256":"%s","appended_to_existing":%s,"user_char_limit":%s}' "$HERMES_HOME/memories/USER.md" "$owner_card_sha" "$owner_card_existed" "$owner_card_limit")
+fi
+
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
   # The single-shot turn is its session's first and only turn, so every hook route (route-once included) emits on it; the
@@ -1078,7 +1141,7 @@ stopping=0
 trap 'stopping=1' TERM INT
 # Install mode: the watcher starts before ready and stops by itself once this process is gone.
 if [ "$install_mode" = 1 ]; then bash "$HE_INSTALL_DIR/probe.sh" watch hermes "$HE_LOG_DIR/install-watch.ndjson" $$ > /dev/null 2>> "$HE_LOG_DIR/install-watch.stderr.log" & fi
-printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json$route_json$skill_arm_json$sas_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"hermes","version":"%s","trial":"%s","ready_at":"%s","session_keys":"hermes chat -c dm:<member> | channel:<id>","adapter_sha256":"%s"%s}\n' "${HERMES_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$adapter_sha256" "$gbrain_install_json$route_json$owner_card_json$skill_arm_json$sas_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

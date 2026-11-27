@@ -2,11 +2,13 @@
 // behave identically. Every operation takes the authenticated actor, checks scope, logs to the event log and
 // only then changes state.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { CalendarEvent, Channel, Mail, MailParty, Member, Message, Split, World, WorldFile } from '../types.ts';
 import { SimClock, formatOffset } from './clock/clock.ts';
 import { type Timer, TimerStore } from './clock/timers.ts';
 import { EventLog } from './events.ts';
+import { NOTE_MAX_BYTES, NOTE_PERSON_RE } from './notes.ts';
 
 export type Via = 'slack' | 'mcp';
 
@@ -37,6 +39,9 @@ export interface WorldOptions {
   /** v0.4 (internal-task): corpus slugs the task retires ([world] retire). Every seed record carrying one (messages, files, meetings,
    *  mail) is hidden from every read surface for the whole trial; the snapshot keeps it whole. */
   retire?: readonly string[];
+  /** internal-task arm N: the agent's notes store, a directory of <person id>.md files written with seed at construction. Only the bot
+   *  reads and writes it, through the notes tools; absent, the world has no notes store and serves no notes tools. */
+  notes?: { dir: string; seed: Record<string, string> };
   /** Agent-set timers on the simulation clock (clock/timers.ts): the timer_* world-MCP tools exist only when this is true. */
   timers?: boolean;
 }
@@ -89,9 +94,12 @@ export class WorldService {
   readonly bot: Member | null;
   readonly teams: World['teams'];
   readonly accounts: World['accounts'];
+  /** owner-identity: the member whose files the bot reads as its personal agent (World.bot_reads_files_of), or null. */
+  readonly botReadsFilesOf: Member | null;
   /** Null unless the trial turned timers on (WorldOptions.timers). */
   readonly timers: TimerStore | null;
   private fenced = false;
+  private readonly notesDir: string | null;
   private readonly retired: Set<string>;
   private readonly expired: ExpiredWindow[] = [];
   /** Week events: messages posted in a timer turn, which an expired window never hides (the agent's own timer carried them). */
@@ -136,6 +144,12 @@ export class WorldService {
       this.members.push(this.bot);
       for (const c of this.channels) if (c.kind !== 'dm') c.members.push(this.bot.id);
     }
+    this.botReadsFilesOf = null;
+    if (w.bot_reads_files_of !== undefined) {
+      const principal = this.members.find((m) => m.id === w.bot_reads_files_of && m !== this.bot);
+      if (!principal) throw new WorldError('bad_request', `bot_reads_files_of names ${w.bot_reads_files_of}, no member of this split`);
+      this.botReadsFilesOf = principal;
+    }
     this.timers = opts.timers ? new TimerStore(opts.trialId) : null;
     this.retired = new Set(opts.retire ?? []);
     if (this.retired.size) {
@@ -144,6 +158,16 @@ export class WorldService {
         actor: null, via: 'admin', tool: 'admin.retire', kind: 'admin', args: { slugs: this.retired.size }, outcome: 'ok',
         effect: { messages: count(this.messages), files: count(this.files), calendar: count(this.calendar), mail: count(this.mail) },
       });
+    }
+    this.notesDir = opts.notes?.dir ?? null;
+    if (opts.notes) {
+      mkdirSync(opts.notes.dir, { recursive: true });
+      const persons = Object.keys(opts.notes.seed).sort();
+      for (const id of persons) {
+        if (!NOTE_PERSON_RE.test(id)) throw new WorldError('bad_request', `notes seed id ${JSON.stringify(id)} is not a person id`);
+        writeFileSync(join(opts.notes.dir, `${id}.md`), opts.notes.seed[id]!);
+      }
+      this.log.append({ actor: null, via: 'admin', tool: 'admin.notes_seed', kind: 'admin', args: { persons }, outcome: 'ok', effect: { files: persons.length } });
     }
   }
 
@@ -217,6 +241,7 @@ export class WorldService {
   }
 
   canReadFile(actor: Member, file: WorldFile): boolean {
+    if (this.botReadsFilesOf && this.bot && actor.id === this.bot.id) return this.canReadFile(this.botReadsFilesOf, file);
     if (file.owner === actor.id) return true;
     if (file.visibility === 'private') return false;
     if (file.visibility === 'public') return true;
@@ -459,6 +484,51 @@ export class WorldService {
     this.pending.push(pending);
     this.log.append({ actor: actor.id, via, tool: 'request_approval', kind: 'approval', args: input, outcome: 'ok', effect: { pending_action: pending } });
     return pending;
+  }
+
+  // ---- notes (internal-task arm N): the bot's own store, one <person id>.md file per person ----
+
+  get notesOn(): boolean {
+    return this.notesDir !== null;
+  }
+
+  private notesFile(actor: Member, via: Via, tool: string, args: unknown, person?: string): string {
+    if (!this.notesDir) this.deny(actor, via, tool, args, new WorldError('notes_off', 'this world has no notes store'));
+    if (!this.bot || actor.id !== this.bot.id) this.deny(actor, via, tool, args, new WorldError('forbidden', 'the notes store is the agent\'s own'));
+    if (person === undefined) return this.notesDir;
+    if (!NOTE_PERSON_RE.test(person)) this.deny(actor, via, tool, args, new WorldError('bad_person', 'a person id is lowercase letters, digits and hyphens, such as the ids notes_list and list_members show'));
+    return join(this.notesDir, `${person}.md`);
+  }
+
+  notesList(actor: Member, via: Via): Array<{ person: string; bytes: number }> {
+    const dir = this.notesFile(actor, via, 'notes.list', {});
+    const out = readdirSync(dir).filter((f) => f.endsWith('.md')).sort()
+      .map((f) => ({ person: f.slice(0, -3), bytes: Buffer.byteLength(readFileSync(join(dir, f))) }));
+    this.record(actor, via, 'notes.list', 'read', {}, { count: out.length });
+    return out;
+  }
+
+  notesRead(actor: Member, via: Via, person: string): { person: string; text: string } {
+    const args = { person };
+    const path = this.notesFile(actor, via, 'notes.read', args, person);
+    if (!existsSync(path)) this.deny(actor, via, 'notes.read', args, new WorldError('note_not_found', `no notes file for ${person}; notes_list shows every file`));
+    const text = readFileSync(path, 'utf8');
+    this.record(actor, via, 'notes.read', 'read', args, { file: `${person}.md`, bytes: Buffer.byteLength(text) });
+    return { person, text };
+  }
+
+  notesWrite(actor: Member, via: Via, input: { person: string; text: string; append?: boolean }): { person: string; bytes: number; created: boolean } {
+    const path = this.notesFile(actor, via, 'notes.write', input, input.person);
+    if (this.fenced) this.deny(actor, via, 'notes.write', input, new WorldError('fenced'));
+    const created = !existsSync(path);
+    const before = created ? '' : readFileSync(path, 'utf8');
+    const text = input.append && before ? `${before}${before.endsWith('\n') ? '' : '\n'}${input.text}` : input.text;
+    const bytes = Buffer.byteLength(text);
+    if (bytes > NOTE_MAX_BYTES) this.deny(actor, via, 'notes.write', input, new WorldError('too_large', `a notes file holds at most ${NOTE_MAX_BYTES} bytes; this write would make it ${bytes}`));
+    writeFileSync(`${path}.tmp`, text);
+    renameSync(`${path}.tmp`, path);
+    this.record(actor, via, 'notes.write', 'write', input, { file: `${input.person}.md`, bytes, created, append: input.append === true });
+    return { person: input.person, bytes, created };
   }
 
   // ---- timers the agent sets for itself (clock/timers.ts) ----

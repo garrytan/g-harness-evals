@@ -11,6 +11,10 @@
  *   world/world.json, the public world with its held-out records replaced by the slice (mergeWorld), and
  *   opening-receipt.json, which binds the root to one run (run id, preregistration digest, candidate hash) and to the
  *   public commitments in the set's MANIFEST.json.
+ * - A set with its own world (seal.ts --world; the owner-identity banks) brings a whole world instead of a slice of the
+ *   public one: its world.json is the bundle's world/slice.json, and the files beside it (people.json, owner-card.md, ...)
+ *   are bundle entries world/<name> committed under sealed.own_world. Its root's world/world.json is that world verbatim,
+ *   with the files beside it, so the runner, the grader and the gbrain build read the bank's own world, people and card.
  * - verifySealedRoot and receiptProblems are what runner/run.ts plan, preflight and run check before they read a sealed
  *   task or world record.
  *
@@ -34,10 +38,10 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { Decrypter, Encrypter } from 'age-encryption';
 import { RunnerError } from '../errors.ts';
-import { treeFiles, type HeldoutManifest, type SetKind } from '../../scripts/seal-heldout.ts';
+import { OWN_WORLD_PATH, treeFiles, type HeldoutManifest, type SetKind } from '../../scripts/seal-heldout.ts';
 import type { World } from '../../world/types.ts';
 
 export const sha256 = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
@@ -242,6 +246,24 @@ export function sliceRecords(slice: WorldSlice): Record<Collection, Row[]> {
   return Object.fromEntries(WORLD_COLLECTIONS.map((c) => [c, (slice[c] ?? []).filter((r) => r.split === 'heldout')])) as Record<Collection, Row[]>;
 }
 
+/** Shape problems of a set's own world (seal.ts --world): a world.json object with its own world_id, not the public world's,
+ *  and every record in the held-out split, so a held-out trial sees the whole world and no dev world is sealed by mistake. */
+export function ownWorldProblems(world: WorldSlice, pub: World): string[] {
+  if (!world || typeof world !== 'object' || Array.isArray(world)) return ['world: must be a world.json-shaped object'];
+  const problems: string[] = [];
+  if (typeof world.world_id !== 'string' || !world.world_id || world.world_id === pub.world_id) problems.push(`world: world_id must name the set's own world, not the public world ${pub.world_id}; a slice of the public world is sealed with --slice`);
+  let records = 0;
+  for (const c of WORLD_COLLECTIONS) {
+    const rows = world[c] ?? [];
+    if (!Array.isArray(rows)) { problems.push(`world: ${c} must be a list`); continue; }
+    records += rows.length;
+    const off = rows.filter((r) => r?.split !== 'heldout').length;
+    if (off) problems.push(`world: ${off} of its ${rows.length} ${c} are not in the held-out split, where every record of a set's own held-out world is`);
+  }
+  if (!records) problems.push('world: holds no record');
+  return problems;
+}
+
 /** The public world with every held-out record replaced by the slice's held-out records ("dev" and "both" records, and the
  *  world's meta, unchanged). */
 export function mergeWorld(pub: World, slice: WorldSlice): World {
@@ -281,7 +303,8 @@ export interface OpeningReceipt {
   /** null for a repo set, which has no world slice and no corpus pages. */
   world_slice_sha256: string | null;
   heldout_corpus_sha256: string | null;
-  /** sha256 of the public world/seed/world.json the slice was merged into, and of the merged world/world.json; null for a repo set. */
+  /** sha256 of the public world/seed/world.json the slice was merged into, and of the merged world/world.json; null for a repo set.
+   *  An own-world set merges into no public world: public_world_sha256 is null and world/world.json is the slice verbatim. */
   public_world_sha256: string | null;
   world_sha256: string | null;
   /** A repo set's generator/ digest (sealed.generator_sha256), null when its bundle has none; absent for a multiuser set. */
@@ -289,6 +312,8 @@ export interface OpeningReceipt {
   task_count: number;
   /** sealed.extras of the set (seal.ts --include), when it has any: bundle path to sha256. */
   extras?: Record<string, string>;
+  /** sealed.own_world of a set with its own world: each file beside world.json (world/<name>) to its sha256. */
+  own_world?: Record<string, string>;
   /** The access-log line that first admitted this opening, the custody ref and its commit holding the latest line for this run, and whether this receipt came from a resume. */
   access: { event_sha256: string; custody_ref: string; custody_commit: string; opened_at: string; resumed: boolean };
   written_at: string;
@@ -314,21 +339,30 @@ export function sealedPaths(root: string, set: string, kind?: SetKind): SealedPa
   return { kind: k, tasks: join(root, 'tasks', k, set, 'heldout'), slice: join(root, 'world', 'slice.json'), world: join(root, 'world', 'world.json'), corpus: join(root, 'corpus'), extras: join(root, 'extras'), generator: join(root, 'generator'), receipt: join(root, RECEIPT_FILE) };
 }
 
+/** The own-world files of an opened root (world/<name> beside world.json; none for a slice of the public world). */
+export function ownWorldFiles(p: Pick<SealedPaths, 'world'>): string[] {
+  const dir = dirname(p.world);
+  return existsSync(dir) ? readdirSync(dir).filter((n) => OWN_WORLD_PATH.test(`world/${n}`)).sort().map((n) => join(dir, n)) : [];
+}
+
 /** The kind of the set a receipt opened: "repo" when it says so, else "multiuser". */
 export const receiptKind = (r: Pick<OpeningReceipt, 'kind'>): SetKind => (r.kind === 'repo' ? 'repo' : 'multiuser');
 
 /** The first problem with a decrypted bundle's entries for a set, or null: an entry outside the set's task tree, the opaque
- *  salt, the extras the manifest lists (sealed.extras, own keys only) and, for a multiuser set, world/slice.json and
- *  corpus/heldout/, for a repo set, generator/; or extras/ files that differ from sealed.extras (one missing, or another
- *  sha256). Names no entry path. */
-export function bundleEntryProblem(entries: TarEntry[], set: string, extras: Record<string, string> = {}, kind: SetKind = 'multiuser'): string | null {
+ *  salt, the extras the manifest lists (sealed.extras, own keys only) and, for a multiuser set, world/slice.json,
+ *  corpus/heldout/ and the own-world files (sealed.own_world), for a repo set, generator/; or extras/ or own-world files that
+ *  differ from the manifest (one missing, or another sha256). Names no entry path. */
+export function bundleEntryProblem(entries: TarEntry[], set: string, extras: Record<string, string> = {}, kind: SetKind = 'multiuser', ownWorld: Record<string, string> = {}): string | null {
   const tasks = `tasks/${kind}/${set}/heldout/`;
   const listed = (p: string) => p.startsWith('extras/') && Object.hasOwn(extras, p);
-  const own = (p: string) => (kind === 'repo' ? p.startsWith('generator/') : p === 'world/slice.json' || p.startsWith('corpus/heldout/'));
+  const worldFile = (p: string) => kind === 'multiuser' && OWN_WORLD_PATH.test(p) && Object.hasOwn(ownWorld, p);
+  const own = (p: string) => (kind === 'repo' ? p.startsWith('generator/') : p === 'world/slice.json' || p.startsWith('corpus/heldout/') || worldFile(p));
   const stray = entries.find((e) => !(e.path.startsWith(tasks) || e.path === OPAQUE_SALT_FILE || own(e.path) || listed(e.path)));
   if (stray) return `the bundle holds an entry (path sha256 ${sha256(stray.path).slice(0, 12)}) outside the task tree of set ${set}, ${OPAQUE_SALT_FILE}, ${kind === 'repo' ? 'generator/' : 'world/slice.json, corpus/heldout/'} and the manifest's extras`;
   const present = entries.filter((e) => listed(e.path));
   if (present.length !== Object.keys(extras).length || present.some((e) => sha256(e.data) !== extras[e.path])) return `the bundle's extras (${present.length} listed file(s) present) do not match sealed.extras in the public manifest (${Object.keys(extras).length})`;
+  const worldFiles = entries.filter((e) => worldFile(e.path));
+  if (worldFiles.length !== Object.keys(ownWorld).length || worldFiles.some((e) => sha256(e.data) !== ownWorld[e.path])) return `the bundle's own-world files (${worldFiles.length} listed file(s) present) do not match sealed.own_world in the public manifest (${Object.keys(ownWorld).length})`;
   return null;
 }
 
@@ -359,6 +393,13 @@ export function verifySealedRoot(root: string, receipt: OpeningReceipt, repoRoot
   check('the corpus pages digest', corpusDigest(p.corpus), receipt.heldout_corpus_sha256);
   check('world/world.json', sha256(readFileSync(p.world)), receipt.world_sha256);
   extrasProblem();
+  if (receipt.own_world) {
+    check('world/world.json (an own world is the slice verbatim)', sha256(readFileSync(p.world)), receipt.world_slice_sha256);
+    const own = receipt.own_world;
+    const present = ownWorldFiles(p).map((f) => relative(root, f));
+    if (present.join('\n') !== Object.keys(own).sort().join('\n') || present.some((k) => sha256(readFileSync(join(root, k))) !== own[k])) problems.push(`sealed root ${root} has own-world files (${present.length}) beside world/world.json that do not match the opening receipt (${Object.keys(own).length})`);
+    return problems;
+  }
   const pubWorld = join(repoRoot, 'world', 'seed', 'world.json');
   if (existsSync(pubWorld)) {
     const pub = readFileSync(pubWorld);
@@ -389,6 +430,7 @@ export function receiptProblems(receipt: OpeningReceipt, want: { run_id: string;
     if (manifest.kind === 'repo') eq('generator_sha256', receipt.generator_sha256 ?? null, s.generator_sha256 ?? null);
     const canon = (x?: Record<string, string>) => JSON.stringify(Object.entries(x ?? {}).sort());
     eq('extras', canon(receipt.extras), canon(s.extras));
+    eq('own_world', canon(receipt.own_world), canon(s.own_world));
   }
   return problems;
 }

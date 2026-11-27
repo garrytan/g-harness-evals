@@ -26,8 +26,8 @@
 #          saved under $HE_LOG_DIR/turns, so a report can say what QM had
 #          stored when a turn began.
 #
-# internal-task skill-resolver arms (prepare.sh, pin.json configs pi-skills-*): run only (serve cannot register the
-# world MCP server at this pin, README.md), through harnesses/qm/skill-resolver.mjs. Before the turn every
+# internal-task skill-resolver arms (prepare.sh, pin.json configs pi-skills-*): run only (their pin, 90e4ced7, cannot
+# register the world MCP server in serve, README.md), through harnesses/qm/skill-resolver.mjs. Before the turn every
 # arm records the org's installed skills (qm-skills-listed.json); pi-skills-native then calls the resolver
 # with --shadow on instruction.md, the member's own request (no runner preamble on the run entry), and
 # injects nothing, pi-skills-push ("emulated hook") prepends the resolver's block to the turn text, and
@@ -109,6 +109,55 @@ case "${HE_MODEL_BASE_URL%/}" in
     ;;
 esac
 
+# owner-identity (internal-task): HE_OWNER_CARD_B64 is the cell's owner card (Cell.owner_card, base64 of the set's world/owner-card.md,
+# runner/trial/owner-card.ts). QM has no startup file and, at the pin, no per-actor profile that reaches every conversation: a
+# person's own guidance (the personal:<actor> SOUL, the guidance tool's scope "conversation") is composed only into turns in that
+# person's DM scope (src/resolution/resolution-service.ts resolve, composeSoul), so a channel turn or another member's DM would
+# not see it. The card therefore goes into QM's system-prompt setting, the org SOUL: every non-external turn's system prompt holds
+# it under "## Organization instructions" (src/core/orchestrator.ts). The adapter reads the org SOUL (GET
+# /v1/admin/scopes/<org>?view=customize as the trial's admin), appends a blank line, the card and a newline to it, PUTs it back
+# with that version as expectedVersion (/v1/admin/scopes/<org>/soul) and reads it again, which must return the new text.
+# $HE_LOG_DIR/owner-card.json records the setting, the card's sha256 and length, the SOUL's versions, length and sha256 before
+# and after; ready carries owner_card with the setting named. A card that is empty, over 4,000 bytes or not canonical base64, or
+# a SOUL that does not read back, is HE-ADAPTER-007, exit 2 before any turn. Unset, nothing here runs.
+owner_card_json=''
+if [ -n "${HE_OWNER_CARD_B64:-}" ]; then
+  set +e
+  owner_card_line=$(node - "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" "$QM_ORG_SCOPE" "$HE_LOG_DIR/owner-card.json" "$HE_LOG_DIR/qm-owner-card.body.json" <<'JS'
+const fs = require("fs"), crypto = require("crypto"), { execFileSync } = require("child_process");
+const [core, secret, admin, scope, recPath, bodyPath] = process.argv.slice(2);
+const b64 = process.env.HE_OWNER_CARD_B64;
+const card = Buffer.from(b64, "base64");
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const rec = { file: "qm:" + scope + "/soul", setting: "system prompt: the org SOUL, under ## Organization instructions", per_actor_profile: "none that reaches every conversation at this pin; the personal:<actor> SOUL reaches only that person's DMs", card_sha256: sha(card), card_bytes: card.length };
+const done = (fields, line, code) => { Object.assign(rec, fields); fs.writeFileSync(recPath, JSON.stringify(rec) + "\n"); console.log(line); process.exit(code); };
+const refuse = (error) => done({ status: "error", code: "HE-ADAPTER-007", error }, "HE-ADAPTER-007 " + error, 2);
+if (!card.length || card.length > 4000 || card.toString("base64") !== b64) refuse("HE_OWNER_CARD_B64 is empty, over 4,000 bytes or not canonical base64");
+const api = (args) => {
+  try { return JSON.parse(execFileSync("node", ["/opt/harness/qm-api.mjs", args[0], core, secret, admin, ...args.slice(1)], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })); }
+  catch (e) { refuse("qm-api " + args[0] + " " + args[1] + " failed: " + String(e.stdout || e.message).slice(0, 300)); }
+};
+const read = () => { const r = api(["admin-get", "/v1/admin/scopes/" + scope + "?view=customize"]).body ?? {}; return { soul: typeof r.soul === "string" ? r.soul : "", version: typeof r.soulVersion === "number" ? r.soulVersion : 0 }; };
+const before = read();
+const content = before.soul + (before.soul.length ? "\n\n" : "") + card.toString("utf8") + "\n";
+fs.writeFileSync(bodyPath, JSON.stringify({ content, expectedVersion: before.version }));
+const put = api(["admin-put", "/v1/admin/scopes/" + scope + "/soul", bodyPath]);
+const after = read();
+rec.existed = before.soul.length > 0;
+rec.soul_before = { version: before.version, chars: before.soul.length, sha256: sha(Buffer.from(before.soul)) };
+rec.put_http = put.http;
+if (after.soul !== content) refuse("the org SOUL did not read back as written (version " + after.version + ", " + after.soul.length + " characters)");
+done({ bytes_before: Buffer.byteLength(before.soul), file_sha256: sha(Buffer.from(after.soul)), soul_after: { version: after.version, chars: after.soul.length }, status: "ok", code: null }, "ok " + rec.card_sha256 + " " + rec.existed, 0);
+JS
+)
+  owner_card_code=$?
+  set -e
+  log "owner card: ${owner_card_line:-HE-ADAPTER-007 the owner card could not be written; see stderr.log}"
+  [ "$owner_card_code" -eq 0 ] || exit 2
+  read -r _ owner_card_sha owner_card_existed <<< "$owner_card_line"
+  owner_card_json=$(printf ',"owner_card":{"file":"qm:%s/soul","setting":"system prompt (org SOUL)","card_sha256":"%s","appended_to_existing":%s}' "$QM_ORG_SCOPE" "$owner_card_sha" "$owner_card_existed")
+fi
+
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
   text_file="$HE_WORKSPACE_DIR/instruction.md"
@@ -162,6 +211,17 @@ mkdir -p "$HE_TURNS_DIR" "$HE_LOG_DIR/turns"
 if [ "$HE_QM_WORLD" = on ]; then
 [ -n "${HE_WORLD_MCP_URL:-}" ] && [ -n "${HE_WORLD_MCP_TOKEN:-}" ] || { log "serve needs HE_WORLD_MCP_URL and HE_WORLD_MCP_TOKEN"; exit 2; }
 
+# QM core reaches a private MCP server only on an origin listed in its PRIVATE_NETWORK_ALLOWED_ORIGINS. The runner sets it
+# (runner/trial/trial.ts coreEnv); prepare.sh builds the same list from the URLs this container gets
+# (QM_PRIVATE_NETWORK_ALLOWED_ORIGINS). A server whose origin is not listed is a wiring fault, refused here before core's
+# tools/list probe would refuse it.
+log "core's private-network origins: ${QM_PRIVATE_NETWORK_ALLOWED_ORIGINS:-<none>}"
+require_listed() {
+  node -e 'const o = new URL(process.argv[1]).origin; process.exit((process.env.QM_PRIVATE_NETWORK_ALLOWED_ORIGINS || "").split(",").includes(o) ? 0 : 1)' "$2" \
+    || { log "$1 MCP URL's origin is not in core's PRIVATE_NETWORK_ALLOWED_ORIGINS (${QM_PRIVATE_NETWORK_ALLOWED_ORIGINS:-<none>}); prepare.sh builds that list from HE_WORLD_MCP_URL and HE_GBRAIN_MCP_URL"; exit 2; }
+}
+require_listed world "$HE_WORLD_MCP_URL"
+
 # The world-MCP server is registered through QM's admin API with the bot's bearer token (the
 # per-trial token the world minted; in the redaction set). readOnly false exposes the write tools;
 # core probes tools/list before saving, so a 2xx here proves the wiring.
@@ -183,6 +243,7 @@ if [ "$HE_HARNESS_CONFIG" = pi-memory-provider ] && [ -n "${HE_GBRAIN_MCP_URL:-}
   log "config pi-memory-provider registers no gbrain MCP server, but HE_GBRAIN_MCP_URL is set"; exit 2
 fi
 if [ -n "${HE_GBRAIN_MCP_URL:-}" ] && [ -n "${HE_GBRAIN_MCP_TOKEN:-}" ]; then
+  require_listed gbrain "$HE_GBRAIN_MCP_URL"
   node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ name: "gbrain", url: process.env.HE_GBRAIN_MCP_URL, auth: "bearer", bearerToken: process.env.HE_GBRAIN_MCP_TOKEN, credentialScope: "shared", readOnly: false, enabled: true }))' "$HE_LOG_DIR/qm-gbrain-server.json"
   if node /opt/harness/qm-api.mjs mcp-register "$QM_CORE_URL" "$QM_SIGNING_SECRET" "$QM_ADMIN_ACTOR" gbrain "$HE_LOG_DIR/qm-gbrain-server.json" > "$HE_LOG_DIR/qm-gbrain-register.json" 2>>"$HE_LOG_DIR/stderr.log"; then
     log "gbrain MCP registered with core: $(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(JSON.stringify(r.body).slice(0,300))' "$HE_LOG_DIR/qm-gbrain-register.json")"
@@ -330,7 +391,7 @@ trap 'stopping=1' TERM INT
 # reply, as QM's own Slack surface drops it (slack-event-key.mjs). Like QM's in-memory deduper, the set starts empty
 # when the adapter starts, and a key whose turn failed is forgotten so a redelivery can retry it.
 declare -A seen_events
-printf '{"harness":"qm","version":"%s","trial":"%s","ready_at":"%s","inner_harness":"%s","config":"%s","session_keys":"conversation.threadRef dm:<member> (scope personal:<slack user id>) | channel:<id> (scope channel:<id>); :t<thread_ts> appended on a thread turn"}\n' "${QM_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$QM_HARNESS" "$HE_HARNESS_CONFIG" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"qm","version":"%s","trial":"%s","ready_at":"%s","inner_harness":"%s","config":"%s","session_keys":"conversation.threadRef dm:<member> (scope personal:<slack user id>) | channel:<id> (scope channel:<id>); :t<thread_ts> appended on a thread turn"%s}\n' "${QM_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$QM_HARNESS" "$HE_HARNESS_CONFIG" "$owner_card_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

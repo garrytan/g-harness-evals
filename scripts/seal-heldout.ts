@@ -70,6 +70,9 @@ export const OPENING_LABELS = ['confirmatory', 'dev'] as const;
 export const SET_STATUSES = ['open', 'spent', 'retired'] as const;
 /** A set name, as seal.ts takes it (never "*"). */
 export const SET_NAME = /^[a-z0-9][a-z0-9.-]*$/;
+/** A file beside a set's own world.json in its bundle and opened root (sealed.own_world keys): world/<name>, never the
+ *  world.json or the slice.json the custody scripts write there themselves. */
+export const OWN_WORLD_PATH = /^world\/(?!slice\.json$|world\.json$)[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /** One registered experiment that runs a held-out cell of the set. No opening number: runner/heldout/openings.ts derives it. */
 export interface OpeningRow {
@@ -123,6 +126,9 @@ export interface SealedCommitments {
   sealed_at: string;
   /** Extra files the bundle carries under extras/ (seal.ts --include), each bundle path to the sha256 of its bytes. */
   extras?: Record<string, string>;
+  /** A set with its own world (seal.ts --world): world_slice_sha256 is its whole world.json, and this maps each file beside
+   *  it in the bundle (world/<name>, such as world/people.json) to its sha256. Absent for a slice of the public world. */
+  own_world?: Record<string, string>;
 }
 
 export interface HeldoutManifest extends Partial<OpeningsLedger> {
@@ -526,6 +532,10 @@ export function sealedProblems(m: HeldoutManifest, set: HeldoutSet): string[] {
   if (!(typeof s.custody_repo === 'string' && /^[\w.-]+\/[\w.-]+$/.test(s.custody_repo))) problems.push(`sealed.custody_repo must be owner/repo (got ${JSON.stringify(s.custody_repo)})`);
   if (s.custody_ref !== 'refs/heads/custody') problems.push(`sealed.custody_ref must be refs/heads/custody, the custody branch, never the public main (got ${JSON.stringify(s.custody_ref)})`);
   if (!(typeof s.bundle === 'string' && s.bundle.endsWith('.age') && !s.bundle.startsWith('/') && !s.bundle.split('/').includes('..'))) problems.push(`sealed.bundle must be a relative path ending in .age on the custody branch (got ${JSON.stringify(s.bundle)})`);
+  if (s.own_world !== undefined) {
+    if (set.kind === 'repo' || !(s.own_world && typeof s.own_world === 'object' && !Array.isArray(s.own_world) && Object.entries(s.own_world).every(([p, h]) => OWN_WORLD_PATH.test(p) && hex(h)))) problems.push('sealed.own_world must map world/<name> files beside the world.json (never world/world.json or world/slice.json) to 64-hex sha256 digests, on a multiuser set');
+    if (m.world_manifest_sha256 !== null || m.world_json_sha256 !== null) problems.push('world_manifest_sha256 and world_json_sha256 must be null for a set with its own world, which is not written against the public world');
+  }
   if (s.extras !== undefined && !(s.extras && typeof s.extras === 'object' && !Array.isArray(s.extras) && Object.entries(s.extras).every(([p, h]) => /^extras\/[\x20-\x7e]+$/.test(p) && !p.split('/').some((seg) => seg === '' || seg === '.' || seg === '..') && hex(h)))) problems.push('sealed.extras must map bundle paths under extras/ to 64-hex sha256 digests');
   if (Object.keys(m.files ?? {}).length || (m.tasks ?? []).length) problems.push('a sealed manifest lists no files and no tasks (files {} and tasks []); the names are part of the sealed bundle');
   const plaintext = (existsSync(set.dir) ? walk(set.dir) : []).filter((p) => p !== set.manifest);
@@ -537,7 +547,9 @@ export function sealedProblems(m: HeldoutManifest, set: HeldoutSet): string[] {
 export function buildManifest(previous?: HeldoutManifest, set: HeldoutSet = heldoutSet()): HeldoutManifest {
   const { files, tree_sha256: tree } = treeFiles(set.tree, set.manifest);
   const repo = set.kind === 'repo';
-  const worldManifest = repo ? null : readFileSync(worldManifestOf(set), 'utf8');
+  // A released set that brought its own world (sealed.own_world, kept under released) was never written against the public world.
+  const ownWorld = !!(previous as { released?: SealedCommitments } | undefined)?.released?.own_world;
+  const worldManifest = repo || ownWorld ? null : readFileSync(worldManifestOf(set), 'utf8');
   const worldManifestSha = worldManifest === null ? null : sha256(worldManifest);
   const worldJsonSha = worldManifest === null ? null : (JSON.parse(worldManifest) as { world_json_sha256?: string }).world_json_sha256 ?? '';
   const tasks = [...new Set(Object.keys(files).map((f) => f.split('/')[0]!))].filter((d) => files[`${d}/task.toml`]);
@@ -587,7 +599,7 @@ export function manifestProblems(set: HeldoutSet = heldoutSet()): string[] {
   if (kind !== set.kind) return [`kind is ${JSON.stringify(committed.kind ?? null)}, but the manifest sits under tasks/${set.kind}/; a ${set.kind} set's manifest says ${set.kind === 'repo' ? '"kind": "repo"' : 'no kind, or "kind": "multiuser"'}`];
   if (isSealed(committed)) {
     const problems = sealedProblems(committed, set);
-    if (set.kind === 'multiuser' && committed.world_manifest_sha256 !== sha256(readFileSync(worldManifestOf(set), 'utf8'))) problems.push('world/seed/MANIFEST.json changed since sealing (the sealed slice is merged into the public world when a set is opened)');
+    if (set.kind === 'multiuser' && !committed.sealed?.own_world && committed.world_manifest_sha256 !== sha256(readFileSync(worldManifestOf(set), 'utf8'))) problems.push('world/seed/MANIFEST.json changed since sealing (the sealed slice is merged into the public world when a set is opened)');
     return [...problems, ...ledgerProblems(committed)];
   }
   const current = buildManifest(committed, set);

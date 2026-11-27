@@ -736,6 +736,47 @@ PY
   skill_arm_json=$(printf ',"skill_arm":{"arm":"%s","catalog_hash":%s,"gbrain_catalog_hash":%s,"index_hash":%s,"skills_installed":%s,"hook":"%s"}' "$skill_arm" "$skill_catalog" "$skill_gbrain_catalog" "$skill_index" "$skill_count" "$skill_hook")
 fi
 
+# owner-identity (internal-task): HE_OWNER_CARD_B64 is the cell's owner card (Cell.owner_card, base64 of the set's world/owner-card.md,
+# runner/trial/owner-card.ts). It is appended to $HE_WORKSPACE_DIR/AGENTS.md, the workspace bootstrap file OpenClaw injects into the
+# system prompt's Project Context (the route-startup file), after anything the gbrain installer wrote there: a blank line when the
+# file already has bytes, the card, a newline. The serve entry only: on the run entry /workspace is the task workspace, as for
+# route-startup. $HE_LOG_DIR/owner-card.json records the card's sha256 and length, the file, whether it existed and its sha256
+# after; ready carries owner_card. A card that is empty, over 4,000 bytes or not canonical base64, or a run entry, is
+# HE-ADAPTER-007, exit 2 before ready. Unset, nothing here runs.
+owner_card_json=''
+if [ -n "${HE_OWNER_CARD_B64:-}" ]; then
+  [ "$entry" = serve ] || { log "HE-ADAPTER-007 HE_OWNER_CARD_B64 is applied for the serve entry only; on the run entry it would write into the task workspace"; exit 2; }
+  set +e
+  owner_card_line=$(node - "$HE_WORKSPACE_DIR/AGENTS.md" "$HE_LOG_DIR/owner-card.json" <<'JS'
+const fs = require("fs"), path = require("path"), crypto = require("crypto");
+const [file, recPath] = process.argv.slice(2);
+const b64 = process.env.HE_OWNER_CARD_B64;
+const card = Buffer.from(b64, "base64");
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const rec = { file, card_sha256: sha(card), card_bytes: card.length, existed: fs.existsSync(file) };
+if (!card.length || card.length > 4000 || card.toString("base64") !== b64) {
+  Object.assign(rec, { status: "error", code: "HE-ADAPTER-007", error: "HE_OWNER_CARD_B64 is empty, over 4,000 bytes or not canonical base64" });
+  fs.writeFileSync(recPath, JSON.stringify(rec) + "\n");
+  console.log("HE-ADAPTER-007 " + rec.error);
+  process.exit(2);
+}
+fs.mkdirSync(path.dirname(file), { recursive: true });
+const before = rec.existed ? fs.readFileSync(file) : Buffer.alloc(0);
+const after = Buffer.concat([before, Buffer.from(before.length ? "\n\n" : ""), card, Buffer.from("\n")]);
+fs.writeFileSync(file, after);
+Object.assign(rec, { bytes_before: before.length, file_sha256: sha(after), status: "ok", code: null });
+fs.writeFileSync(recPath, JSON.stringify(rec) + "\n");
+console.log("ok " + rec.card_sha256 + " " + rec.existed);
+JS
+)
+  owner_card_code=$?
+  set -e
+  log "owner card: ${owner_card_line:-HE-ADAPTER-007 the owner card could not be written; see stderr.log}"
+  [ "$owner_card_code" -eq 0 ] || exit 2
+  read -r _ owner_card_sha owner_card_existed <<< "$owner_card_line"
+  owner_card_json=$(printf ',"owner_card":{"file":"%s","card_sha256":"%s","appended_to_existing":%s}' "$HE_WORKSPACE_DIR/AGENTS.md" "$owner_card_sha" "$owner_card_existed")
+fi
+
 # A model error is a provider status, a proxy refusal, a rate limit or an auth
 # failure in the envelope or on stderr; everything else that fails is OpenClaw's.
 model_error_pattern='"status":\s*(401|402|403|404|429|5[0-9]{2})|metering proxy|rate.?limit|overloaded|api error|authentication|invalid.*api.?key|HTTP (401|402|403|404|429|5[0-9]{2})'
@@ -970,7 +1011,7 @@ trap 'stopping=1' TERM INT
 # Install mode: the watcher starts before ready and stops by itself once this process is gone.
 if [ "$install_mode" = 1 ]; then bash "$HE_INSTALL_DIR/probe.sh" watch openclaw "$HE_LOG_DIR/install-watch.ndjson" $$ > /dev/null 2>> "$HE_LOG_DIR/install-watch.stderr.log" & fi
 if [ "$HE_SESSION_SCOPE" = turn ]; then session_keys='agent:main:turn:<NNNN>'; else session_keys='agent:main:dm:<member> | agent:main:channel:<id>'; fi
-printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_scope":"%s","session_keys":"%s","adapter_sha256":"%s"%s}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$HE_SESSION_SCOPE" "$session_keys" "$adapter_sha256" "$gbrain_install_json$route_json$skill_arm_json$sas_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
+printf '{"harness":"openclaw","version":"%s","trial":"%s","ready_at":"%s","session_scope":"%s","session_keys":"%s","adapter_sha256":"%s"%s}\n' "${OPENCLAW_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$HE_SESSION_SCOPE" "$session_keys" "$adapter_sha256" "$gbrain_install_json$route_json$owner_card_json$skill_arm_json$sas_arm_json$install_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
 while [ "$stopping" -eq 0 ]; do

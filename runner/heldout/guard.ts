@@ -15,7 +15,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statS
 import { dirname, join, relative } from 'node:path';
 import { format } from 'node:util';
 import { RunnerError } from '../errors.ts';
-import { idValues, quotedLiterals, OPAQUE_SALT_FILE, opaqueId, sealedPaths } from './sealed.ts';
+import { idValues, quotedLiterals, OPAQUE_SALT_FILE, opaqueId, ownWorldFiles, sealedPaths } from './sealed.ts';
 import { heldoutSet } from '../../scripts/seal-heldout.ts';
 
 export interface Redactor {
@@ -62,7 +62,7 @@ export function sealedRedactor(root: string, set: string, publicText = ''): Reda
     for (const s of quotedLiterals(text)) add(s, 6);
     if (f.endsWith('.json')) { try { for (const s of leaves(JSON.parse(text))) add(s, 6); } catch { /* not JSON; lines and quoted strings cover it */ } }
   }
-  for (const f of files(p.extras)) {
+  for (const f of [...files(p.extras), ...ownWorldFiles(p)]) {
     const text = readFileSync(f, 'utf8');
     for (const line of text.split('\n')) add(line, 8);
     if (f.endsWith('.json')) { try { const v = JSON.parse(text); for (const s of leaves(v)) add(s, 6); for (const s of idValues(v)) add(s, 3); } catch { /* not JSON; lines cover it */ } }

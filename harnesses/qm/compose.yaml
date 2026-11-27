@@ -66,6 +66,11 @@ services:
       # QM's automatic memory capture waits this long after a turn before extracting facts; the shipped default
       # (180 s) stays for held-out cells, and prepare.sh sets 5 s for the probe configs only (harnesses/qm/README.md).
       MEMORY_CAPTURE_QUIET_MS: ${QM_MEMORY_CAPTURE_QUIET_MS:-180000}
+      # The exact origins of the trial's private servers (world MCP, gbrain MCP, a Particle cell's proxy), which prepare.sh
+      # derives from the trial's URLs; QM refuses any other private address (docs/mcp-connectors.md at the pin). Empty: none.
+      # In a runner trial the compose override sets this variable from runner/trial/trial.ts (coreEnv: the world's origin,
+      # which the gbrain tap shares, and a Particle cell's proxy), the same origins prepare.sh lists.
+      PRIVATE_NETWORK_ALLOWED_ORIGINS: ${QM_PRIVATE_NETWORK_ALLOWED_ORIGINS:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -92,6 +97,7 @@ services:
       QM_ACTOR_ID: U1
       QM_HARNESS: ${QM_HARNESS:-pi}
       QM_PROBE_CONFIG: ${QM_PROBE_CONFIG:-}
+      QM_PRIVATE_NETWORK_ALLOWED_ORIGINS: ${QM_PRIVATE_NETWORK_ALLOWED_ORIGINS:-}
       HE_HARNESS_CONFIG: ${HE_HARNESS_CONFIG:-}
       HE_MODEL_BASE_URL: ${HE_MODEL_BASE_URL}
       HE_MODEL_API_KEY: ${HE_MODEL_API_KEY}

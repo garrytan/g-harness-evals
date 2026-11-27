@@ -208,10 +208,23 @@ export function repoTaskKind(dir: string): string {
   return kind;
 }
 
+/** The family an owner-identity task names (internal-task: owner_identity_I, _L or _C). Such a task has gold.json beside its
+ *  task.toml and no predicates, so loadTask's schema does not take it; runner/trial/trial.ts grades it from its store. */
+const OWNER_IDENTITY_FAMILY = /^owner_identity_[ILC]$/;
+
 /** The family the report scripts (summarize-run.ts, compare-run.ts) count a task under: a repo task's kind (a task.toml
- *  under tasks/repo/<set>/<split>/<task>/ has a kind and no family, internal-task), else loadTask's family. */
+ *  under tasks/repo/<set>/<split>/<task>/ has a kind and no family, internal-task), an owner-identity task's family (gold.json
+ *  beside it), else loadTask's family. */
 export function taskFamily(dir: string): string {
-  return /(^|\/)tasks\/repo\/[^/]+\/[^/]+\/[^/]+\/?$/.test(dir) ? repoTaskKind(dir) : loadTask(dir).family;
+  if (/(^|\/)tasks\/repo\/[^/]+\/[^/]+\/[^/]+\/?$/.test(dir)) return repoTaskKind(dir);
+  if (existsSync(join(dir, 'gold.json'))) {
+    const file = join(dir, 'task.toml');
+    let family: unknown;
+    try { family = (Bun.TOML.parse(readFileSync(file, 'utf8')) as { family?: unknown }).family; } catch { throw new TaskError(file, ['TOML syntax error (the parser\'s message is withheld, since it can quote a sealed task)']); }
+    if (typeof family !== 'string' || !OWNER_IDENTITY_FAMILY.test(family)) throw new TaskError(file, ['family: an owner-identity task (gold.json beside task.toml) is owner_identity_I, owner_identity_L or owner_identity_C']);
+    return family;
+  }
+  return loadTask(dir).family;
 }
 
 /** Read and validate <dir>/task.toml; the id must equal the directory name. */

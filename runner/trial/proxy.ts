@@ -11,6 +11,9 @@
 // summarizeUsage keeps /v1/embeddings lines out of the harness figures (requests, tokens, refused, failed) while usd stays
 // the trial's total, and embeddingUsage reports them on their own (gbrain.embedding_usage in the trial record), so
 // reconcile.json's invariant holds: harness requests plus embedding requests equal the meter's.
+// With gbrain's own model route the sidecar's slot is bound with caller "gbrain" (GBRAIN_CALLER), so each of its
+// usage lines carries that tag; summarizeUsage leaves those lines out of the harness figures too, and gbrainLlmUsage reports
+// the non-embedding ones on their own (gbrain.llm.usage). Harness, embedding and gbrain-model requests sum to the meter's.
 //
 // Each trial slot is bound with its cell's models (the cell model and its utility_models, runner/run.ts cellModels) and
 // the gbrain slot with its embedding model, so the proxy refuses another model on that slot although another cell of the run put
@@ -31,7 +34,7 @@ import { join } from 'node:path';
 import type { Meter, RouteTexts, SlotLimits, UsageLine } from '../proxy/metering-proxy.ts';
 import { HOUSEKEEPING_FAMILY, type AblationReceipt, type AblationSpec, type Wire } from '../proxy/ablate.ts';
 import { sectionRoute } from '../proxy/sections.ts';
-import type { TrialAblation, TrialEmbeddingUsage, TrialUsage } from '../contracts.ts';
+import type { TrialAblation, TrialEmbeddingUsage, TrialGbrainLlmUsage, TrialUsage } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
 import { CONTAINER_HOST, listenHost } from './world.ts';
 import { type CaptureConfig, captureProxyEnv } from './capture.ts';
@@ -175,10 +178,11 @@ export class RunProxy {
    *  ids), only requests for those models, inside the run-wide --allow-models; with `ablation`, the proxy
    *  checks the map's sha256 (a mismatch fails the bind) and cuts the layers out of the slot's requests; with `routes`
    *  (internal-task-a), the slot's usage lines carry route copies when the proxy has route texts; with `install` (internal-task-b), an install slot,
-   *  which refuses at $0 and counts every request that is not the harness's own model call (HE-PROXY-010). */
-  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec, routes = false, limits: SlotLimits = {}, install = false) {
+   *  which refuses at $0 and counts every request that is not the harness's own model call (HE-PROXY-010); with `caller`,
+   *  every usage line of the slot carries it, so the trial key's lines split by who called. */
+  bind(slot: string, key: string, token?: string, models?: string[], ablation?: AblationSpec, routes = false, limits: SlotLimits = {}, install = false, caller?: string) {
     if (ablation && this.ablationLog) this.ablationFrom.set(key, existsSync(this.ablationLog) ? statSync(this.ablationLog).size : 0);
-    return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}), ...(routes ? { routes } : {}), ...limits, ...(install ? { install: true } : {}) });
+    return this.control('/__proxy/bind', { slot, key, ...(token ? { token } : {}), ...(models ? { models } : {}), ...(ablation ? { ablation } : {}), ...(routes ? { routes } : {}), ...limits, ...(install ? { install: true } : {}), ...(caller ? { caller } : {}) });
   }
   /** internal-task Phase B: the request bodies the proxy collected for `key` (a slot bound with collect_requests), handed over once:
    *  the forwarded ones, and the first one the request cap refused. */
@@ -237,15 +241,19 @@ export const isCapRefusal = (l: UsageLine) => l.outcome === 'refused' && /over i
 
 /** A usage line of the sidecar's query embeddings. */
 export const isEmbeddingLine = (l: UsageLine) => l.route === '/v1/embeddings';
+/** The caller tag of the gbrain sidecar's slot when gbrain's own model route is on. */
+export const GBRAIN_CALLER = 'gbrain';
+/** A usage line of the sidecar: a query embedding, or any call on its slot under gbrain's own model route. */
+export const isSidecarLine = (l: UsageLine) => isEmbeddingLine(l) || l.caller === GBRAIN_CALLER;
 
 export function summarizeUsage(key: string, meter: Meter, lines: UsageLine[]): { usage: TrialUsage; cap_stop: boolean } {
-  // The harness figures leave the embedding lines out; usd stays the meter's total for the key.
-  const harness = lines.filter((l) => !isEmbeddingLine(l));
+  // The harness figures leave the sidecar's lines out; usd stays the meter's total for the key.
+  const harness = lines.filter((l) => !isSidecarLine(l));
   const forwarded = harness.filter((l) => l.outcome === 'forwarded');
-  const embeddingCharged = lines.filter((l) => isEmbeddingLine(l) && (l.outcome === 'forwarded' || l.outcome === 'failed')).length;
+  const sidecarCharged = lines.filter((l) => isSidecarLine(l) && (l.outcome === 'forwarded' || l.outcome === 'failed')).length;
   const usage: TrialUsage = {
     meter_id: key,
-    requests: meter.requests - embeddingCharged,
+    requests: meter.requests - sidecarCharged,
     refused: harness.filter((l) => l.outcome === 'refused').length,
     failed: harness.filter((l) => l.outcome === 'failed').length,
     usd: meter.usd,
@@ -295,6 +303,24 @@ export function embeddingUsage(model: string, lines: UsageLine[]): TrialEmbeddin
     requests: forwarded.length,
     input_tokens: forwarded.reduce((a, l) => a + (l.input_tokens ?? 0), 0),
     usd: mine.reduce((a, l) => a + (l.actual_usd ?? 0), 0),
+    refused: mine.filter((l) => l.outcome === 'refused').length,
+    failed: mine.filter((l) => l.outcome === 'failed').length,
+  };
+}
+
+/** gbrain's own model calls for the trial key (caller "gbrain", embeddings excluded), on their own. */
+export function gbrainLlmUsage(lines: UsageLine[]): TrialGbrainLlmUsage {
+  const mine = lines.filter((l) => l.caller === GBRAIN_CALLER && !isEmbeddingLine(l));
+  const forwarded = mine.filter((l) => l.outcome === 'forwarded');
+  const by_model: Record<string, number> = {};
+  for (const l of mine) if ((l.outcome === 'forwarded' || l.outcome === 'failed') && l.model) by_model[`${l.provider}:${l.model}`] = (by_model[`${l.provider}:${l.model}`] ?? 0) + 1;
+  return {
+    requests: forwarded.length,
+    input_tokens: forwarded.reduce((a, l) => a + (l.input_tokens ?? 0), 0),
+    output_tokens: forwarded.reduce((a, l) => a + (l.output_tokens ?? 0), 0),
+    cached_tokens: forwarded.reduce((a, l) => a + (l.cached_tokens ?? 0), 0),
+    usd: mine.reduce((a, l) => a + (l.outcome === 'forwarded' || l.outcome === 'failed' ? l.actual_usd ?? 0 : 0), 0),
+    by_model,
     refused: mine.filter((l) => l.outcome === 'refused').length,
     failed: mine.filter((l) => l.outcome === 'failed').length,
   };

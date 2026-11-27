@@ -17,7 +17,7 @@
  *       [--adapter <script>] [--image <tag>] [--gbrain-image <tag>] [--resume] [--stop-on-cap] [--cells a,b] [--ledger <file>]
  *       [--lease-usd <n>] [--new-lease] [--max-output-tokens <n>] [--preamble <file>] [--ready-timeout-s <n>]
  *       [--turn-grace-s <n>] [--harness-env K=V ...] [--capture-upstream anthropic|openai=<url> ...] [--capture-dns <ip>]
- *       [--cursor-offline]
+ *       [--cursor-offline] [--task-half 1|2]
  *   bun runner/run.ts check-sections --manifest results/<run-id>/manifest.json
  *
  * check-sections (internal-task) is the one-trial smoke's check for cells with log_sections: every forwarded chat line of those
@@ -59,7 +59,7 @@
  * Every error prints one line starting with its HE- code (docs/errors.md) and
  * exits non-zero. Exit 3 is the budget stop (HE-BUDGET-001).
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, join, relative, resolve } from 'node:path';
@@ -67,7 +67,8 @@ import type { GbrainCellConfig, HarnessMode } from './contracts.ts';
 import { RunnerError } from './errors.ts';
 import { canonicalLookup, priceOnDate } from './pricing/model-pricing.ts';
 import { lookupEmbeddingPrice } from './pricing/embedding-pricing.ts';
-import { taskHasTimers, taskTurnCount, timerTurnsCertified } from './trial/task.ts';
+import { loadTask, taskHasTimers, taskTurnCount, timerTurnsCertified } from './trial/task.ts';
+import { notesSeedDir } from '../world/services/notes.ts';
 import { DEFAULT_GBRAIN_IMAGE, SOURCE_PROBE_QUERIES } from './trial/gbrain.ts';
 import { CLIENT_ID_ENV, CLIENT_SECRET_ENV, MEMORY_PROVIDER_CONFIG_NAME, isQmMemoryProvider, providerConfig, memoryProviderWiring } from '../harnesses/qm/memory-provider.ts';
 import { checkPlan, type HeldoutBlock } from './heldout/openings.ts';
@@ -116,11 +117,22 @@ export interface ResolvedGbrain {
   serves?: 'several';
   /** internal-task: present only on a cell of the reader-labelled bot-visible brain. */
   labels?: 'readers';
+  /** internal-task: present only on a cell with gbrain's own model route, with the extraction model it expects. */
+  llm?: 'proxy';
+  extraction_model?: string;
+  extraction_pin?: true;
+  llm_models?: string[];
 }
 
 /** The cell's gbrain configuration with every default filled in; the cell itself is not changed. */
 export function resolveGbrain(c: GbrainCellConfig): ResolvedGbrain {
-  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}), ...(c.channel_remember === 'conversation' ? { channel_remember: 'conversation' as const } : {}), ...(c.serves ? { serves: c.serves } : {}), ...(c.labels ? { labels: c.labels } : {}) };
+  return { surface: c.surface, install: c.install ?? 'mcp', embeddings: c.embeddings ?? 'off', brain: c.brain ?? 'bot-visible', scope: c.scope ?? 'none', ingest: c.ingest ?? 'off', ...(c.access ? { access: c.access } : {}), ...(c.channel_remember === 'conversation' ? { channel_remember: 'conversation' as const } : {}), ...(c.serves ? { serves: c.serves } : {}), ...(c.labels ? { labels: c.labels } : {}),
+    ...(c.llm === 'proxy' ? { llm: 'proxy' as const, extraction_model: c.extraction_model, ...(c.extraction_pin ? { extraction_pin: true as const } : {}), ...(c.llm_models?.length ? { llm_models: c.llm_models } : {}) } : {}) };
+}
+
+/** internal-task: the models gbrain's own route may call for a cell, the extraction model first; empty without llm "proxy". */
+export function gbrainLlmModels(g: Pick<ResolvedGbrain, 'llm' | 'extraction_model' | 'llm_models'> | null | undefined): string[] {
+  return g?.llm === 'proxy' && g.extraction_model ? [...new Set([g.extraction_model, ...(g.llm_models ?? [])])] : [];
 }
 
 /** internal-task: every live-ingestion open or rules cell (scope "member-sources") must start the sidecar the leak preflight checked
@@ -201,6 +213,20 @@ export interface Cell {
   gbrain?: GbrainCellConfig;
   /** Alternative preamble for this cell, a path relative to the repository root; default tasks/multiuser/_shared/preamble.md (or --preamble). */
   preamble?: string;
+  /** owner-identity (internal-task): the owner card, a path relative to the repository root (tasks/multiuser/<set>/world/owner-card.md);
+   *  on a held-out cell always "world/owner-card.md", the bank's own card, relative to the sealed root (HELDOUT_OWNER_CARD).
+   *  The runner hands it to the adapter as HE_OWNER_CARD_B64 and the adapter appends it where the harness reads standing
+   *  context, after anything the gbrain installer wrote there: Claude Code's CLAUDE.md, Codex's AGENTS.md, OpenClaw's workspace
+   *  AGENTS.md, Hermes's user profile (memories/USER.md) and QM's org SOUL (OWNER_CARD_HARNESSES; docs/owner-identity.md). */
+  owner_card?: string;
+  /** internal-task arm N (owner-identity, no gbrain): true gives the bot a notes store through world-MCP's notes tools (notes_list,
+   *  notes_read, notes_write), one <person id>.md file per person, seeded from the set's people pages
+   *  (tasks/multiuser/<set>/corpus/<split>/people, the pages the gbrain arms import). The runner dumps it into
+   *  <trial dir>/owner-identity/store.json after the trial. Multi-user cells without gbrain only. */
+  notes?: boolean;
+  /** internal-task, multi-user cells only: run only the tasks whose task.toml family is one of these (owner_identity_I,
+   *  owner_identity_L, owner_identity_C), so a held-out cell whose task names are sealed can still take part of its set. */
+  families?: string[];
   /** Multi-user task set: "v0.1" (the default, tasks/multiuser/<split>/) or the name of a tree under tasks/multiuser/, such as "v0.2" (tasks/multiuser/v0.2/<split>/). */
   task_set?: string;
   /** How the adapter keys the harness session: "conversation" (the default, one session per DM or channel) or "turn" (a fresh session per turn, the memoryless contrast; HE_SESSION_SCOPE in the adapter). */
@@ -248,8 +274,16 @@ export interface Cell {
   first_wow?: FirstWowCellConfig;
 }
 
-const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'rung', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap', 'install', 'first_wow']);
+const CELL_KEYS = new Set(['id', 'harness', 'model', 'slice', 'split', 'config', 'repetitions', 'ceiling', 'tasks', 'harness_mode', 'script', 'adapter', 'gbrain', 'preamble', 'task_set', 'session_scope', 'utility_models', 'network', 'ablation', 'log_sections', 'skill_arm', 'rung', 'requests', 'request_set', 'half', 'catalog', 'private', 'request_cap', 'install', 'first_wow', 'owner_card', 'notes', 'families']);
 export const DEFAULT_TASK_SET = 'v0.1';
+/** A held-out cell's owner_card: the path of its bank's card inside the sealed root (scripts/sealed/open.ts writes the
+ *  set's own world/owner-card.md there; runner/trial/run.ts resolves it against the root). */
+export const HELDOUT_OWNER_CARD = 'world/owner-card.md';
+
+/** The adapters that read HE_OWNER_CARD_B64 (Cell.owner_card). */
+export const OWNER_CARD_HARNESSES = ['claude-code', 'codex', 'openclaw', 'hermes', 'qm'] as const;
+/** The adapters refuse a larger card. */
+export const OWNER_CARD_MAX_BYTES = 4000;
 
 /** The cells whose harness pin has no `transport` entry (model_particle, model_openrouter), the declaration an adapter makes
  *  when it routes <proxy>/<slot>/particle or <proxy>/<slot>/openrouter as Chat Completions. Any other adapter falls back to
@@ -521,6 +555,29 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
     if (!scripted && !canonicalLookup(c.model)) throw new RunnerError('HE-PIN-002', `cell ${c.id}: model ${c.model} has no price in the dated price table runner/pricing/prices-<date>.json; fix: register its list price before any cell runs (a price change is a new dated file)`);
     if (!(c.repetitions >= 1)) throw new RunnerError('HE-PREREG-005', `cell ${c.id}: repetitions must be >= 1`);
     if (c.preamble !== undefined && (typeof c.preamble !== 'string' || !existsSync(c.preamble))) throw new RunnerError('HE-TASK-002', `cell ${c.id}: preamble not found at ${String(c.preamble)}; fix: name a committed file such as tasks/multiuser/_shared/preamble.md`);
+    if (c.owner_card !== undefined && c.split === 'heldout') {
+      // A held-out bank brings its own world and owner (scripts/sealed/seal.ts --world): its card is read from the sealed root
+      // when the run is planned (buildManifest), never from the public checkout, where only the dev set's card is.
+      if (c.owner_card !== HELDOUT_OWNER_CARD) throw new RunnerError('HE-TASK-002', `cell ${c.id}: a held-out cell's owner_card is ${JSON.stringify(HELDOUT_OWNER_CARD)}, the bank's own card in its sealed root (got ${JSON.stringify(c.owner_card)}); a card of the public checkout, such as the dev set's, is never handed to a held-out cell`);
+    } else if (c.owner_card !== undefined) {
+      if (typeof c.owner_card !== 'string' || !existsSync(c.owner_card) || !statSync(c.owner_card).isFile()) throw new RunnerError('HE-TASK-002', `cell ${c.id}: owner_card not found at ${String(c.owner_card)}; fix: name a committed file such as tasks/multiuser/owner-identity/world/owner-card.md`);
+      const bytes = statSync(c.owner_card).size;
+      if (bytes === 0 || bytes > OWNER_CARD_MAX_BYTES) throw new RunnerError('HE-TASK-002', `cell ${c.id}: owner_card ${c.owner_card} is ${bytes} bytes; the adapters take 1 to ${OWNER_CARD_MAX_BYTES}`);
+    }
+    if (c.owner_card !== undefined) {
+      if (!(OWNER_CARD_HARNESSES as readonly string[]).includes(c.harness)) throw new RunnerError('HE-PREREG-005', `cell ${c.id}: owner_card is read by the ${OWNER_CARD_HARNESSES.join(', ')} adapters only, not ${c.harness}`);
+    }
+    if (c.notes !== undefined) {
+      if (typeof c.notes !== 'boolean') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: notes must be true, false or absent (got ${JSON.stringify(c.notes)})`);
+      if (c.notes && c.gbrain !== undefined) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: notes is arm N, the notes store with no gbrain; a cell carries notes or gbrain, not both. fix: drop gbrain from the cell, or notes for a gbrain arm`);
+      if (c.notes && c.slice !== 'multiuser') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: notes is for multiuser cells (the world serves the notes tools); got slice ${c.slice}`);
+      const seed = c.notes && c.split === 'dev' ? setWorldPath(c) : undefined;
+      if (c.notes && c.split === 'dev' && (!seed || !existsSync(notesSeedDir(seed, 'dev')))) throw new RunnerError('HE-TASK-002', `cell ${c.id}: notes seeds the store from the task set's people pages, tasks/multiuser/${taskSetName(c)}/corpus/dev/people beside its world/world.json, and there are none. fix: run notes cells on a set with people pages, such as task_set "owner-identity"`);
+    }
+    if (c.families !== undefined) {
+      if (c.slice !== 'multiuser') throw new RunnerError('HE-PREREG-007', `cell ${c.id}: families is for multiuser cells; got slice ${c.slice}`);
+      if (!Array.isArray(c.families) || !c.families.length || !c.families.every((f) => typeof f === 'string' && f.trim())) throw new RunnerError('HE-PREREG-007', `cell ${c.id}: families must be a non-empty list of task families such as ["owner_identity_I", "owner_identity_L"] (got ${JSON.stringify(c.families)})`);
+    }
     if (c.gbrain !== undefined) {
       // Surface, install and embeddings are the ladder's orthogonal fields; HE-GBRAIN-001 names the field, the value and the allowed set.
       const bad = (field: string, value: unknown, allowed: readonly string[]) => new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.${field} must be one of ${allowed.map((v) => JSON.stringify(v)).join(', ')} (gbrain/pin.json); got ${JSON.stringify(value)}`);
@@ -532,6 +589,18 @@ export function loadPrereg(path: string): { prereg: Prereg; sha256: string } {
       if (c.gbrain.install !== undefined && c.gbrain.install !== 'mcp' && !installHarnesses.includes(c.harness)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.install "${c.gbrain.install}" is defined for harnesses ${installHarnesses.filter((h) => !h.startsWith('_')).join(', ')} (gbrain documents no ${c.gbrain.install} install for ${c.harness}; gbrain/pin.json "install")`);
       if (c.gbrain.embeddings !== undefined && c.gbrain.embeddings !== 'off' && c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.embeddings ${c.gbrain.embeddings} needs the bot-visible brain; only the bot-visible brains are built with embeddings`);
       if (scripted) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: a scripted cell cannot carry gbrain; a script plays the bot over world-MCP and has no harness to call the brain`);
+      // internal-task: gbrain's own model route. Its calls leave through ANTHROPIC_BASE_URL only, so every model it may call is Anthropic and priced.
+      if (c.gbrain.llm !== undefined && c.gbrain.llm !== 'off' && c.gbrain.llm !== 'proxy') throw bad('llm', c.gbrain.llm, ['off', 'proxy']);
+      if (c.gbrain.llm !== 'proxy' && (c.gbrain.extraction_model !== undefined || c.gbrain.extraction_pin !== undefined || c.gbrain.llm_models !== undefined)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.extraction_model, gbrain.extraction_pin and gbrain.llm_models need gbrain.llm "proxy"; a keyless sidecar makes no model call`);
+      if (c.gbrain.llm === 'proxy') {
+        if (typeof c.gbrain.extraction_model !== 'string') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.llm "proxy" needs gbrain.extraction_model, the facts extraction model gbrain must resolve (for example "anthropic:claude-haiku-5-5", gbrain's measured default through Anthropic); the sidecar refuses any other (HE-GBRAIN-022)`);
+        if (c.gbrain.extraction_pin !== undefined && typeof c.gbrain.extraction_pin !== 'boolean') throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.extraction_pin must be true or false; got ${JSON.stringify(c.gbrain.extraction_pin)}`);
+        if (c.gbrain.llm_models !== undefined && !Array.isArray(c.gbrain.llm_models)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain.llm_models must be a list of provider:model ids; got ${JSON.stringify(c.gbrain.llm_models)}`);
+        for (const m of [c.gbrain.extraction_model, ...(c.gbrain.llm_models ?? [])]) {
+          if (typeof m !== 'string' || !/^anthropic:[A-Za-z0-9._-]+$/.test(m)) throw new RunnerError('HE-GBRAIN-001', `cell ${c.id}: gbrain's own model route serves Anthropic models only (it sets ANTHROPIC_BASE_URL); got ${JSON.stringify(m)}`);
+          if (!canonicalLookup(m)) throw new RunnerError('HE-PIN-002', `cell ${c.id}: gbrain model ${m} has no price in the dated price table runner/pricing/prices-<date>.json; fix: register its list price before any cell runs (a price change is a new dated file)`);
+        }
+      }
       // Company brain: brain and scope are additive; a cell without them is the gbrain arm's cell.
       // Member brain: brain "member" carries member tokens and ingest tokens; ingest "live" needs it.
       if (c.gbrain.brain !== undefined && c.gbrain.brain !== 'bot-visible' && c.gbrain.brain !== 'company' && c.gbrain.brain !== 'member') throw new RunnerError('HE-GBRAIN-003', `cell ${c.id}: gbrain.brain must be "bot-visible", "company" or "member"; got ${JSON.stringify(c.gbrain.brain)}`);
@@ -710,14 +779,34 @@ export function cellTasks(prereg: Prereg, cell: Cell, tasksRoot = 'tasks'): stri
   }
   const dir = taskSetDir(cell, tasksRoot);
   if (taskSetName(cell) !== DEFAULT_TASK_SET && !existsSync(join(tasksRoot, 'multiuser', taskSetName(cell)))) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: task_set "${cell.task_set}" has no directory ${join(tasksRoot, 'multiuser', taskSetName(cell))}/; fix: name an existing set (v0.1 is tasks/multiuser/<split>/) or add the tree (docs/tasks.md)`);
+  const inFamilies = (ids: string[]) => {
+    if (!cell.families) return ids;
+    const kept = ids.filter((t) => cell.families!.includes(loadTask(join(dir, t)).family ?? ''));
+    if (!kept.length) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: no task of set ${taskSetName(cell)} is in families ${cell.families.join(', ')}`);
+    return kept;
+  };
   if (explicit) {
     const missing = explicit.list.filter((t) => !existsSync(join(dir, t, 'task.toml')));
     if (missing.length) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: ${explicit.from} names ${missing.join(', ')} but task set ${taskSetName(cell)} has no such task under ${dir}/; fix: list tasks of that set, or set task_set to the set the list belongs to`);
-    return explicit.list;
+    return inFamilies(explicit.list);
   }
   const found = existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(dir, d.name, 'task.toml'))).map((d) => d.name).sort() : [];
   if (!found.length) throw new RunnerError('HE-PREREG-004', `cell ${cell.id}: no tasks in tasks.multiuser, cell.tasks or ${dir} (task set ${taskSetName(cell)}); fix: add the task list or the task directories`);
-  return found;
+  return inFamilies(found);
+}
+
+/** internal-task (R113): one stage of a run planned in two. Within each task family (task.toml family), the run's tasks sorted
+ *  by id alternate between halves, the 1st, 3rd, 5th ... in half 1 and the rest in half 2, so a half holds half of every
+ *  family and every cell runs the same tasks in it. familyOf reads a trial's task family from its task directory. */
+export function taskHalf<T extends Pick<Trial, 'task' | 'task_dir'>>(trials: T[], half: 1 | 2, familyOf: (trial: T) => string): string[] {
+  const byFamily = new Map<string, Set<string>>();
+  for (const t of trials) {
+    if (!t.task_dir) throw new RunnerError('HE-RUN-002', `--task-half splits multi-user tasks, and trial task ${t.task} has no task directory`);
+    const f = familyOf(t);
+    if (!byFamily.has(f)) byFamily.set(f, new Set());
+    byFamily.get(f)!.add(t.task);
+  }
+  return [...byFamily.keys()].sort().flatMap((f) => [...byFamily.get(f)!].sort().filter((_, i) => i % 2 === half - 1)).sort();
 }
 
 export function buildManifest(prereg: Prereg, sha256: string, now = new Date().toISOString(), opts: ManifestOptions = {}): Manifest {
@@ -728,6 +817,11 @@ export function buildManifest(prereg: Prereg, sha256: string, now = new Date().t
     const sealedCell = isSealedCell(cell, opts.sealedSet) && !!opts.sealedRoot;
     const tasksRoot = sealedCell ? join(opts.sealedRoot!, 'tasks') : (opts.tasksRoot ?? 'tasks');
     const stored = (p: string) => (sealedCell ? relative(opts.sealedRoot!, p) : p);
+    if (cell.owner_card !== undefined && cell.split === 'heldout') {
+      const card = sealedCell ? join(opts.sealedRoot!, cell.owner_card) : null;
+      const bytes = card && existsSync(card) && statSync(card).isFile() ? statSync(card).size : 0;
+      if (!bytes || bytes > OWNER_CARD_MAX_BYTES) throw new RunnerError('HE-TASK-002', `cell ${cell.id}: a held-out cell's owner card is ${HELDOUT_OWNER_CARD} of its set's sealed root, and ${card ? `the root has ${bytes ? `one of ${bytes} bytes; the adapters take 1 to ${OWNER_CARD_MAX_BYTES}` : 'none'}` : 'this plan has no sealed root for the cell'}; fix: open a set sealed with its own world (scripts/sealed/seal.ts --world) and plan with --sealed-root`);
+    }
     const tasks = cellTasks(prereg, cell, tasksRoot);
     const unit = ceilingUsd(cell, new Date(now));
     let cellUsd = 0;
@@ -800,7 +894,7 @@ export function renderPlan(m: Manifest): string {
   for (const c of m.cells) {
     const mine = m.trials.filter((t) => t.cell === c.id);
     const turns = mine.reduce((a, t) => a + (t.turns ?? 0), 0);
-    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''}${c.install ? ` install_arm=${c.install.arm} tag=${c.install.tag} commit=${c.install.commit.slice(0, 12)} seed=${c.install.seed}${c.install.paste_sha256 ? ` paste_sha256=${c.install.paste_sha256.slice(0, 12)}` : ''}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}${c.gbrain.channel_remember ? ` channel_remember=${c.gbrain.channel_remember}` : ''}${c.gbrain.serves ? ` serves=${c.gbrain.serves}` : ''}${c.gbrain.labels ? ` labels=${c.gbrain.labels}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}`);
+    lines.push(`CELL: ${c.id} harness=${c.harness} mode=${c.harness_mode ?? 'docker'}${c.script ? ` script=${c.script}` : ''} model=${c.model} slice=${c.slice} split=${c.split}${c.slice === 'multiuser' ? ` task_set=${taskSetName(c)}` : ''}${c.session_scope ? ` session_scope=${c.session_scope}` : ''}${c.utility_models ? ` utility_models=${c.utility_models.join(',')}` : ''}${c.config ? ` config=${c.config}` : ''}${c.network ? ` network=${c.network}` : ''}${c.ablation ? ` ablation=${c.ablation.layers.join(',') || 'none'} map=${c.ablation.map} map_sha256=${c.ablation.map_sha256.slice(0, 12)}` : ''}${c.log_sections ? ' log_sections' : ''}${c.install ? ` install_arm=${c.install.arm} tag=${c.install.tag} commit=${c.install.commit.slice(0, 12)} seed=${c.install.seed}${c.install.paste_sha256 ? ` paste_sha256=${c.install.paste_sha256.slice(0, 12)}` : ''}` : ''} reps=${c.repetitions} trials=${mine.length}${turns ? ` turns=${turns}` : ''} ceiling_usd=${m.per_cell_ceiling_usd[c.id]}${c.gbrain ? ` gbrain=${gbrainLabel(c.gbrain)}${c.gbrain.brain ? ` brain=${c.gbrain.brain}` : ''}${c.gbrain.scope ? ` scope=${c.gbrain.scope}` : ''}${c.gbrain.ingest ? ` ingest=${c.gbrain.ingest}` : ''}${c.gbrain.access ? ` access=${c.gbrain.access}` : ''}${c.gbrain.channel_remember ? ` channel_remember=${c.gbrain.channel_remember}` : ''}${c.gbrain.serves ? ` serves=${c.gbrain.serves}` : ''}${c.gbrain.labels ? ` labels=${c.gbrain.labels}` : ''}${c.gbrain.llm === 'proxy' ? ` llm=proxy extraction_model=${c.gbrain.extraction_model}${c.gbrain.extraction_pin ? ' pinned' : ''}${c.gbrain.llm_models?.length ? ` llm_models=${c.gbrain.llm_models.join(',')}` : ''}` : ''}` : ''}${c.preamble ? ` preamble=${c.preamble}` : ''}${c.notes ? ' notes' : ''}`);
   }
   for (const c of m.cells) {
     if (c.gbrain?.brain === 'company' && c.preamble !== 'tasks/multiuser/_shared/preamble.gbrain-company.md') lines.push(`WARN: cell ${c.id} serves the company brain with preamble ${c.preamble ?? 'tasks/multiuser/_shared/preamble.md'}, not the company one (tasks/multiuser/_shared/preamble.gbrain-company.md); intended only for a none-style arm on the company brain`);
@@ -1213,7 +1307,7 @@ async function main(argv: string[]): Promise<number> {
     // Capture mode, refused before anything starts unless the run id is a capture run's.
     const { parseCaptureOptions } = await import('./trial/capture.ts');
     const callingCells = manifest.cells.filter((c) => c.harness_mode !== 'scripted' && mode !== 'scripted' && (cells ? cells.includes(c.id) : true));
-    const providers = callingCells.flatMap((c) => [c.model, ...(c.utility_models ?? []), c.gbrain?.embeddings ?? 'off']).filter((m) => m.includes(':')).map((m) => m.slice(0, m.indexOf(':')));
+    const providers = callingCells.flatMap((c) => [c.model, ...(c.utility_models ?? []), c.gbrain?.embeddings ?? 'off', ...gbrainLlmModels(c.gbrain ? resolveGbrain(c.gbrain) : null)]).filter((m) => m.includes(':')).map((m) => m.slice(0, m.indexOf(':')));
     const capture = parseCaptureOptions({ runId: manifest.run_id, upstream: all('--capture-upstream'), dns: has('--capture-dns') ? (flag('--capture-dns') ?? '') : undefined, providers }) ?? undefined;
     requireRoutedCells(callingCells);
     const offline = has('--cursor-offline');
@@ -1265,8 +1359,14 @@ async function main(argv: string[]): Promise<number> {
         console.log(`GBRAIN: leak preflight passed for ${leakArms.map((k) => k.replace('|', ' on ').replace('|conversation', ' (channel remember conversation)')).join(', ')} on image id ${imageId}, the image this run uses`);
       }
     }
+    const half = flag('--task-half');
+    if (half !== undefined && half !== '1' && half !== '2') throw new RunnerError('HE-RUN-002', `--task-half takes 1 or 2 (got ${half})`);
+    const onlyTasks = half === undefined ? undefined : taskHalf(manifest.trials.filter((t) => (cells ? cells.includes(t.cell) : true)), Number(half) as 1 | 2,
+      (t) => { const cell = manifest.cells.find((c) => c.id === t.cell)!; return loadTask(sealed && isSealedCell(cell, sealed.set) ? join(sealed.root, t.task_dir!) : t.task_dir!).family ?? ''; });
+    if (onlyTasks) console.log(`TASK-HALF: half ${half} runs ${onlyTasks.length} tasks`);
     const { executeRun } = await import('./trial/run.ts');
     const result = await executeRun(manifest, path, {
+      ...(onlyTasks ? { tasks: onlyTasks } : {}),
       ...(sealed ? { worldPath: sealed.worldPath, sealedRoot: sealed.root, sealedSet: sealed.set } : {}),
       harnessMode: mode as HarnessMode, adapter: flag('--adapter'), image: flag('--image'), gbrainImage, resume: has('--resume'), stopOnCap: has('--stop-on-cap'),
       cells, ledgerPath: flag('--ledger'), leaseUsd: flag('--lease-usd') ? Number(flag('--lease-usd')) : undefined,

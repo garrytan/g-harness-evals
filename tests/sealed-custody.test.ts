@@ -779,7 +779,7 @@ describe('slice ids against the public world', () => {
       expect([opened(), existsSync(join(f.work, 'root-k'))]).toEqual([before, false]);
     }
     expect(claimProblems([{ id: 'a', sentence: 's', source: 'summary.json', path: 'p', where: { a: 1 }, rule: 'noninferiority', direction: 'increase' }, { id: 'a', sentence: '', source: 'comparisons.json', path: 'p', where: {}, rule: 'better', direction: 'increase' }])).toEqual([
-      'heldout.claims[0] (a): source must be comparisons.json or comparisons.gbrain.json, the two export.ts makes (got "summary.json")',
+      'heldout.claims[0] (a): source must be comparisons.json, comparisons.gbrain.json or comparisons.owner-identity.json, the three export.ts makes (got "summary.json")',
       'heldout.claims[0] (a): a noninferiority claim needs a numeric margin >= 0',
       'heldout.claims[1] (a): id is not unique',
       'heldout.claims[1] (a): sentence must be a non-empty string',

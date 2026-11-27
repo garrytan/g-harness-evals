@@ -80,7 +80,7 @@ RUN git init --quiet /opt/gbrain && cd /opt/gbrain \
     && rm -rf .git \
     && mkdir -p /opt/sidecar \
     && printf '{"gbrain_commit":"%s","gbrain_ref":"%s","gbrain_version":"%s","bun":"%s"}\n' "$resolved" "$GBRAIN_COMMIT" "$version" "$(bun --version)" > /opt/sidecar/image.json
-COPY gbrain/build-brain.ts gbrain/build-install.ts gbrain/pin.json gbrain/entrypoint.sh gbrain/export-install.sh gbrain/rebind-sources.ts /opt/sidecar/gbrain/
+COPY gbrain/build-brain.ts gbrain/build-install.ts gbrain/pin.json gbrain/entrypoint.sh gbrain/export-install.sh gbrain/rebind-sources.ts gbrain/extraction-model.ts /opt/sidecar/gbrain/
 COPY world/types.ts /opt/sidecar/world/types.ts
 COPY --from=world-input /world.json /opt/sidecar/world/seed/world.json
 # The world's digest goes into image.json; a sealed build stops here when the world it received is not the receipt's.
@@ -125,31 +125,39 @@ RUN if [ -n "$DEV_CORPUS_SHA256" ]; then \
 # container with /brain bind-mounted and OPENAI_BASE_URL pointing at the metering proxy to build the embedded brains.
 FROM base AS builder
 COPY --from=corpus /opt/corpus/eval/data/messy-company-v1/corpus /opt/corpus
+COPY world/seed/world.json /opt/sidecar/world/public-world.json
 RUN mkdir -m 0777 /brain
 
 # One stage per split: the brain is built at /brain, the path it is served from, with no key in the environment.
+# owner-identity: OWNER_MEMBER (build-gbrain-image.sh --world, from the set's world/people.json) names the dev brain's owner,
+# HELDOUT_OWNER_MEMBER (build-gbrain-image.sh --sealed-root of a set with its own world) the heldout brain's. OWN_WORLD (that
+# same sealed build) builds every dev brain from the public world, since a set's own held-out world has no dev records.
 FROM builder AS brain-dev
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
-RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev \
-      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
-      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
+ARG OWN_WORLD=
+ARG OWNER_MEMBER=
+RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$OWN_WORLD" ]; then w=/opt/sidecar/world/public-world.json; fi && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev \
+      --corpus /opt/corpus --world "$w" --out /brain --staging /tmp/staging \
+      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT" ${OWNER_MEMBER:+--owner "$OWNER_MEMBER"}
 
 FROM builder AS brain-heldout
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
 ARG WORLD_SHA256=
+ARG HELDOUT_OWNER_MEMBER=
 COPY world/seed/world.json /opt/sidecar/world/public-world.json
 RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$WORLD_SHA256" ]; then w=/opt/sidecar/world/public-world.json; fi \
     && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split heldout \
       --corpus /opt/corpus --world "$w" --out /brain --staging /tmp/staging \
-      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
+      --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT" ${HELDOUT_OWNER_MEMBER:+--owner "$HELDOUT_OWNER_MEMBER"}
 
 FROM builder AS brain-dev-company
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
-RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --brain company \
-      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+ARG OWN_WORLD=
+RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$OWN_WORLD" ]; then w=/opt/sidecar/world/public-world.json; fi && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --brain company \
+      --corpus /opt/corpus --world "$w" --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
 FROM builder AS brain-heldout-company
@@ -165,8 +173,9 @@ RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$WORLD_SHA256" ]; then w=/o
 FROM builder AS brain-dev-member
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
-RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --brain member \
-      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+ARG OWN_WORLD=
+RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$OWN_WORLD" ]; then w=/opt/sidecar/world/public-world.json; fi && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --brain member \
+      --corpus /opt/corpus --world "$w" --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
 FROM builder AS brain-heldout-member
@@ -186,9 +195,10 @@ RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$WORLD_SHA256" ]; then w=/o
 FROM builder AS brain-dev-member-acl
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
-RUN if env -i PATH="$PATH" HOME=/tmp bun /opt/gbrain/src/cli.ts access --help 2>&1 | grep -q 'per-member read access'; then \
+ARG OWN_WORLD=
+RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$OWN_WORLD" ]; then w=/opt/sidecar/world/public-world.json; fi && if env -i PATH="$PATH" HOME=/tmp bun /opt/gbrain/src/cli.ts access --help 2>&1 | grep -q 'per-member read access'; then \
       env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --brain member --access rules \
-        --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+        --corpus /opt/corpus --world "$w" --out /brain --staging /tmp/staging \
         --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"; \
     else \
       mkdir -p /brain && printf '{"access":"rules","unavailable":"gbrain %s has no access command"}\n' "$GBRAIN_COMMIT" > /brain/unavailable.json; \
@@ -199,8 +209,9 @@ RUN if env -i PATH="$PATH" HOME=/tmp bun /opt/gbrain/src/cli.ts access --help 2>
 FROM builder AS brain-dev-labelled
 ARG GBRAIN_COMMIT
 ARG CORPUS_COMMIT
-RUN env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --labels readers \
-      --corpus /opt/corpus --world /opt/sidecar/world/seed/world.json --out /brain --staging /tmp/staging \
+ARG OWN_WORLD=
+RUN w=/opt/sidecar/world/seed/world.json && if [ -n "$OWN_WORLD" ]; then w=/opt/sidecar/world/public-world.json; fi && env -i PATH="$PATH" HOME=/tmp bun /opt/sidecar/gbrain/build-brain.ts --split dev --labels readers \
+      --corpus /opt/corpus --world "$w" --out /brain --staging /tmp/staging \
       --gbrain "bun /opt/gbrain/src/cli.ts" --commit "$GBRAIN_COMMIT" --corpus-commit "$CORPUS_COMMIT"
 
 # internal-task: the dev company brain with each page's world readers (token members only) in its frontmatter as readable_by

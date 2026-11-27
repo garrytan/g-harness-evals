@@ -34,8 +34,9 @@
  *      move in one transaction: a main change landing after the push that admitted the opening is not seen by it, and the
  *      custody log stays the record of what was opened.
  * Then the bundle is decrypted into the output directory (files 0600), every entry checked (an extras/ file only when the
- * manifest's sealed.extras lists it with the same sha256, and every listed one present), the world slice merged into the
- * public world as world/world.json, every digest verified against the public commitments, and opening-receipt.json
+ * manifest's sealed.extras lists it with the same sha256, and every listed one present; the same for the own-world files
+ * sealed.own_world lists), the world slice merged into the public world as world/world.json (a set with its own world:
+ * its world.json written verbatim, beside its own files such as world/people.json and world/owner-card.md), every digest verified against the public commitments, and opening-receipt.json
  * written. Any failure after decryption removes the directory. Output names paths and digests only, never content.
  *
  * A repo set (MANIFEST.json "kind": "repo", tasks/repo/<set>/): the bundle is decrypted into the root the same
@@ -49,7 +50,7 @@ import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { checkPlan, claimProblems, deriveSet, heldoutSetsOf, type HeldoutBlock } from '../../runner/heldout/openings.ts';
-import { bundleEntryProblem, corpusDigest, decryptWith, mergeWorld, OPAQUE_SALT_FILE, RECEIPT_FILE, readReceipt, renderWorld, sealedPaths, sha256, sliceProblems, unpackTar, type OpeningReceipt, type WorldSlice } from '../../runner/heldout/sealed.ts';
+import { bundleEntryProblem, corpusDigest, decryptWith, mergeWorld, OPAQUE_SALT_FILE, ownWorldProblems, RECEIPT_FILE, readReceipt, renderWorld, sealedPaths, sha256, sliceProblems, unpackTar, type OpeningReceipt, type WorldSlice } from '../../runner/heldout/sealed.ts';
 import { heldoutSet, openingsLedger, readManifest, treeFiles, type HeldoutManifest } from '../seal-heldout.ts';
 import type { World } from '../../world/types.ts';
 import { checkCustodyRemoteOf, checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, ESCROW_FILE, git, insideGitTree, netEnv, openedRuns, readAccessLog, syncCustody, type AccessEvent } from './custody.ts';
@@ -104,7 +105,7 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
     const set = heldoutSet(setName, repo);
     const manifest = readManifest(set);
     if (manifest?.custody !== 'sealed' || !manifest.sealed) fail('HE-SEALED-006', `set ${setName} is not in sealed custody (${relative(repo, set.manifest)} has no "custody": "sealed")`);
-    const claimed = claimProblems(block!.claims, prereg.cells.map((c) => String(c.id)));
+    const claimed = claimProblems(block!.claims, prereg.cells.map((c) => String(c.id)), block!.owner_identity);
     if (claimed.length) fail('HE-SEALED-006', `${preregPath}: ${claimed.join('; ')}; nothing was opened, since export.ts could not decide these claims and the opening would be spent`);
     const m = manifest as HeldoutManifest & { sealed: NonNullable<HeldoutManifest['sealed']> };
     return { publicCommit, preregPath, preregSha, prereg, block: block!, setName, set, m, ledger: openingsLedger(m) };
@@ -187,7 +188,7 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
   try {
     const kind = set.kind;
     const entries = unpackTar(await decryptWith(identity, new Uint8Array(bundle)));
-    const problem = bundleEntryProblem(entries, setName, m.sealed.extras, kind);
+    const problem = bundleEntryProblem(entries, setName, m.sealed.extras, kind, m.sealed.own_world);
     if (problem) throw new RunnerError('HE-SEALED-006', problem);
     for (const e of entries) {
       const dest = join(out, e.path);
@@ -223,11 +224,15 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
     if (!existsSync(p.slice)) throw new RunnerError('HE-SEALED-006', 'the bundle has no world/slice.json');
     const pubWorldBytes = readFileSync(join(repo, 'world', 'seed', 'world.json'));
     const pub = JSON.parse(pubWorldBytes.toString('utf8')) as World;
+    const ownWorld = m.sealed.own_world;
     let slice: WorldSlice;
     try { slice = JSON.parse(readFileSync(p.slice, 'utf8')) as WorldSlice; } catch { throw new RunnerError('HE-SEALED-006', 'the bundle\'s world/slice.json is not valid JSON (the parser\'s message quotes it, so it is not printed)'); }
-    const sp = sliceProblems(slice, pub);
-    if (sp.length) throw new RunnerError('HE-SEALED-006', `the world slice does not fit the public world (${sp.length} problem(s); the details name sealed records, so they are not printed): the public world changed since sealing, which bun scripts/seal-heldout.ts --check also reports`);
-    writeFileSync(p.world, renderWorld(mergeWorld(pub, slice)), { mode: 0o600 });
+    const sp = ownWorld ? ownWorldProblems(slice, pub) : sliceProblems(slice, pub);
+    if (sp.length) throw new RunnerError('HE-SEALED-006', ownWorld ? `the set's own world is not one a held-out set can bring (${sp.length} problem(s); the details name sealed records, so they are not printed)` : `the world slice does not fit the public world (${sp.length} problem(s); the details name sealed records, so they are not printed): the public world changed since sealing, which bun scripts/seal-heldout.ts --check also reports`);
+    // A set with its own world runs on that world as sealed, beside its own files (people.json, owner-card.md); a slice is
+    // merged into the public world.
+    if (ownWorld) writeFileSync(p.world, readFileSync(p.slice), { mode: 0o600 });
+    else writeFileSync(p.world, renderWorld(mergeWorld(pub, slice)), { mode: 0o600 });
     const tree = treeFiles(p.tasks);
     const checks: Array<[string, string, string | null]> = [
       ['tree_sha256', tree.tree_sha256, m.tree_sha256],
@@ -238,7 +243,7 @@ export async function openRun(o: OpenOptions): Promise<OpenResult> {
     const n = taskCount();
     const receipt: OpeningReceipt = {
       ...base, tree_sha256: tree.tree_sha256, world_slice_sha256: m.sealed.world_slice_sha256, heldout_corpus_sha256: m.sealed.heldout_corpus_sha256, ...(m.sealed.extras ? { extras: m.sealed.extras } : {}),
-      public_world_sha256: sha256(pubWorldBytes), world_sha256: sha256(readFileSync(p.world)), task_count: n, access, written_at: now(),
+      ...(ownWorld ? { own_world: ownWorld } : {}), public_world_sha256: ownWorld ? null : sha256(pubWorldBytes), world_sha256: sha256(readFileSync(p.world)), task_count: n, access, written_at: now(),
     };
     writeFileSync(p.receipt, JSON.stringify(receipt, null, 1) + '\n', { mode: 0o600 });
     for (const l of planLines) log(l);

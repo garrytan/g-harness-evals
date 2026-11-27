@@ -41,6 +41,8 @@ export interface WorldServerOptions {
   gbrain?: GbrainUpstream | null;
   /** v0.4 (internal-task): the task's [world] retire slugs, hidden from every read surface from construction on. */
   retire?: readonly string[];
+  /** internal-task arm N: the agent's notes store (world.ts WorldOptions.notes); absent, no notes tools. */
+  notes?: { dir: string; seed: Record<string, string> };
   /** Wall-clock delays before each socket redelivery (slack/socket.ts); absent, Slack's 3 s, 1 min and 5 min. */
   socketRetryDelaysMs?: number[];
   /** Agent-set timers on the simulation clock (world/services/clock/timers.ts); absent or false, no timer tool exists. */
@@ -88,6 +90,7 @@ export function createWorldServer(opts: WorldServerOptions): WorldServer {
     world, split: opts.split, trialId: opts.trialId, clock, log,
     bot: { id: credentials.bot.member, name: credentials.bot.member, handle: credentials.bot.member },
     ...(opts.retire?.length ? { retire: opts.retire } : {}),
+    ...(opts.notes ? { notes: opts.notes } : {}),
     ...(opts.timers ? { timers: true } : {}),
   });
   for (const a of credentials.actors) service.requireMember(a.member);

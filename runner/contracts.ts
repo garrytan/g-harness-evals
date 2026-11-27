@@ -177,6 +177,12 @@ export interface PredicateResult {
  *  allows, after that many had been answered; the proxy refused it and the trial ended there. A scored outcome, not an error. */
 export type Termination = 'completed' | 'timeout' | 'approval_stop' | 'harness_error' | 'model_error' | 'infra_error' | 'exam_fault' | 'request_cap';
 
+/** Why an infra_error trial is excluded, when the runner names it. gbrain_extraction_dropped (HE-GBRAIN-023): a cell with gbrain's
+ *  model on lost an extraction job (dropped, failed or still queued after the drain), so the store under grade is not what gbrain
+ *  would have written. */
+export const INFRA_CLASSES = ['gbrain_extraction_dropped'] as const;
+export type InfraClass = (typeof INFRA_CLASSES)[number];
+
 export interface GradeResult {
   grade: 'pass' | 'fail' | 'n/a';
   predicates: PredicateResult[];
@@ -434,6 +440,20 @@ export interface GbrainCellConfig {
    *  pages. Needs serves "several" on the member-key shape (bot-visible brain, scope "member") and split dev; preflight lists
    *  every page under each member key (HE-GBRAIN-002). */
   labels?: 'readers';
+  /** internal-task addition: "proxy" gives gbrain its own model route. The sidecar gets the metering proxy's slot URL as
+   *  ANTHROPIC_BASE_URL and the slot's per-trial token as ANTHROPIC_API_KEY (never a provider key), so gbrain's fact extraction
+   *  and its other model calls run at its shipped defaults, metered under the trial key and tagged caller "gbrain". Absent or
+   *  "off": the sidecar is keyless and gbrain makes no model call, as before. */
+  llm?: 'off' | 'proxy';
+  /** With llm "proxy" (required): the facts extraction model (provider:model, Anthropic) gbrain must resolve at sidecar start
+   *  (resolveFactsExtractionModel); another model ends the trial as an exam_fault before the harness starts (HE-GBRAIN-022). */
+  extraction_model?: string;
+  /** With llm "proxy": true pins extraction_model with gbrain config set facts.extraction_model before the check, so gbrain
+   *  resolves it from config instead of its shipped default. */
+  extraction_pin?: boolean;
+  /** With llm "proxy": other models gbrain's own calls may use through its route (such as its utility tier for query expansion),
+   *  metered and tagged like the extraction calls; any other model gbrain asks for is refused at $0 and counted. */
+  llm_models?: string[];
 }
 
 /** The install bundle view a gbrain-docs or gbrain-installer trial mounted into the harness, as the runner verified it
@@ -503,6 +523,32 @@ export interface TrialEmbeddingUsage {
   failed: number;
 }
 
+/** internal-task: the sidecar's own model calls (caller "gbrain", not embeddings) for one trial, from the proxy's usage lines. */
+export interface TrialGbrainLlmUsage {
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  usd: number;
+  /** Requests per provider:model, forwarded or failed. */
+  by_model: Record<string, number>;
+  /** Lines the proxy refused (a model not on the sidecar's slot, for example) or that failed upstream. */
+  refused: number;
+  failed: number;
+}
+
+/** internal-task: the sidecar's receipt of gbrain's facts extraction model (<trial dir>/gbrain/llm.json). */
+export interface GbrainLlmReceipt {
+  schema_version: 1;
+  /** What resolveFactsExtractionModel returned at sidecar start: the model and gbrain's own name for what chose it
+   *  (measured_default, config_key, tier_config, models_default, env, tier_default, fallback, ...). */
+  extraction: { model: string; source: string };
+  /** The model the sidecar pinned with gbrain config set facts.extraction_model, or null. */
+  pinned: string | null;
+  /** The variable gbrain's model calls leave through, and its value (the proxy slot URL, never a key). */
+  route: { env: 'ANTHROPIC_BASE_URL'; url: string };
+}
+
 /** gbrain arm lane D addition: what the runner records about a trial's sidecar in trials.jsonl. */
 export interface TrialGbrain {
   /** The resolved surface. */
@@ -517,6 +563,9 @@ export interface TrialGbrain {
   install_bundle?: TrialGbrainInstall;
   embedding_usage?: TrialEmbeddingUsage;
   semantic_check?: { search_calls: number; embedding_requests: number; degraded_calls: number; ok: boolean; reason?: string };
+  /** internal-task, present only when the cell set llm "proxy": the extraction model the cell expected, gbrain's receipt (absent
+   *  when the sidecar never wrote one) and gbrain's own metered model calls, apart from the harness's usage. */
+  llm?: { mode: 'proxy'; expected_extraction_model: string; receipt?: GbrainLlmReceipt; usage?: TrialGbrainLlmUsage };
   /** Company brain additions, absent in records written before them: the brain and scope the sidecar ran with and the docker
    *  image id behind the tag, so a record names the exact brain it was served from. */
   brain?: 'bot-visible' | 'company' | 'member';
@@ -543,7 +592,45 @@ export interface TrialGbrain {
    *  memory-provider client (caller "provider"), present only when the log has a provider event; records written before it
    *  counted provider events in the top-level figures. */
   events: TrialGbrainEvents & { provider?: TrialGbrainEvents };
+  /** internal-task: present on a cell with gbrain's model on (runner/trial/gbrain-drain.ts). */
+  drain?: TrialGbrainDrain;
 }
+
+/** internal-task: the facts drain before grading. queue_idle: gbrain's facts work went quiet before the timeout (its in-process queue has no
+ *  outside read at gbrain a26eb922, so quiet means no change in the ingest log, the facts-absorb jobs or get_stats for quiet_ms);
+ *  signals: the MCP reads that answered. cli_drain: whether gbrain's own `dream --phase facts_drain` ran on the stopped brain,
+ *  with its outcome. drained: facts-absorb jobs of this trial that completed (the CLI drain's count plus completed job rows);
+ *  dropped: by reason, the facts:absorb ingest-log rows written during the trial (queue_overflow, queue_shutdown, gateway_*,
+ *  parse_failure...; write_pending_accepted is information and left out) and failed or dead facts-absorb jobs of the trial;
+ *  timed_out: this trial's facts-absorb jobs still queued after the CLI drain; preexisting_backlog: queued jobs older than the trial
+ *  (the image's own). Any dropped or timed-out job, a queue that never went quiet, or a drain error is infra class
+ *  gbrain_extraction_dropped. */
+export interface TrialGbrainDrain {
+  queue_idle: boolean;
+  wait_ms: number;
+  quiet_ms: number;
+  timeout_ms: number;
+  polls: number;
+  signals: string[];
+  cli_drain: 'not_needed' | 'ran' | 'failed';
+  cli_outcome?: string;
+  drained: number;
+  dropped: Record<string, number>;
+  timed_out: number;
+  preexisting_backlog: number;
+  facts_rows: number;
+  /** Family C (runner/trial/oi-capture.ts): gbrain's corpus pass over the harness's banked sessions, run on the brain copy before
+   *  the dump: the corpus files copied in, the `gbrain sweep --once` passes, the files they ingested and their skips by reason. */
+  capture_sweep?: { corpus_files: number; passes: number; ingested: number; skipped: Record<string, number>; error?: string };
+  wall_ms: number;
+  error?: string;
+}
+
+/** internal-task arm N: the bot's notes store over one trial, counted from the world's event log (notes.* events) and the dump.
+ *  seeded: files written from the set's people pages before the harness started; writes: notes_write calls the world took, and
+ *  persons_written the person ids they wrote; reads: notes_list and notes_read calls; denied: notes calls the world refused (a
+ *  bad person id, a write after the fence, an oversized file); files: files in the store at the dump. */
+export interface TrialNotes { seeded: number; writes: number; persons_written: string[]; reads: number; denied: number; files: number }
 
 export interface TrialGbrainEvents { total: number; discovery: number; calls: number; in_turn_calls: number; writes: number; degraded?: number; write_errors?: Record<string, number> }
 
@@ -628,8 +715,12 @@ export interface TrialRecord {
   paths: Record<string, string>;
   /** The HE- line that ended the trial early, when one did. */
   error?: string;
+  /** Set on an infra_error the runner can name (INFRA_CLASSES). */
+  infra_class?: InfraClass;
   /** gbrain arm lane D addition: set on a trial of a cell that carries gbrain. */
   gbrain?: TrialGbrain;
+  /** internal-task arm N: set on a trial of a cell with notes on. */
+  notes?: TrialNotes;
   /** Lane B bridge addition: set on a trial run through the Lane B bridge. */
   laneb?: TrialLaneB;
   /** Prompt archaeology addition: set on a trial of a cell that carries ablation. */
@@ -644,8 +735,37 @@ export interface TrialRecord {
   skill_request?: TrialSkillRequest;
   /** internal-task addition: set on a trial of a gbrain-install cell (runner/trial/install.ts). grade stays n/a; outcome is the score. */
   install?: TrialInstall;
+  /** internal-task addition: set on an owner-identity trial run through the metering proxy (runner/trial/owner-card.ts). */
+  owner_card?: TrialOwnerCard;
+  /** internal-task addition: set on an owner-identity trial of a harness whose adapter hands its agent loop a sender of its own (QM). */
+  sender_signal?: TrialSenderSignal;
   /** The gbrain first-wow eval only: setup, registration, the question session and its score (runner/trial/first-wow.ts TrialFirstWow). */
   first_wow?: unknown;
+}
+
+/** internal-task: did the owner card reach the model? expected: the cell carries owner_card (arms N and G; arm B carries none).
+ *  card_sha256: the card checked, the cell's, or for a cell with none the set's world/owner-card.md (null when the set has
+ *  none). ready: the owner_card field of the adapter's ready line, or null. first_request: the card's lines in the first
+ *  agent-loop request the harness sent through the proxy (the first on the cell model that offers tools, else the first on the
+ *  cell model), every non-empty line matched after whitespace is collapsed: present (all), partial (some), absent (none),
+ *  no_request (the proxy collected none on the cell model). ok: expected, ready and present; or not expected, no ready field
+ *  and absent. The pilot reads ok per arm: true in every N and G trial and every B trial. */
+export interface TrialOwnerCard {
+  expected: boolean;
+  card_sha256: string | null;
+  ready: { file: string; card_sha256: string; setting?: string } | null;
+  first_request: 'present' | 'partial' | 'absent' | 'no_request';
+  lines: number;
+  lines_found: number;
+  ok: boolean;
+}
+
+/** internal-task: the sender the adapter hands the harness's own agent loop on each turn, a harness-native channel for who is
+ *  speaking, independent of the runner's prompt. QM: actor.externalId (the requester's Slack user id) and actor.displayName on
+ *  POST /v1/turns, from the adapter's logs/turns/<turn>.job.json; QM scopes a DM to personal:<externalId>. */
+export interface TrialSenderSignal {
+  field: string;
+  turns: Array<{ turn: number; external_id: string; display_name: string | null }>;
 }
 
 /** internal-task: one gbrain install trial. The finish line is all of finish.reply (the recall reply holds the nonce as a whole

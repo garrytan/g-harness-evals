@@ -86,3 +86,30 @@ case "${base_url%/}" in
     printf 'QM_ANTHROPIC_BASE_URL=\n'
     ;;
 esac
+# internal-task re-pin (README.md, "Re-pin to main 7689355c"): QM core refuses an MCP server, its OAuth endpoints and a custom
+# model provider on a private address unless that exact origin is in core's PRIVATE_NETWORK_ALLOWED_ORIGINS
+# (yc-software/qm#3206, docs/mcp-connectors.md at the pin), and never allows loopback. The trial's servers sit on the Docker
+# bridge at host ports picked at trial start, so the list is built here from the URLs the trial hands the adapter: the world
+# MCP server (HE_WORLD_MCP_URL), the gbrain MCP server in a gbrain cell (HE_GBRAIN_MCP_URL, the world's /gbrain tap, so
+# usually the same origin) and, on a Particle cell, the metering proxy, which QM now calls as a custom provider through the
+# same guard. Each entry is scheme://host[:port], nothing wider; a URL that does not parse or names a loopback host exits 2.
+# With none of them set (a run cell on Anthropic or OpenAI) nothing is printed, the list is empty and core allows no private
+# origin, as before.
+origins=()
+for v in HE_WORLD_MCP_URL HE_GBRAIN_MCP_URL particle; do
+  if [ "$v" = particle ]; then case "${base_url%/}" in */particle) url=$base_url ;; *) continue ;; esac; else url=${!v:-}; fi
+  [ -n "$url" ] || continue
+  [[ "$url" =~ ^([A-Za-z][A-Za-z0-9+.-]*)://([^/?#@]+)([/?#]|$) ]] \
+    || { echo "qm prepare: $v is not an http(s) URL with a host; QM's PRIVATE_NETWORK_ALLOWED_ORIGINS needs its exact origin" >&2; exit 2; }
+  scheme=${BASH_REMATCH[1],,} hostport=${BASH_REMATCH[2],,}
+  case "$scheme:$hostport" in http:*:80) hostport=${hostport%:80} ;; https:*:443) hostport=${hostport%:443} ;; esac
+  case "$scheme" in http|https) ;; *) echo "qm prepare: $v is $scheme://, not http(s)" >&2; exit 2 ;; esac
+  host=${hostport%:*}; [[ "$hostport" != \[* ]] || host=${hostport%%]*}]
+  case "$host" in
+    localhost|127.*|0.0.0.0|'[::1]'|'[::]')
+      echo "qm prepare: $v is on loopback ($scheme://$hostport); QM never allows a loopback origin, so serve the world on the Docker bridge (host.docker.internal)" >&2; exit 2 ;;
+  esac
+  origin=$scheme://$hostport
+  [[ " ${origins[*]} " == *" $origin "* ]] || origins+=("$origin")
+done
+[ ${#origins[@]} -eq 0 ] || printf 'QM_PRIVATE_NETWORK_ALLOWED_ORIGINS=%s\n' "$(IFS=,; printf '%s' "${origins[*]}")"

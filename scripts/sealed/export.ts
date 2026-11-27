@@ -15,8 +15,10 @@
  * is missing or not the digest of the run's first "opened" line there (a run with no such line is refused too); the last two are checked after each sync and again inside the
  * push transaction.
  * Inside custody it runs scripts/summarize-run.ts and makes every claim source again from the current trials.jsonl with
- * scripts/compare-run.ts (both with --sealed-root; the sources are comparisons.json and comparisons.gbrain.json, and any
- * other claim source is refused): the preregistered defaults, plus one --margin per noninferiority claim
+ * scripts/compare-run.ts (both with --sealed-root; the sources are comparisons.json and comparisons.gbrain.json) or, for
+ * comparisons.owner-identity.json, with scripts/owner-identity/analyze.ts (from each trial's owner-identity verdicts, row P
+ * output under <results>/row-p, and the preregistration's heldout.owner_identity config); any other claim source is refused:
+ * the preregistered defaults, plus one --margin per noninferiority claim
  * of that source. A comparisons file already in the raw results is overwritten, never read. It then writes an allowlisted
  * public export into --out:
  *   export.json            run, set, opening number, label, mode; one accept or reject bit per preregistered claim with
@@ -66,8 +68,8 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { RunnerError } from '../../runner/errors.ts';
 import { holmAdjusted } from '../../runner/stats/paired.ts';
 import { openSealedContext, type Manifest } from '../../runner/run.ts';
-import { encryptTo, idValues, OPAQUE_SALT_FILE, opaqueId, packTar, quotedLiterals, readJsonFile, safeRelPath, sealedPaths, sha256, type OpeningReceipt, type TarEntry } from '../../runner/heldout/sealed.ts';
-import { CLAIM_FAMILIES, claimProblems, deriveSet, type HeldoutClaim } from '../../runner/heldout/openings.ts';
+import { encryptTo, idValues, OPAQUE_SALT_FILE, opaqueId, ownWorldFiles, packTar, quotedLiterals, readJsonFile, safeRelPath, sealedPaths, sha256, type OpeningReceipt, type TarEntry } from '../../runner/heldout/sealed.ts';
+import { CLAIM_FAMILIES, CLAIM_SOURCES, claimProblems, deriveSet, type HeldoutClaim } from '../../runner/heldout/openings.ts';
 import { heldoutSet, openingsLedger, readManifest, walk } from '../seal-heldout.ts';
 import type { TrialRecord } from '../../runner/contracts.ts';
 import { checkPrivate, compareAndPush, CUSTODY_REF, CUSTODY_REPO, custodyClone, git, insideGitTree, openedRuns, readAccessLog, syncCustody, withCustodyLock } from './custody.ts';
@@ -119,7 +121,7 @@ function at(obj: unknown, path: string): unknown {
 
 /** The cell pair (and ladder endpoint) a comparison entry of scripts/compare-run.ts is about, for its --margin flag. */
 export function entryPair(e: Record<string, unknown>): [string, string, string?] | null {
-  if (typeof e.a === 'string' && typeof e.b === 'string') return [e.a, e.b];
+  if (typeof e.a === 'string' && typeof e.b === 'string') return typeof e.endpoint === 'string' ? [e.a, e.b, e.endpoint] : [e.a, e.b];
   if (typeof e.base_cell === 'string' && typeof e.cell === 'string') return [e.base_cell, e.cell, typeof e.endpoint === 'string' ? e.endpoint : undefined];
   if (typeof e.cell_none === 'string' && typeof e.cell_gbrain === 'string') return [e.cell_none, e.cell_gbrain];
   return null;
@@ -194,7 +196,7 @@ function stringLeaves(v: unknown, out: string[] = []): string[] {
 export interface Secret { kind: string; text: string }
 
 /** The strings a public export must not contain: task ids, every string in the task tree, the slice, the corpus pages,
- *  the extras (seal.ts --include) and the raw summaries, at least eight characters long (task ids at least three) and absent from every public text. */
+ *  the extras (seal.ts --include), the own-world files (seal.ts --world) and the raw summaries, at least eight characters long (task ids at least three) and absent from every public text. */
 export function collectSecrets(o: { root: string; set: string; raw: string; publicTexts: string[]; templateText?: string }): Secret[] {
   const p = sealedPaths(o.root, o.set);
   const out = new Map<string, string>();
@@ -215,7 +217,7 @@ export function collectSecrets(o: { root: string; set: string; raw: string; publ
     for (const s of quotedLiterals(text)) add('generator string', s);
     for (const line of text.split('\n')) add('generator line', line);
   }
-  for (const f of existsSync(p.extras) ? walk(p.extras) : []) {
+  for (const f of [...(existsSync(p.extras) ? walk(p.extras) : []), ...ownWorldFiles(p)]) {
     const text = readFileSync(f, 'utf8');
     if (f.endsWith('.json')) { try { const v = JSON.parse(text); for (const s of stringLeaves(v)) add('extra string', s); for (const s of idValues(v)) add('extra id', s, 3); } catch { /* not JSON; lines cover it */ } }
     for (const line of text.split('\n')) add('extra line', line);
@@ -316,9 +318,9 @@ export async function exportRun(o: ExportOptions): Promise<{ out: string; export
   const receipt: OpeningReceipt = ctx.receipt;
   const preregBytes = readFileSync(join(repo, receipt.prereg_json));
   if (sha256(preregBytes) !== receipt.prereg_sha256) throw new RunnerError('HE-SEALED-003', `${receipt.prereg_json} changed since the opening`);
-  const prereg = JSON.parse(preregBytes.toString('utf8')) as { heldout?: { claims?: HeldoutClaim[] } };
+  const prereg = JSON.parse(preregBytes.toString('utf8')) as { heldout?: { claims?: HeldoutClaim[]; owner_identity?: unknown } };
   const claims = prereg.heldout?.claims ?? [];
-  const claimed = claimProblems(prereg.heldout?.claims, manifest.cells.map((c) => c.id));
+  const claimed = claimProblems(prereg.heldout?.claims, manifest.cells.map((c) => c.id), prereg.heldout?.owner_identity);
   if (claimed.length) throw new RunnerError('HE-SEALED-007', `${receipt.prereg_json}: ${claimed.join('; ')}`);
   const set = heldoutSet(receipt.set, repo);
   const setManifest = readManifest(set);
@@ -388,7 +390,8 @@ export async function exportRun(o: ExportOptions): Promise<{ out: string; export
   const compare = (source: string, extra: string[]) => {
     if (source === 'comparisons.json') runScript([join(ROOT, 'scripts', 'compare-run.ts'), '--results', raw, '--sealed-root', ctx.root, ...extra]);
     else if (source === 'comparisons.gbrain.json') runScript([join(ROOT, 'scripts', 'compare-run.ts'), '--results', raw, '--pair', 'gbrain', '--sealed-root', ctx.root, ...extra]);
-    else throw new RunnerError('HE-SEALED-007', `claim source ${source} is not one export.ts makes: it makes only comparisons.json and comparisons.gbrain.json, from trials.jsonl, and refuses any other claim source`);
+    else if (source === 'comparisons.owner-identity.json') runScript([join(ROOT, 'scripts', 'owner-identity', 'analyze.ts'), '--results', raw, '--sealed-root', ctx.root, ...extra]);
+    else throw new RunnerError('HE-SEALED-007', `claim source ${source} is not one export.ts makes: it makes only ${CLAIM_SOURCES.join(', ')}, from the raw results, and refuses any other claim source`);
   };
   // A claim whose gate failed is dropped before any comparison is read, so it never enters a Holm family.
   const dropped = failedGates(claims, raw);

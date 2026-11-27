@@ -45,6 +45,7 @@ RUN cd /opt/harness && npm ci --omit=optional --legacy-peer-deps --ignore-script
 COPY config/ /opt/harness/config/
 COPY ablation/ /opt/harness/ablation/
 COPY routes/ /opt/harness/routes/
+COPY capture/ /opt/harness/capture/
 COPY adapter.sh pin.json sdk-driver.ts /opt/harness/
 RUN chmod 0555 /opt/harness/adapter.sh && mkdir -p /workspace /harness-state
 

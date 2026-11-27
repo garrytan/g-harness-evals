@@ -9,6 +9,7 @@ import type { WorldEvent } from '../../world/services/events.ts';
 import { createWorldServer, type WorldServer } from '../../world/services/server.ts';
 import { writeTrialConfig, type TrialConfig } from '../../world/services/start.ts';
 import { loadWorld } from '../../world/services/world.ts';
+import { readNotesSeed } from '../../world/services/notes.ts';
 import type { Member, Split, World } from '../../world/types.ts';
 import type { ExpiryWindowRequest, WorldSnapshot } from '../contracts.ts';
 import { RunnerError } from '../errors.ts';
@@ -62,6 +63,8 @@ export interface TrialWorldOptions {
   clockReference?: string;
   /** v0.4 (internal-task): the task's [world] retire slugs, hidden from every read surface from construction on. */
   retire?: readonly string[];
+  /** internal-task arm N (Cell.notes): the notes store's directory, seeded from the set's people pages beside the world. */
+  notesDir?: string;
   /** The task's [clock] timers: the world keeps agent-set timers and offers the timer_* tools (world/services/clock/timers.ts). */
   timers?: boolean;
 }
@@ -79,12 +82,18 @@ export class TrialWorld {
     this.worldPath = opts.worldPath ?? DEFAULT_WORLD_PATH;
     this.world = worldAt(this.worldPath);
     this.split = opts.split;
+    let notesSeed: Record<string, string> | null = null;
+    if (opts.notesDir) {
+      try { notesSeed = readNotesSeed(this.worldPath, opts.split); }
+      catch (e) { throw new RunnerError('HE-TASK-002', `trial ${opts.trialId}: the notes store (cell notes) has no seed: ${(e as Error).message}; fix: run notes cells on a task set whose world/ sits beside corpus/<split>/people`); }
+    }
     this.server = createWorldServer({
       world: this.world, split: opts.split, trialId: opts.trialId, actors: opts.actors,
       hostname: listenHost(opts.reachableFromContainers, opts.gatewayAddress), port: 0,
       eventsPath: join(opts.outDir, 'events.jsonl'),
       ...(opts.clockReference ? { clockReference: opts.clockReference } : {}),
       ...(opts.retire?.length ? { retire: opts.retire } : {}),
+      ...(opts.notesDir && notesSeed ? { notes: { dir: opts.notesDir, seed: notesSeed } } : {}),
       ...(opts.timers ? { timers: true } : {}),
     });
     const port = new URL(this.server.url).port;
