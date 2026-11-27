@@ -78,9 +78,9 @@ run_scrubbed() {
 pids=() harbor_pid="" harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc=""
 cleanup() {
   [ -z "$harbor_pid" ] || kill -- "-$harbor_pid" 2>/dev/null || true
-  [ "${harness:-}" != qm ] || [ "$harbor_started" -eq 0 ] || docker ps -aq --filter "label=harness-eval.frontier-qm.jobs=$run/jobs" 2>/dev/null | xargs -r docker rm -f -v >/dev/null 2>&1 || true
   for p in ${pids[@]+"${pids[@]}"}; do kill "$p" 2>/dev/null || true; done
   for p in ${pids[@]+"${pids[@]}"}; do wait "$p" 2>/dev/null || true; done
+  [ "${harness:-}" != qm ] || [ "$harbor_started" -eq 0 ] || timeout 60 docker ps -aq --filter "label=harness-eval.frontier-qm.jobs=$run/jobs" 2>/dev/null | xargs -r timeout 120 docker rm -f -v >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 on_signal() {
