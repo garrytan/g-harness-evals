@@ -12,13 +12,17 @@
 // 2. One tiny metered request per (provider, model) the shard calls, its cells' utility models and any --also, through the
 //    ledger guard on <dest>/preflight-ledger.sqlite (runner/cost/provider-probe.ts), and OpenRouter's key limit against the
 //    shard's lease: refused on HE-PROVIDER-001 to 005.
-// 3. <dest>/launch-preflight.json holds the verdict, the projection, every probe answer (status and error type only), the
+// 3. <dest>/launch-preflight.json holds the verdict, the commit it vouches for (scripts/ubicloud/fanout.sh launches a counted
+//    shard only on a pass or override at the manifest's commit from the last hour): with --manifest, the manifest's commit when
+//    the plan folder and every --plan-file match it in the repository that holds them, so a run pinned before this script
+//    changed is checked from a newer checkout; otherwise this checkout's HEAD. It also holds that HEAD (tool_commit), the projection, every probe answer (status and error type only), the
 //    probe spend and any override. An override needs --override and --override-by, prints OVERRIDE lines and appends one
 //    line to <dest>/launch-overrides.jsonl; both files travel with the shard's results.
 // Exit 0 pass (or overridden), 3 refused, 2 bad input (never overridable).
+import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { hostname, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { RunnerError } from '../runner/errors.ts';
 import { money } from '../runner/cost/projection.ts';
 import { probeTargets, runProbes, type ProbeOptions, type ProbeReport } from '../runner/cost/provider-probe.ts';
@@ -60,6 +64,22 @@ function shardOf(o: PreflightOptions): { name: string; cells: string[]; lease_us
   return { name: 'cells', cells: o.cells, lease_usd: o.leaseUsd };
 }
 
+/** The commit the receipt vouches for: the manifest's, when every plan file read here matches it; else this checkout's HEAD. */
+function receiptCommit(o: PreflightOptions, tool: string | null): { commit: string | null; line: string | null } {
+  const target = o.manifest ? (JSON.parse(readFileSync(o.manifest, 'utf8')) as { commit?: unknown }).commit : undefined;
+  if (typeof target !== 'string' || !target) return { commit: tool, line: null };
+  const git = (cwd: string, ...a: string[]) => spawnSync('git', ['-C', cwd, ...a], { encoding: 'utf8' });
+  const root = git(o.folder, 'rev-parse', '--show-toplevel').stdout?.trim();
+  const full = root ? git(root, 'rev-parse', '--verify', '--quiet', target + '^{commit}').stdout?.trim() : '';
+  const own = `COMMIT: ${tool ?? 'unknown'} (this checkout's HEAD), so fanout.sh refuses this receipt for the manifest's commit ${target.slice(0, 12)}: `;
+  if (!root || !full) return { commit: tool, line: own + `that commit is not in the repository holding ${o.folder}` };
+  const paths = [o.folder, ...o.planFiles].map(p => relative(root, resolve(p)));
+  if (paths.some(p => p.startsWith('..'))) return { commit: tool, line: own + 'a --plan-file is outside the repository holding the plan folder' };
+  const changed = git(root, 'diff', '--quiet', full, '--', ...paths).status !== 0 || git(root, 'ls-files', '--others', '--exclude-standard', '--', ...paths).stdout?.trim();
+  if (changed) return { commit: tool, line: own + 'the plan folder or a --plan-file differs from that commit' };
+  return { commit: full, line: `COMMIT: ${full} (the manifest's; the plan files read here match it; this script ran at ${tool?.slice(0, 12) ?? 'unknown'})` };
+}
+
 export async function preflight(o: PreflightOptions): Promise<PreflightResult> {
   if (!o.ledgers.length) throw new RunnerError('HE-BUDGET-004', 'pass every pilot and counted ledger with --ledger, so the spend so far is counted');
   if (Boolean(o.override?.reason) !== Boolean(o.override?.by)) throw new RunnerError('HE-RUN-002', 'an override needs both --override "<reason>" and --override-by <thread code>');
@@ -99,9 +119,12 @@ export async function preflight(o: PreflightOptions): Promise<PreflightResult> {
   } else if (refusals.length) {
     lines.push(`NEXT: fix each refusal and rerun; or, only with the coordinating agent's decision: the same command plus --override "<reason>" --override-by <thread code>`);
   }
+  const tool = spawnSync('git', ['-C', import.meta.dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout?.trim() || null;
+  const { commit, line } = receiptCommit(o, tool);
+  if (line) lines.push(line);
   const verdict = refusals.length === 0 ? 'pass' : overridden ? 'overridden' : 'refused';
   lines.push(`VERDICT: ${verdict.toUpperCase()}`);
-  const receipt = { schema: 'launch-preflight/1', at, run_id: cost.plan.run_id, shard, verdict, refusals, override, projection: cost.receipt, probes };
+  const receipt = { schema: 'launch-preflight/1', at, commit, tool_commit: tool, run_id: cost.plan.run_id, shard, verdict, refusals, override, projection: cost.receipt, probes };
   writeFileSync(join(o.dest, 'launch-preflight.json'), JSON.stringify(receipt, null, 2) + '\n');
   lines.push(`RECEIPT: ${join(o.dest, 'launch-preflight.json')}`);
   return { exit: verdict === 'refused' ? 3 : 0, lines, receipt };

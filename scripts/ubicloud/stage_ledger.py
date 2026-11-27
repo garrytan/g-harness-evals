@@ -8,7 +8,9 @@ preregistration's caps_usd entry for that stage, and it is checked against the s
 split dest or a one-off run-shard.sh relaunch counts against the same cap. A reservation and the launch that used it count
 once, and a --resume line continues its shard's lease and adds nothing. A shard that never launched gets a released line
 from fanout.sh at the end of its fan-out, and its reservation then counts nothing; a released line only lowers the sum, so
-it is appended without the lock. Writers of reservations hold <replicate-to>/.stage-ledger.lock.
+it is appended without the lock. Writers of reservations hold <replicate-to>/.stage-ledger.lock. Each row goes in as one
+append; a row that lands after a torn line (a write that never finished) first ends that line and adds a torn_before row, and
+a reader leaves out, with a warning, a torn line that is last or is followed by a torn_before row.
 
 fanout.sh imports it; run-shard.sh runs it:
   stage_ledger.py launch <repo root> <commit> <prereg> <replicate-to> <dest> <lease> <resume 0|1> <reservation or ""> [workload args]
@@ -17,7 +19,7 @@ fanout.sh imports it; run-shard.sh runs it:
 """
 import fcntl, json, os, subprocess, sys, time
 
-LEDGER, LOCK = 'stage-ledger.jsonl', '.stage-ledger.lock'
+LEDGER, LOCK, TORN = 'stage-ledger.jsonl', '.stage-ledger.lock', 'torn_before'
 
 
 def num(v):
@@ -65,12 +67,19 @@ def units(rep, run_id, stage, who, when):
     p = os.path.join(rep, LEDGER)
     out, released = {}, set()
     if not os.path.isfile(p): return out
-    for i, line in enumerate(open(p), 1):
+    text = open(p).read()
+    lines = text.split('\n')
+    for i, line in enumerate(lines, 1):
         if not line.strip(): continue
         try:
             e = json.loads(line)
+            if e.get(TORN) is True: continue
             lease = float(e['lease_usd'])
         except (ValueError, TypeError, KeyError, AttributeError):
+            later = [l for l in lines[i:] if l.strip()]
+            if (i == len(lines) and not text.endswith('\n')) or (later and torn_mark(later[0])):
+                print('%s: WARNING: %s line %d is unreadable and was cut short (a write that never finished, which no launch used: its writer prints the reservation only after the line is written), so it is left out' % (who, p, i), file=sys.stderr)
+                continue
             sys.exit('%s: refused %s: %s line %d is unreadable, so its lease cannot be counted against the stage cap' % (who, when, p, i))
         if e.get('run_id') != run_id or e.get('stage') != stage or e.get('resume'): continue
         k = e.get('reservation') or 'line %d' % i
@@ -81,8 +90,25 @@ def units(rep, run_id, stage, who, when):
     return out
 
 
+def torn_mark(line):
+    try: return json.loads(line).get(TORN) is True
+    except (ValueError, AttributeError): return False
+
+
 def append(rep, row):
-    with open(os.path.join(rep, LEDGER), 'a') as f: f.write(json.dumps(row) + '\n')
+    """One row in a single append. After a torn last line (no newline) the write first ends that line and adds a torn_before
+    row, so the row never lands on the end of the fragment and readers know the fragment was a write that never finished."""
+    p = os.path.join(rep, LEDGER)
+    fd = os.open(p, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        size = os.fstat(fd).st_size
+        torn = size > 0 and os.pread(fd, 1, size - 1) != b'\n'
+        if torn: print('stage ledger: WARNING: %s ends in a line that was cut short; ending it and marking it before this row' % p, file=sys.stderr)
+        data = (('\n' + json.dumps({TORN: True}) + '\n' if torn else '') + json.dumps(row) + '\n').encode()
+        wrote = os.write(fd, data)
+        if wrote != len(data): raise OSError('only %d of %d bytes of the row reached %s (a short write, as on a full disk), so it is not counted as written; the next row ends and marks the cut line' % (wrote, len(data), p))
+    finally:
+        os.close(fd)
 
 
 def over(who, when, run_id, stage, rep, total, u, cap):

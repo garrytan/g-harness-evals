@@ -58,6 +58,11 @@
 # Each shard runs as a background process with its own log at <dest>/<name>/fanout.log, its lane log at
 # <dest>/<name>/lane.log and its results at <dest>/<name>/results, which is what scripts/merge-shards.ts takes.
 #
+# The launch check: a counted manifest (harness or frontier-harbor, a prereg in this repository at the commit, no
+# --install-check) launches a shard only when <dest>/<name>/launch-preflight.json (scripts/launch-preflight.ts) ran at the
+# manifest's commit for that shard, says pass or overridden, and is under an hour old; checked for every shard before any VM
+# call (exit 2) and for each shard again as it launches (exit launch-check in the table). launch_check below has the rule.
+#
 # Quota: shards launch in batches. Each batch reads ubi-runner.sh usage once and launches at most
 # floor((UBI_QUOTA_VCPUS - used) / VM vCPUs) shards (464 unless the caller sets UBI_QUOTA_VCPUS), and with --max-vcpus (or
 # UBI_MAX_VCPUS), this fan-out's own vCPU allowance, only as many as keep its running VMs within it; --parallel caps it too.
@@ -270,6 +275,59 @@ for s in m['shards']:
 PY
 ) || exit 2
 stage_cap check || exit 2
+# The launch check (internal-task): a counted manifest launches only shards whose <dest>/<shard>/launch-preflight.json, written by
+# scripts/launch-preflight.ts --manifest <this manifest> --shard <shard> --dest <dest>/<shard>, ran at the manifest's commit for
+# that shard, has verdict pass or overridden, and is under an hour old (UBI_LAUNCH_CHECK_SECONDS, 3600), so the spend stop,
+# the pilot prices and the providers' credit were checked just before the spend starts. Counted means the harness or
+# frontier-harbor workload with a prereg that is a path in this repository at the commit (run-shard.sh's rule; a scratch
+# preregistration is an uncounted smoke or check) and no --install-check (keyless). It runs once for every shard before any
+# VM call, the quota read included, and again for each shard as it launches, so a shard that waited for room past the hour is
+# not launched (its exit is launch-check). Other workloads' cells are not preregistration cells, which the check cannot read.
+launch_check() {
+  python3 - "$manifest" "$workload" "$here" "$@" <<'PY'
+import datetime, json, os, subprocess, sys
+m = json.load(open(sys.argv[1])); workload, here, names = sys.argv[2], sys.argv[3], sys.argv[4:]
+root = os.path.dirname(os.path.dirname(here))
+git = lambda *a: subprocess.run(['git', '-C', root, *a], capture_output=True, text=True)
+if workload not in ('harness', 'frontier-harbor') or '--install-check' in m.get('options', []) or git('rev-parse', '--is-inside-work-tree').returncode != 0:
+    sys.exit(0)
+full = git('rev-parse', '--verify', '--quiet', m['commit'] + '^{commit}').stdout.strip()
+if not full:
+    git('fetch', '-q', 'origin', m['commit'])
+    full = git('rev-parse', '--verify', '--quiet', m['commit'] + '^{commit}').stdout.strip()
+if not full:
+    if not names: print('fanout: launch check skipped: commit %s is not in this repository and could not be fetched; run-shard.sh refuses every shard for that before any VM call' % m['commit'], file=sys.stderr)
+    sys.exit(0)
+if git('cat-file', '-e', full + ':' + m['prereg']).returncode != 0:
+    if not names: print('fanout: launch check skipped: %s is not a path in the repository at %s, so this is a scratch (uncounted) run' % (m['prereg'], full[:12]), file=sys.stderr)
+    sys.exit(0)
+limit = int(os.environ.get('UBI_LAUNCH_CHECK_SECONDS') or 3600)
+now = datetime.datetime.now(datetime.timezone.utc)
+dest = os.path.expanduser(m['dest'])
+bad = []
+for name in names or [s['name'] for s in m['shards']]:
+    p = os.path.join(dest, name, 'launch-preflight.json')
+    try: r = json.load(open(p))
+    except FileNotFoundError: bad.append('%s: no %s' % (name, p)); continue
+    except ValueError: bad.append('%s: %s is not JSON' % (name, p)); continue
+    try: age = (now - datetime.datetime.fromisoformat(str(r.get('at')).replace('Z', '+00:00'))).total_seconds()
+    except ValueError: age = None
+    why = [w for w in (
+        r.get('schema') != 'launch-preflight/1' and 'schema %r, not launch-preflight/1' % r.get('schema'),
+        r.get('commit') != full and 'ran at commit %s, not the manifest\'s %s' % (str(r.get('commit'))[:12], full[:12]),
+        (r.get('shard') or {}).get('name') != name and 'checked shard %r, not %s' % ((r.get('shard') or {}).get('name'), name),
+        r.get('verdict') not in ('pass', 'overridden') and 'verdict %s' % r.get('verdict'),
+        age is None and 'its time %r is unreadable' % r.get('at'),
+        age is not None and age > limit and 'it is %d minutes old (limit %d)' % (age // 60, limit // 60),
+        age is not None and age < -300 and 'its time %s is in the future' % r.get('at'),
+    ) if w]
+    if why: bad.append('%s: %s (%s)' % (name, '; '.join(why), p))
+if bad:
+    sys.exit('fanout: refused %s: a counted shard launches only on a passing launch check at commit %s from the last hour (internal-task):\n  %s\nRun it for each shard on the machine that holds the provider keys, from a checkout at that commit, then launch within the hour: bun scripts/launch-preflight.ts <plan folder> --manifest %s --shard <shard> --dest %s/<shard> --ledger <every pilot and counted ledger> --pilot <pilot results> (docs/ubicloud.md, docs/cost-projection.md)' % (
+        'shard ' + names[0] if names else 'before any VM call', full[:12], '\n  '.join(bad), sys.argv[1], dest))
+PY
+}
+launch_check || exit 2
 mapfile -t head <<<"$flat"
 commit=${head[0]} prereg=${head[1]} dest=${head[2]} size=${head[3]} options=${head[4]}
 shards=("${head[@]:5}")
@@ -383,16 +441,16 @@ if [ -n "$rep_to" ]; then
 else
   log "WARNING: no --replicate-to (or UBI_REPLICATE_TO): results and the VM map stay on this machine only (CREW R16); pass a Capy drive folder for a paid run"
 fi
-reservations=$(stage_cap reserve) || exit 2
-declare -A rid_of=()
-while IFS=$'\t' read -r rname rid; do [ -z "$rname" ] || rid_of[$rname]=$rid; done <<<"$reservations"
-declare -A pid_of exit_of tries_of told log_start launched_of
+declare -A rid_of=() pid_of=() exit_of=() tries_of=() told=() log_start=() launched_of=()
 queue=("${shards[@]}")
 running=0
 stopping=0
 waited=0
 # An interrupt usually comes as several signals (a cancelled operation or a closed terminal sends TERM, HUP and INT to the
 # group): the first is logged once, and each shard gets one TERM, so a second never cuts into its copy-back and VM destroy.
+# The trap goes in before the stage-cap reservations are written: an interrupt while they are being written then waits for
+# them, launches nothing, records every shard as interrupted and ends with the table and exit 1, instead of killing the
+# fan-out with its shards' reservations on disk and no record that none of them launched.
 on_signal() {
   local p
   [ "$stopping" = 1 ] || log "interrupted: forwarding to ${#pid_of[@]} shard process(es); each copies its results back and destroys its VM"
@@ -400,10 +458,15 @@ on_signal() {
   for p in "${!pid_of[@]}"; do [ -n "${told[$p]:-}" ] || { told[$p]=1; kill -TERM "$p" 2>/dev/null || true; }; done
 }
 trap on_signal INT TERM HUP QUIT
+reservations=$(stage_cap reserve) || exit 2
+while IFS=$'\t' read -r rname rid; do [ -z "$rname" ] || rid_of[$rname]=$rid; done <<<"$reservations"
 t0=$(date +%s)
 launch() {
   local line=$1 name cells lease sargs
   IFS=$'\t' read -r name cells lease sargs <<<"$line"
+  if ! launch_check "$name"; then exit_of[$name]=launch-check; log "shard $name not launched: its launch check is missing, failed or stale (above)"; return 0; fi
+  # An interrupt during the check launches nothing more, and one that lands before the new shard is in pid_of still reaches it.
+  if [ "$stopping" -eq 1 ]; then exit_of[$name]=interrupted; return 0; fi
   mkdir -p "$dest/$name"
   tries_of[$name]=$(( ${tries_of[$name]:-0} + 1 ))
   log_start[$name]=$(stat -c %s "$dest/$name/lane.log" 2>/dev/null || echo 0)
@@ -412,6 +475,7 @@ launch() {
   UBI_LEASE_RESERVATION=${rid_of[$name]:-} bash -c "$(run_cmd "$name" "$cells" "$lease" "$sargs")" > "$dest/$name/fanout.log" 2>&1 &
   pid_of[$!]=$line
   running=$(( running + 1 ))
+  if [ "$stopping" -eq 1 ] && [ -z "${told[$!]:-}" ]; then told[$!]=1; kill -TERM "$!" 2>/dev/null || true; fi
 }
 while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
   if [ "$stopping" -eq 0 ] && [ ${#queue[@]} -gt 0 ] && [ "$running" -lt "$parallel" ]; then
@@ -426,7 +490,11 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
     [ "$k" -eq 0 ] || waited=0
     for (( i = 0; i < k; i++ )); do [ "$stopping" -eq 0 ] || break; launch "${queue[0]}"; queue=("${queue[@]:1}"); sleep 2 || true; done
   fi
-  [ "$running" -gt 0 ] || break
+  # A batch whose shards were all refused by their launch check started nothing; the shards behind them still get a turn.
+  if [ "$running" -eq 0 ]; then
+    if [ "$stopping" -eq 0 ] && [ ${#queue[@]} -gt 0 ]; then continue; fi
+    break
+  fi
   done_pid=""
   set +e; wait -n -p done_pid "${!pid_of[@]}"; rc=$?; set -e
   [ -n "${done_pid:-}" ] || continue
@@ -442,10 +510,11 @@ while [ ${#queue[@]} -gt 0 ] || [ "$running" -gt 0 ]; do
   log "shard $name exited $rc"
 done
 if [ "$stopping" -eq 1 ]; then for line in "${queue[@]}"; do IFS=$'\t' read -r name _ _ <<<"$line"; exit_of[$name]=interrupted; done; fi
-# A shard that never launched (left in the queue with no room, or by an interrupt) gives its stage-cap reservation back, so
-# a relaunch is not refused over the cap with nothing spent; a shard that launched keeps it, even when it failed.
+# A shard that never launched (left in the queue with no room, refused by its launch check, or by an interrupt) gives its
+# stage-cap reservation back, so a relaunch is not refused over the cap with nothing spent; a shard that launched keeps it,
+# even when it failed.
 back=()
-for name in "${!exit_of[@]}"; do case ${exit_of[$name]} in no-room|interrupted) [ -z "${rid_of[$name]:-}" ] || back+=("$name" "${rid_of[$name]}") ;; esac; done
+for name in "${!exit_of[@]}"; do case ${exit_of[$name]} in no-room|interrupted|launch-check) [ -z "${rid_of[$name]:-}" ] || back+=("$name" "${rid_of[$name]}") ;; esac; done
 if [ ${#back[@]} -gt 0 ]; then
   freed=$(stage_cap release "${back[@]}") || log "WARNING: the stage-cap reservations of the shards that never launched could not be released; they still count against the cap"
   [ -z "${freed:-}" ] || log "released the stage-cap reservation of $(paste -sd' ' - <<<"$freed"), which never launched"

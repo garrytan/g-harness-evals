@@ -84,12 +84,12 @@ Use `--cells a,b --lease-usd <n>` instead of `--manifest` when there is no manif
 | Code | Answer | What to do |
 |---|---|---|
 | HE-PROVIDER-001 | key missing, 401, or 403 | check the key is the project's key for that provider and can use that model |
-| HE-PROVIDER-002 | 402, or a 400, 403 or 429 that mentions credit, balance, quota or a spending limit; or an OpenRouter limit below the lease | a person tops up at the billing page printed in the line, then reruns the preflight |
+| HE-PROVIDER-002 | 402, or a 400, 401 or 403 that mentions credit, balance, quota or a spending limit, or a 429 that mentions credit, billing or a spending limit; or an OpenRouter limit below the lease | a person tops up at the billing page printed in the line, then reruns the preflight |
 | HE-PROVIDER-003 | 404, any other 4xx, or a 2xx that isn't a completion | check the model id; a model this key can't call fails every trial |
 | HE-PROVIDER-004 | a rate limit, twice (one retry after its Retry-After, capped at 30 seconds) | rerun in a few minutes |
 | HE-PROVIDER-005 | a 5xx or no answer, twice | rerun in a few minutes |
 
-3. **Write the receipt** to `<dest>/launch-preflight.json`. It holds the verdict, the projection, each probe's status and error type, the probe spend and any override.
+3. **Write the receipt** to `<dest>/launch-preflight.json`. It holds the verdict, the commit it vouches for, the projection, each probe's status and error type, the probe spend and any override. With `--manifest`, that commit is the manifest's when the plan folder and every `--plan-file` match it in the repository that holds them, so a run pinned at an older commit is checked from a newer checkout. Otherwise it is the commit this checkout is at, which `fanout.sh` refuses for that manifest. The receipt also keeps this checkout's commit as `tool_commit`.
 
 The output and the receipt only ever carry a provider's status code, error type and error code. They never include its message or body, because some providers echo part of the key back.
 
@@ -127,10 +127,18 @@ A counted plan above $500 paid that freezes on or after 2026-11-23 needs this se
 
 So the pilot runs first, uncounted and under its tenth-of-budget cap (the plan's `## Pilot` table), and the plan freezes with the price the pilot measured. Plans registered before 2026-11-19 are exempt through the existing grandfather list.
 
+## When credit runs out mid-shard
+
+A shard stops once one provider has refused 3 of its trials in a row for want of credit or permission (`runner/cost/provider-stop.ts`):
+
+- **What counts.** A trial counts against a provider when that provider answered it with a 402 at any point, or when its last answer in the trial was one the HE-PROVIDER-002 rule above reads as a credit refusal (a 429 counts only when it names credit, billing or a spending limit, since Google words every rate limit as an exhausted quota). A trial that called the provider and got anything else resets the count. The proxy's own refusals (the lease, the allowlist) never count.
+- **Why 3.** One or two stray refusals don't stop a shard. A provider that is really out of credit costs at most three $0 trials, each of which fails in seconds.
+- **What happens.** The runner (`runner/trial/run.ts`) stops after that trial, writes `provider-stop.json` in the run directory and exits 8 (HE-PROVIDER-006). A frontier-harbor shard runs the same check every 60 seconds over the proxy's usage log, counting only lines logged since the shard started and only trials that have logged nothing for 5 minutes (a harness still retrying is not judged yet), stops Harbor, writes the records so far and `provider-stop.json`, and exits 8. Either way the Ubicloud lane copies the results back and destroys the VM.
+- **Recovery.** A person tops up or fixes access, the launch check passes again, then the shard resumes (`--resume`).
+
 ## What this doesn't do yet
 
-- `scripts/ubicloud/fanout.sh` doesn't call the preflight itself yet. Run it by hand before each counted shard, as [ubicloud.md](ubicloud.md) says. Making fanout.sh refuse without a passing receipt is the next step, after the frontier shootout's results merge (its launch files are pinned until then).
-- The probe checks the provider at launch only. Credit that runs out partway through a shard isn't caught yet. A later change will stop a shard after a run of provider credit refusals.
+- `scripts/ubicloud/fanout.sh` doesn't run the preflight for you. It refuses to launch a counted shard without a receipt from it, though: see [ubicloud.md](ubicloud.md).
 - Own model use on Capy's meter is only counted when you pass `--own-usd`.
 - Re-projecting between shards means running the same command again with the new `--results` and `--ledger` files. It doesn't happen automatically.
 - Only runner `prereg.json` plans and `frontier-harbor/1` plan files are read.

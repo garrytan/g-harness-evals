@@ -152,7 +152,7 @@ run_scrubbed() {
   for v in $(compgen -e); do [[ $keep == *" $v "* ]] || unset "$v" 2>/dev/null || true; done
   exec "$@"
 }
-pids=() harbor_pid="" journal_pid="" lane_pids=() harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc="" metered=1 cursor_key_dir=""
+pids=() harbor_pid="" journal_pid="" stop_pid="" lane_pids=() harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc="" metered=1 cursor_key_dir=""
 cleanup() {
   [ -z "$cursor_key_dir" ] || rm -rf "$cursor_key_dir"
   docker ps -aq --filter label=harness-eval.frontier-qm 2>/dev/null | xargs -r docker rm -f -v >/dev/null 2>&1 || true
@@ -164,7 +164,8 @@ cleanup() {
 trap cleanup EXIT
 on_signal() {
   trap - TERM INT HUP
-  say "interrupted (exit $1); stopping Harbor and writing the records so far"
+  trap '' USR1
+  if [ "$1" -eq 8 ]; then say "HE-PROVIDER-006 provider stop ($out/provider-stop.json): stopping Harbor and writing the records so far"; else say "interrupted (exit $1); stopping Harbor and writing the records so far"; fi
   [ -z "$harbor_pid" ] || { kill "$harbor_pid" 2>/dev/null || true; timeout 60 tail --pid="$harbor_pid" -f /dev/null 2>/dev/null || kill -KILL "$harbor_pid" 2>/dev/null || true; wait "$harbor_pid" 2>/dev/null || true; harbor_pid=""; }
   for p in ${lane_pids[@]+"${lane_pids[@]}"}; do kill "$p" 2>/dev/null || true; done
   for p in ${lane_pids[@]+"${lane_pids[@]}"}; do timeout 70 tail --pid="$p" -f /dev/null 2>/dev/null || kill -KILL "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; done
@@ -175,6 +176,7 @@ on_signal() {
 trap 'on_signal 143' TERM
 trap 'on_signal 130' INT
 trap 'on_signal 129' HUP
+trap 'on_signal 8' USR1
 
 # 1. the shard against the preregistration, before anything else; earlier stages' spend counts against the lease
 [ -z "$rerun" ] || [ -z "$stage" ] || { echo "vm-run (frontier): --rerun takes no --stage" >&2; exit 2; }
@@ -351,6 +353,8 @@ finish() {
   finished=1
   local rounds=$1 wait_ms=$2 undrained=0 ok=true resp n k
   [ -z "$journal_pid" ] || { kill "$journal_pid" 2>/dev/null || true; wait "$journal_pid" 2>/dev/null || true; }
+  trap '' USR1
+  [ -z "$stop_pid" ] || { kill "$stop_pid" 2>/dev/null || true; wait "$stop_pid" 2>/dev/null || true; }
   [ "$metered" -eq 0 ] || curl -fsS -X POST 127.0.0.1:8791/unbind-all >> "$out/run.log" 2>&1 || ok=false
   for k in $(python3 -c 'import json,sys; [print(json.loads(l)["trial"]) for l in open(sys.argv[1]) if l.strip()]' "$run/binds.jsonl" 2>/dev/null); do
     n=unknown
@@ -395,6 +399,17 @@ harbor_env=("${safe_env[@]}" "PYTHONPATH=$here")
 (cd "$repo" && exec "${safe_env[@]}" bun scripts/frontier-harbor/to-trials.ts journal --prereg "$prereg" --out "$out" --shard "$name" --lease-run-id "$run_id:$name" --every 60) >> "$out/run.log" 2>&1 &
 journal_pid=$!
 pids+=("$journal_pid")
+# the provider stop (runner/cost/provider-stop.ts, internal-task): every 60 s it reads the proxy's usage log, and once one provider
+# has refused 3 trials in a row for want of credit or permission it writes <out>/provider-stop.json and sends this script
+# USR1, which stops Harbor as an interrupt does, writes the records so far and exits 8; the lane then frees the VM. An earlier
+# stop's file (a --resume or a later --stage reuses <out>) is moved aside first, and finish() stops the watcher before it
+# writes the records, so a stop found after Harbor ends still exits 8, with every record written
+if [ "$metered" -eq 1 ]; then
+  [ ! -e "$out/provider-stop.json" ] || mv "$out/provider-stop.json" "$out/provider-stop.$(date -u +%Y%m%dT%H%M%SZ).json"
+  (cd "$repo" && exec "${safe_env[@]}" bun runner/cost/provider-stop.ts watch --usage "$out/proxy-usage.ndjson" --out "$out/provider-stop.json" --signal-pid $$ --every 60) >> "$out/run.log" 2>&1 &
+  stop_pid=$!
+  pids+=("$stop_pid")
+fi
 run_lane() { # <job config>...: the jobs in order; exits with the last failing job's code
   local cfg code lane_last=0 hp=""
   trap '[ -z "$hp" ] || { kill "$hp" 2>/dev/null; timeout 60 tail --pid="$hp" -f /dev/null 2>/dev/null || kill -KILL "$hp" 2>/dev/null; }; exit 143' TERM
@@ -442,6 +457,7 @@ fi
 rc=$last
 set -e
 finish 8 120000
+[ ! -e "$out/provider-stop.json" ] || { say "HE-PROVIDER-006 provider stop ($out/provider-stop.json), found after Harbor ended"; rc=8; }
 [ "$rc" -ne 0 ] || [ "$accounting_incomplete" -eq 0 ] || rc=6
 # the Cursor key scan (HE-CURSOR-003): the literal value (whole, first 16, last 12 characters, gzip decoded) in any file
 # under --out; key-scan.ts reads it from its own environment, deletes it there and prints a count, never the value

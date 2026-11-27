@@ -46,6 +46,7 @@ import { FIRST_WOW_SLICE } from './first-wow-cell.ts';
 import { runFirstWowTrial } from './first-wow.ts';
 import { InstallLeak, type LsRemote, measureColdDownload, preinstalledProblem, runInstallTrial, tagProblem } from './install.ts';
 import { type OpenEgress, loadBlocklist, openEgressEnv, startOpenEgress } from './egress.ts';
+import { PROVIDER_STOP_EXIT, PROVIDER_STOP_FILE, type ProviderStop, ProviderStopWatch, stopLine } from '../cost/provider-stop.ts';
 
 export interface RunOptions {
   harnessMode: HarnessMode;
@@ -91,8 +92,10 @@ export interface RunOptions {
 }
 
 /** executeRun's exit codes. 3 is the cap or tag stop, which scripts/run-shard.sh passes through on purpose. 7 is a trial whose harness
- *  never started: scripts/ubicloud/run-shard.sh reads 4 as a failed smoke, so 4 is never a runner code (tests/exit-codes.test.ts). */
-export const RUN_EXIT = { ok: 0, capStop: 3, harnessNotStarted: 7 } as const;
+ *  never started: scripts/ubicloud/run-shard.sh reads 4 as a failed smoke, so 4 is never a runner code (tests/exit-codes.test.ts).
+ *  8 is the provider stop (runner/cost/provider-stop.ts): one provider refused PROVIDER_STOP_AFTER trials in a row for want of
+ *  credit or permission, so the run stopped and wrote provider-stop.json. */
+export const RUN_EXIT = { ok: 0, capStop: 3, harnessNotStarted: 7, providerStop: PROVIDER_STOP_EXIT } as const;
 
 export const NOT_STARTED_FILE = 'not-started.jsonl';
 
@@ -218,6 +221,19 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   const offline: Array<{ trial: string; denied_hosts: string[]; denied: number; key_found: boolean }> = [];
   let capStop = false;
   let exit: RunResult['exit'] = RUN_EXIT.ok;
+  const providerWatch = new ProviderStopWatch();
+  let providerStop: ProviderStop | null = null;
+  /** The provider stop after a trial, from its own attempt's proxy lines; written to provider-stop.json when it stops the run. */
+  const providerStopAfter = (trialId: string, since: string): ProviderStop | null => {
+    const stop = proxy ? providerWatch.observe(trialId, proxy.usageLines(trialKey(trialId)).filter((l) => l.at === undefined || l.at >= since)) : null;
+    if (!stop) return null;
+    const file = join(runDir, PROVIDER_STOP_FILE);
+    writeAtomic(file, JSON.stringify({ ...stop, run_id: manifest.run_id }, null, 1) + '\n');
+    const line = stopLine(stop, file);
+    log(line);
+    console.error(line);
+    return stop;
+  };
   try {
     if (internal.length) {
       network = await ensureInternalNetwork(internalNetworkName(manifest.run_id));
@@ -323,6 +339,8 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
           console.error(`HE-BUDGET-001 the metering proxy refused a call for trial ${trial.id} before its harness started: the lease or the program cap in ${proxy?.ledgerPath} is spent. ${opts.stopOnCap ? 'Stopping: the run is incomplete.' : 'Continuing with the next trial.'} Recovery: raise the cap in the ledger (set-cap, with the owner's authorization) and rerun with --resume --lease-usd <new>`);
           if (opts.stopOnCap) { exit = RUN_EXIT.capStop; break; }
         }
+        providerStop = providerStopAfter(trial.id, attemptStart);
+        if (providerStop) { exit = RUN_EXIT.providerStop; break; }
         continue;
       }
       // internal-task (H10): the harness's provenance-manifest digest (runner/trial/provenance.ts), on harnesses that have one.
@@ -345,6 +363,8 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
         console.error(`HE-BUDGET-001 the metering proxy refused a call for trial ${trial.id}: the lease or the program cap in ${proxy?.ledgerPath} is spent; the trial is recorded as model_error with cap_stop. ${opts.stopOnCap ? 'Stopping: the run is incomplete.' : 'Continuing with the next trial.'} Recovery: raise the cap in the ledger (set-cap, with the owner's authorization) and rerun with --resume --lease-usd <new>`);
         if (opts.stopOnCap) { exit = RUN_EXIT.capStop; break; }
       }
+      providerStop = providerStopAfter(trial.id, attemptStart);
+      if (providerStop) { exit = RUN_EXIT.providerStop; break; }
     }
   } finally {
     if (proxy) await proxy.stop();
@@ -361,11 +381,11 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
   const unstarted = unstartedTrials(runDir, selected);
   if (unstarted.length) {
     log(`run ${manifest.run_id}: ${unstarted.length} trials never started (cells ${[...new Set(unstarted.map((t) => t.cell))].join(', ')}), listed in ${NOT_STARTED_FILE}; fix the harness start and rerun with --resume`);
-    if (exit !== RUN_EXIT.capStop) exit = RUN_EXIT.harnessNotStarted;
+    if (exit !== RUN_EXIT.capStop && exit !== RUN_EXIT.providerStop) exit = RUN_EXIT.harnessNotStarted;
   }
-  const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, complete: readRecords(runDir).length === manifest.trials.length && !capStop, ...(logSections ? { log_sections: true } : {}), ...(opts.capture ? { capture: captureSummary(opts.capture) } : {}) };
+  const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, ...(providerStop ? { provider_stop: providerStop.provider } : {}), complete: readRecords(runDir).length === manifest.trials.length && !capStop && !providerStop, ...(logSections ? { log_sections: true } : {}), ...(opts.capture ? { capture: captureSummary(opts.capture) } : {}) };
   writeAtomic(join(runDir, 'run-summary.json'), JSON.stringify(summary, null, 1) + '\n');
-  log(`run ${manifest.run_id}: ${records.length} trials recorded this invocation; ${summary.trials_recorded}/${summary.trials_planned} total${capStop ? '; incomplete (cap stop)' : ''}`);
+  log(`run ${manifest.run_id}: ${records.length} trials recorded this invocation; ${summary.trials_recorded}/${summary.trials_planned} total${capStop ? '; incomplete (cap stop)' : ''}${providerStop ? `; incomplete (provider stop: ${providerStop.provider})` : ''}`);
   return { exit, records, skipped, cap_stop: capStop };
 }
 

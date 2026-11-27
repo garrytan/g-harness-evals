@@ -11,6 +11,7 @@ import { BudgetExceededError, BudgetRun, initLedger, installPaidRequestGuard, le
 import { canonicalLookup, priceOnDate } from '../pricing/model-pricing.ts';
 import { KEY_ENV, OPENROUTER_MODELS, UPSTREAM, type ProviderName } from '../proxy/metering-proxy.ts';
 import { RunnerError } from '../errors.ts';
+import { creditRefusal } from './provider-stop.ts';
 
 export type ProbeCode = 'HE-PROVIDER-001' | 'HE-PROVIDER-002' | 'HE-PROVIDER-003' | 'HE-PROVIDER-004' | 'HE-PROVIDER-005';
 const PROBED = ['anthropic', 'openai', 'xai', 'google', 'openrouter', 'particle'] as const;
@@ -93,7 +94,6 @@ export function probeRequest(t: ProbeTarget, key: string, at = new Date()): { ur
   }
 }
 
-const CREDIT = /credit|balance|quota|billing|spending[ _-]?limit|insufficient_quota|payment|exhausted|monthly limit/i;
 const SAFE = /^[A-Za-z0-9_.-]{1,64}$/;
 
 /** status, error.type and error.code from an error body, kept only when they are short identifiers. */
@@ -119,8 +119,7 @@ export function classify(status: number | null, text: string): { ok: boolean; co
     } catch { /* not a completion */ }
     return { ok: false, code: 'HE-PROVIDER-003' };
   }
-  const credit = CREDIT.test(text);
-  if (status === 402 || (credit && (status === 400 || status === 403 || status === 429))) return { ok: false, code: 'HE-PROVIDER-002' };
+  if (creditRefusal(status, text)) return { ok: false, code: 'HE-PROVIDER-002' };
   if (status === 401 || status === 403) return { ok: false, code: 'HE-PROVIDER-001' };
   if (status === 429) return { ok: false, code: 'HE-PROVIDER-004', retry: 'rate' };
   return { ok: false, code: 'HE-PROVIDER-003' };

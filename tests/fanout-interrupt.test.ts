@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -139,3 +139,35 @@ describe('fanout.sh capacity requeue', () => {
   }, 45_000);
 });
 
+
+describe('fanout.sh interrupt while the stage-cap reservations are written', () => {
+  // Value: protects=a TERM that lands while fanout.sh waits on the dest stage lock to write its reservations is handled by
+  // the fan-out's trap: no shard launches, the table is printed and the exit is 1;
+  // fails_when=the trap is installed after \`stage_cap reserve\` (the TERM kills fanout.sh with exit 143 and no table, and
+  // the reservations it was writing land on disk with nobody to release them); why_new=internal-task's trap-order fix;
+  // seam=a held <dest>/.stage-cap.lock and UBI_RUNNER beside a copy of the script; no_claim=releasing the reservations (#490).
+  test('SIGTERM during the lock wait launches nothing, prints the table and exits 1', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-fanout-'));
+    try {
+      copyFileSync(FANOUT, join(dir, 'fanout.sh'));
+      script(dir, 'run-shard.sh', 'echo started > "' + dir + '/shard-started"');
+      script(dir, 'ubi-runner.sh', 'echo "total 0 0"');
+      const dest = join(dir, 'dest');
+      mkdirSync(dest, { recursive: true });
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ commit: 'a'.repeat(40), prereg: 'prereg.json', dest, stage_cap_usd: 5, shards: [{ name: 'only', cells: 'c1', lease_usd: 1 }] }));
+      const driver = 'flock "$3" -c "sleep 4" & h=$!; sleep 0.5; bash "$1" --manifest "$2" & p=$!; sleep 2; kill -TERM $p; wait $p; echo "fanout exit $?"; wait $h';
+      const r = spawnSync('bash', ['-c', driver, 'driver', join(dir, 'fanout.sh'), join(dir, 'manifest.json'), join(dest, '.stage-cap.lock')], {
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: { PATH: process.env.PATH, HOME: dir, UBI_OWNER: 'test-owner', UBI_RUNNER: join(dir, 'ubi-runner.sh') },
+      });
+      expect(r.stderr).toContain('interrupted: forwarding to 0 shard process(es)');
+      expect(r.stdout).toContain('fanout exit 1');
+      expect(r.stdout).toContain('total: 1 shard(s), 0 trials, 1 not exit 0');
+      expect(existsSync(join(dir, 'shard-started'))).toBe(false);
+      expect(readFileSync(join(dest, 'only', 'leases.jsonl'), 'utf8')).toContain('"by": "fanout.sh"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+});

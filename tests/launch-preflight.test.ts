@@ -8,7 +8,8 @@
 // why_new=no launch step asked the providers whether they would answer; seam=fetchImpl on installPaidRequestGuard and a fake
 // key-limit fetch; no_claim=that a live provider answers these exact bodies (a real probe pass is the receipt for that).
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BudgetRun, closeLedgers, readLedger } from '../runner/ledger/budget-ledger.ts';
@@ -214,5 +215,31 @@ describe('the launch check', () => {
     expect(t.calls.map(c => c.provider).sort()).toEqual(['anthropic', 'openai']);
     await expect(preflight(options(f, transport(), { ledgers: [] }))).rejects.toThrow(/HE-BUDGET-004/);
     await expect(preflight(options(f, transport(), { cells: ['nope'] }))).rejects.toThrow(/HE-RUN-002 shard cell\(s\) nope are not in the plan/);
+  });
+
+  test("the receipt vouches for the manifest's commit when the plan files match it, so a run pinned before this script changed can launch", async () => {
+    const f = fixture();
+    const repo = dir('repo');
+    const git = (...a: string[]) => spawnSync('git', ['-C', repo, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', ...a], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: repo } }).stdout.trim();
+    git('init', '-q');
+    cpSync(f.folder, join(repo, 'plan'), { recursive: true });
+    git('add', '.'); git('commit', '-q', '-m', 'pinned');
+    const pinned = git('rev-parse', 'HEAD');
+    writeFileSync(join(repo, 'later.txt'), 'a later change outside the plan\n');
+    git('add', '.'); git('commit', '-q', '-m', 'later');
+    const manifest = join(dir('m'), 'fanout.json');
+    writeFileSync(manifest, JSON.stringify({ commit: pinned.slice(0, 12), prereg: 'plan/prereg-harbor-s0.json', dest: 'd', shards: [{ name: 'one', cells: 'claude', lease_usd: 30 }] }));
+    const run = async () => { const o = options({ ...f, folder: join(repo, 'plan') }, transport(), { manifest, shard: 'one', cells: [] }); const r = await preflight(o); return { r, receipt: JSON.parse(readFileSync(join(o.dest, 'launch-preflight.json'), 'utf8')) }; };
+    const ok = await run();
+    expect(ok.receipt.commit).toBe(pinned);
+    expect(ok.receipt.tool_commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(ok.r.lines).toContain(`COMMIT: ${pinned} (the manifest's; the plan files read here match it; this script ran at ${ok.receipt.tool_commit.slice(0, 12)})`);
+    writeFileSync(join(repo, 'plan', 'PREREGISTRATION.md'), '## Cost projection\n\n- Spend stop: $999\n');
+    const edited = await run();
+    expect(edited.receipt.commit).toBe(edited.receipt.tool_commit);
+    expect(edited.r.lines.join('\n')).toContain('the plan folder or a --plan-file differs from that commit');
+    git('checkout', '-q', '--', 'plan');
+    writeFileSync(join(repo, 'plan', 'extra.json'), '{}');
+    expect((await run()).receipt.commit).not.toBe(pinned);
   });
 });
