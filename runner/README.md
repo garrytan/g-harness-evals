@@ -164,6 +164,10 @@ A `gbrain-install` cell asks a freshly set-up harness to install gbrain, then ch
 
 ## Changelog
 
+### 2026-11-27: harness memory snapshots walk by file descriptor
+
+The harness memory paragraph (2026-11-08 entry) now says the walk opens each name from its parent directory's open descriptor without following a symlink and reads each file from the descriptor it opened, so a symlink met on the way is skipped, and that a host without Linux's `/proc` takes no snapshot. It no longer names the `outside_mount` and `swapped` skip reasons, which the runner no longer writes. Why: the old check resolved the path again after the open, which left a window for a directory swapped for a symlink to move the copy outside the mount.
+
 ### 2026-11-25: the 2026-11-25 price table
 
 "Price table" names `prices-2026-11-25.json`, which adds Gemini 4 Neon's paid-tier rates on Google's own route. The metering proxy uses the same rate at every prompt size. The Google bullet now says the direct route's per-model output cap comes from `GEMINI_MAX_OUTPUT`, and a model it does not list, such as Gemini 4 Neon, is held to the proxy's output cap. Why: it said every Gemini model is held to its own limit, which is not true for Neon.
@@ -237,7 +241,7 @@ The OpenRouter bullet under "Vendored pieces": the proxy's `openrouter` provider
 
 ### 2026-11-08: harness memory snapshots (internal-task)
 
-The results tree lists `harness-memory/`. Hermes and OpenClaw each keep one memory every member's conversation shares, so the leak eval needs to know what that memory held before each reply. The runner copies their Markdown memory files (`state/hermes/memories/`, and `workspace/MEMORY.md` and `workspace/memory/`) on the host from the trial's own bind mounts, before the first turn and after each turn, with no adapter change ([runner/trial/harness-memory.ts](trial/harness-memory.ts)). Each snapshot is bounded (`HARNESS_MEMORY_LIMITS`: 8 directories deep, 10,000 directory entries walked per memory path, 200 files, 1 MiB per file, 16 MiB in all); a skipped file is listed with its reason, and a snapshot cut short says `truncated` and names the caps that stopped it in `truncated_by` (`depth`, `entries`, `files`). A file is copied only when its open descriptor is the file its path resolves to inside the mount, so a directory swapped for a symlink mid-snapshot is listed as unreadable (`outside_mount` or `swapped`), not followed. Scripted trials and every other harness get none.
+The results tree lists `harness-memory/`. Hermes and OpenClaw each keep one memory every member's conversation shares, so the leak eval needs to know what that memory held before each reply. The runner copies their Markdown memory files (`state/hermes/memories/`, and `workspace/MEMORY.md` and `workspace/memory/`) on the host from the trial's own bind mounts, before the first turn and after each turn, with no adapter change ([runner/trial/harness-memory.ts](trial/harness-memory.ts)). Each snapshot is bounded (`HARNESS_MEMORY_LIMITS`: 8 directories deep, 10,000 directory entries walked per memory path, 200 files, 1 MiB per file, 16 MiB in all); a skipped file is listed with its reason, and a snapshot cut short says `truncated` and names the caps that stopped it in `truncated_by` (`depth`, `entries`, `files`). The walk goes by file descriptor. Each name is opened from its parent directory's open descriptor without following a symlink, and each file is read from the descriptor it opened, so a directory swapped for a symlink mid-snapshot never moves the copy outside the mount, and a symlink met on the way is skipped. The walk needs Linux's `/proc`, so a host without it takes no snapshot, and its memory reads as not recorded rather than empty. Scripted trials and every other harness get none.
 
 ### 2026-11-09: the price table section names prices-2026-11-09.json (internal-task)
 

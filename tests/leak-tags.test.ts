@@ -5,7 +5,7 @@
 
 import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -15,7 +15,7 @@ import { gradeTrial, trialGbrainExposure, trialLeakTags } from '../runner/grade/
 import { evaluatePredicate, gbrainExposure, gbrainExposureDetail, loadWorldData, replyLeaks, unquoteFact, type GradeContext } from '../runner/grade/predicates.ts';
 import { loadTask, parseTask, type Predicate, type Task } from '../runner/grade/task.ts';
 import { DEFAULT_WORLD_PATH, playScript } from '../runner/grade/play.ts';
-import { HARNESS_MEMORY_LIMITS, loadHarnessMemory, readNoFollow, snapshotHarnessMemory } from '../runner/trial/harness-memory.ts';
+import { HARNESS_MEMORY_LIMITS, loadHarnessMemory, snapshotHarnessMemory } from '../runner/trial/harness-memory.ts';
 import { makeTrialDirs, responseFile, writeAtomic, type Harness } from '../runner/trial/harness.ts';
 import { loadTask as loadRunnerTask } from '../runner/trial/task.ts';
 import { runTurns } from '../runner/trial/turns.ts';
@@ -678,29 +678,51 @@ hidden_fact = "forecast"
     expect(files.map((f: { path: string; unreadable?: string; bytes?: number }) => [f.path, f.unreadable ?? f.bytes])).toEqual([['state/hermes/memories/BIG.md', 'over_file_cap'], ['state/hermes/memories/MEMORY.md', 9]]);
   });
 
-  test('a directory swapped for a symlink after the walk is not followed out of the mount: the read checks where the open file really is', () => {
-    const dirs = makeTrialDirs(join(tmp, 'snap-swap'));
-    const mem = join(dirs.state, 'hermes', 'memories');
-    mkdirSync(mem, { recursive: true });
-    writeFileSync(join(mem, 'MEMORY.md'), '212 seats');
-    const root = realpathSync(dirs.state);
-    expect(readNoFollow(root, join(mem, 'MEMORY.md'), 1 << 20).toString()).toBe('212 seats');
+  test('a directory swapped for a symlink mid-walk does not move the walk out of the mount: each name opens from its parent\'s open descriptor', () => {
     const outside = join(tmp, 'snap-swap-outside');
-    mkdirSync(outside, { recursive: true });
+    mkdirSync(join(outside, 'memories'), { recursive: true });
     writeFileSync(join(outside, 'MEMORY.md'), 'a file outside the trial');
-    renameSync(mem, mem + '.walked');
-    symlinkSync(outside, mem);
-    let code = 'read';
-    try { readNoFollow(root, join(mem, 'MEMORY.md'), 1 << 20); } catch (e) { code = (e as NodeJS.ErrnoException).code ?? 'error'; }
-    expect(code).toBe('outside_mount');
-    rmSync(mem);
-    renameSync(mem + '.walked', mem);
-    let swapped = 'read';
-    const restore = () => { renameSync(mem, mem + '.walked'); symlinkSync(outside, mem); };
-    const back = () => { rmSync(mem); renameSync(mem + '.walked', mem); };
-    restore();
-    try { readNoFollow(root, join(mem, 'MEMORY.md'), 1 << 20, back); } catch (e) { swapped = (e as NodeJS.ErrnoException).code ?? 'error'; }
-    expect(swapped).toBe('swapped');
+    writeFileSync(join(outside, 'memories', 'MEMORY.md'), 'a file outside the trial');
+    const swapAt = (name: string, when: string, swapRel: string, target: string) => {
+      const dirs = makeTrialDirs(join(tmp, `snap-swap-${name}`));
+      const mem = join(dirs.state, 'hermes', 'memories');
+      mkdirSync(mem, { recursive: true });
+      writeFileSync(join(mem, 'MEMORY.md'), '212 seats');
+      const seen: string[] = [];
+      const swap = (rel: string) => {
+        seen.push(rel);
+        if (rel !== when) return;
+        const dir = join(dirs.root, swapRel);
+        renameSync(dir, dir + '.walked');
+        symlinkSync(target, dir);
+      };
+      expect(snapshotHarnessMemory('hermes', dirs, 1, swap)).toEqual({ files: 1 });
+      expect(seen).toEqual(['state/hermes', 'state/hermes/memories', 'state/hermes/memories/MEMORY.md']);
+      expect(loadHarnessMemory(dirs.root)).toEqual([{ after_turn: 1, files: [{ path: 'state/hermes/memories/MEMORY.md', text: '212 seats' }] }]);
+      expect(snapshotHarnessMemory('hermes', dirs, 2)).toEqual({ files: 0 });
+      expect(loadHarnessMemory(dirs.root)![1]).toEqual({ after_turn: 2, files: [] });
+    };
+    swapAt('memories', 'state/hermes/memories/MEMORY.md', 'state/hermes/memories', outside);
+    swapAt('hermes', 'state/hermes/memories', 'state/hermes', outside);
+  });
+
+  test('a FIFO swapped in for a memory file just before its open is listed as not_a_file, and the snapshot does not stall on it', () => {
+    const dirs = join(tmp, 'snap-fifo');
+    const script = [
+      `import { mkdirSync, rmSync, writeFileSync } from 'node:fs';`,
+      `import { spawnSync } from 'node:child_process';`,
+      `import { join } from 'node:path';`,
+      `import { snapshotHarnessMemory } from ${JSON.stringify(join(ROOT, 'runner', 'trial', 'harness-memory.ts'))};`,
+      `import { makeTrialDirs } from ${JSON.stringify(join(ROOT, 'runner', 'trial', 'harness.ts'))};`,
+      `const dirs = makeTrialDirs(${JSON.stringify(dirs)});`,
+      `const mem = join(dirs.state, 'hermes', 'memories');`,
+      `mkdirSync(mem, { recursive: true });`,
+      `writeFileSync(join(mem, 'MEMORY.md'), '212 seats');`,
+      `snapshotHarnessMemory('hermes', dirs, 1, (rel) => { if (rel !== 'state/hermes/memories/MEMORY.md') return; rmSync(join(mem, 'MEMORY.md')); spawnSync('mkfifo', [join(mem, 'MEMORY.md')]); });`,
+    ].join('\n');
+    const r = spawnSync(process.execPath, ['-e', script], { env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' }, encoding: 'utf8', timeout: 20_000 });
+    expect([r.status, r.stderr]).toEqual([0, '']);
+    expect(JSON.parse(readFileSync(join(dirs, 'harness-memory', 'snapshots.jsonl'), 'utf8').trim()).files).toEqual([{ path: 'state/hermes/memories/MEMORY.md', unreadable: 'not_a_file' }]);
   });
 
   test('a snapshot cut short by the depth cap or the directory-entry cap says which cap stopped it', () => {
