@@ -3,10 +3,11 @@
 // Requests are signed the way QM's own plugins sign them (harnesses/qm/qm-api.mjs):
 // x-signature = v0=HMAC-SHA256(CORE_SIGNING_SECRET, "v0:<ts>:<METHOD>\n<path>\n<body>").
 //
-//   node qm-call.mjs admin <METHOD> <path>     body on stdin, sent as harness-admin@harness-eval (x-admin-actor); the
-//                                              text @HE_QM_PROXY_TOKEN@ in it is replaced by that variable of core's
-//                                              environment (the custom provider's key), and the reply's body is printed
-//                                              without it
+//   node qm-call.mjs admin <METHOD> <path>     body on stdin, sent as harness-admin@harness-eval (x-admin-actor); a
+//                                              JSON body whose top-level apiKey is exactly @HE_QM_PROXY_TOKEN@ (the custom
+//                                              provider's key) gets that variable of core's environment there and nowhere
+//                                              else, so the marker in any other field (a SOUL's text) is sent as written;
+//                                              the reply's body is printed without the token
 //   node qm-call.mjs turn <thread-ref>         the turn's text on stdin: POST /v1/turns {surface: harness-eval, actor U1,
 //                                              conversation dm <thread-ref>, origin human with a messageTs}. The task is a
 //                                              person's message, and QM treats a turn with no origin as an automated
@@ -65,9 +66,14 @@ try {
   if (mode === 'health' && rest.length === 0) out = await call('GET', '/healthz', '');
   else if (mode === 'admin' && rest.length === 2 && ['GET', 'PUT', 'POST', 'DELETE'].includes(rest[0])) {
     const token = process.env.HE_QM_PROXY_TOKEN ?? '';
-    const raw = await stdin();
-    if (raw.includes('@HE_QM_PROXY_TOKEN@') && !token) fail(2, 'the body names @HE_QM_PROXY_TOKEN@ and core has no HE_QM_PROXY_TOKEN');
-    out = await call(rest[0], rest[1], rest[0] === 'GET' ? '' : raw.replaceAll('@HE_QM_PROXY_TOKEN@', token), { 'x-admin-actor': ADMIN });
+    let body = rest[0] === 'GET' ? '' : await stdin();
+    let parsed = null;
+    try { parsed = JSON.parse(body); } catch {}
+    if (parsed?.apiKey === '@HE_QM_PROXY_TOKEN@') {
+      if (!token) fail(2, 'the body\'s apiKey is @HE_QM_PROXY_TOKEN@ and core has no HE_QM_PROXY_TOKEN');
+      body = JSON.stringify({ ...parsed, apiKey: token });
+    }
+    out = await call(rest[0], rest[1], body, { 'x-admin-actor': ADMIN });
     if (token) out = JSON.parse(JSON.stringify(out).replaceAll(token, '<per-trial token>'));
   } else if (mode === 'turn' && rest.length === 1) {
     const body = JSON.stringify({ surface: 'harness-eval', actor: { externalId: 'U1' }, conversation: { kind: 'dm', threadRef: rest[0] }, origin: { kind: 'human', messageTs: (Date.now() / 1000).toFixed(6) }, text: await stdin() });

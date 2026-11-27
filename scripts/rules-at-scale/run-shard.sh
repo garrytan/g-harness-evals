@@ -19,7 +19,8 @@
 # buildx reuses an earlier upload of a same-named build folder when path, size and time match, docker/buildx#3232), then
 # plan.ts check-shard (the shard is in the plan, the lease no more than its planned one; exit 2 otherwise), the
 # keys the shard's providers need, the clean-arm preflight (no Capy drive and no gstack install on this machine), Harbor
-# from the pinned wheel (scripts/frontier-harbor/pin.json, sha256 checked), the task preflight (task-preflight.ts: lane A's
+# from the pinned wheel (scripts/frontier-harbor/pin.json, sha256 checked), on a qm shard the QM images (vm-run.sh step
+# 1c; exit 3 when a build or the Postgres pull fails), the task preflight (task-preflight.ts: lane A's
 # task contract, verifier_image_matches_files included, on each of the shard's rules-fix tasks; <out>/task-preflight.json;
 # exit 2 on a failing task), plan.ts jobs (each task copied into a Harbor task with its own file time, rules files
 # materialized, every arm checked, one Harbor job per trial), proxy and broker up, the Harbor jobs in plan order (task-major) with the shard's
@@ -77,6 +78,7 @@ run_scrubbed() {
 pids=() harbor_pid="" harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc=""
 cleanup() {
   [ -z "$harbor_pid" ] || kill -- "-$harbor_pid" 2>/dev/null || true
+  [ "${harness:-}" != qm ] || [ "$harbor_started" -eq 0 ] || docker ps -aq --filter "label=harness-eval.frontier-qm.jobs=$run/jobs" 2>/dev/null | xargs -r docker rm -f -v >/dev/null 2>&1 || true
   for p in ${pids[@]+"${pids[@]}"}; do kill "$p" 2>/dev/null || true; done
   for p in ${pids[@]+"${pids[@]}"}; do wait "$p" 2>/dev/null || true; done
 }
@@ -142,6 +144,20 @@ case $environment in
   *) [ "$fake" -eq 1 ] || { say "environment $environment has no egress blocklist; a run that calls a provider needs an egress:* environment"; exit 2; }
      say "environment $environment: no egress blocklist (keyless check)" ;;
 esac
+
+# 3b. the QM images, before any lease (vm-run.sh step 1c): a qm shard builds QM core and its source stage from
+# harnesses/qm/Dockerfile at the frontier pin.json's commit and pulls the pinned Postgres image; agents.py FrontierQm
+# checks all three and refuses a trial without them (HE-QM-001).
+if [ "$harness" = qm ]; then
+  read -r qm_commit qm_pg <<< "$(python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))["harnesses"]["qm"]; print(h["commit"], h["postgres_image"])' "$fh/pin.json")"
+  [ -n "${qm_commit:-}" ] && [ -n "${qm_pg:-}" ] || { say "could not read harnesses.qm commit and postgres_image from $fh/pin.json; nothing ran"; exit 3; }
+  docker_env=("${safe_env[@]}")
+  [ -z "${DOCKER_HOST:-}" ] || docker_env+=("DOCKER_HOST=$DOCKER_HOST")
+  (cd "$repo/harnesses/qm" && "${docker_env[@]}" docker build -q --build-arg "QM_COMMIT=$qm_commit" --target src -t "harness-eval/qm-src:${qm_commit:0:12}" -f Dockerfile . \
+    && "${docker_env[@]}" docker build -q --build-arg "QM_COMMIT=$qm_commit" -t "harness-eval/qm:${qm_commit:0:12}" -f Dockerfile . && "${docker_env[@]}" docker pull -q "$qm_pg") >> "$out/qm-build.log" 2>&1 \
+    || { say "building the QM images failed (qm-build.log); nothing ran"; exit 3; }
+  say "qm: harness-eval/qm:${qm_commit:0:12} and harness-eval/qm-src:${qm_commit:0:12} built at $qm_commit, $qm_pg pulled"
+fi
 
 # 4. the task preflight, then the jobs: Harbor task copies, rules files materialized and every arm checked (plan.ts jobs)
 jobs_arg=()

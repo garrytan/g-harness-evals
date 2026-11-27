@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { commandSteps, git, gradeR6, gradeTrial, partialLength, requestTexts, ruleBody, ruleState, shellWords, stagedDiff, stages, treeHash, type Grade } from '../scripts/rules-at-scale/grade.ts';
+import { commandSteps, git, gradeR6, gradeTrial, partialLength, QM_SOUL_HEADING, qmSoulDelivered, requestTexts, ruleBody, ruleState, shellWords, stagedDiff, stages, systemText, treeHash, type Grade } from '../scripts/rules-at-scale/grade.ts';
 import { UNREAD } from '../scripts/gstack-delivery/probes.ts';
 import { loadRules } from '../scripts/rules-at-scale/lib.ts';
 
@@ -406,5 +406,19 @@ describe('delivery', () => {
     appendFileSync(file(t), JSON.stringify({ seq: 1, prev: 'x', truncated: true }) + '\n');
     expect(grade(t).delivery).toMatchObject({ state: 'unscorable', path: file(t) });
     expect(existsSync(file(t))).toBe(true);
+  });
+});
+
+describe('qmSoulDelivered', () => {
+  const p = '# This session\n## Organization instructions\nR1 text here\n# QM';
+  test('whole when the SOUL starts the section after the heading, absent otherwise, unscorable with no heading', () => {
+    expect([qmSoulDelivered(p, 'R1 text here\n'), qmSoulDelivered(p, 'R2 text'), qmSoulDelivered(p, 'text here'), qmSoulDelivered('# QM', 'R1 text here'), qmSoulDelivered('R1 text here\n' + QM_SOUL_HEADING, 'R1 text here')])
+      .toEqual(['whole', 'absent', 'absent', 'unscorable', 'absent']);
+  });
+  test('only the system prompt counts: the SOUL in a user turn is not delivery', () => {
+    const user = { role: 'user', content: [{ type: 'text', text: QM_SOUL_HEADING + '\nR1 text here' }] };
+    expect(qmSoulDelivered(systemText({ wire: 'anthropic-messages', body: { system: '# QM', messages: [user] } } as never), 'R1 text here')).toBe('unscorable');
+    expect(qmSoulDelivered(systemText({ wire: 'anthropic-messages', body: { system: [{ type: 'text', text: QM_SOUL_HEADING }, { type: 'text', text: 'R1 text here' }], messages: [user] } } as never), 'R1 text here')).toBe('whole');
+    expect(qmSoulDelivered(systemText({ wire: 'openai-responses', body: { instructions: '# QM', input: [{ type: 'message', ...user }, { type: 'message', role: 'developer', content: QM_SOUL_HEADING + '\n\nR1 text here' }] } } as never), 'R1 text here')).toBe('whole');
   });
 });

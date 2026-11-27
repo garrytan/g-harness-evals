@@ -62,7 +62,7 @@ describe('arms each harness can run', () => {
     for (const a of ['none', 'qm-repo', 'short', 'b8k', 'b28k', 'b80k', 'qm-top']) expect(cant['qm ' + a]).toBeUndefined();
     for (const a of ['b160k', 'split', 'hook', 'cutlift']) expect(cant['qm ' + a].code).toBe('HE-RULES-003');
   });
-  test('QM helpers: the SOUL admin call takes up to 100,000 characters as QM counts them (UTF-16), fails above and never cuts; proof is the captured request', () => {
+  test('QM helpers: the SOUL admin call takes up to 100,000 characters as QM counts them (UTF-16), fails above and never cuts; a SOUL arm with no SOUL file is refused', () => {
     const py = [
       'import json, sys',
       'sys.path.insert(0, ' + JSON.stringify(RS) + ')',
@@ -81,13 +81,14 @@ describe('arms each harness can run', () => {
       '    rw.resolve("qm", {"arm": "none"}, "particle:particle-1"); particle = None',
       'except rw.RulesRefused as e:',
       '    particle = e.code',
+      'try:',
+      '    rw.qm_soul_text("b8k", {"soul": None}); missing = None',
+      'except rw.RulesRefused as e:',
+      '    missing = e.code',
       'from pathlib import Path',
       'repo = rw.load_files({"arm": "qm-repo", "hooktext": False}, "qm", Path(' + JSON.stringify(materialize('qm', 'qm-repo')) + '))',
       'b8k = rw.load_files({"arm": "b8k", "hooktext": False}, "qm", Path(' + JSON.stringify(materialize('qm', 'b8k')) + '))',
-      'p = "# This session\\n## Organization instructions\\nR1 text here\\n# QM"',
-      'print(json.dumps({"ok": [ok["name"], ok["method"], ok["path"], len(ok["body"]["content"])], "over": over, "astral": [astral_ok, astral_over], "particle": particle,' +
-        ' "whole": rw.qm_soul_delivered(p, "R1 text here"), "absent": rw.qm_soul_delivered(p, "R2 text"),' +
-        ' "unscorable": rw.qm_soul_delivered("# QM", "R1 text here"), "none": rw.qm_soul_text("none", {}),' +
+      'print(json.dumps({"ok": [ok["name"], ok["method"], ok["path"], len(ok["body"]["content"])], "over": over, "astral": [astral_ok, astral_over], "particle": particle, "missing": missing, "none": rw.qm_soul_text("none", {}),' +
         ' "repo": [rw.qm_soul_text("qm-repo", repo), [f["path"] for f in repo["files"]]], "b8k": [rw.qm_soul_text("b8k", b8k), b8k["files"]]}))',
     ].join('\n');
     const r = run('python3', ['-c', py]);
@@ -97,7 +98,7 @@ describe('arms each harness can run', () => {
     expect(o.over).toBe('HE-RULES-011');
     expect(o.astral).toEqual([50000, 'HE-RULES-011']);
     expect(o.particle).toBe('HE-RULES-003');
-    expect([o.whole, o.absent, o.unscorable, o.none, o.repo]).toEqual(['whole', 'absent', 'unscorable', null, ['', ['AGENTS.md']]]);
+    expect([o.missing, o.none, o.repo]).toEqual(['HE-RULES-002', null, ['', ['AGENTS.md']]]);
     expect(o.b8k[1]).toEqual([]);
     for (const t of Object.values(RULES)) expect(o.b8k[0]).toContain(t);
   });
@@ -230,12 +231,23 @@ describe('agents_rules_qm.py RulesQm on the Harbor stand-in, with QM itself repl
     expect(wiring['qm gbrain planted']).toMatchObject({ code: 'HE-RULES-006', events: ['qm_started', 'qm_stopped'], soul_body: null });
     expect(wiring['qm b160k']).toEqual({ arm: 'b160k', refused_at: 'init', code: 'HE-RULES-003' });
   });
+  test('a stop that fails keeps the original error code; a cancelled stop is recorded and the cancellation goes on', () => {
+    expect(wiring['qm stop fails']).toMatchObject({ code: 'HE-RULES-012', events: ['qm_started', soulCall, 'qm_stopped'] });
+    expect(wiring['qm stop fails'].rules_record.qm_stop_error).toBe('RuntimeError: docker rm failed');
+    expect(wiring['qm stop cancelled']).toMatchObject({ code: 'cancelled', events: ['qm_started', soulCall, 'qm_stopped'] });
+    expect(wiring['qm stop cancelled'].rules_record.qm_stop_error).toBe('CancelledError: docker rm failed');
+  });
   test('QM that failed to start, and stopped itself, is not stopped a second time', () => {
     expect(wiring['qm start fails']).toMatchObject({ code: 'HE-QM-002', events: ['qm_started', 'qm_stopped'], soul_body: null });
   });
   test('a failed launch check stops QM before the turn; a blank SOUL file is refused before any SOUL call', () => {
     expect(wiring['qm launch check fails']).toMatchObject({ code: 'HE-RULES-004', events: ['qm_started', soulCall, 'qm_stopped'] });
     expect(wiring['qm blank soul']).toMatchObject({ code: 'HE-RULES-002', events: ['qm_started', 'qm_stopped'], soul_body: null });
+  });
+  test('qm-repo with a non-empty SOUL, a SOUL holding the token marker, or one over 100,000 characters is refused before any SOUL call', () => {
+    expect(wiring['qm repo soul']).toMatchObject({ code: 'HE-RULES-002', events: ['qm_started', 'qm_stopped'], soul_body: null });
+    expect(wiring['qm soul marker']).toMatchObject({ code: 'HE-RULES-002', events: ['qm_started', 'qm_stopped'], soul_body: null });
+    expect(wiring['qm soul over']).toMatchObject({ code: 'HE-RULES-011', events: ['qm_started', 'qm_stopped'], soul_body: null });
   });
   test('the rules record names the QM commit the class runs, not only the pin file', () => {
     expect(wiring['qm commit override'].rules_record.pin).toEqual({ commit: 'a'.repeat(40) });

@@ -225,7 +225,7 @@ def table(cells: dict[str, dict[str, Any]], groups: dict[str, list[list[str]]]) 
 
 
 QM_PREDICTED = {
-    "status": "predicted from a source read of yc-software/qm 90e4ced7, not captured: the map ran before QM's rules arms were wired, and the QM pilot checks each trial's first request with rules_wiring.qm_soul_delivered",
+    "status": "predicted from a source read of yc-software/qm 90e4ced7, not captured: the map ran before QM's rules arms were wired, and collect.ts checks each QM trial's first agent-loop request for the SOUL (grade.ts qmSoulDelivered)",
     "where": f"the SOUL, set by PUT {rw.QM_SOUL_PATH} before the turn and shown in the system prompt under \"{rw.QM_SOUL_HEADING}\"",
     "workspace_rules_file": "none read: QM loads no AGENTS.md or CLAUDE.md from the workspace, so the qm-repo arm's AGENTS.md reaches the model only if it opens the file itself",
     "cells": {

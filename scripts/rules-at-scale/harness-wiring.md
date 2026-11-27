@@ -101,7 +101,7 @@ A QM arm runs only on a model the QM runner routes (`harnesses.qm.models` in `sc
 
 - `qm_soul_call(text)`: the admin call `PUT /v1/admin/scopes/org:harness-eval/soul` with `{"content": text}`. A text over 100,000 characters fails the trial (HE-RULES-011) and is never cut. Characters are counted as QM counts them: JavaScript string length, so an emoji counts as two.
 - `qm_soul_text(arm, loaded)`: no SOUL on `none` (QM's default stays), else the manifest's `qm-organization-instructions` file. On `qm-repo` that file is empty and the b8k AGENTS.md is a `repo` file.
-- `qm_soul_delivered(system_prompt, text)`: the proof, read from the captured first agent-loop request. The admin reply is not proof.
+- The admin reply is not proof that the SOUL took. `collect.ts` reads the SOUL a trial was given on the host, from the arm folder `plan.ts jobs` materialized (checked against its manifest and the sha256 in the trial's rules record), never from the task-visible agent logs. It then checks that the system prompt of the captured first agent-loop request starts the section after "## Organization instructions" with that text (`grade.ts` `qmSoulDelivered`). A trial that fails this, after the usual model checks, is `QM_SOUL_NOT_DELIVERED`: an infra row with every rule unscorable.
 
 Carbon runs on QM only through OpenRouter, and no Carbon cell is among QM's arms.
 

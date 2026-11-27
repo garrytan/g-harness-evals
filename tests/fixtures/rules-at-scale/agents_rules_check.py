@@ -137,6 +137,7 @@ class FakeQm(arq.RulesQm):
 
     soul_http = 200
     start_fails = False
+    stop_raises = None
 
     def __init__(self, *a, **k):
         self.qm_events = []
@@ -167,10 +168,12 @@ class FakeQm(arq.RulesQm):
         if self._qm_names:
             self.qm_events.append("qm_stopped")
         self._qm_names = []
+        if self.stop_raises:
+            raise self.stop_raises("docker rm failed")
 
 
-async def qm_case(tmp, materializer, arm, soul_http=200, planted="", start_fails=False, broken=(), blank_soul=False, qm_commit=None):
-    name = f"qm-{arm}-{soul_http}-{bool(planted)}-{start_fails}-{bool(broken)}-{blank_soul}-{bool(qm_commit)}"
+async def qm_case(tmp, materializer, arm, soul_http=200, planted="", start_fails=False, broken=(), soul_text=None, qm_commit=None, stop_raises=None):
+    name = f"qm-{arm}-{soul_http}-{bool(planted)}-{start_fails}-{bool(broken)}-{soul_text is not None and hashlib.sha256(soul_text.encode()).hexdigest()[:8]}-{bool(qm_commit)}-{stop_raises.__name__ if stop_raises else ''}"
     logs = Path(tmp) / name / "jobs" / "job" / f"{TASK}__abc1234" / "agent"
     rules = {"arm": arm}
     if arm != "none":
@@ -178,17 +181,17 @@ async def qm_case(tmp, materializer, arm, soul_http=200, planted="", start_fails
         files.mkdir(parents=True)
         if arm in rw.QM_ARMS:
             subprocess.run(["bun", materializer, "--task", str(REPO / "scripts/rules-at-scale/map/stub-task"), "--arm", arm, "--harness", "qm", "--out", str(files / TASK)], check=True, capture_output=True)
-        if blank_soul:
+        if soul_text is not None:
             man_path = files / TASK / "manifest.json"
             man = json.loads(man_path.read_text())
-            (files / TASK / "soul.txt").write_text(" \n")
+            (files / TASK / "soul.txt").write_text(soul_text)
             for f in man["files"]:
                 if f["path"] == "soul.txt":
-                    f.update(sha256=hashlib.sha256(b" \n").hexdigest(), bytes=2)
+                    f.update(sha256=hashlib.sha256(soul_text.encode()).hexdigest(), bytes=len(soul_text.encode()))
             man_path.write_text(json.dumps(man))
         rules["files_dir"] = str(files)
     out = {"arm": arm}
-    attrs = {"soul_http": soul_http, "start_fails": start_fails, **({"QM_COMMIT": qm_commit} if qm_commit else {})}
+    attrs = {"soul_http": soul_http, "start_fails": start_fails, "stop_raises": stop_raises, **({"QM_COMMIT": qm_commit} if qm_commit else {})}
     try:
         agent = type("FakeQm", (FakeQm,), attrs)(logs_dir=str(logs), model_name="anthropic/claude-opus-5-5", broker_url="http://broker", cell="c", attempt=1, rules=rules)
     except rw.RulesRefused as e:
@@ -206,6 +209,8 @@ async def qm_case(tmp, materializer, arm, soul_http=200, planted="", start_fails
         out.update(code=e.code, message=str(e)[:240])
     except RuntimeError as e:
         out.update(code=str(e).split(" ", 1)[0], message=str(e)[:240])
+    except asyncio.CancelledError:
+        out.update(code="cancelled")
     events = agent.qm_events
     out["events"] = [e if e.startswith(("qm_", "turn")) or e.endswith(rw.QM_SOUL_PATH) else "admin" for e in events]
     out["soul_body"] = agent.qm_body if any(e.endswith(rw.QM_SOUL_PATH) for e in events) else None
@@ -235,7 +240,12 @@ async def main(tmp, materializer):
     cases["qm gbrain planted"] = await qm_case(tmp, materializer, "b8k", planted="/root/.gbrain\n")
     cases["qm start fails"] = await qm_case(tmp, materializer, "b8k", start_fails=True)
     cases["qm launch check fails"] = await qm_case(tmp, materializer, "b8k", broken=("-name AGENTS.md",))
-    cases["qm blank soul"] = await qm_case(tmp, materializer, "b8k", blank_soul=True)
+    cases["qm blank soul"] = await qm_case(tmp, materializer, "b8k", soul_text=" \n")
+    cases["qm repo soul"] = await qm_case(tmp, materializer, "qm-repo", soul_text="Rules.\n")
+    cases["qm soul marker"] = await qm_case(tmp, materializer, "b8k", soul_text="Never print " + rw.QM_TOKEN_MARKER + ".\n")
+    cases["qm soul over"] = await qm_case(tmp, materializer, "b8k", soul_text="x" * (rw.QM_MAX_SOUL_CHARS + 1))
+    cases["qm stop fails"] = await qm_case(tmp, materializer, "b8k", soul_http=500, stop_raises=RuntimeError)
+    cases["qm stop cancelled"] = await qm_case(tmp, materializer, "b8k", soul_http=500, stop_raises=asyncio.CancelledError)
     cases["qm commit override"] = await qm_case(tmp, materializer, "b8k", qm_commit="a" * 40)
     print(json.dumps(cases))
 

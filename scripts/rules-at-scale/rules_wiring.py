@@ -89,6 +89,7 @@ QM_ARMS = ("none", "qm-repo", "short", "b8k", "b28k", "b80k", "qm-top")
 QM_SOUL_PATH = f"/v1/admin/scopes/{qh.SCOPE}/soul"
 QM_SOUL_HEADING = "## Organization instructions"
 QM_MAX_SOUL_CHARS = 100_000
+QM_TOKEN_MARKER = "@HE_QM_PROXY_TOKEN@"
 
 
 def qm_chars(text: str) -> int:
@@ -112,19 +113,16 @@ def qm_soul_text(arm: str, loaded: dict[str, Any]) -> str | None:
         return None
     if loaded.get("soul") is None:
         raise RulesRefused("HE-RULES-002", f"QM arm {arm} needs a qm-organization-instructions file in its manifest")
-    if arm != "qm-repo" and not loaded["soul"].strip():
+    soul = loaded["soul"]
+    if arm == "qm-repo" and soul != "":
+        raise RulesRefused("HE-RULES-002", "QM arm qm-repo puts its rules in the repository, so its qm-organization-instructions file must be empty")
+    if arm != "qm-repo" and not soul.strip():
         raise RulesRefused("HE-RULES-002", f"QM arm {arm} has an empty qm-organization-instructions file")
-    return loaded["soul"]
-
-
-def qm_soul_delivered(system_prompt: str, text: str) -> str:
-    """The proof the SOUL took, from the captured first agent-loop request (never the admin reply): whole when the text
-    sits under "## Organization instructions", absent when that section holds something else, unscorable when the
-    request has no such section."""
-    at = system_prompt.find(QM_SOUL_HEADING)
-    if at < 0:
-        return "unscorable"
-    return "whole" if text.strip() and text.strip() in system_prompt[at + len(QM_SOUL_HEADING):] else "absent"
+    if QM_TOKEN_MARKER in soul:
+        raise RulesRefused("HE-RULES-002", f"QM arm {arm}'s organization instructions contain {QM_TOKEN_MARKER}, the QM call helper's token marker")
+    if qm_chars(soul) > QM_MAX_SOUL_CHARS:
+        raise RulesRefused("HE-RULES-011", f"QM arm {arm}'s organization instructions are {qm_chars(soul)} characters, over QM's MAX_SOUL_CHARS of {QM_MAX_SOUL_CHARS}; the text is not cut")
+    return soul
 
 
 class RulesRefused(RuntimeError):

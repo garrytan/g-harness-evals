@@ -7,7 +7,8 @@ the arm's repository files (qm-repo's b8k AGENTS.md), RulesQm sets the arm's SOU
 (rules_wiring.qm_soul_call): none sets nothing and QM's default SOUL stays, qm-repo sets an empty SOUL, every other arm sets
 the manifest's qm-organization-instructions text. A text over 100,000 characters stops the trial (HE-RULES-011) and is
 never cut; a reply other than 200, 201 or 204 stops it too (HE-RULES-012). The admin reply is not proof that the SOUL
-reached the model; that is read from the captured first agent-loop request (rules_wiring.qm_soul_delivered).
+reached the model: collect.ts checks the captured first agent-loop request's system prompt for the SOUL, read on the host from
+the materialized arm folder (grade.ts qmSoulDelivered); a trial where it isn't there is QM_SOUL_NOT_DELIVERED.
 
 The turn is a DM to QM core, not a command in the task container, so the launch checks and the watcher start run at the
 start of run(), right before the turn. QM's version is FrontierQm's pin (harnesses/qm/pin.json, or QM_COMMIT), so
@@ -46,14 +47,17 @@ class RulesQm(_Rules, fa.FrontierQm):
             raise
 
     async def _rules_stop_qm(self, environment: BaseEnvironment) -> None:
-        """Stops QM's containers while they are up, without letting a failed stop replace the error being raised."""
+        """Stops QM's containers while they are up, without letting a failed stop replace the error being raised. A stop
+        that fails or is cancelled is recorded as qm_stop_error; a cancellation is raised again, since it ends the trial."""
         if not self._qm_names:
             return
         try:
             await self._qm_stop(environment)
-        except Exception as e:
-            self._rules_record["qm_stop_error"] = str(e)[-300:]
+        except BaseException as e:
+            self._rules_record["qm_stop_error"] = f"{type(e).__name__}: {str(e)[-300:]}"
             self._write_settings()
+            if not isinstance(e, Exception):
+                raise
 
     async def _rules_soul(self) -> None:
         text = rw.qm_soul_text(self._rules["arm"], {"soul": self._rules_plan["soul"]})

@@ -49,7 +49,8 @@ export interface RuleResult { state: RuleState; code: string; evidence: Record<s
 export type DeliveryState = 'whole' | 'partial' | 'fetched_later' | 'absent' | 'unscorable';
 export interface RequestDelivery { seq: number; route: string; agent: boolean; markers: string[]; rules: Record<RuleId, { state: Exclude<DeliveryState, 'unscorable'>; digest_hit: boolean }> }
 export interface RuleDeliverySummary { at_start: DeliveryState; first_whole_seq: number | null; first_fetched_seq: number | null; fetched_before_first_edit: boolean | null; digest_hit: boolean; partial_requests: number }
-export interface Delivery { state: 'scored' | 'unscorable'; code?: string; path?: string; step?: string; wire?: Wire; requests: RequestDelivery[]; summary: Record<RuleId, RuleDeliverySummary> }
+export type SoulState = 'whole' | 'absent' | 'unscorable';
+export interface Delivery { state: 'scored' | 'unscorable'; code?: string; path?: string; step?: string; wire?: Wire; requests: RequestDelivery[]; summary: Record<RuleId, RuleDeliverySummary>; soul?: SoulState }
 export interface Grade { schema: 'rules-at-scale-grade/v1'; trial: string; task: string; base: string; work: string | null; capture: string | null; rules: Record<RuleId, RuleResult>; delivery: Delivery }
 
 const fail = (code: string, path: string, step: string, extra: Record<string, unknown> = {}): RuleResult => ({ state: 'unscorable', code, evidence: { path, step, ...extra } });
@@ -498,7 +499,37 @@ function inDigest(instr: string, rule: string): boolean {
 /** The rule text a request must carry: the bullet without its "- " marker, so a harness that re-renders bullets still matches. */
 export const ruleBody = (text: string) => text.replace(/^- /, '');
 
-export function deliveryOf(bodies: readonly CaptureBody[], wire: Wire, calls: readonly Call[], doc: RulesDoc): Delivery {
+export const QM_SOUL_HEADING = '## Organization instructions';
+
+/** A request's system prompt only: Anthropic's system, the Responses instructions and system or developer items, chat's
+ *  system or developer messages. User turns and tool results are left out. */
+export function systemText(b: Pick<CaptureBody, 'body' | 'wire'>): string {
+  const out: string[] = [];
+  const body = b.body;
+  const blocks = (v: unknown): void => {
+    if (typeof v === 'string') out.push(v);
+    else if (Array.isArray(v)) v.forEach(blocks);
+    else if (v && typeof v === 'object') { const o = v as { text?: unknown; content?: unknown }; if (typeof o.text === 'string') out.push(o.text); else blocks(o.content); }
+  };
+  if (b.wire === 'anthropic-messages') blocks(body.system);
+  else {
+    if (b.wire === 'openai-responses') blocks(body.instructions);
+    const items = (b.wire === 'openai-responses' ? (Array.isArray(body.input) ? body.input : []) : Array.isArray(body.messages) ? body.messages : []) as Array<{ role?: string; content?: unknown }>;
+    for (const m of items) if (m?.role === 'system' || m?.role === 'developer') blocks(m.content);
+  }
+  return out.join('\n\u0000\n');
+}
+
+/** Whether QM's SOUL reached the model, read from a request's system prompt (never QM's admin reply): whole when the
+ *  SOUL text starts the section right after "## Organization instructions", absent when it doesn't, unscorable when the
+ *  system prompt has no such heading. */
+export function qmSoulDelivered(system: string, soul: string): SoulState {
+  const at = system.indexOf(QM_SOUL_HEADING);
+  if (at < 0) return 'unscorable';
+  return soul.trim() && system.slice(at + QM_SOUL_HEADING.length).replace(/^[\s\u0000]+/, '').startsWith(soul.trim()) ? 'whole' : 'absent';
+}
+
+export function deliveryOf(bodies: readonly CaptureBody[], wire: Wire, calls: readonly Call[], doc: RulesDoc, soul?: string | null): Delivery {
   const requests: RequestDelivery[] = bodies.map((b) => {
     const t = requestTexts(b);
     const rules = {} as RequestDelivery['rules'];
@@ -520,7 +551,9 @@ export function deliveryOf(bodies: readonly CaptureBody[], wire: Wire, calls: re
       partial_requests: requests.filter((r) => r.rules[id].state === 'partial').length,
     };
   }
-  return { state: 'scored', wire, requests, summary };
+  const delivery: Delivery = { state: 'scored', wire, requests, summary };
+  if (soul != null) delivery.soul = qmSoulDelivered(systemText(bodies[requests.indexOf(firstAgent)]!), soul);
+  return delivery;
 }
 
 function unscorableDelivery(code: string, path: string, step: string): Delivery {
@@ -531,7 +564,7 @@ function unscorableDelivery(code: string, path: string, step: string): Delivery 
 
 // ---- one trial
 
-export interface GradeInput { trial: string; taskDir: string; base: string; work?: string | null; capture?: string | null }
+export interface GradeInput { trial: string; taskDir: string; base: string; work?: string | null; capture?: string | null; soul?: string | null }
 
 export function locateWork(trial: string): string | null {
   for (const c of [join(trial, 'artifacts', 'work'), join(trial, 'harbor', 'artifacts', 'work'), join(trial, 'work')]) if (existsSync(join(c, 'repo'))) return c;
@@ -559,7 +592,7 @@ export function gradeTrial(input: GradeInput, doc: RulesDoc = loadRules()): Grad
   let delivery: Delivery;
   if (parsed instanceof Unscorable) delivery = unscorableDelivery(parsed.code, parsed.path, parsed.step);
   else {
-    try { delivery = deliveryOf(parsed.bodies, parsed.wire, parsed.calls, doc); }
+    try { delivery = deliveryOf(parsed.bodies, parsed.wire, parsed.calls, doc, input.soul); }
     catch (e) { delivery = unscorableDelivery('DELIVERY_ERROR', capture!, (e as Error).message.slice(0, 200)); }
   }
 
