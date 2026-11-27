@@ -80,7 +80,8 @@ We wrote these rules down before the first trial ([PREREGISTRATION.md](PREREGIST
 - **Claude Fable 5.2** is behind on Terminal-Bench by 6.6 points at 3.23x the cost per solve, and on the fresh set it read +4.7 points at 2.80x. Both add to the cost record behind our Fable guidance; this run doesn't change it on its own.
 - **Grok 4.7** reads "can't tell" on Terminal-Bench, so nothing changes. Its smallest detectable difference there was 15.4 points.
 - **GLM 5.3 on Novita's fp8 host** is behind by 23.4 points. No recommendation.
-- **DeepSeek, Kimi, Sonnet and Hydrogen** read "can't tell". Nothing changes.
+- **DeepSeek, Kimi and Hydrogen** read "can't tell". Nothing changes.
+- **Claude Sonnet 5.5** reads "can't tell" pooled over Pi and OpenClaw, the reading that decides, so nothing changes for it as a model. In Pi alone it is within 10 points, +0.6 [-9.6, +10.9], at 0.33x the cost per solve [0.22, 0.48], so the analysis lists it as the cheaper choice in Pi. Leave out the safety-filter stops and its Pi reading becomes "can't tell".
 - **Safety stops passed 5% in some cells,** so the scoreboard carries the stop rate beside those pass rates (next section).
 
 ## Safety-filter stops and timeouts
