@@ -1837,13 +1837,26 @@ cmd_sync() {
   log "synced $src -> $name:$dest"
 }
 
-# pull NAME REMOTE_GLOB LOCAL_DIR: copy matching remote entries into LOCAL_DIR.
-# Relative remote paths start at /home/ubi. A glob that matches nothing (for
+# pull NAME REMOTE_GLOB LOCAL_DIR [--skip-unreadable] [--since-mark FILE [--exclude GLOB]...]: copy matching remote
+# entries into LOCAL_DIR. Relative remote paths start at /home/ubi. A glob that matches nothing (for
 # example an optional flake ledger) is reported and skipped, not a failure.
+# harness-evals: --since-mark FILE (relative to /home/ubi) copies only the files whose change time (ctime, which a
+# backdated mtime cannot hide) is after the last pull that used the same FILE, plus every *.sqlite, *.sqlite-wal and
+# *.sqlite-shm, so a ledger never comes back without its journal. Each --exclude GLOB (a find -path pattern) is left out.
+# A file that vanishes before tar reads it is skipped, and a file that grows while read (tar exit 1) still counts as a
+# good pull. The mark moves only after the local extract succeeds, so a failed pull is sent again.
 cmd_pull() {
-  local name=$1 from=$2 to=$3 dir rc=0 skip=""
-  # harness-evals: --skip-unreadable lets a mid-run pull skip files the run is still writing
-  [ "${4:-}" != --skip-unreadable ] || skip="--ignore-failed-read "
+  local name=$1 from=$2 to=$3 dir rc=0 skip="" mark="" prune="" m
+  shift 3
+  while [ $# -gt 0 ]; do
+    case $1 in
+      # harness-evals: --skip-unreadable lets a mid-run pull skip files the run is still writing
+      --skip-unreadable) skip="--ignore-failed-read "; shift ;;
+      --since-mark) mark=$2; shift 2 ;;
+      --exclude) prune+="${prune:+ -o }-path $(printf %q "$2")"; shift 2 ;;
+      *) log "pull: unknown option $1"; return 2 ;;
+    esac
+  done
   dir=$(printf %q "$(dirname "$from")")
   remote "$name" "cd $dir 2>/dev/null || exit 3; ls -d -- $(basename "$from") >/dev/null 2>&1 || exit 3" || rc=$?
   case $rc in
@@ -1852,7 +1865,15 @@ cmd_pull() {
     *) log "pull failed: could not check $from on $name (exit $rc)"; return 1 ;;
   esac
   mkdir -p "$to"
-  remote "$name" "cd $dir && tar ${skip}-czf - $(basename "$from")" | tar -xzf - -C "$to"
+  if [ -z "$mark" ]; then
+    remote "$name" "cd $dir && tar ${skip}-czf - $(basename "$from")" | tar -xzf - -C "$to"
+    return
+  fi
+  m='$HOME/'$(printf %q "$mark")
+  remote "$name" "cd $dir && rm -f $m.next $m.find && s=\$((\$(date +%s) - 5)) && n=\$(cat $m 2>/dev/null || echo 0) && { find $(basename "$from") ${prune:+\\( $prune \\) -prune -o }! -type d \\( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -newerct @\$n \\) -print0; echo \$? > $m.find; } | tar --ignore-failed-read --null --no-recursion -T - -czf -; t=\$?; [ \$t -gt 1 ] || [ \"\$(cat $m.find 2>/dev/null)\" != 0 ] || echo \$s > $m.next; rm -f $m.find; exit \$t" | tar -xzf - -C "$to" || rc=$?
+  [ "$rc" -le 1 ] || return "$rc"
+  remote "$name" "[ ! -f $m.next ] || mv -f $m.next $m"
+  return "$rc"
 }
 
 # pass_name NAME: a variable this runner may forward to a VM: one the caller's

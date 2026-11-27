@@ -17,7 +17,7 @@ import { startDockerHarness } from './docker.ts';
 import { reconcile, summarizeUsage, trialKey, trialSlug, trialToken } from './proxy.ts';
 import { type TrialContext, classify, foreignModels, trialTermination } from './trial.ts';
 import { InstallLeak, canaryScan, scrubToken } from './install.ts';
-import { FIRST_WOW_SLICE, MAX_ACCEPTS, PERSON_REPLY, QUESTION_BUDGET_S, REGISTRATION, SETUP_TIMEOUT_S, FALLBACK_MARKERS, suggestionIn, type FirstWowArm, type FirstWowCellConfig, imageFor, readRegistration, seedOfTask, setupArgv } from './first-wow-cell.ts';
+import { FIRST_WOW_SLICE, MAX_ACCEPTS, PERSON_REPLY, QUESTION_BUDGET_S, REGISTRATION, SETUP_TIMEOUT_S, FALLBACK_MARKERS, suggestionIn, type FirstWowArm, type FirstWowCellConfig, imageFor, packRawBrain, readRegistration, seedOfTask, setupArgv } from './first-wow-cell.ts';
 import { asksForInput } from '../../scripts/gbrain-install/classify.ts';
 import { type NEvent, parseTurn } from '../../scripts/gbrain-install/transcript.ts';
 import { HOME_DIR, buildFixture, personaFor, questionPrompt, writeFixture, type FixtureManifest } from '../../scripts/gbrain-first-wow/fixtures.ts';
@@ -307,5 +307,7 @@ export async function runFirstWowTrial(ctx: Omit<TrialContext, 'grade'> & { keyE
     log(`first-wow trial ${trial.id}: token scrubbed from ${scrubbed.length} file(s); canary ${found ? 'FOUND' : 'clean'}`);
     if (found) throw new InstallLeak(record, `HE-INSTALL-005 after first-wow trial ${trial.id}${thrown ? ' (which threw)' : ''}: ${canary.token_files.length ? `the trial token is still in ${canary.token_files.join(', ')}` : ''}${canary.key_names.length ? ` provider key value(s) of ${canary.key_names.join(', ')} found` : ''}; the run stops`);
   }
+  const packed = packRawBrain(dirs.state);
+  if (packed.length) log(`first-wow trial ${trial.id}: packed the trial home (${packed.join(', ')})`);
   return record!;
 }

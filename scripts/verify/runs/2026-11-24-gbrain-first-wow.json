@@ -1,0 +1,28 @@
+{
+  "run": "2026-11-24-gbrain-first-wow",
+  "about": "The gbrain time-to-first-wow run: the Why-null breakdown (scripts/gbrain-first-wow/why-null.py) over the merged trial list; the frozen analysis (scripts/gbrain-first-wow/analyze.ts) needs the trial folders in the private raw archive.",
+  "steps": [
+    {
+      "cmd": [
+        "python3",
+        "scripts/gbrain-first-wow/why-null.py",
+        "{run}/results/merged/trials.jsonl",
+        "--out",
+        "{run}/results/analysis/why-null.json"
+      ],
+      "outputs": [
+        "results/analysis/why-null.json"
+      ]
+    }
+  ],
+  "not_rebuilt": [
+    {
+      "what": "The merged trial list and per-shard records (results/merged/, results/shards/)",
+      "reason": "They were written by the run itself; verify uses them as this run's receipts."
+    },
+    {
+      "what": "The frozen analysis and both half-way looks (results/analysis/final.json, final.md, interim.json, interim.md, interim-particle.json, interim-particle.md) and the numbers in report.md and README.md that come from them",
+      "reason": "analyze.ts re-scores every trial from its folder (transcripts, the end-state brain export, the agent's files), which stays in the private raw archive raw-gbrain-first-wow-2026-12, not in the repository. reproduce.md gives the commands."
+    }
+  ]
+}

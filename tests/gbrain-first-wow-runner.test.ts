@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { QM_ACTOR_ID, QM_BRAIN_MEMBER, accessCheckOk, brainHostImage, brainHostSteps, checkFirstWowCell, readRegistration, seedOfTask, setupArgv, suggestionIn, taskForSeed, imageFor } from '../runner/trial/first-wow-cell.ts';
+import { QM_ACTOR_ID, QM_BRAIN_MEMBER, accessCheckOk, brainHostImage, brainHostSteps, checkFirstWowCell, packRawBrain, readRegistration, seedOfTask, setupArgv, suggestionIn, taskForSeed, imageFor } from '../runner/trial/first-wow-cell.ts';
 import { needsPerson, scoredReply } from '../runner/trial/first-wow.ts';
 import { isGbrainCall, parseQm, type QmItem } from '../scripts/gbrain-install/transcript.ts';
 import { citedFiles } from '../scripts/gbrain-first-wow/score.ts';
@@ -165,3 +166,43 @@ describe('the QM transcript parser (shapes from pilot 1 smoke A, QM main@77024e7
     expect(citedFiles(text, '/home/dev')).toEqual(['workspace/.codex/sessions/x.jsonl']);
   });
 });
+
+describe('packing a finished trial home', () => {
+  test('the raw gbrain database becomes a tarball, the bun cache goes, and everything else stays', () => {
+    const home = mkdtempSync(join(tmpdir(), 'fw-pack-'));
+    mkdirSync(join(home, '.gbrain', 'brain.pglite', 'base'), { recursive: true });
+    writeFileSync(join(home, '.gbrain', 'brain.pglite', 'base', 'page'), 'raw');
+    writeFileSync(join(home, '.gbrain', 'config.json'), '{}');
+    mkdirSync(join(home, '.bun', 'install', 'cache', 'pkg'), { recursive: true });
+    writeFileSync(join(home, '.bun', 'install', 'cache', 'pkg', 'index.js'), 'x');
+    writeFileSync(join(home, 'AGENTS.md'), 'notes');
+    expect(packRawBrain(home)).toEqual(['.gbrain/brain.pglite.tgz', '-.bun/install/cache']);
+    expect(existsSync(join(home, '.gbrain', 'brain.pglite'))).toBe(false);
+    expect(existsSync(join(home, '.bun', 'install', 'cache'))).toBe(false);
+    expect(existsSync(join(home, '.gbrain', 'config.json'))).toBe(true);
+    expect(existsSync(join(home, 'AGENTS.md'))).toBe(true);
+    expect(spawnSync('tar', ['-tzf', join(home, '.gbrain', 'brain.pglite.tgz')], { encoding: 'utf8' }).stdout).toContain('brain.pglite/base/page');
+  });
+
+  test.skipIf(process.getuid?.() === 0)('a cache it cannot remove is reported in the list, and the call still returns', () => {
+    const home = mkdtempSync(join(tmpdir(), 'fw-pack-'));
+    mkdirSync(join(home, '.bun', 'install', 'cache', 'pkg'), { recursive: true });
+    writeFileSync(join(home, '.bun', 'install', 'cache', 'pkg', 'index.js'), 'x');
+    chmodSync(join(home, '.bun', 'install', 'cache', 'pkg'), 0o555);
+    try {
+      const done = packRawBrain(home);
+      expect(done).toHaveLength(1);
+      expect(done[0]).toStartWith('-.bun/install/cache (not removed: ');
+    } finally {
+      chmodSync(join(home, '.bun', 'install', 'cache', 'pkg'), 0o755);
+    }
+  });
+
+  test('a home with no gbrain database and no bun cache is left alone', () => {
+    const home = mkdtempSync(join(tmpdir(), 'fw-pack-'));
+    writeFileSync(join(home, 'AGENTS.md'), 'notes');
+    expect(packRawBrain(home)).toEqual([]);
+    expect(existsSync(join(home, 'AGENTS.md'))).toBe(true);
+  });
+});
+

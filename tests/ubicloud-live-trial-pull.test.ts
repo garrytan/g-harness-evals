@@ -107,7 +107,7 @@ describe('run-shard.sh teardown pull stays strict', () => {
 // shard/results with --skip-unreadable brings back a finished and a live trial and names two of the live trial's paths and
 // results/proxy.log as unreadable; a pull without it brings back results/ cleanly. The shard exits once one pull happened,
 // so the first pull is the mid-run replicate pull and the last one is the teardown pull.
-function launch(workload: 'frontier-harbor' | 'harness') {
+function launch(workload: 'frontier-harbor' | 'harness', extra: string[] = []) {
   const dir = tmp('he-ubi-replicatepull-');
   const repo = join(dir, 'repo');
   const UBI = join(ROOT, 'scripts', 'ubicloud');
@@ -142,7 +142,7 @@ function launch(workload: 'frontier-harbor' | 'harness') {
   ]);
   const dest = join(dir, 'dest');
   const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir, UBI_RUNNER: runner, UBI_RUNNER_STATE: join(dir, 'state'), UBI_OWNER: 'test-owner', UBICLOUD_API_KEY: PLACEHOLDER, ANTHROPIC_API_KEY: PLACEHOLDER, OPENAI_API_KEY: PLACEHOLDER, TMPDIR: dir };
-  const r = spawnSync('bash', [join(repo, 'scripts', 'ubicloud', 'run-shard.sh'), '--commit', commit, '--prereg', join(dir, 'prereg.json'), '--name', 's1', '--cells', 'c1', '--lease-usd', '1', '--dest', dest, '--poll-seconds', '1', '--replicate-seconds', '1', '--workload', workload],
+  const r = spawnSync('bash', [join(repo, 'scripts', 'ubicloud', 'run-shard.sh'), '--commit', commit, '--prereg', join(dir, 'prereg.json'), '--name', 's1', '--cells', 'c1', '--lease-usd', '1', '--dest', dest, '--poll-seconds', '1', '--replicate-seconds', '1', '--workload', workload, ...extra],
     { cwd: dir, encoding: 'utf8', timeout: 120_000, env, stdio: ['ignore', 'pipe', 'pipe'] });
   const calls = read(join(dir, 'calls.log')).split('\n').filter(Boolean);
   return { code: r.status, err: r.stderr, dest, calls, pulls: calls.filter((c) => c.startsWith('pull vm1 shard/results ')), laneLog: read(join(dest, 'lane.log')) };
@@ -170,5 +170,25 @@ describe('run-shard.sh mid-run replicate pull', () => {
     expect(r.laneLog).toContain('replicate: 1 records in');
     expect(r.laneLog).not.toContain('pull: skipped');
     expect(r.calls).toContain('down vm1');
+  }, 120_000);
+
+  test('with --incremental-pull the mid-run pull copies only what changed and leaves out raw trial databases, this controller clears the VM\'s mark once before its first, and teardown stays whole', () => {
+    const r = launch('harness', ['--incremental-pull']);
+    expect(r.code, r.err).toBe(0);
+    expect(r.pulls.length, r.laneLog).toBeGreaterThanOrEqual(2);
+    expect(r.pulls[0]).toEndWith(" --since-mark shard/.pull-mark --exclude */.gbrain/brain.pglite --exclude */.bun/install/cache");
+    expect(r.pulls.at(-1)).not.toContain('--since-mark');
+    const resets = r.calls.flatMap((c, i) => (c === 'ssh vm1 rm -f ~/shard/.pull-mark' ? [i] : []));
+    expect(resets.length, r.calls.join('\n')).toBe(1);
+    expect(resets[0]!).toBeLessThan(r.calls.indexOf(r.pulls[0]!));
+    expect(r.laneLog).toContain('replicate: 1 records in');
+    expect(r.calls).toContain('down vm1');
+  }, 120_000);
+
+  test('--incremental-pull is refused on a frontier-harbor shard', () => {
+    const r = launch('frontier-harbor', ['--incremental-pull']);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('--incremental-pull does not apply to --workload frontier-harbor');
+    expect(r.pulls.length).toBe(0);
   }, 120_000);
 });

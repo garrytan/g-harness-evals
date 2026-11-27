@@ -10,7 +10,7 @@
 #       [--amendment <sha>]
 #       [--resume] [--attach] [--poll-seconds 30] [--timeout-hours 12] [--sealed-root <local dir> --opening-receipt <local file>]
 #       [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--install-check] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
-#       [--replicate-seconds 1200] [--replicate-to <dir>] [--skill-root <local dir>]
+#       [--replicate-seconds 1200] [--incremental-pull] [--replicate-to <dir>] [--skill-root <local dir>]
 #       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [--zdr-gate <install check results directory>]
 #       [-- <extra arguments for scripts/run-shard.sh>]
 #
@@ -34,7 +34,12 @@
 # cannot read (a running Harbor trial's container-owned files) and logs it instead of failing; the teardown pull and every
 # other workload's pull stay strict, so an unreadable file fails them. So a failed or cut pull never touches the last good copy and the
 # merge keeps what the VM lacks (a --resume upload leaves out state/ and workspace/); a failure is logged and retried at the next
-# interval, never fatal. The teardown pull goes through the same staging. With --replicate-to <dir> (or UBI_REPLICATE_TO;
+# interval, never fatal. With --incremental-pull each mid-run pull copies only what changed on the VM since the last good one
+# (ubi-runner.sh pull --since-mark, with every ledger and its journal each time) and leaves out a live trial's raw gbrain
+# database and bun cache, which the trial packs or drops at its end. Each controller (a launch or an --attach) clears the
+# VM's mark before its first incremental pull, so that pull is whole; a merge that fails resets the mark, and a reset that
+# fails is retried before the next pull, which is whole until a reset succeeds. A listing find could not finish keeps the
+# old mark. The teardown pull is always whole. The teardown pull goes through the same staging. With --replicate-to <dir> (or UBI_REPLICATE_TO;
 # meant for a Capy drive folder, which outlives this machine), <dest> is mirrored to <dir>/<shard> after each replication
 # and at teardown (without per-trial state/ and workspace/, and only after a scan finds no key-shaped text), and one line
 # per VM event (created, attached, kept, destroyed, down-failed: shard, VM, owner, created_at, dest) is appended to
@@ -181,7 +186,7 @@ commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location=
 smoke_first=0 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
 workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke="" install_check=0 skill_root="" zdr_gate=""
 t_start=$(date +%s)
-rep_s=${UBI_REPLICATE_SECONDS:-1200} replicate_to=${UBI_REPLICATE_TO:-}
+rep_s=${UBI_REPLICATE_SECONDS:-1200} replicate_to=${UBI_REPLICATE_TO:-} incremental=0 mark_fresh=0
 extra=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -213,6 +218,7 @@ while [ $# -gt 0 ]; do
     --skill-root) skill_root=$2; shift 2 ;;
     --pre-smoke) pre_smoke=$2; shift 2 ;;
     --replicate-seconds) rep_s=$2; shift 2 ;;
+    --incremental-pull) incremental=1; shift ;;
     --replicate-to) replicate_to=$2; shift 2 ;;
     --zdr-gate) zdr_gate=$2; shift 2 ;;
     -h|--help) sed -n '2,/^set -euo pipefail/{/^set /!p}' "$0"; exit 0 ;;
@@ -240,6 +246,7 @@ case $workload in harness) ;; gstack-laneb)
   *) echo "run-shard (ubicloud): --workload must be harness, gstack-laneb, qm-driver or frontier-harbor" >&2; exit 2 ;;
 esac
 [ "$install_check" -eq 0 ] || [ "$workload" = frontier-harbor ] || { echo "run-shard (ubicloud): --install-check applies only to --workload frontier-harbor" >&2; exit 2; }
+[ "$incremental" -eq 0 ] || [ "$workload" != frontier-harbor ] || { echo "run-shard (ubicloud): --incremental-pull does not apply to --workload frontier-harbor, whose mid-run pull skips unreadable files" >&2; exit 2; }
 [[ "$rep_s" =~ ^[0-9]+$ ]] || { echo "run-shard (ubicloud): --replicate-seconds must be a whole number of seconds (0 turns replication off)" >&2; exit 2; }
 [ -z "$replicate_to" ] || [ -z "$sealed_root" ] || { echo "run-shard (ubicloud): --replicate-to is refused for a sealed shard; its raw results stay in --dest (docs/sealed-custody.md)" >&2; exit 2; }
 case $workload in qm-driver) records=turns.jsonl record_file=run.json ;; *) records=trials.jsonl record_file=shard.json ;; esac
@@ -355,7 +362,7 @@ remote_home=/home/ubi
 repo_dir=$remote_home/work/harness-evals
 now() { date +%s; }
 lines() { if [ -f "$1" ]; then wc -l < "$1"; else echo 0; fi; }
-# pull_results [keep-staged] [--skip-unreadable]: ~/shard/results into <dest>/results through <dest>/.pull. It returns 1 when
+# pull_results [keep-staged] [--skip-unreadable] [since-mark]: ~/shard/results into <dest>/results through <dest>/.pull. It returns 1 when
 # the pull exits above 1 or brings back no results/; exit 1 is tar's "file changed as we read it" on a live log, after a
 # complete extract. With --skip-unreadable (only replicate passes it, only on a frontier-harbor shard) the pull skips what
 # the VM user cannot read (ubi-runner.sh pull --skip-unreadable): while a frontier-harbor trial runs, Harbor's trial
@@ -374,18 +381,19 @@ lines() { if [ -f "$1" ]; then wc -l < "$1"; else echo 0; fi; }
 # its -wal or -shm (teardown checkpoints and closes the ledger) drops the local one, which an earlier pull left and which
 # would replay old pages over the newer database.
 pull_results() {
-  local rc=0 db s p a keep=0 skip=() err=/dev/null live=() other=() errs=$dest/lane.log
-  for a in "$@"; do case $a in keep-staged) keep=1 ;; --skip-unreadable) skip=(--skip-unreadable) ;; esac; done
+  local rc=0 db s p a keep=0 skip=() inc=() err=/dev/null live=() other=() errs=$dest/lane.log
+  for a in "$@"; do case $a in keep-staged) keep=1 ;; --skip-unreadable) skip=(--skip-unreadable) ;; since-mark) inc=(--since-mark shard/.pull-mark --exclude '*/.gbrain/brain.pglite' --exclude '*/.bun/install/cache') ;; esac; done
   [ "$sealed" -eq 0 ] || errs=$dest/sealed-upload.log
   chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"
   [ ${#skip[@]} -eq 0 ] || { mkdir -p "$dest/.pull" && err=$dest/.pull/pull.err; }
-  bash "$runner" pull "$vm" shard/results "$dest/.pull" ${skip[@]+"${skip[@]}"} 2>"$err" || rc=$?
+  bash "$runner" pull "$vm" shard/results "$dest/.pull" ${skip[@]+"${skip[@]}"} ${inc[@]+"${inc[@]}"} 2>"$err" || rc=$?
   if [ "$rc" -gt 1 ] || [ ! -d "$dest/.pull/results" ]; then chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"; return 1; fi
   while IFS= read -r db; do
     for s in -wal -shm; do [ -e "$dest/.pull/results/$db$s" ] || rm -f "$dest/results/$db$s"; done
   done < <(cd "$dest/.pull/results" && find . -name '*.sqlite')
   chmod -R u+w "$dest/results" 2>/dev/null
   if ! { mkdir -p "$dest/results" && cp -a "$dest/.pull/results/." "$dest/results/" 2>>"$errs"; }; then
+    [ ${#inc[@]} -eq 0 ] || vssh 'rm -f ~/shard/.pull-mark' >>"$errs" 2>&1 || mark_fresh=0
     [ "$sealed" -eq 1 ] || [ "$keep" -eq 0 ] || return 2
     chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"
     if [ "$sealed" -eq 0 ]; then [ ! -e "$dest/.pull" ] || log "WARNING: the staged copy $dest/.pull could not be deleted (diagnostics in $errs)"
@@ -599,9 +607,13 @@ PY
   mkdir -p "$replicate_to/${name:-attach}" && cp "$dest/shard-vm.json" "$replicate_to/${name:-attach}/shard-vm.json" 2>/dev/null || true
 }
 replicate() {
-  local rc=0 skip=()
+  local rc=0 skip=() inc=()
   [ "$workload" != frontier-harbor ] || skip=(--skip-unreadable)
-  pull_results ${skip[@]+"${skip[@]}"} || rc=$?
+  if [ "$incremental" -eq 1 ]; then
+    [ "$mark_fresh" -eq 1 ] || { vssh 'rm -f ~/shard/.pull-mark' >>"$dest/lane.log" 2>&1 && mark_fresh=1; } || true
+    [ "$mark_fresh" -eq 0 ] || inc=(since-mark)
+  fi
+  pull_results ${skip[@]+"${skip[@]}"} ${inc[@]+"${inc[@]}"} || rc=$?
   case $rc in
     0) cursor_guard; log "replicate: $(lines "$dest/results/$records") records$([ ${#skip[@]} -eq 0 ] || printf ', %s finished trial(s)' "$(find "$dest/results/run/jobs" -mindepth 3 -maxdepth 3 -name result.json 2>/dev/null | wc -l)") in $dest/results" ;;
     2) log "WARNING: replicate: the pull from $vm came back but could not be merged into $dest/results, so the previous mirror stays and the staged copy is deleted; retried in ${rep_s}s"; return ;;

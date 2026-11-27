@@ -31,7 +31,7 @@ import { InstallLeak, canaryScan, scrubToken } from './install.ts';
 import { TrialWorld } from './world.ts';
 import { callGbrainReply, waitHealthy } from './gbrain.ts';
 import { memoryProviderWiring } from '../../harnesses/qm/memory-provider.ts';
-import { FIRST_WOW_SLICE, PERSON_REPLY, QM_ACTOR_ID, QM_CONFIG, QUESTION_BUDGET_S, SETUP_TIMEOUT_S, accessCheckOk, brainHostImage, brainHostSteps, imageFor, seedOfTask, type FirstWowCellConfig } from './first-wow-cell.ts';
+import { FIRST_WOW_SLICE, PERSON_REPLY, QM_ACTOR_ID, QM_CONFIG, QUESTION_BUDGET_S, SETUP_TIMEOUT_S, accessCheckOk, brainHostImage, brainHostSteps, imageFor, packRawBrain, seedOfTask, type FirstWowCellConfig } from './first-wow-cell.ts';
 import { needsPerson, scoreFirstWow, type FirstWowTurn, type TrialFirstWow } from './first-wow.ts';
 import { type NEvent, parseQmTurn } from '../../scripts/gbrain-install/transcript.ts';
 import { HOME_DIR, buildFixture, personaFor, questionPrompt, writeFixture } from '../../scripts/gbrain-first-wow/fixtures.ts';
@@ -332,5 +332,7 @@ export async function runFirstWowQmTrial(ctx: Omit<TrialContext, 'grade'> & { ke
     log(`first-wow QM trial ${trial.id}: token scrubbed from ${scrubbed.length} file(s); canary ${found ? 'FOUND' : 'clean'}`);
     if (found) throw new InstallLeak(record, `HE-INSTALL-005 after first-wow QM trial ${trial.id}${thrown ? ' (which threw)' : ''}: ${canary.token_files.length ? `the trial token is still in ${canary.token_files.join(', ')}` : ''}${canary.key_names.length ? ` provider key value(s) of ${canary.key_names.join(', ')} found` : ''}; the run stops`);
   }
+  const packed = packRawBrain(homeDir);
+  if (packed.length) log(`first-wow QM trial ${trial.id}: packed the trial home (${packed.join(', ')})`);
   return record!;
 }

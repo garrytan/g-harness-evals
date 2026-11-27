@@ -10,7 +10,7 @@
 #     "size": "standard-16", "options": ["--gbrain-image", "harness-eval/gbrain:dev"],
 #     "shards": [ { "name": "oc-a", "cells": "cell-1,cell-2", "lease_usd": 5 }, ... ] }
 # size and options are optional; options go to every run-shard.sh as given (--embedded, --gbrain-image, --amendment,
-# --smoke-lease-usd, --smoke-task, --smoke-first-cell, --no-smoke, --resume, or "--" followed by arguments for the
+# --smoke-lease-usd, --smoke-task, --smoke-first-cell, --no-smoke, --resume, --incremental-pull, or "--" followed by arguments for the
 # repository's run-shard.sh).
 # A shard may add "args": [...], passed after options and a "--" (added when options has none) to its run-shard.sh only,
 # so they reach the shard's workload as given.

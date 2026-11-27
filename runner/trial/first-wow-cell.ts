@@ -1,7 +1,8 @@
 // The gbrain first-wow eval's cell fields, their checks and the setup commands (runner/trial/first-wow.ts runs the trial). Kept apart
 // so runner/run.ts can import the checks without loading the trial driver.
 
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { RunnerError } from '../errors.ts';
 
@@ -154,3 +155,21 @@ export function readRegistration(harness: string, home: string): { file: string;
   return { file, args, ok: check(args) };
 }
 
+/**
+ * Shrinks a finished trial's home after its token scrub and canary scan: gbrain's raw database becomes
+ * .gbrain/brain.pglite.tgz and bun's package download cache is removed. A gbrain trial leaves about 100 MB there, which
+ * 1,600 trials could not bring back from the shard VMs; scoring reads the brain export and the agent's text files, never
+ * these. A database tar cannot pack stays as it was, and a folder it cannot remove is named in the list with the error
+ * instead of failing the finished trial. Returns what changed, for the run log.
+ */
+export function packRawBrain(home: string): string[] {
+  const done: string[] = [];
+  const remove = (path: string) => { try { rmSync(path, { recursive: true, force: true }); return ''; } catch (e) { return ` (not removed: ${(e as Error).message})`; } };
+  const gbrain = join(home, '.gbrain');
+  if (existsSync(join(gbrain, 'brain.pglite')) && spawnSync('tar', ['-czf', 'brain.pglite.tgz', 'brain.pglite'], { cwd: gbrain }).status === 0) {
+    done.push('.gbrain/brain.pglite.tgz' + remove(join(gbrain, 'brain.pglite')));
+  }
+  const cache = join(home, '.bun', 'install', 'cache');
+  if (existsSync(cache)) done.push('-.bun/install/cache' + remove(cache));
+  return done;
+}
