@@ -22,9 +22,13 @@ source's hosts), built from a content-addressed copy under its own image name.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any, Sequence
+
+import frontier_settings as fs
 
 from harbor.environments.docker.docker import DockerEnvironment
 from harbor.environments.docker.utils import default_docker_platform, ensure_docker_image_built
@@ -56,15 +60,47 @@ class BlocklistDockerEnvironment(DockerEnvironment):
     def _requires_egress_control(*, startup_network_policy: NetworkPolicy, phase_network_policies: Sequence[NetworkPolicy]) -> bool:
         return True
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, workspace_git: bool = False, **kwargs: Any) -> None:
         if sidecar_blocklist() != pinned_blocklist():
             raise RuntimeError("HE-FRONTIER-004 egress-sidecar/blocklist.txt differs from pin.json egress.blocklist")
+        self._workspace_git = workspace_git is True
         super().__init__(*args, **kwargs)
         if not self._enable_egress_control:
             raise RuntimeError(
                 "HE-FRONTIER-004 the egress blocklist sidecar cannot run here (Windows container, or a kernel without "
                 "nftables fib inet support), so the trial would run unblocked; run on the pinned Ubicloud image"
             )
+
+    async def start(self, force_build: bool) -> None:
+        """With the kwarg workspace_git (frontier_settings.WORKSPACE_GIT, internal-task's setup, opt-in per preregistration), once
+        the containers are up: the task container's working directory becomes a git repository with one fixed commit and
+        a local bare origin carrying main, before any agent setup and outside the agent timeout, the same for every agent
+        and arm (oracle and nop too). An image with no git first gets the pinned static git (pin.json git_static). It
+        writes git-setup.json into the trial's agent log directory, and a failed setup stops the trial (HE-FRONTIER-016)."""
+        await super().start(force_build)
+        if not self._workspace_git:
+            return
+        started = time.monotonic()
+        provided = None
+        try:
+            probe = await self.exec(command="command -v git || true", user="root", timeout_sec=30)
+            provided = "image" if (probe.stdout or "").strip() else "injected"
+            if provided == "injected":
+                await self.exec(command=f"mkdir -p {fs.GIT_STATIC['install_dir']}", user="root", timeout_sec=30)
+                await self.upload_dir(await asyncio.to_thread(fs.static_git_dir), fs.GIT_STATIC["install_dir"])
+                linked = await self.exec(command=fs.static_git_link_command(), user="root", timeout_sec=60)
+                if linked.return_code != 0:
+                    raise RuntimeError(f"linking the static git exited {linked.return_code}: {(linked.stderr or linked.stdout or '').strip()[-300:]}")
+            res = await self.exec(command=fs.workspace_git_script(), user="root", timeout_sec=fs.GIT_SETUP_TIMEOUT_SEC)
+            record = fs.workspace_git_record(res.stdout, res.return_code, time.monotonic() - started, git_provided=provided)
+        except Exception as e:
+            record = fs.workspace_git_record(None, None, time.monotonic() - started, f"{type(e).__name__}: {e}", git_provided=provided)
+        log = Path(self.trial_paths.agent_dir) / fs.GIT_SETUP_FILE
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(json.dumps(record, indent=2) + "\n")
+        if "error" in record:
+            image = self.task_env_config.docker_image or self.environment_name
+            raise RuntimeError(f"HE-FRONTIER-016 workspace git setup failed: image {image}, exit {record['exit']}, log {log}: {record['error']}")
 
 
 class CursorBlocklistDockerEnvironment(BlocklistDockerEnvironment):

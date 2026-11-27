@@ -77,6 +77,14 @@ def bind_slot(broker_url: str, trial: str, harness: str, model: str, cell: str |
     return out
 
 
+def file_sha256(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 class _Frontier:
     """Mixin: per-trial slot from the broker, the rendered environment, harness_settings.json, no host environment.
 
@@ -144,6 +152,9 @@ class _Frontier:
             settings["gstack"] = fs.gstack_settings(self._frontier_gstack)
         if self._frontier_delivery is not None:
             settings["delivery"] = self._frontier_delivery_record
+        git = Path(self.logs_dir) / fs.GIT_SETUP_FILE
+        if git.exists():
+            settings["workspace_git_result"] = {**json.loads(git.read_text()), "agent_check": getattr(self, "_frontier_git_agent", None)}
         Path(self.logs_dir).mkdir(parents=True, exist_ok=True)
         (Path(self.logs_dir) / "harness_settings.json").write_text(json.dumps(settings, indent=2) + "\n")
 
@@ -161,8 +172,26 @@ class _Frontier:
                 await self._frontier_install_gstack(environment)
             if self._frontier_delivery is not None:
                 await self._frontier_deliver(environment)
+            await self._frontier_git_check(environment)
         finally:
             self._write_settings()
+
+    async def _frontier_git_check(self, environment: BaseEnvironment) -> None:
+        """With the workspace git setup (egress.py, environment kwarg workspace_git), as the agent in its starting folder:
+        git must be on its PATH and origin/main must be the commit the setup recorded. Recorded as workspace_git_result's
+        agent_check; a miss stops the trial with HE-FRONTIER-016 before any model call."""
+        git = Path(self.logs_dir) / fs.GIT_SETUP_FILE
+        if not git.exists():
+            return
+        setup = json.loads(git.read_text())
+        res = await environment.exec(command=fs.workspace_git_agent_command(), timeout_sec=30)
+        line = next((l for l in (res.stdout or "").splitlines() if l.startswith("AGENT_GIT ")), "")
+        seen = dict(w.split("=", 1) for w in line.split(" ")[1:] if "=" in w)
+        check = {"git": None if seen.get("git") in (None, "none") else seen["git"], "origin_main": None if seen.get("origin_main") in (None, "none") else seen["origin_main"], "pwd": seen.get("pwd")}
+        check["ok"] = check["git"] is not None and (check["origin_main"] == setup.get("origin_main") or (setup.get("existing_origin") is not None and check["origin_main"] is None and setup.get("origin_main") is None))
+        self._frontier_git_agent = check
+        if not check["ok"]:
+            raise RuntimeError(f"HE-FRONTIER-016 workspace git setup failed: the agent sees git {check['git']} and origin/main {check['origin_main']} in {check['pwd']}, not the setup's {setup.get('origin_main')}")
 
     async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
         return None
@@ -228,7 +257,7 @@ class _Frontier:
     async def _frontier_gstack_probe(self, environment: BaseEnvironment, when: str) -> list[str]:
         found = sorted(set((await self._frontier_sh(environment, dl.gstack_probe(), "HE-DELIVERY-006", "the gstack probe")).split()))
         self._frontier_delivery_record["gstack_found_" + when] = found
-        if found and self._frontier_delivery["arm"] != "skill":
+        if found and self._frontier_delivery["arm"] not in dl.INSTALL_ARMS:
             raise dl.DeliveryRefused("HE-DELIVERY-006", f"a {self._frontier_delivery['arm']} arm found gstack in the task container {when}: {found[:5]}")
         return found
 
@@ -248,23 +277,51 @@ class _Frontier:
         plan = dl.plan(self.HARNESS, self._frontier_delivery, kind)
         self._frontier_delivery_record = {**plan["record"], "files": [{k: f[k] for k in ("path", "mode", "sha256", "bytes")} for f in plan["files"]]}
         await self._frontier_gstack_probe(environment, "before")
+        arm = self._frontier_delivery["arm"]
+        bundle = arm in dl.INSTALL_ARMS and self._frontier_delivery.get("install") == "bundle"
         for f in plan["files"]:
             await self._frontier_sh(environment, f["command"], "HE-DELIVERY-002", "writing " + f["path"])
-        if self._frontier_delivery["arm"] == "skill":
+        if arm == "skill" and not bundle:
             await self.ensure_system_dependencies(environment, ("curl", "git"))
             await self.exec_as_root(environment, command="command -v unzip >/dev/null || { apt-get update -qq && apt-get install -y -qq unzip >/dev/null; }")
+        if bundle:
+            await self._frontier_bundle_upload(environment, plan["root_commands"])
+            await self._frontier_before_gstack(environment)
         for i, command in enumerate(plan["commands"]):
-            out = await self._frontier_sh(environment, command, "HE-DELIVERY-006" if self._frontier_delivery["arm"] == "skill" else "HE-DELIVERY-005", f"arm command {i + 1}")
+            out = await self._frontier_sh(environment, command, "HE-DELIVERY-006" if arm in dl.INSTALL_ARMS else "HE-DELIVERY-005", f"arm command {i + 1}")
             self._frontier_delivery_record.setdefault("command_output", []).append(out[-300:])
-        if self._frontier_delivery["arm"] == "skill":
+        if arm in dl.INSTALL_ARMS:
             found = await self._frontier_gstack_probe(environment, "after_install")
-            for name in ("review", "ship"):
-                if not any(p.endswith("/" + name + "/SKILL.md") for p in found):
+            registered = [p for p in found if not p.startswith((dl.GSTACK_DIR + "/", dl.BUNDLE_DIR + "/"))] if bundle else found
+            for name in (("review", "ship") if kind in dl.REPO_KINDS else (kind,)):
+                if not any(p.endswith("/" + name + "/SKILL.md") or p.endswith("/gstack-" + name + "/SKILL.md") for p in registered):
                     raise dl.DeliveryRefused("HE-DELIVERY-006", f"gstack's {name} skill is not installed for {self.HARNESS} after setup")
             self._extra_env.update(plan["env"])
         await self._frontier_health(environment, [c for c in plan["health"] if c["when"] == "setup"])
         self._frontier_delivery_record["launch_health"] = [c for c in plan["health"] if c["when"] == "launch"]
-        self._frontier_delivery_record["work_tree_sha256_setup"] = await self._frontier_sh(environment, dl.WORK_HASH, "HE-DELIVERY-005", "hashing /work")
+        if kind in dl.REPO_KINDS:
+            self._frontier_delivery_record["work_tree_sha256_setup"] = await self._frontier_sh(environment, dl.WORK_HASH, "HE-DELIVERY-005", "hashing /work")
+
+    async def _frontier_bundle_upload(self, environment: BaseEnvironment, root_commands: list[str]) -> None:
+        """A bundle install's tarball into the task container (kind build-check): its sha256 must be the one vm-run.sh's
+        receipt checked, then root hands the bundle folder to the agent user and links gstack's Bun onto PATH."""
+        b = self._frontier_delivery["bundle"]
+        got = await asyncio.to_thread(file_sha256, b["tarball"])
+        self._frontier_delivery_record["bundle_tarball_sha256"] = got
+        if got != b["tarball_sha256"]:
+            raise dl.DeliveryRefused("HE-DELIVERY-006", f"the gstack bundle {b['tarball']} is {got}, not the {b['tarball_sha256']} its receipt {b['receipt']} checked")
+        await self.exec_as_root(environment, command=f"mkdir -p {dl.ROOT} && chmod 1777 {dl.ROOT}")
+        await environment.upload_file(b["tarball"], dl.BUNDLE_TARBALL)
+        user = shlex.quote(str(environment.default_user if environment.default_user is not None else "root"))
+        for command in root_commands:
+            res = await self.exec_as_root(environment, command=command.replace('"$HE_AGENT_USER"', user))
+            if getattr(res, "return_code", 0) not in (0, None):
+                raise dl.DeliveryRefused("HE-DELIVERY-006", f"the bundle's root step exited {res.return_code}")
+
+    async def _frontier_before_gstack(self, environment: BaseEnvironment) -> None:
+        """The harness's own config in place before gstack's setup, as the harness class writes it at launch: gstack's
+        start hook activates only in an existing config (lib/harness-start-hook.ts)."""
+        return None
 
     async def _frontier_at_launch(self, environment: BaseEnvironment) -> None:
         """Right before the agent command: the launch-time health checks, the /work tree hash at agent start, and the
@@ -273,7 +330,8 @@ class _Frontier:
         try:
             await self._frontier_health(environment, self._frontier_delivery_record.pop("launch_health", []))
             await self._frontier_gstack_probe(environment, "at_launch")
-            self._frontier_delivery_record["work_tree_sha256_at_launch"] = await self._frontier_sh(environment, dl.WORK_HASH, "HE-DELIVERY-005", "hashing /work")
+            if getattr(self, "_frontier_kind", None) in dl.REPO_KINDS:
+                self._frontier_delivery_record["work_tree_sha256_at_launch"] = await self._frontier_sh(environment, dl.WORK_HASH, "HE-DELIVERY-005", "hashing /work")
         finally:
             self._write_settings()
 
@@ -290,7 +348,22 @@ class _Frontier:
         return out
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
-        return await super().run(self._frontier_instruction(instruction), environment, context)
+        try:
+            return await super().run(self._frontier_instruction(instruction), environment, context)
+        finally:
+            await self._frontier_gstack_collect(environment)
+
+    async def _frontier_gstack_collect(self, environment: BaseEnvironment) -> None:
+        """After the agent, a bundle install's gstack state root (what gstack recorded during the run: its checks and
+        learnings) copied into the log directory, readable by the host (gstack writes it with umask 077)."""
+        if not self._frontier_delivery or self._frontier_delivery["arm"] not in dl.INSTALL_ARMS or self._frontier_delivery.get("install") != "bundle":
+            return
+        state = dl.BUNDLE["session"]["GSTACK_STATE_ROOT"]
+        try:
+            await self.exec_as_root(environment, timeout_sec=60, command=(
+                f"rm -rf /logs/agent/gstack/state && cp -r {state} /logs/agent/gstack/state && chmod -R a+rX /logs/agent/gstack"))
+        except Exception:
+            pass
 
 
 class FrontierClaudeCode(_Frontier, ClaudeCode):
@@ -374,14 +447,19 @@ class FrontierHermes(_Frontier, Hermes):
         if sdk != want_sdk:
             raise RuntimeError(f"HE-FRONTIER-002 Hermes's committed environment has anthropic {sdk}, not the pinned {want_sdk}")
 
+    def _config_command(self) -> str:
+        config_yaml = yaml.safe_dump(dl.hermes_config(fs.hermes_config(self._frontier_model), self._frontier_delivery), sort_keys=False)
+        return f"mkdir -p /tmp/hermes && cat > /tmp/hermes/config.yaml << 'EOF'\n{config_yaml}EOF"
+
+    async def _frontier_before_gstack(self, environment: BaseEnvironment) -> None:
+        await self.exec_as_agent(environment, command=self._config_command(), env={"HERMES_HOME": "/tmp/hermes"}, timeout_sec=10)
+
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         spec = fs.model_spec(self._frontier_model)
         instruction = self._frontier_instruction(instruction)
-        config = dl.hermes_config(fs.hermes_config(self._frontier_model), self._frontier_delivery)
-        provider = config["model"]["provider"]
+        provider = dl.hermes_config(fs.hermes_config(self._frontier_model), self._frontier_delivery)["model"]["provider"]
         env = {"HERMES_HOME": "/tmp/hermes", "TERMINAL_ENV": "local", "HARBOR_INSTRUCTION": instruction}
-        config_yaml = yaml.safe_dump(config, sort_keys=False)
-        await self.exec_as_agent(environment, command=f"mkdir -p /tmp/hermes && cat > /tmp/hermes/config.yaml << 'EOF'\n{config_yaml}EOF", env=env, timeout_sec=10)
+        await self.exec_as_agent(environment, command=self._config_command(), env=env, timeout_sec=10)
         for f in fs.hermes_openrouter_plugin_files(self._frontier_model):
             await self.exec_as_agent(environment, command=dl._write("/tmp/hermes/" + f["path"], f["content"].encode(), "0644"), env=env, timeout_sec=10)
         skills_command = self._build_register_skills_command()
@@ -404,6 +482,7 @@ class FrontierHermes(_Frontier, Hermes):
                 pass
             if self._frontier_delivery is not None:
                 await self._frontier_tirith(environment)
+                await self._frontier_gstack_collect(environment)
 
     async def _frontier_tirith(self, environment: BaseEnvironment) -> None:
         """Tirith would-flag counts (d10), descriptive: Hermes's own scanner over the session's terminal commands."""
@@ -453,6 +532,13 @@ class FrontierOpenClaw(_Frontier, OpenClaw):
         res = await environment.exec(command=". ~/.nvm/nvm.sh >/dev/null && nvm use %s >/dev/null && node -v && openclaw --version" % self.NODE)
         words = (res.stdout or "").split()
         self._frontier_checks.update({"node": words[0] if words else None, "openclaw_version": " ".join(words[1:]) or None})
+
+    async def _frontier_before_gstack(self, environment: BaseEnvironment) -> None:
+        """openclaw.json in place as Harbor's run() writes it (its setup baseline, then our full config copied over it)."""
+        Path(self.logs_dir).mkdir(parents=True, exist_ok=True)
+        (Path(self.logs_dir) / self._UPLOAD_CONFIG_FILENAME).write_text(json.dumps(self._build_full_openclaw_config(), indent=2) + "\n")
+        await self.exec_as_agent(environment, command=f". ~/.nvm/nvm.sh && nvm use {self.NODE} && {self._SETUP_CLI}", timeout_sec=120)
+        await self.exec_as_agent(environment, command=f"mkdir -p ~/.openclaw && cp {self._CONTAINER_LOGS_AGENT}/{self._UPLOAD_CONFIG_FILENAME} ~/.openclaw/openclaw.json", timeout_sec=30)
 
     def _build_full_openclaw_config(self) -> dict[str, Any]:
         cfg = super()._build_full_openclaw_config()

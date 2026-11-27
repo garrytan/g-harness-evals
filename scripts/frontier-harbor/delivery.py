@@ -12,6 +12,17 @@ kwarg (every existing cell) changes nothing. No Harbor import, so keyless tests 
   startup  the same card bytes in the harness's global startup file.
   placebo  the hook route carrying the placebo text instead of the card (harnesses/routes/placebo.md unless the cell
            names another), the H10 placebo.
+  installed  gstack installed exactly as the skill arm installs it, with no told sentence: gstack as a user installs it
+           (the gstack cheap-model run, gstack-cheap-model-2026-11).
+
+Kind build-check is the Terminal-Bench 2.1 kind of the gstack cheap-model run: every task maps to it, it runs only the
+none, installed and skill arms on Hermes and OpenClaw, and its installed and skill arms take "install": "bundle". A bundle
+install uploads the offline bundle gstack-bundle.sh built (delivery-pin.json bundle: gstack 1.104.0.0 and Bun 1.4.2, no
+network or git needed in the task container) and runs gstack's own ./setup --host <h> --no-browser in the task
+container, which registers gstack's skills and, by gstack's default at that version, its start hook. The skill arm's told
+sentence for build-check names gstack's build-check workflow (verify's name before 1.104). The job kwarg adds "install":
+"bundle", "bundle" (the tarball on the shard VM) and "bundle_check" (vm-run.sh's receipt that the tarball's content is
+delivery-pin.json's bundle.content.sha256); agents.py refuses a tarball whose sha256 is not the receipt's.
 
 Every delivery and skill file goes outside /work (d8): a planned path under /work is refused (HE-DELIVERY-002), and a
 harness whose only startup file is in the workspace refuses the startup arm (HE-DELIVERY-004). A hook that does not
@@ -19,6 +30,8 @@ report loaded and healthy refuses before the agent starts (HE-DELIVERY-005, the 
 
   python3 delivery.py plan <harness> <arm> <kind> <card path>   prints the arm's container plan as JSON
   python3 delivery.py cant-run                                  prints every refused harness and arm with its evidence
+  python3 delivery.py bundle-digest <unpacked bundle dir>       prints the bundle's content digest as JSON
+  python3 delivery.py verify-bundle <tarball> <receipt out>      checks a bundle tarball against delivery-pin.json bundle
 """
 
 from __future__ import annotations
@@ -26,8 +39,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import shlex
 import sys
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -36,11 +52,19 @@ REPO = HERE.parent.parent
 ASSETS = HERE / "delivery"
 PIN = json.loads((HERE / "delivery-pin.json").read_text())
 ARMS = ("none", "skill", "hook", "startup", "placebo")
-KINDS = ("review", "ship")
+BUILD_CHECK_ARMS = ("none", "installed", "skill")
+INSTALL_ARMS = ("skill", "installed")
+REPO_KINDS = ("review", "ship")
+KINDS = (*REPO_KINDS, "build-check")
+BUNDLE = PIN["bundle"]
+BUNDLE_DIR = "/opt/gstack-bundle"
+BUNDLE_HOOK = "gstack-start"
+BUNDLE_HOSTS = ("hermes", "openclaw")
 HARNESSES = ("claude-code", "codex", "hermes", "openclaw", "pi")
 WORK = "/work"
 ROOT = "/tmp/he-delivery"
 CARD = ROOT + "/card.md"
+BUNDLE_TARBALL = ROOT + "/gstack-bundle.tgz"
 GSTACK_DIR = "/opt/gstack"
 HERMES_SRC = "$HOME/.hermes-src"
 PLACEBO = "harnesses/routes/placebo.md"
@@ -74,7 +98,7 @@ HOOK_FILES = {
 }
 OPENCLAW_PLUGIN = ROOT + "/openclaw-plugin"
 # The skill roots each host reads, searched for gstack SKILL.md files in every arm (the clean-arm probe).
-SKILL_ROOTS = (GSTACK_DIR, "$HOME/.local/share/gstack", "$HOME/.claude/skills", "/logs/agent/sessions/skills",
+SKILL_ROOTS = (GSTACK_DIR, BUNDLE_DIR, "$HOME/.local/share/gstack", "$HOME/.claude/skills", "/logs/agent/sessions/skills",
                "/tmp/codex-home/skills", "$HOME/.codex/skills", "$HOME/.agents/skills", "/tmp/hermes/skills",
                "$HOME/.hermes/skills", "$HOME/.openclaw/skills", "/tmp/harbor-pi-agent/skills", "$HOME/.pi/agent/skills")
 
@@ -172,14 +196,33 @@ def resolve(harness: str, delivery: dict[str, Any]) -> dict[str, Any]:
     if harness not in HARNESSES:
         raise bad(f"{harness} has no delivery arms (only {', '.join(HARNESSES)})")
     arm = delivery.get("arm")
-    if arm not in ARMS:
-        raise bad(f"arm must be one of {', '.join(ARMS)}, not {arm!r}")
+    if arm not in (*ARMS, "installed"):
+        raise bad(f"arm must be one of {', '.join((*ARMS, 'installed'))}, not {arm!r}")
     refused = cant_run(harness, arm)
     if refused:
         raise DeliveryRefused(refused["code"], f"{harness} {arm}: {refused['label']}: {refused['why']}")
     kinds = delivery.get("kinds") or {}
     if not kinds or any(k not in KINDS for k in kinds.values()):
-        raise bad("kinds must map every task id to review or ship")
+        raise bad("kinds must map every task id to " + ", ".join(KINDS))
+    install = delivery.get("install", "network")
+    if install not in ("network", "bundle"):
+        raise bad(f"install must be network or bundle, not {install!r}")
+    if "build-check" in kinds.values():
+        if set(kinds.values()) != {"build-check"}:
+            raise bad("kind build-check (Terminal-Bench 2.1) is not mixed with repo kinds")
+        if arm not in BUILD_CHECK_ARMS or harness not in BUNDLE_HOSTS:
+            raise bad(f"kind build-check runs the none, installed and skill arms on {' and '.join(BUNDLE_HOSTS)}, not {harness} {arm}")
+        if arm != "none" and install != "bundle":
+            raise bad("kind build-check installs gstack from the bundle (install bundle)")
+    elif arm == "installed" or install == "bundle":
+        raise bad("the installed arm and the bundle install run kind build-check only")
+    bundle = None
+    if install == "bundle" and arm != "none":
+        receipt = check_receipt(delivery.get("bundle_check"))
+        if not delivery.get("bundle") or not Path(delivery["bundle"]).is_file():
+            raise bad(f"install bundle needs bundle, the tarball gstack-bundle.sh built, not {delivery.get('bundle')!r}")
+        bundle = {"tarball": str(delivery["bundle"]), "receipt": str(delivery["bundle_check"]), "tarball_sha256": receipt["tarball_sha256"],
+                  "content_sha256": receipt["content_sha256"]}
     def load(what: str, rel: str | None, want: str | None) -> dict[str, Any]:
         if not rel:
             raise bad(f"no {what}")
@@ -193,9 +236,65 @@ def resolve(harness: str, delivery: dict[str, Any]) -> dict[str, Any]:
             raise bad(f"{what} {rel} is {len(body)} bytes; it must be 1 to {CARD_LIMIT} bytes")
         return {"path": rel, "sha256": sha256(body), "bytes": len(body), "body_b64": base64.b64encode(body).decode()}
     cards = {kind: load(f"card for kind {kind}", (delivery.get("cards") or {}).get(kind), (delivery.get("card_sha256") or {}).get(kind))
-             for kind in sorted(set(kinds.values()))}
+             for kind in sorted(set(kinds.values())) if kind in REPO_KINDS}
     placebo = load("placebo", delivery.get("placebo") or PLACEBO, delivery.get("placebo_sha256"))
-    return {"arm": arm, "cards": cards, "placebo": placebo, "kinds": dict(kinds)}
+    return {"arm": arm, "cards": cards, "placebo": placebo, "kinds": dict(kinds), **({"install": install, "bundle": bundle} if install == "bundle" else {})}
+
+
+def check_receipt(path: str | None) -> dict[str, Any]:
+    """vm-run.sh's bundle receipt (verify-bundle): it must say the tarball's content is delivery-pin.json's bundle.content."""
+    try:
+        receipt = json.loads(Path(str(path)).read_text())
+    except (OSError, ValueError) as e:
+        raise DeliveryRefused("HE-DELIVERY-001", f"install bundle needs bundle_check, vm-run.sh's verify-bundle receipt; {path!r} is unreadable ({e})") from None
+    want = BUNDLE["content"]["sha256"]
+    if receipt.get("content_sha256") != want or receipt.get("matches") is not True or receipt.get("commit") != BUNDLE["commit"]:
+        raise DeliveryRefused("HE-DELIVERY-001", f"the bundle receipt {path} records content {receipt.get('content_sha256')} at {receipt.get('commit')}, not delivery-pin.json's {want} at {BUNDLE['commit']}")
+    return receipt
+
+
+def bundle_digest(root: str | Path) -> dict[str, Any]:
+    """The content digest of an unpacked gstack bundle (the directory holding gstack/ and bun/): sha256 over one line per
+    file, '<relative path>\\0<file sha256>\\n' (a symlink: '<relative path>\\0link:<target>\\n'), sorted by path, leaving
+    out the paths delivery-pin.json bundle.content.volatile lists (one ending in / leaves out everything under it). A
+    rebuild at the same commit on the same host reproduces it; the tarball's own sha256 does not (mtimes, git's index)."""
+    root = Path(root)
+    volatile = {v["path"] for v in BUNDLE["content"]["volatile"]}
+    dirs_out = tuple(v for v in volatile if v.endswith("/"))
+    lines: list[str] = []
+    for d, dirs, files in os.walk(root):
+        dirs.sort()
+        for name in [*files, *(x for x in dirs if os.path.islink(os.path.join(d, x)))]:
+            p = Path(d) / name
+            rel = p.relative_to(root).as_posix()
+            if rel in volatile or rel.startswith(dirs_out):
+                continue
+            if p.is_symlink():
+                lines.append(f"{rel}\0link:{os.readlink(p)}\n")
+            elif p.is_file():
+                h = hashlib.sha256()
+                with open(p, "rb") as f:
+                    for block in iter(lambda: f.read(1 << 20), b""):
+                        h.update(block)
+                lines.append(f"{rel}\0{h.hexdigest()}\n")
+    lines.sort()
+    return {"sha256": hashlib.sha256("".join(lines).encode()).hexdigest(), "files": len(lines), "excluded": sorted(volatile)}
+
+
+def verify_bundle(tarball: str | Path) -> dict[str, Any]:
+    """The receipt vm-run.sh writes once per shard before any trial (gstack-bundle-check.json): the tarball unpacked into
+    a scratch directory and its content digest checked against delivery-pin.json bundle.content.sha256."""
+    with tempfile.TemporaryDirectory() as scratch:
+        with tarfile.open(tarball) as t:
+            t.extractall(scratch, filter="tar")
+        got = bundle_digest(scratch)
+        head = (Path(scratch) / "gstack" / ".git" / "HEAD").read_text().strip() if (Path(scratch) / "gstack" / ".git" / "HEAD").is_file() else None
+    want = BUNDLE["content"]["sha256"]
+    with open(tarball, "rb") as f:
+        sha = hashlib.file_digest(f, "sha256").hexdigest()
+    return {"schema": "frontier-harbor-gstack-bundle-check/2", "tarball": str(Path(tarball).resolve()), "tarball_sha256": sha,
+            "commit": head, "content_sha256": got["sha256"], "files": got["files"], "excluded": got["excluded"],
+            "pin_content_sha256": want, "matches": got["sha256"] == want and head == BUNDLE["commit"]}
 
 
 def kind_of(resolved: dict[str, Any], trial: str) -> str:
@@ -211,12 +310,13 @@ def kind_of(resolved: dict[str, Any], trial: str) -> str:
 def text(resolved: dict[str, Any], kind: str) -> bytes | None:
     """The bytes the arm delivers: the kind's card (hook, startup), the placebo (placebo), or none (none, skill)."""
     arm = resolved["arm"]
-    if arm in ("none", "skill"):
+    if arm in ("none", *INSTALL_ARMS):
         return None
     return base64.b64decode((resolved["placebo"] if arm == "placebo" else resolved["cards"][kind])["body_b64"])
 
 
 def told(harness: str, arm: str, kind: str) -> str | None:
+    """The skill arm's told sentence; the installed arm, like every other arm, has none."""
     if arm != "skill":
         return None
     sentence = PIN["told"][harness][kind]
@@ -257,6 +357,9 @@ def codex_hooks_json() -> bytes:
 
 
 def hermes_config(config: dict[str, Any], resolved: dict[str, Any] | None) -> dict[str, Any]:
+    if bundle_hook_config("hermes", resolved):
+        enabled = [*((config.get("plugins") or {}).get("enabled") or []), BUNDLE_HOOK]
+        return {**config, "plugins": {**(config.get("plugins") or {}), "enabled": enabled}}
     if not resolved or resolved["arm"] not in ("hook", "placebo"):
         return config
     if "plugins" in config or "hooks" in config:
@@ -265,6 +368,9 @@ def hermes_config(config: dict[str, Any], resolved: dict[str, Any] | None) -> di
 
 
 def openclaw_config(resolved: dict[str, Any] | None) -> dict[str, Any]:
+    hook = bundle_hook_config("openclaw", resolved)
+    if hook:
+        return hook
     if not resolved or resolved["arm"] not in ("hook", "placebo"):
         return {}
     return {"plugins": {"load": {"paths": [OPENCLAW_PLUGIN]},
@@ -288,7 +394,7 @@ def outside_work(path: str) -> bool:
 def gstack_probe() -> str:
     """Prints one line per gstack skill file under any host's skill roots, and the gstack checkout if present."""
     roots = " ".join(_sh_path(r) for r in SKILL_ROOTS)
-    return (f"for r in {roots}; do [ -e \"$r\" ] || continue; [ \"$r\" = {GSTACK_DIR} ] && echo {GSTACK_DIR}; "
+    return (f"for r in {roots}; do [ -e \"$r\" ] || continue; {{ [ \"$r\" = {GSTACK_DIR} ] || [ \"$r\" = {BUNDLE_DIR} ]; }} && echo \"$r\"; "
             "find -L \"$r\" -maxdepth 4 -name SKILL.md 2>/dev/null | while read -r f; do grep -qi gstack \"$f\" 2>/dev/null && echo \"$f\"; done; "
             "done; true")
 
@@ -319,9 +425,105 @@ def skill_install(harness: str) -> list[str]:
     return steps
 
 
+def bundle_logs(harness: str) -> str:
+    return "/logs/agent/gstack"
+
+
+def bundle_harness_env(harness: str) -> str:
+    """The shell line that puts the harness's own CLI on PATH for gstack's setup and status (Hermes's skills list and
+    plugins enable, OpenClaw's skills list and config set), with the harness's own config home. Hermes prints its skills
+    list as a Rich table sized to COLUMNS (80 with no terminal), which wraps skill names longer than its Name column,
+    and gstack-harness status then reads those skills as not listed; COLUMNS=400 keeps every name on one line. It
+    changes only that printed table, not which skills Hermes loads (internal-task keyless install check, 2026-11-26)."""
+    if harness == "hermes":
+        return 'export HERMES_HOME=/tmp/hermes PATH="$HOME/.local/bin:$PATH" COLUMNS=400'
+    return '{ [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1 && nvm use %s >/dev/null 2>&1; } || true' % OPENCLAW_NODE
+
+
+OPENCLAW_NODE = json.loads((HERE / "pin.json").read_text())["harnesses"]["openclaw"]["node_major"]
+STATUS_SUMMARY = ('const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));'
+                  ' const r = (s.registrations || []).find(x => x.target === process.argv[2]) || {};'
+                  ' console.log("visible=" + (r.visible || "unknown") + " hook=" + ((r.hook && r.hook.state) || "off"));')
+
+
+def bundle_status(harness: str, out: str) -> str:
+    """gstack's own check of its registration (gstack-harness status, which runs the harness's skill list and reads the
+    start hook's state), written to <out> and summarized as one line, visible=<yes|no|unknown> hook=<state>."""
+    b = BUNDLE_DIR
+    return (f'export PATH="{b}/bun/bin:$PATH"; {bundle_harness_env(harness)}; export {" ".join(f"{k}={shlex.quote(v)}" for k, v in BUNDLE["session"].items())}; '
+            f'"{b}/gstack/bin/gstack-harness" status --json > {out} 2>/dev/null; bun --no-env-file -e {shlex.quote(STATUS_SUMMARY)} {out} {harness} 2>/dev/null || echo "visible=unknown hook=unknown"')
+
+
+def bundle_install(harness: str) -> tuple[list[str], list[str]]:
+    """The bundle install (kind build-check): root's commands (the bundle folder handed to the agent user, gstack's Bun
+    linked onto PATH, as a user's Bun install puts it there), then the agent user's script: unpack the bundle agents.py
+    uploaded, check its commit, set gstack's privacy keys, run gstack's own ./setup for the host, record what it did in
+    /logs/agent/gstack (setup.log, status.json from gstack-harness status, setup-files.txt listing every file setup wrote
+    outside the bundle) and end with one line, gstack-install: setup_exit=<n> setup_seconds=<s> files_written=<n>
+    visible=<v> hook=<state>, also written to install.txt. Its exit is setup's, or 90 to 93 when a step before setup
+    fails. Ported from internal-task's frontier_settings.gstack_setup_script."""
+    b, t, l = BUNDLE_DIR, BUNDLE_TARBALL, bundle_logs(harness)
+    root = [f"set -eu; chmod 0644 {t}; mkdir -p {b} /usr/local/bin; chown \"$HE_AGENT_USER\" {b}; "
+            f"ln -sf {b}/bun/bin/bun /usr/local/bin/bun; ln -sf {b}/bun/bin/bunx /usr/local/bin/bunx"]
+    session = " ".join(f"{k}={shlex.quote(v)}" for k, v in BUNDLE["session"].items())
+    config = " ".join(f"{k}={v}" for k, v in BUNDLE["config"].items())
+    setup = " ".join(["./setup", "--host", harness, *BUNDLE["setup_flags"]])
+    script = "\n".join([
+        "set -uo pipefail",
+        "umask 022",
+        f"export {session}",
+        f"B={b} T={t} L={l} H={harness}",
+        'out() { line="gstack-install: setup_exit=$1 setup_seconds=${secs:-0} files_written=${nfiles:-0} visible=${visible:-unknown} hook=${hook:-off}"; echo "$line" | tee "$L/install.txt"; exit "$1"; }',
+        'mkdir -p "$L" "$GSTACK_STATE_ROOT" || exit 91',
+        '[ -z "${GSTACK_CAPY+x}" ] || { echo "GSTACK_CAPY is set in the container" >&2; out 90; }',
+        'tar -xzf "$T" -C "$B" || { echo "could not unpack $T into $B" >&2; out 91; }',
+        f'head=$(cat "$B/gstack/.git/HEAD" 2>/dev/null); [ "$head" = {BUNDLE["commit"]} ] || {{ echo "the bundle\'s gstack is at ${{head:-nothing}}, not {BUNDLE["commit"]}" >&2; out 92; }}',
+        'export PATH="$B/bun/bin:$PATH"',
+        bundle_harness_env(harness),
+        f'for kv in {config}; do "$B/gstack/bin/gstack-config" set "${{kv%%=*}}" "${{kv#*=}}" >> "$L/setup.log" 2>&1 || {{ echo "gstack-config set $kv failed" >&2; out 93; }}; done',
+        'touch "$L/.start"; sleep 1; t0=$(date +%s%N)',
+        f'(cd "$B/gstack" && {setup}) >> "$L/setup.log" 2>&1; rc=$?',
+        'ms=$(( ($(date +%s%N) - t0) / 1000000 )); secs=$((ms / 1000)).$(printf %03d $((ms % 1000)))',
+        'find "$HOME" /tmp/hermes "$GSTACK_STATE_ROOT" -xdev -type f -newer "$L/.start" ! -path "$B/*" ! -path "$L/*" 2>/dev/null | sort -u > "$L/setup-files.txt"',
+        'nfiles=$(wc -l < "$L/setup-files.txt" | tr -d " ")',
+        f'summary=$( ( {bundle_status(harness, "$L/status.json")} ) | tail -n 1 ); visible=${{summary#visible=}}; visible=${{visible%% *}}; hook=${{summary##*hook=}}',
+        'out "$rc"',
+        "",
+    ])
+    return root, [script]
+
+
+def bundle_health(harness: str) -> list[dict[str, str]]:
+    """The bundle install's health checks: at setup, the install line says setup exited 0 and gstack's own status saw
+    every skill listed by the harness with the start hook active; right before the agent starts (after the harness's
+    config is written again), gstack-harness status says so again."""
+    l = bundle_logs(harness)
+    return [
+        {"name": "gstack's setup exited 0, the harness lists every gstack skill and the start hook is active", "when": "setup",
+         "command": f"tail -n 1 {l}/install.txt | tr ' ' '\\n' | grep -E '^(setup_exit|visible|hook)=' | tr '\\n' ' ' | sed 's/ $//'",
+         "expect": "setup_exit=0 visible=yes hook=active"},
+        {"name": "at launch, gstack-harness status still sees every skill listed and the start hook active", "when": "launch",
+         "command": bundle_status(harness, f"{l}/status-launch.json"), "expect": "visible=yes hook=active"},
+    ]
+
+
 def skill_env(resolved: dict[str, Any] | None) -> dict[str, str]:
-    """gstack's unattended session, in the harness's environment on the skill arm only."""
-    return dict(PIN["gstack"]["session"]) if resolved and resolved["arm"] == "skill" else {}
+    """gstack's unattended session, in the harness's environment on the skill and installed arms only."""
+    if not resolved or resolved["arm"] not in INSTALL_ARMS:
+        return {}
+    return dict(BUNDLE["session"] if resolved.get("install") == "bundle" else PIN["gstack"]["session"])
+
+
+def bundle_hook_config(harness: str, resolved: dict[str, Any] | None) -> dict[str, Any]:
+    """What gstack's setup turns on in the harness's own config for its start hook (lib/harness-start-hook.ts SPECS
+    activate: hermes plugins enable gstack-start; openclaw config set plugins.entries.gstack-start.enabled and
+    .hooks.allowConversationAccess true). The harness classes write their config again at launch, so the same keys are
+    written there; the launch health check (gstack-harness status) confirms the hook is still active."""
+    if not resolved or resolved["arm"] not in INSTALL_ARMS or resolved.get("install") != "bundle":
+        return {}
+    if harness == "hermes":
+        return {"plugins": {"enabled": [BUNDLE_HOOK]}}
+    return {"plugins": {"entries": {BUNDLE_HOOK: {"enabled": True, "hooks": {"allowConversationAccess": True}}}}}
 
 
 def plan(harness: str, resolved: dict[str, Any], kind: str) -> dict[str, Any]:
@@ -381,7 +583,16 @@ def plan(harness: str, resolved: dict[str, Any], kind: str) -> dict[str, Any]:
         else:
             files.append((dest, body, "0644"))
             health.append({"name": "the startup file holds the card's bytes", "when": "setup", "command": f"sha256sum {dest} | cut -d' ' -f1", "expect": sha256(body)})
-    if arm == "skill":
+    root_commands: list[str] = []
+    if arm in INSTALL_ARMS and resolved.get("install") == "bundle":
+        sentence = told(harness, arm, kind)
+        record["route"] = {"gstack": {k: BUNDLE[k] for k in ("repo", "commit", "version")}, "bun": BUNDLE["bun"]["version"], "install": "bundle",
+                           "bundle": {k: resolved["bundle"][k] for k in ("tarball_sha256", "content_sha256")}, "session": BUNDLE["session"],
+                           "config": BUNDLE["config"], "start_hook": BUNDLE["start_hook"], "told": sentence,
+                           "told_sha256": sha256(sentence.encode()) if sentence else None}
+        root_commands, commands = bundle_install(harness)
+        health.extend(bundle_health(harness))
+    elif arm == "skill":
         sentence = told(harness, arm, kind)
         record["route"] = {"gstack": {k: PIN["gstack"][k] for k in ("repo", "commit", "version", "bun")}, "session": PIN["gstack"]["session"],
                            "told": sentence, "told_sha256": sha256(sentence.encode())}
@@ -393,13 +604,20 @@ def plan(harness: str, resolved: dict[str, Any], kind: str) -> dict[str, Any]:
         if not outside_work(path):
             raise DeliveryRefused("HE-DELIVERY-002", f"{path} is under {WORK}; every delivery and skill file goes outside /work (d8)")
     return {"record": record, "files": [{"path": p, "mode": m, "sha256": sha256(b), "bytes": len(b), "command": _write(p, b, m)} for p, b, m in files],
-            "commands": commands, "health": health, "env": skill_env(resolved)}
+            "root_commands": root_commands, "commands": commands, "health": health, "env": skill_env(resolved)}
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args[:1] == ["cant-run"]:
         print(json.dumps({f"{h} {a}": cant_run(h, a) for h in HARNESSES for a in ARMS if cant_run(h, a)}, indent=2))
+    elif args[:1] == ["bundle-digest"] and len(args) == 2:
+        print(json.dumps(bundle_digest(args[1])))
+    elif args[:1] == ["verify-bundle"] and len(args) == 3:
+        receipt = verify_bundle(args[1])
+        Path(args[2]).write_text(json.dumps(receipt, indent=2) + "\n")
+        print(f"gstack bundle {receipt['tarball_sha256'][:12]}: content {receipt['content_sha256'][:12]}, pin {receipt['pin_content_sha256']}, matches {receipt['matches']}")
+        sys.exit(0 if receipt["matches"] else 3)
     elif args[:1] == ["plan"] and len(args) == 5:
         h, arm, kind, card = args[1:5]
         try:

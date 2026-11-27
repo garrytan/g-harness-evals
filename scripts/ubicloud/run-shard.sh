@@ -12,6 +12,11 @@
 #       [--workload harness|gstack-laneb|qm-driver|frontier-harbor] [--install-check] [--laneb-root <dir from scripts/gstack-laneb/fetch.ts>]
 #       [--replicate-seconds 1200] [--incremental-pull] [--replicate-to <dir>] [--skill-root <local dir>]
 #       [--pre-smoke <script in the repository, e.g. scripts/ablation-golden.sh>] [--zdr-gate <install check results directory>]
+#       [--gstack-bundle <local tgz>]
+#
+# --gstack-bundle (--workload frontier-harbor only, internal-task) uploads a tarball scripts/frontier-harbor/gstack-bundle.sh
+# built on this machine to ~/shard/gstack-bundle/ on the VM, where vm-shard.sh hands it to vm-run.sh for a shard that
+# installs gstack. Build it here, not on the VM: its content digest depends on the build host.
 #       [-- <extra arguments for scripts/run-shard.sh>]
 #
 # --timeout-hours counts from this script's start, not from the launch on the VM: the sync, the bootstrap and the
@@ -184,7 +189,7 @@ cursor_check() {
 shard_harnesses=""
 commit="" prereg="" name="" cells="" lease="" dest="" size=standard-16 location="" storage="" smoke_lease="" smoke_task="" smoke=1
 smoke_first=0 embedded=0 gbrain_image="" amendment="" resume=0 attach=0 poll=30 timeout_h=12 sealed_root="" opening_receipt="" sealed=0
-workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke="" install_check=0 skill_root="" zdr_gate=""
+workload=harness laneb_root="$HOME/.capy/work/gstack-laneb" pre_smoke="" install_check=0 skill_root="" zdr_gate="" gstack_bundle=""
 t_start=$(date +%s)
 rep_s=${UBI_REPLICATE_SECONDS:-1200} replicate_to=${UBI_REPLICATE_TO:-} incremental=0 mark_fresh=0
 extra=()
@@ -217,6 +222,7 @@ while [ $# -gt 0 ]; do
     --laneb-root) laneb_root=$2; shift 2 ;;
     --skill-root) skill_root=$2; shift 2 ;;
     --pre-smoke) pre_smoke=$2; shift 2 ;;
+    --gstack-bundle) gstack_bundle=$2; shift 2 ;;
     --replicate-seconds) rep_s=$2; shift 2 ;;
     --incremental-pull) incremental=1; shift ;;
     --replicate-to) replicate_to=$2; shift 2 ;;
@@ -246,6 +252,10 @@ case $workload in harness) ;; gstack-laneb)
   *) echo "run-shard (ubicloud): --workload must be harness, gstack-laneb, qm-driver or frontier-harbor" >&2; exit 2 ;;
 esac
 [ "$install_check" -eq 0 ] || [ "$workload" = frontier-harbor ] || { echo "run-shard (ubicloud): --install-check applies only to --workload frontier-harbor" >&2; exit 2; }
+if [ -n "$gstack_bundle" ]; then
+  [ "$workload" = frontier-harbor ] && [ "$attach" -eq 0 ] || { echo "run-shard (ubicloud): --gstack-bundle applies only to a new --workload frontier-harbor shard" >&2; exit 2; }
+  [ -f "$gstack_bundle" ] && [[ "$gstack_bundle" == *.tgz ]] || { echo "run-shard (ubicloud): --gstack-bundle $gstack_bundle is not a .tgz file" >&2; exit 2; }
+fi
 [ "$incremental" -eq 0 ] || [ "$workload" != frontier-harbor ] || { echo "run-shard (ubicloud): --incremental-pull does not apply to --workload frontier-harbor, whose mid-run pull skips unreadable files" >&2; exit 2; }
 [[ "$rep_s" =~ ^[0-9]+$ ]] || { echo "run-shard (ubicloud): --replicate-seconds must be a whole number of seconds (0 turns replication off)" >&2; exit 2; }
 [ -z "$replicate_to" ] || [ -z "$sealed_root" ] || { echo "run-shard (ubicloud): --replicate-to is refused for a sealed shard; its raw results stay in --dest (docs/sealed-custody.md)" >&2; exit 2; }
@@ -919,6 +929,12 @@ else
     log "laneb: uploading $laneb_root (${laneb_parts[*]}) to ~/laneb"
     # shellcheck disable=SC2086
     tar -C "$laneb_root" -czf - --exclude=gstack-evals/.git "${laneb_parts[@]}" 2>>"$dest/lane.log" | bash "$runner" unpack "$vm" laneb >>"$dest/lane.log" 2>&1 || { log "laneb upload failed"; exit 3; }
+  fi
+
+  # 4b2. the gstack bundle (--gstack-bundle), streamed to ~/shard/gstack-bundle/; no key is in it
+  if [ -n "$gstack_bundle" ]; then
+    log "gstack bundle: uploading $(basename "$gstack_bundle") (sha256 $(sha256sum "$gstack_bundle" | cut -d' ' -f1)) to ~/shard/gstack-bundle"
+    vssh "mkdir -p ~/shard/gstack-bundle && cat > ~/shard/gstack-bundle/$(basename "$gstack_bundle")" < "$gstack_bundle" >>"$dest/lane.log" 2>&1 || { log "gstack bundle upload failed"; exit 3; }
   fi
 
   # 4c. the skill-resolver kit, the musl resolver build and the cells' inputs (--skill-root), streamed to ~/skill-root; no key is in them

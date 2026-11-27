@@ -82,13 +82,44 @@
 //
 // Recovered shards. When the results directory holds a shard's recovery.json (to-trials.ts recover; <shard>.recovery.json
 // after merge-shards.ts), the spend its usage log holds for no record counts in its cell's cost (unrecordedSpend).
+//
+// gstack lift (internal-task). A spec with schema frontier-harbor-gstack-analysis/1 (tests/fixtures/frontier-harbor/gstack-analysis-spec.json)
+// writes gstack-analysis.json and gstack-analysis.md instead of analysis.json and analysis.md:
+//
+//   bun scripts/frontier-harbor/analyze.ts --results <dir> --spec <gstack spec> [--lookup-fails <file>] [--out <dir>]
+//
+// One spec per gstack arm (installed, told). Its cells are { id, model, harness, arm }, arm none or the spec's one gstack
+// arm, with one of each per model and harness; a record's arm is its cell's arm in the spec, never read from the record.
+// Scoring is trialValue's (pass: verifier reward 1, so grade pass, with no consent violation; harness_error a fail;
+// an agent timeout a fail whatever its grade, as PREREGISTRATION.md's Scoring says;
+// model_error, infra_error and exam_fault excluded and counted per cell; a lookup a fail). Per task and harness, each side is
+// the mean pass of its scored trials, so an excluded trial drops only its own side; a task and harness enters a comparison
+// when both sides have a scored trial there. Differences pool the harnesses as a stratum through clusteredPairedDelta
+// clustered by task (task bootstrap 95% interval, task sign-flip p), with tasks better, worse and the same, per-harness
+// readings without a test, each side's pass rate with its tasks and trials, and the run's own MDD from powerNote at alpha
+// and at the first Holm step:
+//   lift       gstack minus none per model, Holm over the target and the frontier models: helps, hurts or no measurable
+//              difference, with the paired cost-per-solve ratio (gstack over none).
+//   difference the target's lift minus each frontier model's, per task and harness from the four cells, Holm over the
+//              frontier models; primary when lift_difference.primary (set from the preregistered MDD), else secondary.
+//   reach      the target with gstack minus each frontier model without, one-sided non-inferiority at ni_margin (10 points)
+//              and superiority (superiorityP), each Holm over the frontier models: better, within 10 points or not shown,
+//              with the paired cost-per-solve ratio (target with gstack over the frontier model without).
+// A comparison with fewer than min_paired_tasks (10) paired tasks is not tested and counts as p = 1 in its Holm family.
+// scripts/frontier-harbor/interim.ts runs the same analysis on the trials of the preregistered half-way look.
+//
+//   bun scripts/frontier-harbor/analyze.ts mdd --results <dir> [--lookup-fails <file>] [--tasks 52] [--attempts 3]
+//       [--baseline-attempts 3] [--alpha 0.05] [--power 0.8] [--harnesses hermes,openclaw] [--lift-sd 0.1] [--json <file>]
+//
+// prints the expected MDD of a planned gstack run's lift and lift difference from existing results' per-task variances
+// (expectedMdd).
 
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Termination, TrialRecord } from '../../runner/contracts.ts';
 import { RunnerError } from '../../runner/errors.ts';
 import { readJsonFile, readJsonLines } from '../../runner/heldout/sealed.ts';
-import { clusteredPairedDelta, holmAdjusted, nonInferiorityP, powerNote, type PairedDelta } from '../../runner/stats/paired.ts';
+import { clusteredPairedDelta, holmAdjusted, nonInferiorityP, normalQuantile, powerNote, superiorityP, type PairedDelta } from '../../runner/stats/paired.ts';
 import { bootstrapLowerBound, costPerSolve, harnessFlip, pairedCostRatio, passAtK, passHatK, rerunFlip, taskBootstrapMean, type MeanInterval } from '../../runner/stats/frontier.ts';
 import { TERMINATIONS, trialValue, type MatrixManifest } from '../matrix-analysis.ts';
 import { analyzeLowCostSwap, analyzeModelSwap, checkLowCostSwapSpec, checkModelSwapSpec, ModelSwapError, renderLowCostSwap, renderModelSwap, type LowCostSwapSpec, type ModelSwapSpec } from '../model-swap.ts';
@@ -597,6 +628,353 @@ export function renderMarkdown(a: FrontierAnalysis): string {
   return out.join('\n') + '\n';
 }
 
+// The gstack lift analysis (internal-task): one spec per gstack arm (installed, told), each holding the no-gstack cells and that
+// arm's cells. The header describes the method.
+
+export const GSTACK_SCHEMA = 'frontier-harbor-gstack-analysis/1';
+export const GSTACK_ARMS = ['none', 'installed', 'told'] as const;
+export type GstackArm = (typeof GSTACK_ARMS)[number];
+export interface GstackModel { id: string; label?: string; model: string }
+export interface GstackCell { id: string; model: string; harness: string; arm: GstackArm }
+export interface GstackSpec {
+  schema: typeof GSTACK_SCHEMA;
+  run_id: string;
+  seed?: number;
+  draws?: number;
+  alpha?: number;
+  power?: number;
+  min_paired_tasks?: number;
+  /** The one-sided non-inferiority margin of reach-frontier, in pass-rate units (default 0.10). */
+  ni_margin?: number;
+  /** The lift difference is a primary family only when primary is true, set at preregistration from an expected MDD of at most mdd_limit (default 0.10). */
+  lift_difference: { primary: boolean; mdd_limit?: number };
+  target: string;
+  frontier: string[];
+  harnesses: string[];
+  models: GstackModel[];
+  cells: GstackCell[];
+}
+export interface GstackInput { records: TrialRecord[]; manifest: MatrixManifest | null; lookup_fails?: string[] }
+
+/** The one gstack arm a spec's cells run beside none, or null when they run none or several. */
+export function gstackArmOf(spec: GstackSpec): Exclude<GstackArm, 'none'> | null {
+  const arms = [...new Set((spec.cells ?? []).map((c) => c.arm).filter((a) => a !== 'none'))];
+  return arms.length === 1 && (arms[0] === 'installed' || arms[0] === 'told') ? arms[0] : null;
+}
+
+export function checkGstackSpec(spec: GstackSpec, manifest: MatrixManifest | null): string[] {
+  const problems: string[] = [];
+  if (spec.schema !== GSTACK_SCHEMA) problems.push(`schema must be ${GSTACK_SCHEMA}`);
+  if (typeof spec.run_id !== 'string' || !spec.run_id) problems.push('run_id is missing');
+  if (manifest && spec.run_id !== manifest.run_id) problems.push(`spec run_id ${spec.run_id} is not the manifest's ${manifest.run_id}`);
+  const models = new Map((spec.models ?? []).map((m) => [m.id, m]));
+  if (models.size !== (spec.models ?? []).length) problems.push('a model is listed twice');
+  for (const m of spec.models ?? []) if (typeof m.model !== 'string' || !m.model.includes(':')) problems.push(`model ${m.id} needs its provider:name model id`);
+  if (!models.has(spec.target)) problems.push(`target ${spec.target} is not a model of the spec`);
+  if (!Array.isArray(spec.frontier) || !spec.frontier.length) problems.push('frontier is empty');
+  for (const f of spec.frontier ?? []) if (!models.has(f) || f === spec.target) problems.push(`frontier model ${f} must be a model of the spec other than the target`);
+  if (!Array.isArray(spec.harnesses) || !spec.harnesses.length || new Set(spec.harnesses).size !== spec.harnesses.length) problems.push('harnesses must be a list without repeats');
+  const ids = new Set<string>();
+  for (const c of spec.cells ?? []) {
+    if (ids.has(c.id)) problems.push(`cell ${c.id} listed twice`);
+    ids.add(c.id);
+    if (!models.has(c.model)) problems.push(`cell ${c.id} names model ${c.model}, which the spec does not define`);
+    if (!spec.harnesses?.includes(c.harness)) problems.push(`cell ${c.id} runs on ${c.harness}, which is not one of the spec's harnesses`);
+    if (!GSTACK_ARMS.includes(c.arm)) problems.push(`cell ${c.id}: arm must be ${GSTACK_ARMS.join(', ')}`);
+    if (manifest && !manifest.cells.some((x) => x.id === c.id)) problems.push(`cell ${c.id} is not in the run's manifest`);
+  }
+  if (!gstackArmOf(spec)) problems.push('the cells must run exactly one gstack arm (installed or told) beside none; write one spec per gstack arm');
+  for (const m of [spec.target, ...(spec.frontier ?? [])]) for (const h of spec.harnesses ?? []) {
+    const here = (spec.cells ?? []).filter((c) => c.model === m && c.harness === h);
+    const none = here.filter((c) => c.arm === 'none').length;
+    if (none !== 1 || here.length - none !== 1) problems.push(`model ${m} on ${h} needs one no-gstack cell and one gstack cell; the spec has ${none} and ${here.length - none}`);
+  }
+  if (spec.draws !== undefined && (!Number.isSafeInteger(spec.draws) || spec.draws < 1000)) problems.push('draws must be an integer of at least 1000');
+  if (spec.alpha !== undefined && !(spec.alpha > 0 && spec.alpha < 0.5)) problems.push('alpha must be between 0 and 0.5');
+  if (spec.power !== undefined && !(spec.power > 0 && spec.power < 1)) problems.push('power must be between 0 and 1');
+  if (spec.ni_margin !== undefined && !(spec.ni_margin > 0 && spec.ni_margin < 1)) problems.push('ni_margin must be between 0 and 1');
+  if (spec.min_paired_tasks !== undefined && (!Number.isSafeInteger(spec.min_paired_tasks) || spec.min_paired_tasks < 2)) problems.push('min_paired_tasks must be an integer of at least 2');
+  if (typeof spec.lift_difference?.primary !== 'boolean') problems.push('lift_difference.primary must be true or false (true only when the preregistered MDD is at most lift_difference.mdd_limit)');
+  if (spec.lift_difference?.mdd_limit !== undefined && !(spec.lift_difference.mdd_limit > 0 && spec.lift_difference.mdd_limit <= 1)) problems.push('lift_difference.mdd_limit must be in (0, 1]');
+  return problems;
+}
+
+type TaskSide = Map<string, { passes: number; scored: number; usd: number }>;
+interface LiftItem { task: string; harness: string; a: number; b: number }
+
+/** A record's metered USD as analyzeFrontier counts it: its own and its lease-stopped first run's, less what was charged at a full reservation. */
+const meteredUsd = (t: TrialRecord) => {
+  const f = (t as { frontier?: FrontierUsd }).frontier;
+  return Math.max((t.usage?.usd ?? 0) + (f?.first_run_usd ?? 0) - (t.usage?.usd_reserved ?? 0) - (f?.first_run_usd_reserved ?? 0), 0);
+};
+const reservedUsd = (t: TrialRecord) => (t.usage?.usd_reserved ?? 0) + ((t as { frontier?: FrontierUsd }).frontier?.first_run_usd_reserved ?? 0);
+
+/** Per task, one cell's passes and scored trials (an excluded trial leaves only its own side) and its metered USD. */
+function sideOf(rows: TrialRecord[], value: (t: TrialRecord) => 0 | 1 | null): TaskSide {
+  const out: TaskSide = new Map();
+  for (const t of rows) {
+    const s = out.get(t.task) ?? { passes: 0, scored: 0, usd: 0 };
+    const v = value(t);
+    if (v !== null) { s.scored++; s.passes += v; }
+    s.usd += meteredUsd(t);
+    out.set(t.task, s);
+  }
+  return out;
+}
+const rateOf = (s: { passes: number; scored: number } | undefined) => (s && s.scored ? s.passes / s.scored : null);
+
+/** Per harness and task, both sides' pass rates where both have a scored trial. */
+function pairItems(harnesses: string[], a: (h: string) => TaskSide, b: (h: string) => TaskSide): LiftItem[] {
+  return harnesses.flatMap((h) => {
+    const x = a(h), y = b(h);
+    return [...new Set([...x.keys(), ...y.keys()])].sort(byKey).flatMap((task) => {
+      const p = rateOf(x.get(task)), q = rateOf(y.get(task));
+      return p !== null && q !== null ? [{ task, harness: h, a: p, b: q }] : [];
+    });
+  });
+}
+
+/** One side's pass rate on the paired items: the mean of its per task and harness rates, with the tasks and trials behind it. */
+function rateOn(items: LiftItem[], side: (h: string) => TaskSide) {
+  const vals = items.map((i) => side(i.harness).get(i.task)!);
+  return { estimate: vals.length ? round(mean(vals.map((v) => v.passes / v.scored))) : null, items: items.length, tasks: new Set(items.map((i) => i.task)).size, trials: sum(vals.map((v) => v.scored)) };
+}
+
+/** Paired cost per solve, b over a, by task (each task's paired harnesses summed), with its task bootstrap interval. */
+function costOn(items: LiftItem[], a: (h: string) => TaskSide, b: (h: string) => TaskSide, opts: { seed: number; draws: number }) {
+  const byTask = new Map<string, { task: string; usd_a: number; solves_a: number; usd_b: number; solves_b: number }>();
+  for (const i of items) {
+    const x = a(i.harness).get(i.task)!, y = b(i.harness).get(i.task)!;
+    const t = byTask.get(i.task) ?? { task: i.task, usd_a: 0, solves_a: 0, usd_b: 0, solves_b: 0 };
+    t.usd_a += x.usd; t.solves_a += x.passes; t.usd_b += y.usd; t.solves_b += y.passes;
+    byTask.set(i.task, t);
+  }
+  const r = pairedCostRatio([...byTask.values()], opts);
+  return { tasks: r.tasks, ratio: round(r.ratio, 4), ci95: roundCi(r.ci95, 4), undefined_draws: r.undefined_draws, note: r.note };
+}
+
+/** b minus a over the items, the harness a stratum and the task the cluster, with the tasks better, worse and the same. */
+function liftReading(items: LiftItem[], opts: { seed: number; draws: number }) {
+  const stats = items.length ? clusteredPairedDelta(items.map((i) => ({ id: i.task + '/' + i.harness, cluster: i.task, a: i.a, b: i.b })), opts) : null;
+  const byTask = new Map<string, number[]>();
+  for (const i of items) byTask.set(i.task, [...(byTask.get(i.task) ?? []), i.b - i.a]);
+  const d = [...byTask.values()].map(mean);
+  return { stats, tasks: byTask.size, items: items.length, mean_a: round(stats?.mean_a), mean_b: round(stats?.mean_b), delta: round(stats?.delta), ci95: roundCi(stats?.ci95),
+    p_two_sided: stats ? round(stats.p_two_sided, 8) : null, tasks_better: d.filter((x) => x > 1e-12).length, tasks_worse: d.filter((x) => x < -1e-12).length, tasks_same: d.filter((x) => Math.abs(x) <= 1e-12).length };
+}
+
+export const NOT_TESTED = 'not tested';
+
+/** The gstack lift analysis and, per model, the paired statistics behind its lift (interim.ts reads their bootstrap draws). */
+export function analyzeGstackWithStats(input: GstackInput, spec: GstackSpec) {
+  const problems = checkGstackSpec(spec, input.manifest);
+  if (problems.length) throw new SpecError(problems.join('; '));
+  const invalid = validateRecords(input.records, input.manifest);
+  if (invalid.length) throw new SpecError('trials.jsonl fails the input check: ' + invalid.slice(0, 10).join('; ') + (invalid.length > 10 ? '; ...' : ''));
+  const foreign = input.records.filter((t) => !t.trial_id.startsWith(spec.run_id + '/'));
+  if (foreign.length) throw new SpecError(`${foreign.length} record(s) are not trials of ${spec.run_id}, for example ${foreign[0]!.trial_id}`);
+  const seed = spec.seed ?? 7, draws = spec.draws ?? 10_000, alpha = spec.alpha ?? 0.05, power = spec.power ?? 0.8, minPaired = spec.min_paired_tasks ?? 10;
+  const margin = spec.ni_margin ?? 0.1, mddLimit = spec.lift_difference.mdd_limit ?? 0.1;
+  const opts = { seed, draws };
+  const arm = gstackArmOf(spec)!;
+  const lookups = new Set(input.lookup_fails ?? []);
+  const known = new Set(input.records.map((t) => t.trial_id));
+  const unknown = [...lookups].filter((id) => !known.has(id));
+  if (unknown.length) throw new SpecError(`--lookup-fails names ${unknown.length} trial(s) with no record: ${unknown.slice(0, 5).join(', ')}`);
+  const modelOf = new Map(spec.models.map((m) => [m.id, m]));
+  const label = (m: string) => modelOf.get(m)!.label ?? m;
+  const rowsOf = new Map(spec.cells.map((c) => [c.id, input.records.filter((t) => t.cell === c.id)]));
+  for (const c of spec.cells) for (const t of rowsOf.get(c.id)!) {
+    const want = modelOf.get(c.model)!.model;
+    if (t.harness !== c.harness || t.model !== want) throw new SpecError(`trial ${t.trial_id} ran ${t.model} on ${t.harness}; cell ${c.id} is ${want} on ${c.harness}`);
+  }
+  const value = (t: TrialRecord): 0 | 1 | null => { if (t.termination === 'timeout') return 0; const v = trialValue(t); return v === 1 && lookups.has(t.trial_id) ? 0 : v; };
+  const cellFor = (m: string, h: string, armed: boolean) => spec.cells.find((c) => c.model === m && c.harness === h && (c.arm !== 'none') === armed)!;
+  const sides = new Map(spec.cells.map((c) => [c.id, sideOf(rowsOf.get(c.id)!, value)]));
+  const get = (m: string, h: string, armed: boolean) => sides.get(cellFor(m, h, armed).id)!;
+  const cellIds = (m: string, armed: boolean) => spec.harnesses.map((h) => cellFor(m, h, armed).id);
+
+  const measure = (items: LiftItem[], family: number) => {
+    const { stats, ...r } = liftReading(items, opts);
+    const note = stats ? powerNote(stats, { alpha, power }) : null;
+    const noteHolm = stats ? powerNote(stats, { alpha: alpha / family, power }) : null;
+    return { stats, row: { ...r, tested: r.tasks >= minPaired, mdd: round(note?.mde), mdd_first_holm_step: round(noteHolm?.mde), power_note: note?.note ?? 'no paired task',
+      per_harness: spec.harnesses.map((h) => { const { stats: _s, ...x } = liftReading(items.filter((i) => i.harness === h), opts); return { harness: h, ...x }; }) } };
+  };
+  const holm = (ps: Array<number | null>, tested: boolean[]) => holmAdjusted(ps.map((p, i) => (tested[i] && p !== null ? p : 1))).map((p) => round(p, 8)!);
+
+  const lifted = [spec.target, ...spec.frontier];
+  const liftStats: Record<string, PairedDelta | null> = {};
+  const lift = lifted.map((m) => {
+    const none = (h: string) => get(m, h, false), armed = (h: string) => get(m, h, true);
+    const items = pairItems(spec.harnesses, none, armed);
+    const { stats, row } = measure(items, lifted.length);
+    liftStats[m] = stats;
+    return { id: `lift ${m}`, model: m, cells: { none: cellIds(m, false), gstack: cellIds(m, true) }, ...row,
+      rates: { none: rateOn(items, none), gstack: rateOn(items, armed) }, cost_per_solve_ratio: costOn(items, none, armed, opts), holm_p: null as number | null, label: '' };
+  });
+  holm(lift.map((r) => r.p_two_sided), lift.map((r) => r.tested)).forEach((p, i) => {
+    const r = lift[i]!;
+    r.holm_p = p;
+    r.label = !r.tested ? NOT_TESTED : p <= alpha && r.delta! > 0 ? 'helps' : p <= alpha && r.delta! < 0 ? 'hurts' : 'no measurable difference';
+  });
+
+  const difference = spec.frontier.map((f) => {
+    const items = spec.harnesses.flatMap((h) => {
+      const four = [get(f, h, false), get(f, h, true), get(spec.target, h, false), get(spec.target, h, true)];
+      return [...new Set(four.flatMap((s) => [...s.keys()]))].sort(byKey).flatMap((task) => {
+        const v = four.map((s) => rateOf(s.get(task)));
+        return v.every((x) => x !== null) ? [{ task, harness: h, a: v[1]! - v[0]!, b: v[3]! - v[2]! }] : [];
+      });
+    });
+    const { row } = measure(items, spec.frontier.length);
+    return { id: `lift difference ${spec.target} minus ${f}`, frontier: f, ...row,
+      rates: { [`${f} none`]: rateOn(items, (h) => get(f, h, false)), [`${f} gstack`]: rateOn(items, (h) => get(f, h, true)),
+        [`${spec.target} none`]: rateOn(items, (h) => get(spec.target, h, false)), [`${spec.target} gstack`]: rateOn(items, (h) => get(spec.target, h, true)) },
+      mdd_within_limit: row.mdd === null ? null : row.mdd <= mddLimit + 1e-12, holm_p: null as number | null, label: '' };
+  });
+  holm(difference.map((r) => r.p_two_sided), difference.map((r) => r.tested)).forEach((p, i) => {
+    const r = difference[i]!;
+    r.holm_p = p;
+    r.label = !r.tested ? NOT_TESTED : p <= alpha && r.delta! > 0 ? `larger lift for ${label(spec.target)}` : p <= alpha && r.delta! < 0 ? `smaller lift for ${label(spec.target)}` : 'no measurable difference';
+  });
+
+  const reach = spec.frontier.map((f) => {
+    const none = (h: string) => get(f, h, false), armed = (h: string) => get(spec.target, h, true);
+    const items = pairItems(spec.harnesses, none, armed);
+    const { stats, row } = measure(items, spec.frontier.length);
+    return { id: `${spec.target} with gstack vs ${f} without`, frontier: f, cells: { frontier_none: cellIds(f, false), target_gstack: cellIds(spec.target, true) }, ...row,
+      rates: { [`${f} none`]: rateOn(items, none), [`${spec.target} gstack`]: rateOn(items, armed) },
+      ni_margin: margin, lower_bound: stats ? round(bootstrapLowerBound(stats, alpha)) : null,
+      p_noninferiority: stats ? round(nonInferiorityP(stats, margin, 'higher'), 8) : null, p_superiority: stats ? round(superiorityP(stats, 0, 'higher'), 8) : null,
+      cost_per_solve_ratio: costOn(items, none, armed, opts), holm_p_noninferiority: null as number | null, holm_p_superiority: null as number | null, label: '' };
+  });
+  const ni = holm(reach.map((r) => r.p_noninferiority), reach.map((r) => r.tested)), sup = holm(reach.map((r) => r.p_superiority), reach.map((r) => r.tested));
+  reach.forEach((r, i) => {
+    r.holm_p_noninferiority = ni[i]!;
+    r.holm_p_superiority = sup[i]!;
+    r.label = !r.tested ? NOT_TESTED : sup[i]! <= alpha ? 'better' : ni[i]! <= alpha ? `within ${Math.round(100 * margin)} points` : 'not shown';
+  });
+
+  const recorded = new Set(input.records.map((t) => t.trial_id));
+  const cells = spec.cells.map((c) => {
+    const rows = rowsOf.get(c.id)!, side = sides.get(c.id)!;
+    const rate = taskBootstrapMean([...side.values()].filter((s) => s.scored).map((s) => s.passes / s.scored), opts);
+    const terminations = Object.fromEntries(TERMINATIONS.map((k) => [k, rows.filter((t) => t.termination === k).length])) as Record<Termination, number>;
+    const unstarted = input.manifest ? input.manifest.trials.filter((t) => t.cell === c.id && !recorded.has(t.id)).map((t) => t.id) : [];
+    return { id: c.id, model: c.model, harness: c.harness, arm: c.arm,
+      pass_rate: rate ? { estimate: round(rate.estimate)!, ci95: roundCi(rate.ci95), tasks: rate.n, scored_trials: sum([...side.values()].map((s) => s.scored)) } : null,
+      trials: rows.length, terminations, excluded: { model_error: terminations.model_error, infra_error: terminations.infra_error, exam_fault: terminations.exam_fault },
+      harness_error_as_fail: terminations.harness_error, timeout_as_fail: terminations.timeout, lookup_fails: rows.filter((t) => lookups.has(t.trial_id) && t.termination !== 'timeout' && trialValue(t) === 1).length,
+      usd_total: round(sum(rows.map(meteredUsd)))!, usd_reserved: round(sum(rows.map(reservedUsd)))!, unstarted };
+  });
+  const unstarted = sum(cells.map((c) => c.unstarted.length));
+  const analysis = {
+    schema: GSTACK_SCHEMA, run_id: spec.run_id, arm, target: spec.target, frontier: spec.frontier, harnesses: spec.harnesses, models: spec.models,
+    method: {
+      estimator: "per task and harness, the mean pass of each side's scored trials; differences pooled over the harnesses (a stratum) with runner/stats/paired.ts clusteredPairedDelta clustered by task: task-clustered bootstrap 95% intervals and task-level sign-flip p",
+      seed, draws, alpha, power, min_paired_tasks: minPaired, ni_margin: margin, lift_difference_primary: spec.lift_difference.primary, lift_difference_mdd_limit: mddLimit,
+      scoring: 'a trial passes when its verifier reward is 1 (grade pass) with no consent violation; harness_error is a fail, and so is an agent timeout whatever its grade; model_error, infra_error and exam_fault are excluded, counted per cell, and drop only their own side: the other side of the task keeps its scored trials, and a task and harness leaves a comparison only when a side has no scored trial there; a confirmed answer-key lookup is a fail',
+      untested: `a comparison with fewer than ${minPaired} paired tasks is ${NOT_TESTED} and counts as p = 1 in its Holm family`,
+      mdd: `the run's own minimum detectable difference at ${Math.round(100 * power)}% power, from the comparison's cluster-robust standard error (runner/stats/paired.ts powerNote), at alpha and at the first Holm step of its family`,
+      cost: "paired cost per solve on the paired tasks: each side's metered USD (excluded trials included; dollars charged at a full reservation left out) over its scored passes, with a task bootstrap interval",
+      families: `Holm over ${lifted.length} lifts; Holm over ${spec.frontier.length} lift differences (${spec.lift_difference.primary ? 'primary' : 'secondary'}); Holm over ${spec.frontier.length} reach-frontier non-inferiority p at ${Math.round(100 * margin)} points and separately over their superiority p`,
+    },
+    trials_recorded: input.records.filter((t) => rowsOf.has(t.cell)).length, trials_unstarted: unstarted, complete: input.manifest ? unstarted === 0 : null, lookup_fails: lookups.size,
+    cells, lift, lift_difference: { family: spec.lift_difference.primary ? 'primary' as const : 'secondary' as const, mdd_limit: mddLimit, rows: difference }, reach,
+  };
+  return { analysis, lift_stats: liftStats };
+}
+
+export const analyzeGstack = (input: GstackInput, spec: GstackSpec) => analyzeGstackWithStats(input, spec).analysis;
+export type GstackAnalysis = ReturnType<typeof analyzeGstack>;
+
+export function renderGstackMarkdown(a: GstackAnalysis): string {
+  const label = (m: string) => a.models.find((x) => x.id === m)?.label ?? m;
+  const out: string[] = [`# gstack lift analysis: ${a.run_id}, arm ${a.arm}`, ''];
+  if (a.complete === false) out.push(`**Incomplete run.** ${a.trials_unstarted} planned trial(s) never started. Reported from what exists; nothing was backfilled.`, '');
+  out.push(`Method: ${a.method.estimator}. Seed ${a.method.seed}, ${a.method.draws} draws, alpha ${a.method.alpha}. Scoring: ${a.method.scoring}. ${a.method.families}. MDD: ${a.method.mdd}. Untested: ${a.method.untested}. No ranks.`, '');
+  const rate = (r: { estimate: number | null; tasks: number; trials: number }) => `${pct(r.estimate)} (${r.tasks} tasks, ${r.trials} trials)`;
+  out.push(`## Lift per model: gstack ${a.arm} minus no gstack`, '', 'Percentage points, pooled over the harnesses. Holm across the models.', '');
+  out.push('| Model | No gstack | gstack | Lift [95% CI] | Tasks better / worse / same | p | Holm p | MDD (first Holm step) | Cost-per-solve ratio [95% CI] | Reading |', '|---|---|---|---|---|---|---|---|---|---|');
+  for (const r of a.lift) out.push(`| ${label(r.model)} | ${rate(r.rates.none)} | ${rate(r.rates.gstack)} | ${pts(r.delta)} ${ciPts(r.ci95)} | ${r.tasks_better} / ${r.tasks_worse} / ${r.tasks_same} | ${pv(r.p_two_sided)} | ${pv(r.holm_p)} | ${pts(r.mdd)} (${pts(r.mdd_first_holm_step)}) | ${times(r.cost_per_solve_ratio.ratio)} ${ciTimes(r.cost_per_solve_ratio.ci95)} | **${r.label}** |`);
+  const ld = a.lift_difference;
+  out.push('', `## Lift difference: ${label(a.target)}'s lift minus each frontier model's (${ld.family})`, '', `Per task and harness from the four cells. Holm across the frontier models. Primary only when the preregistered MDD is at most ${Math.round(100 * ld.mdd_limit)} points.`, '');
+  out.push('| Comparison | Difference [95% CI] | Tasks better / worse / same | p | Holm p | MDD (first Holm step) | Reading |', '|---|---|---|---|---|---|---|');
+  for (const r of ld.rows) out.push(`| ${r.id} | ${pts(r.delta)} ${ciPts(r.ci95)} | ${r.tasks_better} / ${r.tasks_worse} / ${r.tasks_same} | ${pv(r.p_two_sided)} | ${pv(r.holm_p)} | ${pts(r.mdd)} (${pts(r.mdd_first_holm_step)})${r.mdd_within_limit === false ? ' over the limit' : ''} | **${r.label}** |`);
+  out.push('', `## Reach frontier: ${label(a.target)} with gstack against each frontier model without`, '', `One-sided non-inferiority at ${a.reach[0] ? Math.round(100 * a.reach[0].ni_margin) : 10} points and superiority, each Holm across the frontier models. Same harness, pooled.`, '');
+  out.push('| Comparison | Frontier, no gstack | Target, gstack | Difference [95% CI] | 90% lower bound | Tasks better / worse / same | Holm non-inferiority p | Holm superiority p | Cost-per-solve ratio [95% CI] | Reading |', '|---|---|---|---|---|---|---|---|---|---|');
+  for (const r of a.reach) {
+    const [f, t] = Object.values(r.rates);
+    out.push(`| ${r.id} | ${rate(f!)} | ${rate(t!)} | ${pts(r.delta)} ${ciPts(r.ci95)} | ${pts(r.lower_bound)} | ${r.tasks_better} / ${r.tasks_worse} / ${r.tasks_same} | ${pv(r.holm_p_noninferiority)} | ${pv(r.holm_p_superiority)} | ${times(r.cost_per_solve_ratio.ratio)} ${ciTimes(r.cost_per_solve_ratio.ci95)} | **${r.label}** |`);
+  }
+  out.push('', '## Per-harness readings (secondary, no test)', '', '| Comparison | Harness | Side A / side B (the two lifts for a lift difference) | Difference [95% CI] | Tasks better / worse / same |', '|---|---|---|---|---|');
+  for (const r of [...a.lift, ...ld.rows, ...a.reach]) for (const h of r.per_harness) out.push(`| ${r.id} | ${h.harness} | ${pct(h.mean_a)} / ${pct(h.mean_b)} | ${pts(h.delta)} ${ciPts(h.ci95)} | ${h.tasks_better} / ${h.tasks_worse} / ${h.tasks_same} |`);
+  out.push('', '## Cells', '', '| Cell | Model | Harness | Arm | Pass rate [95% CI] (tasks / scored trials) | Excluded (model / infra / exam) | Harness errors as fails | Unstarted | Metered USD |', '|---|---|---|---|---|---|---|---|---|');
+  for (const c of a.cells) out.push(`| ${c.id} | ${label(c.model)} | ${c.harness} | ${c.arm} | ${c.pass_rate ? `${pct(c.pass_rate.estimate)} ${ciPct(c.pass_rate.ci95)} (${c.pass_rate.tasks} / ${c.pass_rate.scored_trials})` : 'no scored trial'} | ${c.excluded.model_error} / ${c.excluded.infra_error} / ${c.excluded.exam_fault} | ${c.harness_error_as_fail} | ${c.unstarted.length} | ${usd(c.usd_total)} |`);
+  return out.join('\n') + '\n';
+}
+
+export interface MddOptions { tasks: number; attempts: number; baseline_attempts: number; alpha: number; power: number; harnesses: string[]; lift_sd: number }
+
+/** The expected minimum detectable lift and lift difference of a planned gstack run, from the per-task pass variance of
+ *  existing results: per model and harness, the cell with the most tasks; per task the unbiased Bernoulli variance
+ *  k(n - k) / (n(n - 1)) of its scored attempts (tasks with one scored attempt are left out), averaged over tasks (v).
+ *  The pooled lift's standard error at T tasks, H harnesses, a gstack attempts and b no-gstack attempts per task, with
+ *  the gstack arm's variance equal to the no-gstack arm's, is sqrt(sum_h v_h (1/a + 1/b) / (T H^2) + s^2 / T), where s
+ *  is the SD across tasks of the true lift (lift_sd); the MDD is (z(1 - alpha/2) + z(power)) times it, at alpha and at
+ *  the first Holm step. The lift difference adds the two models' variances. A model with no results (the target) is shown
+ *  at the worst case, v = 0.25 on every task, and at the frontier model's own variance. */
+export function expectedMdd(records: TrialRecord[], o: MddOptions, lookups: Set<string> = new Set()) {
+  const z = (a: number) => normalQuantile(1 - a / 2) + normalQuantile(o.power);
+  const H = o.harnesses.length;
+  const se = (vsum: number, s: number) => Math.sqrt((vsum * (1 / o.attempts + 1 / o.baseline_attempts)) / (o.tasks * H * H) + (s * s) / o.tasks);
+  const byCell = new Map<string, TrialRecord[]>();
+  for (const t of records) if (o.harnesses.includes(t.harness)) byCell.set(t.cell, [...(byCell.get(t.cell) ?? []), t]);
+  const chosen = new Map<string, { cell: string; rows: TrialRecord[] }>();
+  for (const [cell, rows] of [...byCell.entries()].sort(([x, a], [y, b]) => new Set(b.map((t) => t.task)).size - new Set(a.map((t) => t.task)).size || byKey(x, y))) {
+    const key = rows[0]!.model + '/' + rows[0]!.harness;
+    if (!chosen.has(key)) chosen.set(key, { cell, rows });
+  }
+  const value = (t: TrialRecord) => { const v = trialValue(t); return v === 1 && lookups.has(t.trial_id) ? 0 : v; };
+  const variances = [...chosen.values()].map(({ cell, rows }) => {
+    const multi = [...sideOf(rows, value).values()].filter((s) => s.scored >= 2);
+    const vs = multi.map((s) => (s.passes * (s.scored - s.passes)) / (s.scored * (s.scored - 1)));
+    return { cell, model: rows[0]!.model, harness: rows[0]!.harness, tasks: vs.length, mean_attempts: multi.length ? round(mean(multi.map((s) => s.scored)), 2) : null, variance: vs.length ? round(mean(vs))! : null };
+  });
+  const models = [...new Set(variances.map((v) => v.model))].sort(byKey).filter((m) => o.harnesses.every((h) => variances.some((v) => v.model === m && v.harness === h && v.variance !== null)));
+  const vsumOf = (m: string) => sum(o.harnesses.map((h) => variances.find((v) => v.model === m && v.harness === h)!.variance!));
+  const mdd = (vsum: number, family: number) => ({
+    mdd: round(z(o.alpha) * se(vsum, 0)), first_holm_step: round(z(o.alpha / family) * se(vsum, 0)),
+    with_lift_sd: round(z(o.alpha) * se(vsum, o.lift_sd)), with_lift_sd_first_holm_step: round(z(o.alpha / family) * se(vsum, o.lift_sd)),
+  });
+  const liftFamily = models.length + 1, diffFamily = models.length;
+  const worst = 0.25 * H;
+  return {
+    design: o, variances,
+    lift: [...models.map((m) => ({ model: m, variance_sum: round(vsumOf(m)), ...mdd(vsumOf(m), liftFamily) })),
+      { model: 'target at worst case (v = 0.25 per task)', variance_sum: round(worst), ...mdd(worst, liftFamily) }],
+    lift_difference: models.flatMap((m) => [
+      { comparison: `target (worst case) minus ${m}`, variance_sum: round(worst + vsumOf(m)), ...mdd(worst + vsumOf(m), diffFamily) },
+      { comparison: `target (with ${m}'s variance) minus ${m}`, variance_sum: round(2 * vsumOf(m)), ...mdd(2 * vsumOf(m), diffFamily) },
+    ]),
+  };
+}
+
+export function renderMdd(m: ReturnType<typeof expectedMdd>): string {
+  const d = m.design;
+  const out = [`Expected MDD at ${d.tasks} tasks, ${d.harnesses.join(' + ')} pooled, ${d.attempts} gstack and ${d.baseline_attempts} no-gstack attempts per task, alpha ${d.alpha}, ${Math.round(100 * d.power)}% power; normal approximation to the paired task-clustered test. Percentage points.`, ''];
+  out.push('| Cell | Model | Harness | Tasks with 2+ scored attempts | Mean attempts | Mean per-task variance |', '|---|---|---|---|---|---|');
+  for (const v of m.variances) out.push(`| ${v.cell} | ${v.model} | ${v.harness} | ${v.tasks} | ${v.mean_attempts ?? 'n/a'} | ${v.variance ?? 'n/a'} |`);
+  const cols = `| MDD | MDD, first Holm step | MDD, true-lift SD ${Math.round(100 * d.lift_sd)} points | same, first Holm step |`;
+  const vals = (r: { mdd: number | null; first_holm_step: number | null; with_lift_sd: number | null; with_lift_sd_first_holm_step: number | null }) => [r.mdd, r.first_holm_step, r.with_lift_sd, r.with_lift_sd_first_holm_step].map(pts).join(' | ');
+  out.push('', '| Lift of | Variance sum ' + cols, '|---|---|---|---|---|---|');
+  for (const r of m.lift) out.push(`| ${r.model} | ${r.variance_sum} | ${vals(r)} |`);
+  out.push('', '| Lift difference | Variance sum ' + cols, '|---|---|---|---|---|---|');
+  for (const r of m.lift_difference) out.push(`| ${r.comparison} | ${r.variance_sum} | ${vals(r)} |`);
+  return out.join('\n') + '\n';
+}
+
 function lookupList(file: string): string[] {
   const v = readJsonFile<unknown>(file);
   const ids = Array.isArray(v) ? v : (v as { trial_ids?: unknown })?.trial_ids;
@@ -607,6 +985,18 @@ function lookupList(file: string): string[] {
 if (import.meta.main) {
   const arg = (n: string) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : undefined; };
   const results = arg('results'), specPath = arg('spec'), out = arg('out') ?? results, lookupFile = arg('lookup-fails'), withReplaced = process.argv.includes('--cost-with-replaced');
+  if (process.argv[2] === 'mdd') {
+    if (!results || !existsSync(join(results, 'trials.jsonl'))) {
+      console.error('usage: bun scripts/frontier-harbor/analyze.ts mdd --results <results dir with trials.jsonl> [--lookup-fails <file>] [--tasks 52] [--attempts 3] [--baseline-attempts 3] [--alpha 0.05] [--power 0.8] [--harnesses hermes,openclaw] [--lift-sd 0.1] [--json <file>]');
+      process.exit(2);
+    }
+    const num = (n: string, d: number) => (arg(n) === undefined ? d : Number(arg(n)));
+    const m = expectedMdd(readJsonLines<TrialRecord>(join(results, 'trials.jsonl')), { tasks: num('tasks', 52), attempts: num('attempts', 3), baseline_attempts: num('baseline-attempts', 3),
+      alpha: num('alpha', 0.05), power: num('power', 0.8), harnesses: (arg('harnesses') ?? 'hermes,openclaw').split(','), lift_sd: num('lift-sd', 0.1) }, new Set(lookupFile ? lookupList(lookupFile) : []));
+    if (arg('json')) writeFileSync(arg('json')!, JSON.stringify(m, null, 1) + '\n');
+    process.stdout.write(renderMdd(m));
+    process.exit(0);
+  }
   if (!results || !specPath || !existsSync(join(results, 'trials.jsonl')) || !existsSync(specPath)) {
     console.error('usage: bun scripts/frontier-harbor/analyze.ts --results <merged results dir with trials.jsonl> --spec <spec.json> [--out <dir>] [--lookup-fails <file>] [--cost-with-replaced] [--shard-results <shard results dir> ...]');
     process.exit(2);
@@ -619,6 +1009,14 @@ if (import.meta.main) {
     if (manifest?.sealed) { console.error(`analyze: ${results} was planned with a sealed root; this script prints task ids and does not run on sealed results`); process.exit(2); }
     const records = readJsonLines<TrialRecord>(join(results, 'trials.jsonl'));
     const spec = readJsonFile<FrontierSpec>(specPath);
+    if ((spec as { schema?: unknown }).schema === GSTACK_SCHEMA) {
+      const g = analyzeGstack({ records, manifest, lookup_fails: lookupFile ? lookupList(lookupFile) : [] }, spec as unknown as GstackSpec);
+      mkdirSync(out!, { recursive: true });
+      writeFileSync(join(out!, 'gstack-analysis.json'), JSON.stringify(g, null, 1) + '\n');
+      writeFileSync(join(out!, 'gstack-analysis.md'), renderGstackMarkdown(g));
+      console.log(`GSTACK_ANALYSIS: ${g.run_id} arm ${g.arm}: ${g.lift.length} lifts, ${g.lift_difference.rows.length} lift differences, ${g.reach.length} reach comparisons, ${g.trials_recorded} trials recorded${g.complete === false ? `, incomplete (${g.trials_unstarted} unstarted)` : ''}; wrote ${join(out!, 'gstack-analysis.json')} and gstack-analysis.md`);
+      process.exit(0);
+    }
     const input = { records, manifest, lookup_fails: lookupFile ? lookupList(lookupFile) : [], cost_with_replaced: withReplaced, unrecorded: unrecordedSpend(results, records) };
     if (spec.truncation_recovery === 'amendment-6') {
       const tr = await import(join(import.meta.dir, 'truncation-recovery.ts'));

@@ -908,6 +908,32 @@
  "broker": {
   "how": "vm-run.sh runs broker.ts on 127.0.0.1: at agent setup each installed-agent class asks it for its trial slot; the broker binds slot <trial> in the metering proxy (key trial-token:<trial>, a fresh token trial-token:<trial>.<32 hex>, the cell model plus the harness housekeeping model as the slot model list) with the proxy control token it alone holds, and returns only the token and the base URL. The token is the only credential the container sees."
  },
+ "git_static": {
+  "why": "50 of the 60 pinned task images have no git; the workspace git setup (egress.py, frontier_settings.WORKSPACE_GIT) copies this static git into a container whose image has none, the same in every arm, so the starting repository and the agent's git are there in every trial. It is a full git with https: harness installers (Hermes clones its source over https) and task solutions (train-fasttext, compile-compcert) clone over https once they find a git, so a git without https breaks them",
+  "version": "2.56.0",
+  "source": "github.com/baulk/git-minimal release v2.56.0, flavor git-minimal-musl: git v2.56.0 built on musl and linked statically, with libcurl (and its TLS library and CA bundle) linked in, so https remotes work in an image with no CA store",
+  "url": "https://github.com/baulk/git-minimal/releases/download/v2.56.0/git-minimal-musl-v2.56.0-linux-amd64.tar.xz",
+  "tarball_sha256": "c5050795ca0865faa81435b6e3dd07622540fd946c8e6f5311d0147d724a0c33",
+  "top_dir": "git-minimal-musl-v2.56.0-linux-amd64",
+  "files": {
+   "cmd/git-minimal": "338e94e224763773829bc2514adb51e7381de1c7619f6d2b60e9b33ed8d0f519",
+   "bin/git": "a8e1d656cea4735b960f8a3010c7e0582c241c09028a186ebc6aca4a7b3136db",
+   "libexec/git-core/git-remote-http": "411ef47813f5f979ff22d0fe49bc7c7c8784443a0a004a66e80f27012bc909bb"
+  },
+  "install_dir": "/opt/frontier-git",
+  "linked_into": "/usr/local/bin",
+  "links": [
+   "git",
+   "git-upload-pack",
+   "git-receive-pack",
+   "git-upload-archive",
+   "git-shell",
+   "scalar"
+  ],
+  "launcher": "the links point at install_dir/cmd/<name>, the release's launcher (cmd/git-minimal), which finds install_dir from /proc/self/exe and sets GIT_EXEC_PATH and GIT_TEMPLATE_DIR before running bin/git, so the whole tree is copied as it unpacks (symlinks included). The release's curl launcher is not linked",
+  "shadows": "an image whose own git comes later (apt-get install git during a trial) still runs this git first: /usr/local/bin comes before /usr/bin on PATH",
+  "checked": "2026-11-10, in a debian:bookworm-slim container with no other git and no CA store: git --version, git init with the release's templates (hooks/ present), the workspace git setup, a local-path and a file:// clone, fetch, a branch push, rev-parse origin/main, git ls-remote on https://github.com/git/git.git and a depth-1 https clone all worked"
+ },
  "licences": {
   "harbor": "Apache-2.0",
   "terminal_bench_2_1": "Apache-2.0",
@@ -921,6 +947,7 @@
   "codex": "Apache-2.0",
   "claude_code": "proprietary (Anthropic)",
   "cursor": "proprietary (Cursor; terms 1.5(vii) on published benchmarks, harnesses/cursor/README.md \"Terms\")",
-  "gost": "MIT (go-gost/gost, in the Harbor sidecar image)"
+  "gost": "MIT (go-gost/gost, in the Harbor sidecar image)",
+  "git_static": "GPL-2.0-only for git (github.com/baulk/git-minimal v2.56.0, its build script MIT), with curl (curl licence) and its TLS library linked in; copied unmodified into task containers that have no git"
  }
 }

@@ -27,11 +27,13 @@
     },
     "hermes": {
       "review": "Use gstack's /review skill for this task.",
-      "ship": "Use gstack's /ship skill for this task."
+      "ship": "Use gstack's /ship skill for this task.",
+      "build-check": "Use gstack's /gstack-build-check skill for this task."
     },
     "openclaw": {
       "review": "Use gstack's /review skill for this task.",
-      "ship": "Use gstack's /ship skill for this task."
+      "ship": "Use gstack's /ship skill for this task.",
+      "build-check": "Use the gstack skill's build-check workflow for this task."
     },
     "pi": {
       "review": "Use gstack's /review skill for this task.",
@@ -40,8 +42,68 @@
   },
   "told_sha256": {
     "Use gstack's /review skill for this task.": "4be159667713a665b35ac0edde19054e94b7d485f8a0abb3a85f995b3f20e063",
-    "Use gstack's /ship skill for this task.": "f4c27fc8ac1bd3bc11df08f07cd1ecc0fc318535dc03f9327f480641dec034c5"
+    "Use gstack's /ship skill for this task.": "f4c27fc8ac1bd3bc11df08f07cd1ecc0fc318535dc03f9327f480641dec034c5",
+    "Use gstack's /gstack-build-check skill for this task.": "49b0851466d6446e044e6341d38d14b9ed6c35f122115a773d1ad938e33d5dae",
+    "Use the gstack skill's build-check workflow for this task.": "88f0384aba2658204ea54b21cffa7e2543bde6e8df3f5167f80bdfe1ed23a8ee"
   },
   "told_join": "the sentence, a blank line, then the task instruction",
-  "hermes_soul_seed_sha256": "36c1f5a2e92cd1d018311eaf4c8f1e8886672eae78212e033c681d0e3d5d506f"
+  "hermes_soul_seed_sha256": "36c1f5a2e92cd1d018311eaf4c8f1e8886672eae78212e033c681d0e3d5d506f",
+  "bundle": {
+    "what": "The gstack the gstack cheap-model run (gstack-cheap-model-2026-11) installs on Terminal-Bench 2.1 tasks, where 50 of 60 task images have no git and the network install above cannot run: an offline bundle that gstack-bundle.sh builds once on the controller, which agents.py uploads into each task container before gstack's own ./setup runs there, as a user's install would. Used only by a delivery kwarg with install bundle (plan.ts gstack_delivery); the repo-task arms above keep the network install.",
+    "repo": "https://github.com/garrytan/gstack.git",
+    "commit": "e6dd567349e85506127c2f4cf69a0392923c032c",
+    "version": "1.104.0.0",
+    "committed": "2026-11-25T22:33:05Z",
+    "on": "gstack's stable branch and its v1.104.0.0 tag (git ls-remote, 2026-11-26T19:45Z): the release a new install follows by default (docs/install.md, Team mode follows the stable channel)",
+    "bun": {
+      "version": "1.4.2",
+      "linux_x64_zip_sha256": "36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913",
+      "binary_sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+      "why": "GSTACK_BUN_TESTED in bin/gstack-bun-version.sh at the commit: the supported minimum and the version setup tells a user to install (setup:330-336); the zip sha256 is gstack's own table's"
+    },
+    "content": {
+      "sha256": "462a28adb7915908ff08692b43be621492e1cd8806c61ce04904aecaa6ddfad7",
+      "files": 14026,
+      "rule": "gstack-bundle.sh bundle-digest: sha256 over one line per file of the unpacked bundle (gstack/ and bun/), '<relative path>\\0<file sha256>\\n' ('<relative path>\\0link:<target>\\n' for a symlink), sorted by path, without the volatile paths below. vm-run.sh checks a shard's tarball against it once before any trial (<out>/gstack-bundle-check.json), and agents.py refuses a tarball whose sha256 is not that receipt's",
+      "volatile": [
+        {
+          "path": "gstack/.git/index",
+          "why": "git's stat cache: ctime, mtime, inode and device of every checked-out file"
+        },
+        {
+          "path": "gstack/.git/logs/HEAD",
+          "why": "the checkout's reflog line holds the build time and the build machine's git identity"
+        },
+        {
+          "path": "gstack/.git/objects/pack/",
+          "why": "GitHub builds the shallow fetch's pack anew each time; the commit is checked from .git/HEAD and every checked-out file is in the digest"
+        },
+        {
+          "path": "gstack/bin/.gstack-cso-build.log",
+          "why": "a build log with step timings and a staging directory name"
+        }
+      ]
+    },
+    "setup_flags": [
+      "--no-browser"
+    ],
+    "config": {
+      "telemetry": "off",
+      "update_check": "false",
+      "artifacts_sync_mode": "off"
+    },
+    "session": {
+      "GSTACK_SESSION_KIND": "unattended",
+      "GSTACK_EPHEMERAL": "1",
+      "GSTACK_STATE_ROOT": "/tmp/he-delivery/gstack-state"
+    },
+    "start_hook": "left at gstack's default, which is on for a new Hermes or OpenClaw registration at this version (lib/harness-start-hook.ts START_HOOK_DEFAULT); the trial checks that setup reports it active",
+    "skills": {
+      "build-check": {
+        "hermes": "gstack-build-check, listed as its own skill (registration mode all, lib/harness-register.ts:93)",
+        "openclaw": "reached through the listed gstack router skill (registration mode hybrid lists gstack, review, qa, ship and plan-eng-review, lib/harness-register.ts:41-42 and :86)"
+      }
+    },
+    "renamed": "verify, the workflow internal-task's plan named, is build-check from this version on (scripts/discover-skills.ts RETIRED_SKILLS and RENAMED_SKILLS, gstack #4593)"
+  }
 }

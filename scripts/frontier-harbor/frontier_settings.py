@@ -12,8 +12,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shlex
+import tarfile
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -116,6 +119,165 @@ def harness_pin(harness: str, version: str | None = None) -> dict[str, Any]:
     if release is None:
         raise ValueError(f"{harness} {version} is not pinned in scripts/frontier-harbor/pin.json (version {pin['version']}, releases {', '.join(pin.get('releases', {})) or 'none'})")
     return {**pin, **release, "version": version}
+
+
+
+# The workspace git setup (internal-task, ported for gstack-cheap-model-2026-11): opt-in per job (the environment kwarg
+# workspace_git, which plan.ts sets from a preregistration's gstack_delivery.workspace_git), so every other run's
+# containers are unchanged. A failed setup, or an agent that does not see git and the setup's origin/main, stops the
+# trial before any model call with HE-FRONTIER-016 (to-trials.ts infra class workspace_git).
+GIT_SETUP_FILE = "git-setup.json"
+GIT_SETUP_TIMEOUT_SEC = 900
+GIT_STATIC = PIN["git_static"]
+WORKSPACE_GIT = {
+    "phase": "environment start (egress.py BlocklistDockerEnvironment.start, when the job's environment kwargs set workspace_git), before agent setup and outside the agent timeout, the same for every agent and arm (oracle and nop too)",
+    "where": "the task container's working directory (the task's workdir, else the image WORKDIR), as root, then .git and the origin handed to the directory's owner",
+    "git": f"the image's own git when it has one (git_provided image); otherwise the pinned static git {GIT_STATIC['version']} (pin.json git_static) copied to {GIT_STATIC['install_dir']} and linked into {GIT_STATIC['linked_into']}, on the agent's PATH in every arm (git_provided injected)",
+    "git_static": {k: GIT_STATIC[k] for k in ("version", "url", "tarball_sha256", "install_dir", "linked_into")},
+    "author": {"name": "Frontier Harbor", "email": "setup@frontier-harbor.invalid", "date": "2026-01-01T00:00:00+00:00"},
+    "commit_message": "Task starting state",
+    "branch": "main",
+    "origin": "/opt/frontier-origin.git",
+    "origin_head": "refs/remotes/origin/HEAD -> origin/main; git rev-parse origin/main must resolve",
+    "exclude_over_bytes": 50 * 1024 * 1024,
+    "exclude_file": ".git/info/exclude",
+    "existing_repository": "kept: no new commit when it has one (an unborn one gets the starting commit on main); a remote named origin already there is kept and recorded as present (existing_origin yes, never its URL, which may hold a credential, and whether origin/main resolves), and no origin of ours is added",
+    "identity_left": "none: no user.name or user.email is configured in the repository",
+    "agent_check": "agents.py, at the end of agent setup, as the agent in its starting folder: command -v git and git rev-parse origin/main must give the setup's commit",
+    "result": "workspace_git_result, from git-setup.json beside this file (git_provided, sha, seconds, excluded files, the agent check)",
+}
+
+def static_git_dir(cache: str | Path | None = None) -> Path:
+    """The pinned static git (pin.json git_static) unpacked on the host, downloaded once into the cache and checked: the
+    tarball's sha256, then the sha256 of each file pin.json names. Returns the release's tree (bin, cmd, libexec, share),
+    which egress.py copies whole into a container whose image has no git."""
+    import fcntl
+    import shutil
+    import urllib.request
+    root = Path(cache or os.environ.get("FRONTIER_GIT_CACHE") or Path.home() / ".frontier-harbor" / "git-static") / GIT_STATIC["tarball_sha256"]
+    out = root / "tree"
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if (out / ".unpacked").is_file() and all((out / f).is_file() and hashlib.sha256((out / f).read_bytes()).hexdigest() == h for f, h in GIT_STATIC["files"].items()):
+            return out
+        tarball = root / Path(GIT_STATIC["url"]).name
+        if not tarball.is_file() or hashlib.sha256(tarball.read_bytes()).hexdigest() != GIT_STATIC["tarball_sha256"]:
+            with urllib.request.urlopen(GIT_STATIC["url"], timeout=120) as r:
+                tarball.write_bytes(r.read())
+        got = hashlib.sha256(tarball.read_bytes()).hexdigest()
+        if got != GIT_STATIC["tarball_sha256"]:
+            raise RuntimeError(f"static git tarball {GIT_STATIC['url']} is {got}, not pin.json's {GIT_STATIC['tarball_sha256']}")
+        staging = Path(tempfile.mkdtemp(dir=root))
+        with tarfile.open(tarball) as t:
+            t.extractall(staging, filter="data")
+        tree = staging / GIT_STATIC["top_dir"]
+        for f, want in GIT_STATIC["files"].items():
+            got = hashlib.sha256((tree / f).read_bytes()).hexdigest() if (tree / f).is_file() else "missing"
+            if got != want:
+                raise RuntimeError(f"static git file {f} is {got}, not pin.json's {want}")
+        (tree / ".unpacked").write_text(GIT_STATIC["tarball_sha256"] + "\n")
+        if out.exists():
+            shutil.rmtree(out)
+        tree.rename(out)
+        shutil.rmtree(staging)
+        return out
+
+
+def static_git_link_command() -> str:
+    """Root's command after the static git tree is copied to install_dir: each name in links linked into linked_into,
+    pointing at the release's launcher, then a check that the https helper is there and git runs."""
+    d, l = GIT_STATIC["install_dir"], GIT_STATIC["linked_into"]
+    links = " && ".join(f"ln -sf {d}/cmd/{b} {l}/{b}" for b in GIT_STATIC["links"])
+    return f"rm -f {d}/.unpacked && mkdir -p {l} && {links} && test -x {d}/libexec/git-core/git-remote-https && {l}/git --version"
+
+
+def workspace_git_script(origin: str = WORKSPACE_GIT["origin"]) -> str:
+    """The workspace git setup (WORKSPACE_GIT), a POSIX sh script run as root in the task container's working directory.
+    It prints GIT_EXCLUDED <path> per file over the size limit, GIT_EXISTING_ORIGIN <url> when the repository already
+    has an origin (then left as it is), then one GIT_SETUP line; GIT_SETUP_FAIL <why> and exit 3 when it cannot run (no
+    git, the working directory is /, or it is inside another repository)."""
+    a, o, b = WORKSPACE_GIT["author"], shlex.quote(origin), WORKSPACE_GIT["branch"]
+    ident = " ".join(f"GIT_{who}_{k.upper()}={shlex.quote(a[k])}" for who in ("AUTHOR", "COMMITTER") for k in ("name", "email", "date"))
+    return "\n".join([
+        "set -eu",
+        'fail() { echo "GIT_SETUP_FAIL $*"; exit 3; }',
+        "ws=$(pwd -P)",
+        '[ "$ws" != / ] || fail "the working directory is /"',
+        'command -v git >/dev/null 2>&1 || fail "no git in the image"',
+        "cfg=$(mktemp); trap 'rm -f \"$cfg\"' EXIT",
+        "printf '[safe]\\n\\tdirectory = *\\n' > \"$cfg\"",
+        f'export GIT_CONFIG_GLOBAL="$cfg" GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 {ident}',
+        "g() { git -c core.hooksPath=/dev/null -c commit.gpgsign=false \"$@\"; }",
+        "repo=created",
+        'if top=$(g rev-parse --show-toplevel 2>/dev/null); then repo=existing; [ "$top" = "$ws" ] || fail "the working directory is inside the repository $top"; else g init -q; fi',
+        "gd=$(cd \"$(g rev-parse --git-dir)\" && pwd -P)",
+        "existing=no",
+        'if g remote get-url origin >/dev/null 2>&1; then existing=yes; echo "GIT_EXISTING_ORIGIN yes"; fi',
+        "committed=no",
+        "if ! g rev-parse -q --verify HEAD >/dev/null; then",
+        f"  g symbolic-ref HEAD refs/heads/{b}",
+        '  mkdir -p "$gd/info"',
+        f"  find . -path ./.git -prune -o -type f -size +{WORKSPACE_GIT['exclude_over_bytes']}c -print | sort | while IFS= read -r f; do p=${{f#.}}; echo \"GIT_EXCLUDED $p\"; printf '%s\\n' \"$p\" | sed 's/[][*?\\\\]/\\\\&/g' >> \"$gd/info/exclude\"; done",
+        "  g add -A",
+        f"  g commit -q --allow-empty -m {shlex.quote(WORKSPACE_GIT['commit_message'])}",
+        "  committed=yes",
+        "fi",
+        'if [ "$existing" = no ]; then',
+        f"  rm -rf {o} && g init -q --bare {o} && g --git-dir={o} symbolic-ref HEAD refs/heads/{b}",
+        f"  g remote add origin {o}",
+        f"  g push -q origin HEAD:refs/heads/{b}",
+        "  g fetch -q origin",
+        f"  g symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/{b}",
+        "fi",
+        f"sha=$(g rev-parse --verify -q origin/{b}) || sha=none",
+        f'[ "$existing" = yes ] || [ "$sha" != none ] || fail "origin/{b} does not resolve"',
+        'owner=$(stat -c %u:%g "$ws")',
+        f'[ "$owner" = 0:0 ] || chown -R "$owner" "$gd" $([ "$existing" = yes ] || echo {o})',
+        "set -- $(git --version); version=${3:-unknown}",
+        'echo "GIT_SETUP repo=$repo committed=$committed existing_origin=$existing branch=$(g symbolic-ref -q --short HEAD || echo detached) head=$(g rev-parse HEAD) origin_main=$sha files=$(g ls-files | wc -l | tr -d \' \') git=$(command -v git) git_version=$version owner=$owner workdir=$ws"',
+    ]) + "\n"
+
+
+def workspace_git_record(stdout: str | None, exit_code: int | None, seconds: float, error: str | None = None, git_provided: str | None = None) -> dict[str, Any]:
+    """git-setup.json from the script's output and the wall seconds the host measured around it (git included when it
+    was copied in). error is set (and the trial stops with HE-FRONTIER-016) when the script failed or printed no
+    GIT_SETUP line, or when origin/main is not HEAD in a repository whose origin is ours."""
+    lines = (stdout or "").splitlines()
+    fields = dict(w.split("=", 1) for l in lines if l.startswith("GIT_SETUP ") for w in l.split(" ")[1:] if "=" in w)
+    why = next((l[len("GIT_SETUP_FAIL "):] for l in lines if l.startswith("GIT_SETUP_FAIL ")), None)
+    existing = next((l[len("GIT_EXISTING_ORIGIN "):] for l in lines if l.startswith("GIT_EXISTING_ORIGIN ")), None)
+    if error is None and (exit_code != 0 or not fields):
+        error = why or f"the setup exited {exit_code} with no GIT_SETUP line"
+    if error is None and existing is None and fields.get("head") != fields.get("origin_main"):
+        error = f"HEAD {fields.get('head')} is not origin/main {fields.get('origin_main')}"
+    origin_main = fields.get("origin_main")
+    return {
+        "schema": "frontier-harbor-workspace-git/2",
+        "exit": exit_code,
+        "seconds": round(seconds, 3),
+        "git_provided": git_provided,
+        "git": fields.get("git"),
+        "git_version": fields.get("git_version"),
+        "workdir": fields.get("workdir"),
+        "repo": fields.get("repo"),
+        "committed": fields.get("committed") == "yes" if fields else None,
+        "branch": fields.get("branch"),
+        "sha": fields.get("head"),
+        "existing_origin": existing,
+        "origin_main": None if origin_main in (None, "none") else origin_main,
+        "origin_main_resolves": None if not fields else origin_main not in (None, "none"),
+        "files_tracked": int(fields["files"]) if fields.get("files", "").isdigit() else None,
+        "owner": fields.get("owner"),
+        "excluded": [l[len("GIT_EXCLUDED "):] for l in lines if l.startswith("GIT_EXCLUDED ")],
+        **({"error": error} if error else {}),
+    }
+
+
+def workspace_git_agent_command() -> str:
+    """What agents.py runs as the agent, in its starting folder, at the end of agent setup: where git resolves on the
+    agent's PATH and what origin/main is."""
+    return 'echo "AGENT_GIT git=$(command -v git || echo none) origin_main=$(git rev-parse --verify -q origin/main 2>/dev/null || echo none) pwd=$(pwd -P)"'
 
 
 def model_spec(model: str) -> dict[str, Any]:

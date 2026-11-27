@@ -21,7 +21,10 @@
 # requests (scripts/frontier-harbor/web-tools-check.ts; exit 4 when a cell offers a web tool or has no captured tool list,
 # so a counted shard needs the smoke), then scripts/frontier-harbor/vm-run.sh for the shard
 # under its lease with --out ~/shard/results and the arguments after -- passed through (--stage <name>, --done <file>),
-# its output in ~/shard/results/run.stdout.log.
+# its output in ~/shard/results/run.stdout.log. A shard that installs gstack (a gstack_delivery preregistration with an
+# installed or skill cell) and no --gstack-bundle among those arguments gets --gstack-bundle ~/shard/gstack-bundle/<tgz>,
+# the tarball run-shard.sh --gstack-bundle uploaded (exit 2 when there is none). The bundle is built on the controller,
+# not here: its content digest depends on the build host (internal-task found a stock VM's git and missing C compiler change it).
 # Sealed flags are refused.
 #
 # --workload qm-driver: the smoke is harnesses/qm/gstack/s1e-probe.ts --dry-run without any key (the S1 fakes behind the
@@ -234,6 +237,12 @@ PY
   env -i "PATH=$PATH" "HOME=$HOME" "TZ=UTC" bun scripts/frontier-harbor/web-tools-check.ts --smoke "$shard/smoke/results" --prereg "$prereg" --name "$name" > "$shard/smoke/web-tools.log" 2>&1; web_tools_ok=$?
   while IFS= read -r l; do log "$l"; done < "$shard/smoke/web-tools.log"
   [ "$web_tools_ok" -eq 0 ] || { log "web-tools check failed (exit $web_tools_ok); the counted run does not start"; finish 4; }
+  if [[ " ${extra[*]-} " != *" --gstack-bundle "* ]] && python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); arm={c["id"]: c.get("arm", "none") for c in p["cells"]}; sys.exit(0 if "gstack_delivery" in p and any(arm.get(c, "none") != "none" for c in sys.argv[2].split(",")) else 1)' "$prereg" "$cells"; then
+    bundle=$(ls "$shard"/gstack-bundle/*.tgz 2>/dev/null | head -1)
+    [ -n "$bundle" ] || { log "shard $name installs gstack and no bundle was uploaded: pass run-shard.sh --gstack-bundle <the tgz gstack-bundle.sh built>"; finish 2; }
+    log "gstack bundle: $bundle (sha256 $(sha256sum "$bundle" | cut -d' ' -f1); vm-run.sh checks its content digest)"
+    extra+=(--gstack-bundle "$bundle")
+  fi
   phase run_start
   log "run: scripts/frontier-harbor/vm-run.sh --prereg $prereg --name $name --lease-usd $lease ${extra[*]-}"
   # The controller's SIGTERM reaches the whole process group; vm-run.sh traps it, drains its meter and writes its records.

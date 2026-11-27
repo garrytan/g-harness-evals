@@ -378,7 +378,8 @@ export interface UsageLine {
    *  `thinking.type` and `thinking.budget_tokens`, Gemini `thinkingConfig.thinkingLevel` (thinking_level) and `thinkingBudget` (thinking_budget_tokens),
    *  each only when its value is a known one; `unrecognized_effort_fields` names the request paths set to anything else. */
   reasoning_effort?: string; output_config_effort?: string; thinking_type?: string; thinking_budget_tokens?: number; thinking_level?: string; unrecognized_effort_fields?: string[];
-  /** Particle and OpenRouter: the model id the response echoed (particle-ai/particle-1 for a request naming particle-1). Recorded, never checked or priced. */
+  /** Particle, OpenRouter and OpenAI: the model id the response echoed (particle-ai/particle-1 for a request naming particle-1; for OpenAI the
+   *  Chat Completions `model` or the Responses `response.model`). Recorded and never priced; to-trials checks OpenAI's against the cell model (internal-task). */
   served_model?: string;
   /** OpenRouter only: the provider the response names (`provider`, DeepSeek on the pinned endpoint), the generation id (`id`,
    *  gen-...) and OpenRouter's own usage.cost in USD, recorded beside actual_usd (the price-table row) for reconciliation. */
@@ -553,8 +554,9 @@ export function routeCopies(body: Record<string, unknown> | undefined, texts: Ro
 }
 
 /** The model id a Chat Completions response echoed (the body's `model`, or the last streamed chunk's), when it is a plain id. */
-function echoedModel(text: string, streamed: boolean): string | undefined {
-  const pick = (v: unknown) => { const m = (v as { model?: unknown } | null)?.model; return typeof m === 'string' && /^[A-Za-z0-9._:/-]{1,200}$/.test(m) ? m : undefined; };
+function echoedModel(text: string, streamed: boolean, responses = false): string | undefined {
+  const named = (m: unknown) => (typeof m === 'string' && /^[A-Za-z0-9._:/-]{1,200}$/.test(m) ? m : undefined);
+  const pick = (v: unknown) => named((v as { model?: unknown } | null)?.model) ?? (responses ? named((v as { response?: { model?: unknown } } | null)?.response?.model) : undefined);
   if (!streamed) { try { return pick(JSON.parse(text)); } catch { return undefined; } }
   let last: string | undefined;
   for (const line of text.split(/\r?\n/)) {
@@ -583,7 +585,8 @@ export function openrouterRefusal(body: Record<string, unknown> | undefined, mod
   return null;
 }
 
-/** What a usage line records from a Particle, OpenRouter or xAI answer, read from the body or the stream's chunks. xAI: its usage.cost_in_usd_ticks. Particle: the
+/** What a usage line records from a Particle, OpenRouter, OpenAI or xAI answer, read from the body or the stream's chunks. xAI: its usage.cost_in_usd_ticks. OpenAI:
+ *  the echoed model only (internal-task). Particle: the
  *  echoed model, and on a non-2xx answer its error code and type. OpenRouter: the echoed model, the provider that answered and
  *  the generation id, the same error fields, and `served_elsewhere` on a 2xx answer that names a provider other than the
  *  pinned endpoint's, or names none and still reported usage (OPENROUTER_MODELS). Nothing else from the body is kept. */
@@ -592,6 +595,7 @@ function responseFacts(prov: ProviderName, model: string | null, text: string, s
     const ticks = (streamed ? sseUsage(text) : (jsonOrNull(text) as { usage?: Record<string, unknown> } | null)?.usage)?.cost_in_usd_ticks;
     return typeof ticks === 'number' && Number.isSafeInteger(ticks) && ticks >= 0 ? { cost_in_usd_ticks: ticks } : {};
   }
+  if (prov === 'openai') { const served = echoedModel(text, streamed, true); return served ? { served_model: served } : {}; }
   if (prov !== 'particle' && prov !== 'openrouter') return {};
   const served = echoedModel(text, streamed);
   const error = ok ? {} : upstreamError(jsonOrNull(text));

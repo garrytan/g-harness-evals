@@ -1,0 +1,124 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "gstack-cheap-model-install-check",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "gstack_delivery": {
+    "install": "bundle",
+    "kind": "build-check",
+    "workspace_git": true
+  },
+  "shared_order_seed": "gstack-cheap-model-2026-11",
+  "cap_usd": 50,
+  "reserve_usd": 0,
+  "concurrency": 4,
+  "cells": [
+    {
+      "id": "p1-hermes-none",
+      "model": "particle:particle-1",
+      "harness": "hermes",
+      "arm": "none",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 2
+      },
+      "stage": "core",
+      "priority": 1
+    },
+    {
+      "id": "p1-hermes-installed",
+      "model": "particle:particle-1",
+      "harness": "hermes",
+      "arm": "installed",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 2
+      },
+      "stage": "core",
+      "priority": 2
+    },
+    {
+      "id": "p1-hermes-told",
+      "model": "particle:particle-1",
+      "harness": "hermes",
+      "arm": "skill",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 2
+      },
+      "stage": "core",
+      "priority": 3
+    },
+    {
+      "id": "p1-openclaw-none",
+      "model": "particle:particle-1",
+      "harness": "openclaw",
+      "arm": "none",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 2
+      },
+      "stage": "core",
+      "priority": 4
+    },
+    {
+      "id": "p1-openclaw-installed",
+      "model": "particle:particle-1",
+      "harness": "openclaw",
+      "arm": "installed",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 2
+      },
+      "stage": "core",
+      "priority": 5
+    },
+    {
+      "id": "p1-openclaw-told",
+      "model": "particle:particle-1",
+      "harness": "openclaw",
+      "arm": "skill",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 2
+      },
+      "stage": "core",
+      "priority": 6
+    },
+    {
+      "id": "sol-hermes-installed",
+      "model": "openai:gpt-6.2-sol",
+      "harness": "hermes",
+      "arm": "installed",
+      "attempts": 1,
+      "tasks": {
+        "from": 0,
+        "to": 1
+      },
+      "stage": "core",
+      "priority": 7
+    }
+  ],
+  "shards": [
+    {
+      "name": "check",
+      "cells": [
+        "p1-hermes-none",
+        "p1-hermes-installed",
+        "p1-hermes-told",
+        "p1-openclaw-none",
+        "p1-openclaw-installed",
+        "p1-openclaw-told",
+        "sol-hermes-installed"
+      ],
+      "lease_usd": 40
+    }
+  ]
+}

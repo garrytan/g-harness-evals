@@ -1,0 +1,110 @@
+{
+  "schema": "gstack-cheap-model-mdd/1",
+  "run_id": "gstack-cheap-model-2026-11",
+  "rule": "MDD at 80% power and two-sided alpha 0.05 (and at the first Holm step of its family) for 52 tasks, Hermes and OpenClaw pooled, 3 gstack and 3 no-gstack attempts per task: (z(1-alpha/2) + z(0.8)) x sqrt(sum over harnesses of v (1/3 + 1/3) / (52 x 2^2)), v the mean per-task variance k(n-k)/(n(n-1)). The lift difference adds the two models' variance sums. Same formula as scripts/frontier-harbor/analyze.ts expectedMdd with lift_sd 0.",
+  "sources": {
+    "frontier": {
+      "what": "per-task variances of the frontier harness run (frontier-harness-2026-11), merged trials.jsonl with its lookup-fails list, from bun scripts/frontier-harbor/analyze.ts mdd --tasks 52 --attempts 3 --baseline-attempts 3 --lift-sd 0",
+      "variances": [
+        {
+          "cell": "opus-hermes",
+          "model": "anthropic:claude-opus-5-5",
+          "harness": "hermes",
+          "tasks": 52,
+          "mean_attempts": 2,
+          "variance": 0.048077
+        },
+        {
+          "cell": "opus-openclaw",
+          "model": "anthropic:claude-opus-5-5",
+          "harness": "openclaw",
+          "tasks": 52,
+          "mean_attempts": 2,
+          "variance": 0.048077
+        },
+        {
+          "cell": "sol-hermes",
+          "model": "openai:gpt-6.1-sol",
+          "harness": "hermes",
+          "tasks": 51,
+          "mean_attempts": 2,
+          "variance": 0.04902
+        },
+        {
+          "cell": "sol-openclaw",
+          "model": "openai:gpt-6.1-sol",
+          "harness": "openclaw",
+          "tasks": 52,
+          "mean_attempts": 2,
+          "variance": 0.048077
+        }
+      ]
+    },
+    "particle-1": {
+      "what": "uncounted checks before this preregistration: the first 6 tasks of the shared order, 3 trials per task per harness (installed, start-hook and told arms pooled). Hermes per-task variance 0.1667 (passes per task 1, 3, 3, 0, 2, 1 of 3); OpenClaw 0 (3, 3, 3, 0, 3, 3 of 3), floored at the frontier models value because 0 from 6 tasks is too low",
+      "hermes": 0.166667,
+      "openclaw": 0.048077
+    }
+  },
+  "borrowed_variance": {
+    "model": "openai:gpt-6.2-sol",
+    "label": "GPT-6.2 Sol",
+    "borrows_from": "openai:gpt-6.1-sol",
+    "why": "GPT-6.2 Sol has no trials on these 52 tasks in any earlier run, so the sol rows here use GPT-6.1 Sol's per-task variances from the frontier harness run (the sol-hermes and sol-openclaw cells above), and the reach row uses the GPT-6.1 Sol minus Opus gap. The run's own MDD for GPT-6.2 Sol comes from its trials, in gstack-analysis.json."
+  },
+  "variance_sums": {
+    "opus": 0.096154,
+    "sol": 0.097097,
+    "p1": 0.214744,
+    "p1_worst_case": 0.5
+  },
+  "lift": {
+    "opus": {
+      "mdd": 4.9,
+      "first_holm_step": 5.7
+    },
+    "sol": {
+      "mdd": 4.9,
+      "first_holm_step": 5.7
+    },
+    "p1": {
+      "mdd": 7.3,
+      "first_holm_step": 8.5
+    },
+    "p1_worst_case": {
+      "mdd": 11.2,
+      "first_holm_step": 13.0
+    }
+  },
+  "lift_difference": {
+    "p1_minus_opus": {
+      "mdd": 8.8,
+      "first_holm_step": 9.7
+    },
+    "p1_minus_sol": {
+      "mdd": 8.9,
+      "first_holm_step": 9.7
+    },
+    "p1_worst_case_minus_opus": {
+      "mdd": 12.2,
+      "first_holm_step": 13.5
+    },
+    "p1_worst_case_minus_sol": {
+      "mdd": 12.3,
+      "first_holm_step": 13.5
+    },
+    "limit": 10.0,
+    "primary": true,
+    "why": "the lift difference MDD at the estimates is at most 10 points"
+  },
+  "reach": {
+    "what": "particle-1 with gstack minus a frontier model without. Its noise is dominated by how two models differ task by task, estimated from the per-task Sol minus Opus gap (no gstack, Hermes and OpenClaw pooled, 2 attempts) in the frontier harness run",
+    "se_points": 5.3,
+    "mdd": 14.8,
+    "first_holm_step": 16.2,
+    "chance_within_10_if_equal": {
+      "one_sided_alpha_0.05": 0.6,
+      "one_sided_alpha_0.025": 0.48
+    }
+  }
+}

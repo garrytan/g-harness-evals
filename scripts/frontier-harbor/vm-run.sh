@@ -7,7 +7,7 @@
 #   scripts/frontier-harbor/vm-run.sh --prereg <prereg.json> --name <shard> --lease-usd <n> --out <results dir>
 #       --tb21 <terminal-bench-2-1 checkout at the pinned commit> | --tasks-src <dataset dir>
 #       [--stage <name> | --rerun <list.json> [--rerun-stage <name>] [--no-earlier-rerun]]
-#       [--done <trials.jsonl> ...] [--fake-upstream] [--uncounted <reason>]
+#       [--done <trials.jsonl> ...] [--fake-upstream] [--uncounted <reason>] [--gstack-bundle <gstack-bundle tgz>]
 #   scripts/frontier-harbor/vm-run.sh --canary-spec <spec.json> --name <shard> --lease-usd <n> --out <results dir> --tb21 <dir>
 #       [--fake-upstream]
 #
@@ -88,6 +88,11 @@
 # turn reads and deletes it. The file is removed on exit, and after the records are written bun scripts/cursor/key-scan.ts
 # scans --out for the value (exit 5 on a hit, HE-CURSOR-003). With --fake-upstream no key file is written, so each Cursor
 # cell stops at agent setup with HE-CURSOR-002 before any command runs in its container (the keyless install check).
+# --gstack-bundle (internal-task) is required when the preregistration has a gstack_delivery block and the shard has an
+# installed or skill cell, and refused otherwise, so a shard of none cells never holds the bundle. Before any trial,
+# delivery.py verify-bundle unpacks it once and checks its content digest and commit against delivery-pin.json bundle
+# (<out>/gstack-bundle-check.json; exit 3 when they differ), and plan.ts jobs hands the tarball and that receipt to each
+# install-arm job, whose agent refuses a tarball whose sha256 is not the receipt's.
 # Exit: 0, or Harbor's last non-zero exit code; 2 usage or plan refusal; 3 setup failure; 5 the Cursor key scan found the
 # value (on every path, interrupts and provider stops included, and over any other code); 6 the meter did not drain, only
 # when no other code applies (accounting.json and the log say so either way); 8 the provider stop (HE-PROVIDER-006); 129,
@@ -97,7 +102,7 @@ umask 077
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 . "$repo/scripts/ubicloud/provider-keys.sh"
-prereg="" name="" lease="" out="" tb21="" tasks_src="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0 canary=0 gemini_route=native
+prereg="" name="" lease="" out="" tb21="" tasks_src="" fake=0 uncounted="" stage="" rerun="" rerun_stage="" no_earlier_rerun=0 canary=0 gemini_route=native gstack_bundle=""
 done_files=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -116,6 +121,7 @@ while [ $# -gt 0 ]; do
     --fake-upstream) fake=1; shift ;;
     --uncounted) uncounted=$2; shift 2 ;;
     --gemini-cli-route) gemini_route=$2; shift 2 ;;
+    --gstack-bundle) gstack_bundle=$(cd "$(dirname "$2")" && pwd)/$(basename "$2"); shift 2 ;;
     *) echo "vm-run (frontier): unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -248,6 +254,16 @@ case " $harnesses " in
     fi ;;
   *) cursor_key="" ;;
 esac
+# the gstack bundle (gstack_delivery): checked once here, before any lease or trial, and handed to the install-arm jobs only
+gstack_installs=$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); s=next(x for x in p.get("shards", []) if x["name"] == sys.argv[2]); print(1 if "gstack_delivery" in p and any(c.get("arm", "none") != "none" for c in p["cells"] if c["id"] in s["cells"]) else 0)' "$prereg" "$name" 2>>"$out/run.log") || gstack_installs=0
+gstack_jobs=()
+if [ "$gstack_installs" = 1 ]; then
+  [ -n "$gstack_bundle" ] && [ -f "$gstack_bundle" ] || { say "the shard installs gstack (gstack_delivery): pass --gstack-bundle <the tarball gstack-bundle.sh built>; nothing ran"; exit 2; }
+  python3 "$here/delivery.py" verify-bundle "$gstack_bundle" "$out/gstack-bundle-check.json" 2>>"$out/run.log" | tee -a "$out/run-shard.log" || { say "the gstack bundle is not delivery-pin.json's bundle ($out/gstack-bundle-check.json); nothing ran"; exit 3; }
+  gstack_jobs=(--gstack-bundle "$gstack_bundle" --gstack-bundle-check "$out/gstack-bundle-check.json")
+elif [ -n "$gstack_bundle" ]; then
+  say "--gstack-bundle given, but the shard installs no gstack; a no-gstack shard never holds the bundle"; exit 2
+fi
 providers=$(printf '%s' "$models" | tr ',' '\n' | cut -d: -f1 | sort -u | tr '\n' ' ')
 if [ "$fake" -eq 0 ]; then
   for p in $providers; do
@@ -403,7 +419,7 @@ if [ -n "${cursor_key:+x}" ]; then
   cursor_args=(--cursor-key-file "$cursor_key_dir/key")
   say "cursor: CURSOR_API_KEY is set; it goes to the Cursor task containers only, through a 0600 key file outside $out"
 fi
-jobs=$(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts jobs --prereg "$prereg" --name "$name" --run "$run" --broker-url http://127.0.0.1:8791 ${plan_arg[@]+"${plan_arg[@]}"} ${done_args[@]+"${done_args[@]}"} ${cursor_args[@]+"${cursor_args[@]}"} 2>>"$out/run.log") || { say "plan.ts jobs refused (run.log)"; exit 3; }
+jobs=$(cd "$repo" && "${safe_env[@]}" bun scripts/frontier-harbor/plan.ts jobs --prereg "$prereg" --name "$name" --run "$run" --broker-url http://127.0.0.1:8791 ${plan_arg[@]+"${plan_arg[@]}"} ${done_args[@]+"${done_args[@]}"} ${cursor_args[@]+"${cursor_args[@]}"} ${gstack_jobs[@]+"${gstack_jobs[@]}"} 2>>"$out/run.log") || { say "plan.ts jobs refused (run.log)"; exit 3; }
 parallel=$(python3 -c 'import json,sys; print(1 if json.load(open(sys.argv[1])).get("parallel_cells") else 0)' "$prereg")
 if [ "$parallel" -eq 1 ]; then harbor_logs="$run/harbor-<job>.log (one per job)"; else harbor_logs="$run/harbor.log"; fi
 say "harbor: $(printf '%s\n' "$jobs" | grep -c .) job(s); logs in $harbor_logs and $run/jobs"

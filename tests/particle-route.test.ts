@@ -303,7 +303,7 @@ describe('a preregistration with a Particle-1 cell', () => {
 });
 
 describe('the other providers are unchanged', () => {
-  test('OpenAI chat streams still get include_usage and max_completion_tokens, Responses max_output_tokens, Anthropic max_tokens, Voyage no cap; no line carries served_model', async () => {
+  test('OpenAI chat streams still get include_usage and max_completion_tokens, Responses max_output_tokens, Anthropic max_tokens, Voyage no cap; only the OpenAI lines carry served_model', async () => {
     const bodies: Array<{ url: string; body: any }> = [];
     const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
       bodies.push({ url: String(url), body: JSON.parse(String(init!.body)) });
@@ -324,7 +324,21 @@ describe('the other providers are unchanged', () => {
       expect(Object.keys(bodies[3]!.body).sort()).toEqual(['input', 'model']);
       const usage = t.usage();
       expect(usage.map(l => [l.provider, l.outcome])).toEqual([['openai', 'forwarded'], ['openai', 'forwarded'], ['anthropic', 'forwarded'], ['voyage', 'forwarded']]);
-      expect(usage.every(l => !('served_model' in l))).toBe(true);
+      expect(usage.map(l => l.served_model ?? null)).toEqual(['echoed-model', 'echoed-model', null, null]);
+    } finally { t.proxy.stop(); }
+  });
+
+  test('a streamed OpenAI answer records the model it names: the last chat chunk, or the Responses response.model (internal-task)', async () => {
+    const sse = (events: unknown[]) => new Response(events.map(e => 'data: ' + JSON.stringify(e) + '\n\n').join('') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+    const fetchImpl = (async (url: RequestInfo | URL) => String(url).endsWith('/v1/responses')
+      ? sse([{ type: 'response.created', response: { model: 'gpt-6.2-sol-2026-11-01' } }, { type: 'response.completed', response: { model: 'gpt-6.2-sol-2026-11-01', usage: { input_tokens: 10, output_tokens: 5 } } }])
+      : sse([{ model: 'gpt-6.2-sol', choices: [] }, { model: 'gpt-6.2-sol', choices: [], usage: { prompt_tokens: 10, completion_tokens: 5 } }])) as unknown as typeof fetch;
+    const t = particleProxy({ maxOutputTokens: 1000 }, null, fetchImpl);
+    try {
+      expect((await (await t.post('/p/openai/v1/chat/completions', { model: 'gpt-6.2-sol', messages: [], stream: true })).text()).length).toBeGreaterThan(0);
+      expect((await (await t.post('/p/openai/v1/responses', { model: 'gpt-6.2-sol', input: 'hi', stream: true })).text()).length).toBeGreaterThan(0);
+      await Bun.sleep(50);
+      expect(t.usage().map(l => [l.route, l.served_model])).toEqual([['/v1/chat/completions', 'gpt-6.2-sol'], ['/v1/responses', 'gpt-6.2-sol-2026-11-01']]);
     } finally { t.proxy.stop(); }
   });
 
