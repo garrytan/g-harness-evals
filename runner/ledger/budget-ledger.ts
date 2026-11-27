@@ -1208,9 +1208,9 @@ export const HARNESS_CHAT_PRICES: Record<string, { input: number; output: number
 
 /** A price-table row as the ledger's chat rates on the UTC day of `at` (its rate change applied from its day on). */
 function chatRates(row: ModelPricing, at: Date | undefined): ChatPrice {
-  const { long_prompt: tier, ...rates } = priceOnDate(row, at);
-  if (!tier) return rates;
-  const { threshold_tokens: above, ...long } = tier;
+  const priced = priceOnDate(row, at);
+  if (!priced.long_prompt) return priced;
+  const { long_prompt: { threshold_tokens: above, ...long }, ...rates } = priced;
   return { ...rates, long: { ...long, above_input_tokens: above } };
 }
 
@@ -1222,12 +1222,15 @@ function chatRates(row: ModelPricing, at: Date | undefined): ChatPrice {
  */
 export const XAI_REASONING_CEILING: Record<string, number> = { 'grok-4.7': 500_000, 'grok-4.6': 500_000 };
 
-/** A dated API snapshot (`gpt-4o-2024-08-06`) is billed at its family's list price; a price-table row at its rates on the UTC day of `at` (priceOnDate). */
+/**
+ * A dated API snapshot (`gpt-4o-2024-08-06`) is billed at its family's list price; a price-table row at its rates on the
+ * UTC day of `at`, its long-prompt tier included (chatRates).
+ */
 export const chatPrice = (id: string, at?: Date): ChatPrice | undefined => {
   const undated = id.replace(/-\d{4}-?\d{2}-?\d{2}$/, '');
   const listed = canonicalLookup(id) ?? canonicalLookup(undated);
   return ownRow(CHAT_PRICE_OVERRIDES, id) ?? ownRow(CHAT_PRICE_OVERRIDES, undated) ?? ownRow(HARNESS_CHAT_PRICES, id) ?? ownRow(HARNESS_CHAT_PRICES, undated)
-    ?? (listed && priceOnDate(listed, at));
+    ?? (listed && chatRates(listed, at));
 };
 
 export interface RequestPrice {

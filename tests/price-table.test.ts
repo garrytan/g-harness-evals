@@ -43,6 +43,11 @@ const ADDED_AFTER_FIXTURE = ['openai:gpt-6-astra', 'anthropic:claude-fable-5-2',
  *  0.05x input, as Anthropic's pricing page lists them (tests/price-table-2026-11-16.test.ts). Their fixture cases are skipped here. */
 const REPRICED_AFTER_FIXTURE = ['anthropic:claude-sonnet-5-5'];
 
+/** Cases the fixture recorded at short-context rates above the long-prompt threshold (internal-task): the bare id claude-haiku-5-5
+ *  misses the ledger's own row, so chatPrice priced it from the table, whose long tier its fallback dropped. They must now
+ *  price in the ledger exactly as the fixture's case for anthropic:claude-haiku-5-5 does, and in the table as before. */
+const LONG_TIER_FIXED = ['alias "claude-haiku-5-5" large-cached', 'alias "claude-haiku-5-5" above-threshold', 'alias "claude-haiku-5-5" above-threshold-cached'];
+
 /** Same shape and keys; every number within `relTol` of its counterpart (0 means bit-identical). */
 function close(actual: unknown, expected: unknown, relTol: number, path = ''): string[] {
   if (typeof expected === 'number' && typeof actual === 'number') {
@@ -68,7 +73,15 @@ describe('the dated price table changes no effective price', () => {
 
   test('every request prices identically through the table and the ledger', () => {
     const changed: string[] = [];
-    for (const c of fixture.cases.filter(c => !REPRICED_AFTER_FIXTURE.includes(c.row ?? ''))) {
+    const byId = new Map(fixture.cases.map(c => [c.id, c]));
+    const fixed = (c: (typeof fixture.cases)[number]) => {
+      if (!LONG_TIER_FIXED.includes(c.id)) return c;
+      const canonical = byId.get(`${c.row} ${c.id.split(' ').at(-1)}`)!;
+      expect(canonical.request).toEqual(c.request);
+      expect(canonical.expected.ledger).not.toEqual(c.expected.ledger);
+      return { ...c, expected: { ...c.expected, ledger: canonical.expected.ledger } };
+    };
+    for (const c of fixture.cases.filter(c => !REPRICED_AFTER_FIXTURE.includes(c.row ?? '')).map(fixed)) {
       const actual = evaluate(c.model, c.request);
       if (JSON.stringify(actual) === JSON.stringify(c.expected)) continue;
       changed.push(c.id);

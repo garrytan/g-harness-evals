@@ -56,9 +56,12 @@ type Rates = { input: number; output: number; cache_read?: number; cache_write?:
 // 2026-10-07, but the proxy billed $0.20 until #469's correction, and a runner still on older code billed $0.20 after
 // that too, so no date tells them apart. A row splits at whichever of the two rates its actual_usd was charged at: the one
 // that leaves the smaller remainder. A tie goes to the earlier rate: a row with no cache_write_tokens has its cache writes
-// inferred, so it reconciles at either rate, and such rows come from proxy code older than the correction.
-const CHARGED_BEFORE: Record<string, Partial<Rates>> = {
+// inferred, so it reconciles at either rate, and such rows come from proxy code older than the correction. Grok 4.6 has no
+// ledger row of its own, and until internal-task the proxy priced it from the table without its long tier, so a prompt above
+// 199,999 tokens was billed at the short rates.
+const CHARGED_BEFORE: Record<string, Partial<Rates> & { long?: undefined }> = {
   'anthropic:claude-sonnet-5-5': { cache_read: 0.2 },
+  'xai:grok-4.6': { long: undefined },
 };
 export interface Components { requests: number; uncached_input_tokens: number; cache_read_tokens: number; cache_write_tokens: number;
   output_tokens: number; uncached_input_usd: number; cache_read_usd: number; cache_write_usd: number; output_usd: number;

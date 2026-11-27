@@ -257,3 +257,18 @@ describe('cost split at the Sonnet 5.5 cache-read price a line was charged, what
     }
   });
 });
+
+describe('cost split for Grok 4.6 above 199,999 prompt tokens, at the rate a line was charged (internal-task)', () => {
+  const xai = (usd: number) => row({ provider: 'xai', route: '/v1/chat/completions', model: 'grok-4.6', input_tokens: 200_000, output_tokens: 10, actual_usd: usd });
+  test('a line the proxy billed at the short rates before the fix splits at the short rates', () => {
+    const c = splitRow(xai((200_000 * 2 + 10 * 6) / 1e6));
+    expect([c.uncached_input_usd, c.output_usd]).toEqual([200_000 * 2 / 1e6, 10 * 6 / 1e6]);
+    expect(Math.abs(c.remainder_usd)).toBeLessThan(1e-12);
+  });
+
+  test('a line billed at the long rates splits at the long rates', () => {
+    const c = splitRow(xai((200_000 * 4 + 10 * 12) / 1e6));
+    expect([c.uncached_input_usd, c.output_usd]).toEqual([200_000 * 4 / 1e6, 10 * 12 / 1e6]);
+    expect(Math.abs(c.remainder_usd)).toBeLessThan(1e-12);
+  });
+});
