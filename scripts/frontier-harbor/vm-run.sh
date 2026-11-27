@@ -155,6 +155,7 @@ run_scrubbed() {
 pids=() harbor_pid="" journal_pid="" lane_pids=() harbor_started=0 finished=0 control_token="" accounting_incomplete=0 rc="" metered=1 cursor_key_dir=""
 cleanup() {
   [ -z "$cursor_key_dir" ] || rm -rf "$cursor_key_dir"
+  docker ps -aq --filter label=harness-eval.frontier-qm 2>/dev/null | xargs -r docker rm -f -v >/dev/null 2>&1 || true
   [ -z "$harbor_pid" ] || kill "$harbor_pid" 2>/dev/null || true
   for p in ${lane_pids[@]+"${lane_pids[@]}"}; do kill "$p" 2>/dev/null || true; done
   for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done
@@ -256,6 +257,17 @@ fi
 gstack_env=("${safe_env[@]}")
 [ -z "${DOCKER_HOST:-}" ] || gstack_env+=("DOCKER_HOST=$DOCKER_HOST")
 (cd "$repo" && "${gstack_env[@]}" bun scripts/frontier-harbor/gstack-build.ts --prereg "$prereg" --name "$name" --run "$run" 2>"$out/gstack-build.err") | tee -a "$out/run-shard.log" || { say "gstack arms refused: $(tail -n 1 "$out/gstack-build.err")"; exit 2; }
+# 1c. the QM images (internal-task), before any lease: a shard with a qm cell builds QM core and its source stage from
+# harnesses/qm/Dockerfile at pin.json's commit and pulls the pinned Postgres image; agents.py FrontierQm checks all three
+# (the core image's harness-eval.commit label, the exec daemon's sha256) and refuses a trial without them (HE-QM-001).
+case " $harnesses " in
+  *" qm "*)
+    read -r qm_commit qm_pg <<< "$(python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))["harnesses"]["qm"]; print(h["commit"], h["postgres_image"])' "$here/pin.json")"
+    (cd "$repo/harnesses/qm" && "${gstack_env[@]}" docker build -q --build-arg "QM_COMMIT=$qm_commit" --target src -t "harness-eval/qm-src:${qm_commit:0:12}" -f Dockerfile . \
+      && "${gstack_env[@]}" docker build -q --build-arg "QM_COMMIT=$qm_commit" -t "harness-eval/qm:${qm_commit:0:12}" -f Dockerfile . && "${gstack_env[@]}" docker pull -q "$qm_pg") >> "$out/qm-build.log" 2>&1 \
+      || { say "building the QM images failed (qm-build.log); nothing ran"; exit 2; }
+    say "qm: harness-eval/qm:${qm_commit:0:12} and harness-eval/qm-src:${qm_commit:0:12} built at $qm_commit, $qm_pg pulled" ;;
+esac
 say "shard $name: run $run_id, $(printf '%s' "$ids" | tr ',' '\n' | grep -c .) task(s), providers $providers, lease \$$lease$([ "$fake" -eq 1 ] && echo ', fake upstream (keyless)')$([ -n "$uncounted" ] && echo ", uncounted")"
 
 # 2. Harbor and every package around it from the hashed lock file (harbor-requirements.txt: --require-hashes, wheels only,

@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 PIN = json.loads((HERE / "pin.json").read_text())
 EFFORT = PIN["effort"]["level"]
-HARNESSES = ("claude-code", "codex", "hermes", "openclaw", "pi", "mini-swe-agent", "dsh", "cursor", "gemini-cli", "grok-build", "muse-code")
+HARNESSES = ("claude-code", "codex", "hermes", "openclaw", "pi", "mini-swe-agent", "dsh", "cursor", "gemini-cli", "grok-build", "muse-code", "qm")
 CLAUDE_MODEL_VARS = (
     "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL",
@@ -53,7 +53,7 @@ OPENCLAW_OPENROUTER_DENY = ["music_generate", "video_generate"]
 # plugin, pinned file by file in pin.json, adds both (amendment 1 of frontier-shootout-2026-11).
 HERMES_OPENROUTER_PLUGIN = PIN["harnesses"]["hermes"]["openrouter_plugin"]
 PROVIDERS = {"claude-code": ("anthropic",), "codex": ("openai",), "dsh": ("anthropic", "openai", "particle", "openrouter"), "cursor": ("anthropic",),
-             "gemini-cli": ("google",), "grok-build": ("xai",), "muse-code": ("openrouter",),
+             "gemini-cli": ("google",), "grok-build": ("xai",), "muse-code": ("openrouter",), "qm": ("anthropic", "openai", "openrouter"),
              **{h: ("anthropic", "openai", "particle", "openrouter", "google", "xai") for h in ("hermes", "openclaw", "pi")}}
 # Amendment 2 of frontier-shootout-2026-11: Gemini 4 Carbon and Hydrogen in Hermes, OpenClaw and Pi go to Google's Gemini API on
 # the proxy's google route, each through the harness's own Gemini provider. Hermes v0.23.1 runs its native Gemini client only for
@@ -148,6 +148,9 @@ def housekeeping_models(harness: str, model: str) -> list[str]:
         return [f"google:{m}" for m in GEMINI_CLI_HOUSEKEEPING]
     if harness == "grok-build":
         return [f"xai:{GROK_HOUSEKEEPING}"]
+    if harness == "qm":
+        import qm_harbor
+        return qm_harbor.housekeeping_models(model)
     return []
 
 
@@ -429,6 +432,8 @@ def harbor_kwargs(harness: str, model: str) -> dict[str, Any]:
         return {"reasoning_effort": EFFORT, "disable_web_search": True}
     if harness == "muse-code":
         return {"reasoning_effort": EFFORT}
+    if harness == "qm":
+        return {}
     raise ValueError(f"unknown harness {harness}")
 
 
@@ -504,6 +509,13 @@ def container_env(harness: str, model: str, url: str, token: str, gstack: dict[s
     gets nothing here: it has no proxy route, and CURSOR_API_KEY reaches its CLI from a file (cursor_run_command)."""
     if harness == "cursor":
         check_cell(harness, model)
+        return {}
+    if harness == "qm":
+        import qm_harbor
+        route = check_cell(harness, model)["provider"]
+        qm_harbor.route(model)
+        if url.rstrip("/").rsplit("/", 1)[-1] != route:
+            raise ValueError(f"a qm cell on {model} runs on the proxy's {route} route <proxy>/<slot>/{route}, not {url}")
         return {}
     spec = model_spec(model)
     anthropic = spec["provider"] == "anthropic"
@@ -1308,6 +1320,16 @@ def _harness_settings(harness: str, model: str, version: str | None = None) -> d
                 "OpenRouter's Responses API reports no served provider in the bodies its docs show, so the proxy's served-elsewhere check runs only when a body names one; the provider pin is what keeps every request on Meta's endpoint",
                 "no MCP server: TB2.1 tasks have none; the working directory is the task's",
             ])
+    if harness == "qm":
+        import qm_harbor
+        fields = qm_harbor.settings_fields(model)
+        return _record(harness, model, version,
+            endpoint={
+                "route": f"<metering proxy>/<trial slot>/{spec['provider']}" + ("" if anthropic else "/v1") + " in QM core's environment (ANTHROPIC_BASE_URL, OPENAI_BASE_URL, or the custom provider's baseUrl on OpenRouter)",
+                "credential": "per-trial dummy token trial-token:<trial>.<32 hex>, bound by broker.ts, in QM core's environment only (a 0600 docker env file deleted once core starts; on OpenRouter core passes it to the custom provider registration from that environment); the task container gets no credential",
+                "slot_models": slot_models(harness, model),
+            },
+            **fields)
     raise ValueError(f"unknown harness {harness}")
 
 
@@ -1341,6 +1363,9 @@ def render(harness: str, model: str, url: str, token: str, gstack: dict[str, Any
         out["config"] = grok_config(model, url)
     if harness == "muse-code":
         out["config"] = muse_settings(model, url)
+    if harness == "qm":
+        import qm_harbor
+        out["config"] = {"admin_calls": qm_harbor.admin_calls(model, url)}
     if harness == "cursor":
         out["config"] = cursor_cli_config()
         out["hooks"] = cursor_hooks(CURSOR_RUN_DIR + "/tool-hook.sh", CURSOR_LOG_DIR + "/" + CURSOR_HOOK_LOG)

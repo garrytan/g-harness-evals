@@ -91,7 +91,7 @@ export function placeholderArgs(schema: any): Record<string, unknown> {
   return out;
 }
 
-/** The shell tools the five frontier harnesses declare, and the arguments each takes for one command. */
+/** The shell tools the five frontier harnesses declare (and QM's execute), and the arguments each takes for one command. */
 export const SHELL_TOOLS: Record<string, (command: string) => Record<string, unknown>> = {
   Bash: (command) => ({ command, description: 'Print a probe line' }),
   bash: (command) => ({ command }),
@@ -99,6 +99,7 @@ export const SHELL_TOOLS: Record<string, (command: string) => Record<string, unk
   shell: (command) => ({ command: ['bash', '-c', command] }),
   terminal: (command) => ({ command }),
   exec: (command) => ({ command }),
+  execute: (command) => ({ command, purpose: 'Print a probe line' }),
 };
 /** The probe command and its output; the output is not a substring of the command, so a body holding it holds the tool result. */
 export const PROBE_COMMAND = 'echo he-delivery-probe-$((6*7))';

@@ -1,0 +1,60 @@
+{
+  "schema": "frontier-harbor/1",
+  "run_id": "frontier-install-check-qm",
+  "task_list": {
+    "file": "scripts/frontier-harbor/pin.json"
+  },
+  "shared_order_seed": "harn50-frontier-2026-11-07",
+  "cap_usd": 300,
+  "reserve_usd": 30,
+  "concurrency": 3,
+  "cells": [
+    {
+      "id": "qm-opus",
+      "model": "anthropic:claude-opus-5-5",
+      "harness": "qm",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 1
+    },
+    {
+      "id": "qm-sol",
+      "model": "openai:gpt-6.1-sol",
+      "harness": "qm",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 2
+    },
+    {
+      "id": "qm-carbon",
+      "model": "openrouter:google/gemini-4-carbon",
+      "harness": "qm",
+      "attempts": 1,
+      "tasks": {
+        "from": 4,
+        "to": 5
+      },
+      "stage": "core",
+      "priority": 3
+    }
+  ],
+  "shards": [
+    {
+      "name": "install-check-qm",
+      "cells": [
+        "qm-opus",
+        "qm-sol",
+        "qm-carbon"
+      ],
+      "lease_usd": 200
+    }
+  ]
+}

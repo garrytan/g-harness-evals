@@ -21,6 +21,14 @@ RUN apk add --no-cache git \
     && test "$(git rev-parse HEAD)" = "${QM_COMMIT}" \
     && echo "qm checkout $(git rev-parse HEAD)" \
     && rm -rf /src/.git
+# Core files that come and go between QM commits (plugins/web-ui/server and app-edit.ts until 2026-11-07,
+# desktop/assets/becalmed-off-halfway-rock.webp after) are staged only when QM's own deploy/core/Dockerfile at the
+# commit copies them, so one Dockerfile builds the pin and newer main the way QM builds each.
+RUN mkdir -p /qm-optional && cd /src \
+    && for p in plugins/web-ui/server plugins/web-ui/src/app-edit.ts desktop/assets/becalmed-off-halfway-rock.webp; do \
+         if grep -q "^COPY $p " deploy/core/Dockerfile; then mkdir -p "/qm-optional/$(dirname "$p")" && cp -a "$p" "/qm-optional/$p" || exit 1; fi; \
+       done \
+    && echo "qm optional core files: $(cd /qm-optional && find . -maxdepth 4 -mindepth 1 | sort | tr '\n' ' ')"
 
 FROM ${NODE_IMAGE} AS connector-sdk-build
 WORKDIR /app
@@ -64,6 +72,7 @@ COPY --from=src /src/plugins/onboarding ./plugins/onboarding
 COPY --from=src /src/plugins/chassis ./plugins/chassis
 COPY --from=src /src/plugins/auth/src ./plugins/auth/src
 COPY --from=src /src/plugins/portal/src ./plugins/portal/src
+COPY --from=src /qm-optional/ ./
 COPY --from=web-ui-build /app/plugins/web-ui/dist-web ./plugins/web-ui/dist-web
 COPY --from=src /src/tsconfig.json ./
 

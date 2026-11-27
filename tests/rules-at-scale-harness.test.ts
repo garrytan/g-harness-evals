@@ -192,7 +192,7 @@ describe('agents_rules.py on the Harbor stand-in (tests/fixtures/frontier-delive
     expect(wiring['openclaw extra rules file']).toMatchObject({ code: 'HE-RULES-004', agent_ran: false });
     expect(wiring['claude-code hook broken']).toMatchObject({ code: 'HE-RULES-005', agent_ran: false });
     expect(wiring['pi hook']).toMatchObject({ code: 'HE-RULES-003', refused_at: 'init' });
-    expect(wiring['qm stub']).toEqual({ code: 'HE-RULES-009', frontier_qm_importable: false });
+    expect(wiring['qm stub']).toEqual({ code: 'HE-RULES-009', frontier_qm_importable: true });
   });
 });
 

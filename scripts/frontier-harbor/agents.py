@@ -27,7 +27,10 @@ import asyncio
 import hashlib
 import json
 import os
+import re
+import secrets
 import shlex
+import shutil
 import tempfile
 import urllib.request
 from datetime import datetime, timezone
@@ -53,6 +56,7 @@ from harbor.models.agent.context import AgentContext
 
 import delivery as dl
 import frontier_settings as fs
+import qm_harbor as qm
 
 
 def cell_model(model_name: str | None) -> str:
@@ -788,5 +792,266 @@ class FrontierMuseCode(_Frontier, MuseCode):
         self._frontier_checks["binary"] = fs.binary_check(self.HARNESS, getattr(res, "stdout", None), getattr(self, "_version", None))
 
 
+class FrontierQm(_Frontier, BaseInstalledAgent):
+    """QM (yc-software/qm at the pin harnesses/qm/pin.json names) as a Harbor installed agent (internal-task). QM is a service:
+    Postgres and QM core run as two containers on the VM in the task container's network namespace, and QM's own exec
+    daemon runs in the task container, so every command QM runs lands there (qm_harbor.py says how). Setup checks the
+    images and the daemon's sha256, starts the daemon, Postgres and core, sets the org runtime (the cell model at effort
+    high), an empty command policy and, on OpenRouter, the custom provider, then creates QM's sandbox and makes it the
+    default, which provisions it in the task container. The turn is one DM to core; the reply is /logs/agent/qm-turn.json.
+    Core's containers are removed and the daemon stopped after the turn, or at a failed setup.
+
+    The per-trial token goes to core alone, in a 0600 docker env file deleted once core starts: container_env gives the
+    task container nothing, so no QM credential is in it."""
+
+    HARNESS = "qm"
+    options_model = InstalledAgentOptions
+    QM_COMMIT = qm.COMMIT
+    QM_DAEMON_SHA256 = qm.pin()["daemon_sha256"]
+
+    @staticmethod
+    def name() -> str:
+        return "frontier-qm"
+
+    def get_version_command(self) -> str | None:
+        return None
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self._qm_slot: dict[str, str] = {}
+        self._qm_names: list[str] = []
+        self._qm_core = ""
+        self._qm_dir: Path | None = None
+        self._qm_secrets: list[str] = []
+        super().__init__(*args, **kwargs)
+
+    def _write_settings(self) -> None:
+        super()._write_settings()
+        if self.QM_COMMIT == qm.COMMIT:
+            return
+        path = Path(self.logs_dir) / "harness_settings.json"
+        settings = json.loads(path.read_text())
+        settings["qm"].update(commit=self.QM_COMMIT, image=qm.images(self.QM_COMMIT)[0], daemon_sha256=self.QM_DAEMON_SHA256)
+        settings["differences_from_pin"].append(f"QM at {self.QM_COMMIT}, set by {type(self).__name__}.QM_COMMIT, not pin.json's {qm.COMMIT}")
+        path.write_text(json.dumps(settings, indent=2) + "\n")
+
+    async def _frontier_bind(self) -> None:
+        if not self._frontier_broker:
+            raise RuntimeError("HE-FRONTIER-003 no broker_url: the frontier agent classes run only under scripts/frontier-harbor/vm-run.sh")
+        job = Path(self.logs_dir).parent.parent.name
+        slot = await asyncio.to_thread(bind_slot, self._frontier_broker, self.frontier_trial, self.HARNESS, self._frontier_model, self._frontier_cell, self._frontier_attempt, job)
+        self._frontier_url = slot["base_url"]
+        self._qm_slot = slot
+        self._qm_secrets = [slot["token"]]
+        self._extra_env.update(fs.container_env(self.HARNESS, self._frontier_model, slot["base_url"], slot["token"]))
+
+    @staticmethod
+    async def _docker(*args: str, stdin: bytes | None = None, timeout: float = 300, env: Mapping[str, str] | None = None) -> tuple[int, str, str]:
+        proc = await asyncio.create_subprocess_exec("docker", *args, stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
+                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                                                    env={**os.environ, **env} if env else None)
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(stdin), timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return 124, "", f"docker {args[0]} timed out after {timeout:.0f}s"
+        except asyncio.CancelledError:
+            proc.kill()
+            raise
+        return proc.returncode or 0, out.decode(errors="replace"), err.decode(errors="replace")
+
+    async def _qm_call(self, *args: str, body: Any = None, timeout: float = 300) -> dict[str, Any]:
+        data = (body if isinstance(body, str) else json.dumps(body)).encode() if body is not None else b""
+        code, out, err = await self._docker("exec", "-i", self._qm_core, "node", f"{qm.MOUNT}/qm-call.mjs", *args, stdin=data, timeout=timeout)
+        try:
+            parsed = json.loads(out.strip().splitlines()[-1]) if out.strip() else {}
+        except json.JSONDecodeError:
+            parsed = {}
+        return {**parsed, "exit": code, **({"stderr": qm.redact(err, self._qm_secrets)[-500:]} if code else {})}
+
+    async def install(self, environment: BaseEnvironment) -> None:
+        image, src_image = qm.images(self.QM_COMMIT)
+        if self.QM_COMMIT == qm.COMMIT and self._version not in (None, qm.QM["version"]):
+            raise RuntimeError(f"HE-FRONTIER-002 the job asks for QM {self._version}, not the pinned {qm.QM['version']}")
+        images = {}
+        for ref, want in ((image, self.QM_COMMIT), (src_image, None), (qm.pin()["postgres_image"], None)):
+            code, out, _ = await self._docker("image", "inspect", "-f", '{{if .Config.Labels}}{{index .Config.Labels "harness-eval.commit"}}{{end}}', ref, timeout=60)
+            images[ref] = out.strip() if code == 0 else None
+            if code != 0 or (want and out.strip() != want):
+                self._frontier_checks["qm_images"] = images
+                raise RuntimeError(f"HE-QM-001 image {ref} is missing{' or not built at ' + want if want else ''} on this machine: vm-run.sh builds the QM images before the first QM trial")
+        self._frontier_checks["qm_images"] = images
+        code, daemon, err = await self._docker("run", "--rm", "--network", "none", "--entrypoint", "cat", src_image, qm.DAEMON_SOURCE, timeout=60)
+        digest = hashlib.sha256(daemon.encode()).hexdigest()
+        self._frontier_checks["qm_daemon_sha256"] = digest
+        if code != 0 or digest != self.QM_DAEMON_SHA256:
+            raise RuntimeError(f"HE-QM-001 {qm.DAEMON_SOURCE} in {src_image} is not the pinned sha256 {self.QM_DAEMON_SHA256} ({digest})")
+        code, title_src, _ = await self._docker("run", "--rm", "--network", "none", "--entrypoint", "cat", src_image, qm.TITLE_SOURCE, timeout=60)
+        titles = qm.title_models(title_src) if code == 0 else []
+        if not titles:
+            raise RuntimeError(f"HE-QM-001 found no session-title model in {qm.TITLE_SOURCE} in {src_image}, so the title calls' models cannot be checked against this cell's proxy slot")
+        self._frontier_checks["qm_title_models"] = titles
+        provider = qm.route(self._frontier_model)["provider"]
+        allowed = fs.slot_models(self.HARNESS, self._frontier_model)
+        missing = [t for t in titles if qm.title_model_provider(t) == provider and f"{provider}:{t}" not in allowed]
+        if missing:
+            raise RuntimeError(f"HE-QM-001 QM at {self.QM_COMMIT} writes session titles with {', '.join(missing)} ({qm.TITLE_SOURCE}), which this cell's proxy slot does not allow: add it to qm_harbor.HOUSEKEEPING")
+        if qm.route(self._frontier_model)["custom"] is None:
+            code, registry_src, _ = await self._docker("run", "--rm", "--network", "none", "--entrypoint", "cat", src_image, qm.REGISTRY_SOURCE, timeout=60)
+            name = fs.model_spec(self._frontier_model)["name"]
+            self._frontier_checks["qm_registry_has_model"] = code == 0 and name in qm.registry_models(registry_src)
+            if not self._frontier_checks["qm_registry_has_model"]:
+                raise RuntimeError(f"HE-QM-001 QM at {self.QM_COMMIT} has no {name} in its model registry ({qm.REGISTRY_SOURCE}): run the cell at a QM commit that has it")
+        await self.ensure_system_dependencies(environment, ("curl", "ca_certificates"))
+        await self.exec_as_root(environment, command=f"rm -rf {qm.DAEMON_DIR} && mkdir -p {qm.DAEMON_DIR}" + (f" && chown {shlex.quote(str(environment.default_user))} {qm.DAEMON_DIR}" if getattr(environment, "default_user", None) is not None else ""))
+        await self._upload_config_text(environment, content=daemon, remote_path=f"{qm.DAEMON_DIR}/agent.mjs", filename="agent.mjs")
+        await self.exec_as_agent(environment, command=(
+            f"set -euo pipefail; {nvm_node_install_snippet(int(qm.pin()['node_major']))} >/dev/null && "
+            f'ln -sf "$(nvm which {qm.pin()["node_major"]})" {qm.NODE_BIN} && {qm.NODE_BIN} -v && sha256sum {qm.DAEMON_DIR}/agent.mjs'))
+
+    async def _qm_target(self, environment: BaseEnvironment) -> str:
+        from harbor.environments.docker.docker import _sanitize_docker_compose_project_name
+
+        project = _sanitize_docker_compose_project_name(environment.session_id)
+        service = environment._EGRESS_CONTROL_SERVICE_NAME if getattr(environment, "_enable_egress_control", False) else "main"
+        code, out, err = await self._docker("ps", "-q", "--filter", f"label=com.docker.compose.project={project}", "--filter", f"label=com.docker.compose.service={service}", timeout=60)
+        ids = out.split()
+        if code != 0 or len(ids) != 1:
+            raise RuntimeError(f"HE-QM-002 found {len(ids)} running {service} containers for compose project {project} (want 1): {err.strip()[-300:]}")
+        self._frontier_checks["qm_network"] = {"joined": service, "compose_project": project}
+        return ids[0]
+
+    async def _frontier_after_install(self, environment: BaseEnvironment) -> None:
+        res = await environment.exec(command=f"{qm.NODE_BIN} -v; id -u; pwd")
+        words = (res.stdout or "").split()
+        self._frontier_checks.update({"node": words[0] if words else None, "task_uid": words[1] if len(words) > 1 else None, "task_workdir": words[2] if len(words) > 2 else None})
+        try:
+            await self._qm_start(environment)
+        except BaseException:
+            await self._qm_stop(environment)
+            raise
+
+    async def _qm_start(self, environment: BaseEnvironment) -> None:
+        checks = self._frontier_checks
+        await self.exec_as_root(environment, command=qm.link_command())
+        res = await environment.exec(command=qm.daemon_command())
+        checks["qm_daemon"] = (res.stdout or "").strip()[-500:]
+        if res.return_code != 0 or '"ok":true' not in (res.stdout or ""):
+            raise RuntimeError(f"HE-QM-002 QM's exec daemon did not start in the task container: {(res.stdout or '')[-300:]} {(res.stderr or '')[-300:]}")
+        target = await self._qm_target(environment)
+        tag = Path(environment.session_id).name.lower()
+        tag = re.sub(r"[^a-z0-9_.-]", "-", tag)[:60]
+        pg, core = f"he-qm-{tag}-pg", f"he-qm-{tag}-core"
+        self._qm_names = [core, pg]
+        self._qm_core = core
+        pg_password, secret, connector = secrets.token_hex(16), secrets.token_hex(32), secrets.token_hex(32)
+        self._qm_secrets += [pg_password, secret, connector]
+        code, _, err = await self._docker("run", "-d", "--name", pg, "--label", f"{qm.LABEL}={self.frontier_trial}", "--network", f"container:{target}",
+                                          "--tmpfs", "/var/lib/postgresql/data", "-e", "POSTGRES_DB=qm", "-e", "POSTGRES_USER=postgres", "-e", "POSTGRES_PASSWORD",
+                                          "-e", "POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=scram-sha-256",
+                                          qm.pin()["postgres_image"], "-c", f"port={qm.PORTS['postgres']}", timeout=120, env={"POSTGRES_PASSWORD": pg_password})
+        if code != 0:
+            raise RuntimeError(f"HE-QM-002 Postgres did not start: {err.strip()[-300:]}")
+        for _ in range(60):
+            if (await self._docker("exec", pg, "pg_isready", "-h", "127.0.0.1", "-p", str(qm.PORTS["postgres"]), "-U", "postgres", "-d", "qm", timeout=30))[0] == 0:
+                break
+            await asyncio.sleep(1)
+        else:
+            raise RuntimeError("HE-QM-002 Postgres was not ready after 60 s")
+        code, _, err = await self._docker("exec", pg, "psql", "-h", "127.0.0.1", "-p", str(qm.PORTS["postgres"]), "-U", "postgres", "-d", "qm", "-w", "-c", "select 1", timeout=30)
+        self._frontier_checks["qm_pg_passwordless"] = "accepted" if code == 0 else err.strip()[-200:]
+        if code == 0:
+            raise RuntimeError("HE-QM-002 Postgres accepted a connection from 127.0.0.1 with no password, so the task container could reach QM's database")
+        self._qm_dir = Path(tempfile.mkdtemp(prefix="frontier-qm-"))
+        mounts = self._qm_dir / "mounts"
+        mounts.mkdir()
+        for src, name, mode in ((qm.SHIM, "docker", 0o755), (qm.CALL, "qm-call.mjs", 0o644)):
+            (mounts / name).write_bytes(src.read_bytes())
+            (mounts / name).chmod(mode)
+        mounts.chmod(0o755)
+        envf = self._qm_dir / "core.env"
+        envf.touch(mode=0o600)
+        envf.write_text(qm.env_file(qm.core_env(self._frontier_model, self._qm_slot["base_url"], self._qm_slot["token"], secret, connector, pg_password)))
+        try:
+            code, _, err = await self._docker("run", "-d", "--name", core, "--label", f"{qm.LABEL}={self.frontier_trial}", "--network", f"container:{target}",
+                                              "--env-file", str(envf), "-v", f"{mounts}:{qm.MOUNT}:ro", qm.images(self.QM_COMMIT)[0], timeout=120)
+        finally:
+            envf.unlink(missing_ok=True)
+        if code != 0:
+            raise RuntimeError(f"HE-QM-002 QM core did not start: {qm.redact(err, self._qm_secrets).strip()[-300:]}")
+        for i in range(120):
+            health = await self._qm_call("health", timeout=30)
+            if health.get("http") == 200:
+                checks["qm_core_ready_after_s"] = i
+                break
+            await asyncio.sleep(1)
+        else:
+            raise RuntimeError("HE-QM-002 QM core did not answer /healthz within 120 s (qm-core.log)")
+        admin = checks.setdefault("qm_admin", {})
+        for call in qm.admin_calls(self._frontier_model, self._qm_slot["base_url"]):
+            out = await self._qm_call("admin", call["method"], call["path"], body=call["body"], timeout=120)
+            admin[call["name"]] = {"http": out.get("http"), "body": out.get("body") if call["name"] != "custom_provider" else {k: v for k, v in (out.get("body") or {}).items() if k in ("id", "hasKey", "models", "protocol")} if isinstance(out.get("body"), dict) else None}
+            if out.get("http") not in (200, 201, 204):
+                raise RuntimeError(f"HE-QM-002 QM refused the {call['name']} admin call: {json.dumps(out)[-400:]}")
+        c = qm.sandbox_create()
+        out = await self._qm_call("admin", c["method"], c["path"], body=c["body"], timeout=300)
+        sandbox = (out.get("body") or {}).get("id") if isinstance(out.get("body"), dict) else None
+        admin["sandbox_create"] = {"http": out.get("http"), "id": sandbox}
+        if not sandbox:
+            raise RuntimeError(f"HE-QM-002 QM did not create its sandbox in the task container: {json.dumps(out)[-400:]}")
+        d = qm.sandbox_default(sandbox)
+        out = await self._qm_call("admin", d["method"], d["path"], body=d["body"], timeout=120)
+        admin["sandbox_default"] = {"http": out.get("http")}
+        if out.get("http") not in (200, 201):
+            raise RuntimeError(f"HE-QM-002 QM refused to make the task container its default sandbox: {json.dumps(out)[-400:]}")
+        code, calls, _ = await self._docker("exec", core, "cat", "/data/shim/calls.log", timeout=30)
+        checks["qm_shim_calls"] = [ln.split(" ", 2)[0] + (" " + ln.split(" ", 2)[1] if ln.startswith(("image", "volume", "network")) else "") for ln in calls.splitlines() if ln.strip()]
+        res = await environment.exec(command=f'readlink {qm.WORKDIR}; [ -d /tmp/agent-creds ] && echo creds-dir; for p in .aws .netrc .config/gh; do [ -L "/root/$p" ] && echo "link /root/$p $(readlink "/root/$p")"; done; true')
+        checks["qm_provisioned"] = (res.stdout or "").splitlines()
+
+    async def _qm_logs(self) -> None:
+        if not self._qm_core:
+            return
+        logs = Path(self.logs_dir)
+        logs.mkdir(parents=True, exist_ok=True)
+        code, out, err = await self._docker("logs", self._qm_core, timeout=60)
+        (logs / "qm-core.log").write_text(qm.redact(out + err, self._qm_secrets))
+        if self._qm_dir is not None and (await self._docker("cp", f"{self._qm_core}:/data/shim/calls.log", str(self._qm_dir / "calls.log"), timeout=30))[0] == 0:
+            (logs / "qm-docker-shim-calls.log").write_text(qm.redact((self._qm_dir / "calls.log").read_text(errors="replace"), self._qm_secrets))
+
+    async def _qm_stop(self, environment: BaseEnvironment) -> None:
+        try:
+            if self._qm_core:
+                await self._docker("kill", self._qm_core, timeout=60)
+            try:
+                await environment.exec(command=f'[ -f {qm.DAEMON_DIR}/pid ] && kill "$(cat {qm.DAEMON_DIR}/pid)" 2>/dev/null; true', user="root", timeout_sec=60)
+            except Exception:
+                pass
+            await self._qm_logs()
+        finally:
+            for name in self._qm_names:
+                await self._docker("rm", "-f", "-v", name, timeout=120)
+            self._qm_names = []
+            if self._qm_dir is not None:
+                shutil.rmtree(self._qm_dir, ignore_errors=True)
+
+    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
+        text = self.render_instruction(self._frontier_instruction(instruction))
+        started = datetime.now(timezone.utc)
+        out: dict[str, Any] = {}
+        try:
+            out = await self._qm_call("turn", self.frontier_trial, body=text, timeout=24 * 3600)
+        finally:
+            status = {**qm.turn_status(out), "started_at": started.isoformat().replace("+00:00", "Z"), "ended_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
+            try:
+                logs = Path(self.logs_dir)
+                logs.mkdir(parents=True, exist_ok=True)
+                (logs / "qm-turn.json").write_text(qm.redact(json.dumps({"status": status, "reply": out}, indent=2), self._qm_secrets) + "\n")
+            finally:
+                await self._qm_stop(environment)
+        if not status["finished"]:
+            raise RuntimeError(qm.redact(f"HE-QM-003 the QM turn did not finish: http {status['http']}, status {status['status']}{', ' + status['reason'] if status['reason'] else ''}", self._qm_secrets))
+
+
 CLASSES = {c.HARNESS: c for c in (FrontierClaudeCode, FrontierCodex, FrontierHermes, FrontierOpenClaw, FrontierPi, FrontierMiniSweAgent, FrontierDsh, FrontierCursor,
-                                  FrontierGeminiCli, FrontierGrokBuild, FrontierMuseCode)}
+                                  FrontierGeminiCli, FrontierGrokBuild, FrontierMuseCode, FrontierQm)}

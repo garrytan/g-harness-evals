@@ -1,0 +1,160 @@
+{
+  "what": "Metered QM smoke (internal-task, the Captain's go of 2026-11-19): one real trial per model through the metering proxy under one ledger lease of $10 (run id local:qm-smoke), on a one-file task in a buildpack-deps:bookworm-curl container, with Harbor 0.24.0 DockerEnvironment on a Capy machine. Uncounted; no number from it is a result.",
+  "task": "Work in /app, one shell command per step: first list /app, then create /app/hello.txt containing the word hello, then print /app/hello.txt to check it.",
+  "commit_under_test": "qm-frontier-harbor at c43c71419662c7b77701eba2be48fc1f2da0ae3b (uncommitted: this file only)",
+  "answers": {
+    "openrouter_gemini_accepts_top_level_reasoning_effort": true,
+    "openrouter_gemini_accepts_replayed_reasoning_details": true,
+    "how_seen": "every Carbon request through OpenRouter (pinned to google-ai-studio, no fallbacks) returned HTTP 200: the agent loop sent reasoning_effort high and the endpoint returned reasoning tokens on each turn; from the second turn each earlier assistant tool-call message carried its reasoning_details (reasoning.encrypted, format google-gemini-v1) and the turn went on"
+  },
+  "cells": {
+    "qm-smoke-anthropic": {
+      "model": "anthropic:claude-opus-5-5",
+      "reward": 1.0,
+      "turn": {
+        "http": 200,
+        "status": "ok",
+        "finished": true
+      },
+      "requests": {
+        "agent_loop": 4,
+        "housekeeping": 1,
+        "http_status": [
+          200
+        ],
+        "outcome": [
+          "forwarded"
+        ]
+      },
+      "usd": 0.1143,
+      "effort": {
+        "agent_loop": [
+          "{\"effort\": \"high\"}"
+        ],
+        "thinking": [
+          "adaptive"
+        ]
+      },
+      "reasoning_replay": {
+        "seen": "not observed",
+        "why": "Opus returned no thinking block on any turn of this short task (the replayed assistant turns hold tool_use only), so there was nothing to replay"
+      }
+    },
+    "qm-smoke-openai": {
+      "model": "openai:gpt-6.1-sol",
+      "reward": 1.0,
+      "turn": {
+        "http": 200,
+        "status": "ok",
+        "finished": true
+      },
+      "requests": {
+        "agent_loop": 4,
+        "housekeeping": 1,
+        "http_status": [
+          200
+        ],
+        "outcome": [
+          "forwarded"
+        ]
+      },
+      "usd": 0.0203,
+      "effort": {
+        "agent_loop": [
+          "{\"effort\": \"high\", \"summary\": \"auto\"}"
+        ],
+        "store": [
+          "False"
+        ],
+        "previous_response_id": [
+          "None"
+        ]
+      },
+      "reasoning_replay": {
+        "seen": "not observed",
+        "why": "Sol reported 0 reasoning tokens on every agent-loop turn of this short task, so no reasoning item came back to replay; requests carry include [reasoning.encrypted_content] with store false"
+      }
+    },
+    "qm-smoke-openrouter": {
+      "model": "openrouter:google/gemini-4-carbon",
+      "reward": 1.0,
+      "turn": {
+        "http": 200,
+        "status": "ok",
+        "finished": true
+      },
+      "requests": {
+        "agent_loop": 4,
+        "housekeeping": 1,
+        "http_status": [
+          200
+        ],
+        "outcome": [
+          "forwarded"
+        ]
+      },
+      "usd": 0.0436,
+      "effort": {
+        "agent_loop_reasoning_effort": [
+          "high"
+        ],
+        "housekeeping_reasoning_effort": [
+          "medium"
+        ],
+        "accepted": true,
+        "reasoning_tokens_agent_loop": [
+          491,
+          163,
+          78,
+          95
+        ]
+      },
+      "provider_pin": {
+        "only": [
+          "google-ai-studio"
+        ],
+        "allow_fallbacks": false,
+        "max_price": {
+          "prompt": 2,
+          "completion": 10
+        }
+      },
+      "reasoning_replay": {
+        "seen": "replays",
+        "accepted": true,
+        "replayed_turns": [
+          {
+            "assistant_messages": 1,
+            "with_tool_calls": 1,
+            "with_reasoning_details": 1,
+            "detail_types": [
+              "reasoning.encrypted/google-gemini-v1"
+            ]
+          },
+          {
+            "assistant_messages": 2,
+            "with_tool_calls": 2,
+            "with_reasoning_details": 2,
+            "detail_types": [
+              "reasoning.encrypted/google-gemini-v1"
+            ]
+          },
+          {
+            "assistant_messages": 3,
+            "with_tool_calls": 3,
+            "with_reasoning_details": 3,
+            "detail_types": [
+              "reasoning.encrypted/google-gemini-v1"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "total_usd": 0.1782,
+  "gaps": [
+    "one short task per model, n=1: shows the request shapes are accepted, says nothing about task success rates",
+    "Opus and Sol emitted no reasoning on these turns, so their replay is unobserved here (the keyless check covered their shapes)",
+    "QM sends Carbon's housekeeping call (session title) on the cell model at reasoning_effort medium, as shipped"
+  ]
+}

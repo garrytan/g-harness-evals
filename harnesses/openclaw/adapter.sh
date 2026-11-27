@@ -34,7 +34,7 @@ mkdir -p "$HE_LOG_DIR"
 exec > >(tee -a "$HE_LOG_DIR/stdout.log") 2> >(tee -a "$HE_LOG_DIR/stderr.log" >&2)
 log() { printf '%s openclaw[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$HE_TRIAL_ID" "$*" | tee -a "$HE_LOG_DIR/adapter.log" >&2; }
 now() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
-# HARN-5: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
+# internal-task: the sha256 of this adapter file goes into the ready file, so a trial record can prove which adapter ran (the runner's
 # preflight compares the same hash in the image with the checkout, HE-ADAPTER-005).
 adapter_sha256=$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)
 # config/ sits beside this file (/opt/harness in the image), so a checkout's adapter run on the host reads the checkout's templates.
@@ -46,7 +46,7 @@ case "$entry" in
   *) log "unknown entry point: $entry; 'run' and 'serve' are implemented"; exit 2 ;;
 esac
 
-# GST-2715, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
+# internal-task, install mode (docs/adapters.md, "Install mode"): HE_INSTALL_MODE=1 runs the gbrain install eval. The serve entry starts
 # from the adapter's config template and keeps whatever the agent and gbrain write across sessions (OPENCLAW_STATE_DIR and the
 # workspace), with no world MCP server. The proxy token goes into openclaw.json (mode 0600) as a literal instead of the
 # ${HE_MODEL_API_KEY} substitution, and HE_MODEL_API_KEY is unset, so no shell the agent starts holds it. HE_INSTALL_DIR/probe.sh
@@ -68,10 +68,10 @@ if [ "${HE_INSTALL_MODE:-}" = 1 ]; then
   export -n HE_MODEL_API_KEY_FILE
 fi
 
-# HARN-15: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
+# internal-task: HE_HARNESS_CONFIG (the cell's config) names the instruction route, applied below after the gbrain install. Unset,
 # empty or `default` changes nothing. A value that is not a route, a route OpenClaw has no setting for, or on the run entry a
 # route that writes into the task workspace (startup, skill, told) or a plugin its state dir would not see (the hook routes) is
-# refused here, before anything is written. HARN-18 (H10) adds route-once and route-placebo (the same hook, docs/adapters.md
+# refused here, before anything is written. internal-task (H10) adds route-once and route-placebo (the same hook, docs/adapters.md
 # "Emit flag") and route-told (the route-skill skill; the told sentence is in the cell's preamble, which the runner carries). The
 # slot routes route-slot-told@<id> and route-slot-skill@<id> take the bundle byte-copied under routes/slots/<id>/, its
 # bundle_sha256 re-checked here (harnesses/routes/slots/README.md). The grammar is [<driver>+]<route>[@<slot_id>]
@@ -82,7 +82,7 @@ skill_arm='' skill_hook='' skill_arm_json='' sas_config=''
 case "$instruction_route" in
   default|route-tool|route-startup|route-hook|route-once|route-placebo|route-skill|route-told) ;;
   skills-native|skills-resolver|skills-names-only|skills-no-catalog|skills-usage-ordered)
-    # HARN-52: the skills arms (scripts/skill-resolver/ARMS.md) are applied below, after the routes; they are not a route, so the
+    # internal-task: the skills arms (scripts/skill-resolver/ARMS.md) are applied below, after the routes; they are not a route, so the
     # route blocks see default. Like the hook routes, they run on the serve entry only.
     [ "$entry" = serve ] || { log "HE-ADAPTER-007 HE_HARNESS_CONFIG=$instruction_route is applied for the serve entry only; the run entry's state dir would not see the skill-resolver plugin"; exit 2; }
     skill_arm=${instruction_route#skills-} instruction_route=default ;;
@@ -114,10 +114,10 @@ export HOME="$HE_SESSION_STATE_DIR"
 export OPENCLAW_STATE_DIR="$HE_SESSION_STATE_DIR/openclaw"
 export OPENCLAW_CONFIG_PATH="$OPENCLAW_STATE_DIR/openclaw.json"
 mkdir -p "$OPENCLAW_STATE_DIR/exec"
-# HARN-13: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
+# internal-task: the provider is the cell model's prefix, which the runner puts in the proxy URL as its last path segment
 # (<proxy>/<slot>/<provider>, runner/trial/proxy.ts baseUrlFor). An OpenAI cell gets config/openclaw.openai.json: OpenClaw's
 # bundled openai provider on its shipped Responses API at HE_MODEL_BASE_URL/v1, the utility model mapped to the cell model and
-# reasoning effort medium (pin.json model_openai). HARN-16: a Particle cell (URL ending in /particle) gets config/openclaw.particle.json,
+# reasoning effort medium (pin.json model_openai). internal-task: a Particle cell (URL ending in /particle) gets config/openclaw.particle.json,
 # OpenClaw's generic openai-completions provider at HE_MODEL_BASE_URL/v1 with the same mapping, an output cap of 128000 and the
 # memory indexer on keyword search (pin.json model_particle). An OpenRouter cell (URL ending in /openrouter) gets
 # config/openclaw.openrouter.json, the same generic provider under the id openrouter-proxy with OpenRouter's reasoning format
@@ -156,11 +156,11 @@ fi
 
 log "openclaw $(openclaw --version 2>/dev/null | head -1) model=$provider/$HE_MODEL_NAME budget=${HE_TIME_BUDGET_S}s entry=$entry"
 
-# HARN-5, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
+# internal-task, the install ladder (docs/gbrain-arm.md): under HE_GBRAIN_INSTALL=gbrain-docs or gbrain-installer the runner mounts the
 # exported view of gbrain's install read-only at HE_GBRAIN_INSTALL_DIR (/he-gbrain-install) and names the split in HE_GBRAIN_SPLIT.
 # Before the harness starts, every file the view's manifest lists is checked against its sha256 and copied to where the gbrain
 # command would have written it: `gbrain skillpack scaffold --harness openclaw --workspace /workspace` (gbrain-docs; workspace/x to
-# /workspace/x, skills/ at this commit) or `gbrain setup openclaw --workspace /workspace --instructions-only` (gbrain-installer, GBRA-188;
+# /workspace/x, skills/ at this commit) or `gbrain setup openclaw --workspace /workspace --instructions-only` (gbrain-installer, internal-task;
 # workspace/AGENTS.md to /workspace/AGENTS.md, the brain-first block OpenClaw loads as a workspace bootstrap file, and at gbrain#7489's
 # per-turn-hook head state/gbrain/gbrain-turn-rule/* to $OPENCLAW_STATE_DIR/gbrain/gbrain-turn-rule/*, the hook-only plugin whose
 # before_prompt_build handler puts the rule next to every user turn); the manifest's install kind must equal HE_GBRAIN_INSTALL.
@@ -319,7 +319,7 @@ PY
   gbrain_install_json=$(printf ',"gbrain_install":{"status":"ok","install":"%s","files":%s,"view_digest":"%s","destinations":"%s"%s}' "$HE_GBRAIN_INSTALL" "$install_files" "$install_digest" "$install_dests" "$turn_hook_json")
 fi
 
-# HARN-15, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
+# internal-task, the instruction routes (harnesses/routes/README.md). One instruction text, routes/instruction.md beside this file
 # (/opt/harness/routes in the image; a byte copy of harnesses/routes/instruction-openclaw.md, checked here against the sha256 the
 # preregistration cites), goes to OpenClaw through the route HE_HARNESS_CONFIG names. route-tool writes nothing: the gbrain MCP
 # tool descriptions stay the only carrier. route-startup writes the instruction as /workspace/AGENTS.md, the workspace
@@ -328,7 +328,7 @@ fi
 # lists in the system prompt; route-told writes the same skill (its told sentence is in the cell's preamble, not here). The slot
 # routes copy the bundle's skill/<skill_name>/ from routes/slots/<id>/ to /workspace/skills/<skill_name>/ after re-checking its
 # bundle_sha256 (the full shape check is host-side, scripts/routes/slot-check.ts). The hook
-# routes (route-hook, route-once, route-placebo; HARN-18) copy routes/he-instruction-route, a hook-only plugin, to
+# routes (route-hook, route-once, route-placebo; internal-task) copy routes/he-instruction-route, a hook-only plugin, to
 # $OPENCLAW_STATE_DIR/he-instruction-route with two placeholders filled: the route's bytes (routes/instruction.md, or
 # routes/placebo.md on route-placebo, each checked against its committed sha256) and the path of the emit flag
 # ($HE_SESSION_STATE_DIR/he-route/emit). Its before_prompt_build keeps no state: it returns the bytes as prependContext when the
@@ -505,7 +505,7 @@ if [ -n "$sas_config" ]; then
   sas_arm_json=",\"sas_arm\":${sas_line#ok }"
 fi
 
-# HARN-52, the skills arms (scripts/skill-resolver/ARMS.md), on HE_HARNESS_CONFIG skills-native, skills-resolver,
+# internal-task, the skills arms (scripts/skill-resolver/ARMS.md), on HE_HARNESS_CONFIG skills-native, skills-resolver,
 # skills-names-only, skills-no-catalog or skills-usage-ordered. They read the kit at HE_SKILL_KIT_DIR (default /opt/skill-resolver,
 # mounted read-only), which must hold kit.json, bin/gbrain and bin/he-skill-hook, and install into /workspace/skills, which may
 # already hold the task's own skill directories (set T's t37 seeds skills/release-notes) but none named like a skill the arm
@@ -739,7 +739,7 @@ fi
 # A model error is a provider status, a proxy refusal, a rate limit or an auth
 # failure in the envelope or on stderr; everything else that fails is OpenClaw's.
 model_error_pattern='"status":\s*(401|402|403|404|429|5[0-9]{2})|metering proxy|rate.?limit|overloaded|api error|authentication|invalid.*api.?key|HTTP (401|402|403|404|429|5[0-9]{2})'
-# HARN-16: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
+# internal-task: a Particle cell uses this pattern unchanged, so a provider 400 is exit 2 as on every other cell. Plan decision 12
 # (a Particle 400 with code invalid_value or unsupported_parameter is model_error) belongs to the runner, which reads the
 # metering proxy's record of the upstream status and code; OpenClaw's output does not carry error.code.
 
@@ -901,7 +901,7 @@ process.stdout.write(lines.length + " events from " + dbs.length + " store(s)");
 JS
 }
 
-# HARN-18 (H10), route cells only: before each member turn, count the turn in its session (the adapter's session key; a
+# internal-task (H10), route cells only: before each member turn, count the turn in its session (the adapter's session key; a
 # session's first member turn is session_turn 1), write the emit flag the hook routes read (route-hook and route-placebo emit=1
 # on every turn, route-once emit=1 on session_turn 1 only, the temp file renamed into place) and the turn's RouteTurnStatus to
 # $HE_LOG_DIR/turns/<turn>.route.json: config, driver (cli), route, session_key in the TurnWindow form (<channel id>, or
@@ -933,7 +933,7 @@ put(out, json.dumps({"config": config, "driver": "cli", "route": route, "session
 PY
 }
 
-# HARN-52, the skills arms native and resolver only: before each member turn, write the turn context the hook wrapper reads,
+# internal-task, the skills arms native and resolver only: before each member turn, write the turn context the hook wrapper reads,
 # $HE_SESSION_STATE_DIR/he-skills/turn.json (temp file renamed into place): turn, name (the turn file's base name), session_key
 # (the adapter's session key), window_key (<channel id>, or <channel id>:<thread_ts> in a thread), session_turn (1 on a
 # session's first member turn), message (the member's own message, the request's text, not the full prompt the harness receives)

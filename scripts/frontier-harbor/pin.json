@@ -666,6 +666,23 @@
    "status": "runnable: agents.py FrontierMuseCode and a frontier_settings record (internal-task round 3). Muse Wonder is reached through OpenRouter's Responses API on the proxy's OpenRouter route, pinned to Meta's endpoint; the proxy serves the /muse-code/models catalog itself, listing meta/muse-wonder. Checked keyless with the real binary through the proxy (tests/muse-code-via-openrouter.test.ts)",
    "binary_policy": "the binary is proprietary and never enters the repository or its public export",
    "licence": "proprietary (Meta)"
+  },
+  "qm": {
+   "kind": "service",
+   "version": "main@77024e79",
+   "commit": "77024e79699565296bdde10974ae3d26fd393df8",
+   "pin": "harnesses/qm/pin.json",
+   "images": "harnesses/qm/Dockerfile at the commit: harness-eval/qm:77024e796995 (QM core, label harness-eval.commit checked) and its src stage harness-eval/qm-src:77024e796995 (QM's source, for the exec daemon); vm-run.sh builds both before the first QM trial",
+   "postgres_image": "pgvector/pgvector:0.8.1-pg16@sha256:33198da2828a14c30348d2ccb4750833d5ed9a44c88d840a0e523d7417120337",
+   "daemon": "cli/templates/aws/microvm-agent/agent.mjs in QM's source at the commit: QM's own exec daemon (POST /exec, /write, /read, GET /health on AGENT_PORT), run in the task container",
+   "daemon_sha256": "e3c27de02390c170cdb9d9dce357fd25cbb7164366593321f477d43aed8f8ba3",
+   "node_major": 24,
+   "models": ["anthropic:claude-opus-5-5", "openai:gpt-6.1-sol", "openrouter:google/gemini-4-carbon"],
+   "install": "agents.py FrontierQm at agent setup: Node 24 through nvm in the task container (for QM's daemon only), the daemon uploaded from the src image with its sha256 checked, /root/workspace linked to the task's working directory; Postgres and QM core started on the VM in the task container's network namespace, core's docker CLI replaced by qm-docker-shim.sh; then the org runtime, command policy and (OpenRouter) custom provider set, and QM's sandbox created and made the default, which provisions it in the task container (qm_harbor.py)",
+   "harbor_class": "none: Harbor 0.24.0 ships no QM agent, so agents.py FrontierQm is a BaseInstalledAgent of its own; QM's agent loop runs in QM core beside the task container, not in it",
+   "housekeeping_default": "QM's auxiliary model per provider: claude-haiku-5-5 on Anthropic, gpt-5.6-luna on OpenAI, the cell model on a custom provider (src/model/pi-models.ts auxiliaryModelFor)",
+   "status": "runnable on the frontier path (internal-task): agents.py FrontierQm, qm_harbor.py, qm-call.mjs and qm-docker-shim.sh; keyless check install-check-qm.json",
+   "licence": "MIT (LICENSE at yc-software/qm 77024e79)"
   }
  },
  "models": {
@@ -753,7 +770,7 @@
    "max_output_tokens": 65536,
    "source": "openrouter.ai/api/v1/models/google/gemini-4-carbon/endpoints, read 2026-11-16: Google AI Studio's standard endpoint (provider Google AI Studio, tag google-ai-studio, service_tier null) has context_length 1,048,576 and lists max_completion_tokens 65,536; max_output_tokens is Google's standard 64K output limit (ai.google.dev/gemini-api/docs/models: Max output 64K / 1M tokens), as on the google row",
    "api": "OpenAI Chat Completions only (POST /v1/chat/completions on the metering proxy's OpenRouter route). The proxy pins every request to Google AI Studio's standard endpoint (provider-terms ruling, 2026-11-16; never google-vertex/* or AI Studio's flex or priority endpoints): it adds provider {only: [google-ai-studio], allow_fallbacks: false, max_price at the price row} and service_tier default, refuses a request that sets another service_tier or speed, and refuses the trial when the response names another served provider than Google AI Studio or another tier. No harness runs it since amendment 2 of frontier-shootout-2026-11, which sends every Gemini 4 cell in Hermes, OpenClaw and Pi to Google's Gemini API (the google: row)",
-   "harnesses": []
+   "harnesses": ["qm"]
   },
   "openrouter:google/gemini-4-hydrogen": {
    "provider": "openrouter",
