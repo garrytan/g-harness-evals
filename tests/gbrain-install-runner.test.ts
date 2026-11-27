@@ -178,6 +178,7 @@ describe('the install trial through the runner (fixture adapter, capture mode)',
 
   test('a moved release tag stops the cell before any trial: no record, the stop in install-stops.jsonl and run.log, exit 3', async () => {
     const moved = await runPlay('oracle', { reps: 2, ls: lsServes('0'.repeat(40)) });
+    expect(moved.thrown).toBeNull();
     expect(moved.lines).toEqual([]);
     expect(moved.result!.exit).toBe(3);
     expect(moved.runLog).toContain('HE-INSTALL-001 cell cc-bare: gbrain\'s tag v0.60.733.0 names 000000000000, not the preregistered ' + PIN.slice(0, 12));
@@ -185,6 +186,7 @@ describe('the install trial through the runner (fixture adapter, capture mode)',
     const stops = readFileSync(join(moved.runDir, 'install-stops.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(stops.map((s) => [s.cell, s.tag, s.commit])).toEqual([['cc-bare', TAG, PIN]]);
     const down = await runPlay('oracle', { ls: () => ({ status: 128, stdout: '', stderr: 'fatal: unable to access' }) });
+    expect(down.thrown).toBeNull();
     expect(down.lines).toEqual([]);
     expect(down.runLog).toContain('git ls-remote https://github.com/garrytan/gbrain failed (fatal: unable to access)');
   }, 60_000);

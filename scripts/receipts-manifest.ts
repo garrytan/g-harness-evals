@@ -63,7 +63,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { Database } from 'bun:sqlite';
 import { deriveSet, registeredHeldout } from '../runner/heldout/openings.ts';
@@ -164,17 +164,14 @@ function git(root: string, args: string[]): string | null {
 
 /** The commit that added the file (the oldest add, if git ever saw it added twice) and every later commit that touched it. */
 export function preregistrationHistory(root: string, relPath: string): { first_commit: string | null; amendments: Amendment[] } {
-  const added = git(root, ['log', '--diff-filter=A', '--format=%H', '--', relPath]);
-  const adds = (added ?? '').split('\n').filter(Boolean);
-  const first = adds.length ? adds[adds.length - 1]! : null;
-  const log = git(root, ['log', '--format=%H%x1f%cs%x1f%s', '--', relPath]) ?? '';
-  const amendments: Amendment[] = [];
-  for (const line of log.split('\n')) {
-    if (!line) continue;
-    const [commit, date, subject] = line.split('\x1f');
-    if (!commit || commit === first) continue;
-    amendments.push({ commit, date: date ?? '', subject: subject ?? '' });
-  }
+  const log = git(root, ['log', '--format=%x1e%H%x1f%cs%x1f%s', '--name-status', '--', relPath]) ?? '';
+  const commits = log.split('\x1e').filter(Boolean).map((entry) => {
+    const [header = '', ...changes] = entry.split('\n');
+    const [commit = '', date = '', subject = ''] = header.split('\x1f');
+    return { commit, date, subject, added: changes.some((c) => c.startsWith('A\t')) };
+  });
+  const first = commits.findLast((c) => c.added)?.commit ?? null;
+  const amendments: Amendment[] = commits.filter((c) => c.commit && c.commit !== first).map(({ commit, date, subject }) => ({ commit, date, subject }));
   return { first_commit: first, amendments };
 }
 
@@ -410,11 +407,17 @@ export function buildManifest(root: string, generatedAt: string = new Date().toI
   const runs: RunRow[] = [];
   const sealed: SealedRunRow[] = [];
   const notTrials: NotTrialRecords[] = [];
+  const byRun = new Map<string, string[]>();
+  for (const f of walk(root, base)) {
+    const name = relative(base, f).split(sep)[0]!;
+    if (!byRun.has(name)) byRun.set(name, []);
+    byRun.get(name)!.push(f);
+  }
   for (const name of readdirSync(base).sort()) {
     if (!statSync(join(base, name)).isDirectory()) continue;
     const directory = `${BENCHMARKS_DIR}/${name}`;
     if (existsSync(join(base, name, 'sealed-results', 'export.json'))) sealed.push(buildSealedRun(root, directory));
-    const inRun = walk(root, join(base, name));
+    const inRun = byRun.get(name) ?? [];
     for (const f of inRun.filter((f) => namedTrials(f) && !holdsTrialRecords(f))) {
       notTrials.push({ path: relative(root, f).split('\\').join('/'), sha256: sha256(readFileSync(f)), reason: NOT_TRIAL_RECORDS_REASON });
     }
