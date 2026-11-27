@@ -70,7 +70,7 @@ bun scripts/launch-preflight.ts docs/benchmarks/<run>/ \
   --manifest ~/.capy/work/<run>/fanout.json --shard s07 \
   --dest <the shard's results root> \
   --ledger <every pilot and counted ledger> --pilot <pilot results dir> \
-  [--results <counted results dirs>] [--also <provider:model>]
+  [--results <counted results dirs>] [--also <provider:model>] [--gemini-cli-route openrouter-fallback]
 ```
 
 Use `--cells a,b --lease-usd <n>` instead of `--manifest` when there is no manifest. Run it on the machine that holds the launch's provider keys. It does three things.
@@ -79,17 +79,18 @@ Use `--cells a,b --lease-usd <n>` instead of `--manifest` when there is no manif
 2. **Check the providers.** It sends one tiny request to each provider and model the shard will call: the cells' models, their utility models, and any `--also`. Each request asks for the smallest output the provider accepts. A free "list models" call would answer fine on an account with no credit left, so it isn't enough.
    - Every request goes through the budget ledger's paid-request guard, on its own lease in `<dest>/preflight-ledger.sqlite`. The lease is sized from the guard's own reservation for each request. xAI reserves 500,000 reasoning tokens per call, for example, so the lease holds about $3 per xAI probe, but the actual spend is a fraction of a cent.
    - For OpenRouter it also reads the key's remaining limit (a free call) and refuses if that is below the shard's lease.
+   - On Gemini CLI's `openrouter-fallback` route, a `google:` model is checked through OpenRouter as `google/<model>`, because that is where the shard's calls go. The route comes from the manifest (`--gemini-cli-route` after `--` in `options`, or in the shard's `args`), or from `--gemini-cli-route` without a manifest; with a manifest, a flag that disagrees with it is bad input.
    - Only a 2xx answer with a real completion passes. Other answers get these codes:
 
 | Code | Answer | What to do |
 |---|---|---|
 | HE-PROVIDER-001 | key missing, 401, or 403 | check the key is the project's key for that provider and can use that model |
-| HE-PROVIDER-002 | 402, or a 400, 401 or 403 that mentions credit, balance, quota or a spending limit, or a 429 that mentions credit, billing or a spending limit; or an OpenRouter limit below the lease | a person tops up at the billing page printed in the line, then reruns the preflight |
+| HE-PROVIDER-002 | 402, or a 400, 401 or 403 that mentions credit, balance, quota, billing, payment, an exhausted allowance or a spending or monthly limit, or a 429 that mentions credit, billing, payment, a spending or monthly limit or `insufficient_quota` (a bare quota or resource-exhausted 429, or one that only says "check your plan and billing details", is a rate limit, HE-PROVIDER-004); or an OpenRouter limit below the lease | a person tops up at the billing page printed in the line, then reruns the preflight |
 | HE-PROVIDER-003 | 404, any other 4xx, or a 2xx that isn't a completion | check the model id; a model this key can't call fails every trial |
 | HE-PROVIDER-004 | a rate limit, twice (one retry after its Retry-After, capped at 30 seconds) | rerun in a few minutes |
 | HE-PROVIDER-005 | a 5xx or no answer, twice | rerun in a few minutes |
 
-3. **Write the receipt** to `<dest>/launch-preflight.json`. It holds the verdict, the commit it vouches for, the projection, each probe's status and error type, the probe spend and any override. With `--manifest`, that commit is the manifest's when the plan folder and every `--plan-file` match it in the repository that holds them, so a run pinned at an older commit is checked from a newer checkout. Otherwise it is the commit this checkout is at, which `fanout.sh` refuses for that manifest. The receipt also keeps this checkout's commit as `tool_commit`.
+3. **Write the receipt** to `<dest>/launch-preflight.json`. It holds the verdict, the commit it vouches for, the projection, each probe's status and error type, the probe spend and any override. With `--manifest`, that commit is the manifest's when the plan folder and every `--plan-file` match it in the repository that holds them, so a run pinned at an older commit is checked from a newer checkout. A new file in the plan folder counts as a difference, and so does an ignored `prereg*.json` or `PREREGISTRATION.md`, since the plan is read from those; other ignored files, such as a pilot's results, don't. When they differ, or the manifest's commit isn't in that repository, it vouches for no commit (`COMMIT: none`), which `fanout.sh` refuses; without `--manifest` it is the commit this checkout is at. A manifest shard whose cells differ from the plan's shard of the same name is refused (HE-RUN-002), since Harbor runs the plan's cells under that name. The receipt also keeps this checkout's commit as `tool_commit`, and whether it had no uncommitted or untracked change as `tool_clean`. `fanout.sh` launches a shard only when its receipt also names the run id of the manifest's prereg and the shard's cells, `lease_usd` and Gemini CLI route exactly as the manifest gives them.
 
 The output and the receipt only ever carry a provider's status code, error type and error code. They never include its message or body, because some providers echo part of the key back.
 
@@ -129,11 +130,11 @@ So the pilot runs first, uncounted and under its tenth-of-budget cap (the plan's
 
 ## When credit runs out mid-shard
 
-A shard stops once one provider has refused 3 of its trials in a row for want of credit or permission (`runner/cost/provider-stop.ts`):
+A shard stops once one provider has refused 3 of its trials in a row for want of credit (`runner/cost/provider-stop.ts`):
 
-- **What counts.** A trial counts against a provider when that provider answered it with a 402 at any point, or when its last answer in the trial was one the HE-PROVIDER-002 rule above reads as a credit refusal (a 429 counts only when it names credit, billing or a spending limit, since Google words every rate limit as an exhausted quota). A trial that called the provider and got anything else resets the count. The proxy's own refusals (the lease, the allowlist) never count.
-- **Why 3.** One or two stray refusals don't stop a shard. A provider that is really out of credit costs at most three $0 trials, each of which fails in seconds.
-- **What happens.** The runner (`runner/trial/run.ts`) stops after that trial, writes `provider-stop.json` in the run directory and exits 8 (HE-PROVIDER-006). A frontier-harbor shard runs the same check every 60 seconds over the proxy's usage log, counting only lines logged since the shard started and only trials that have logged nothing for 5 minutes (a harness still retrying is not judged yet), stops Harbor, writes the records so far and `provider-stop.json`, and exits 8. Either way the Ubicloud lane copies the results back and destroys the VM.
+- **What counts.** A trial counts against a provider when that provider answered it with a 402 at any point, or when its last answer in the trial was one the HE-PROVIDER-002 rule above reads as a credit refusal (a 429 counts only when it names credit, billing, payment, a spending or monthly limit or `insufficient_quota`, since Google words every rate limit as an exhausted quota; Google's "check your plan and billing details" on a 429 is a rate limit too). A 401 or 403 without that rule's credit wording is missing access, not credit, and doesn't count. A trial that called the provider and got anything else resets the count. The proxy's own refusals (the lease, the allowlist) never count.
+- **Why 3.** One or two stray refusals don't stop a shard. A provider that is really out of credit costs about three more $0 trials before the shard stops, and a refused trial usually fails at its first call. A frontier-harbor shard can lose a few more: it judges a trial only after 5 quiet minutes and checks once a minute, so trials that start in that time are refused too.
+- **What happens.** The runner (`runner/trial/run.ts`) stops after that trial, writes `provider-stop.json` in the run directory and exits 8 (HE-PROVIDER-006). When that was the last trial the run selected (all of them, or its `--cells`), nothing is left to stop: it exits 0 and still writes the file, and `run-summary.json` counts the run complete only when every trial in the manifest is recorded. A frontier-harbor shard runs the same check every 60 seconds over the proxy's usage log, counting only lines logged since the shard started and only trials that have logged nothing for 5 minutes (a harness still retrying is not judged yet), stops Harbor, writes the records so far and `provider-stop.json`, and exits 8. Either way the Ubicloud lane copies the results back and destroys the VM.
 - **Recovery.** A person tops up or fixes access, the launch check passes again, then the shard resumes (`--resume`).
 
 ## What this doesn't do yet

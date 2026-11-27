@@ -217,7 +217,50 @@ describe('the launch check', () => {
     await expect(preflight(options(f, transport(), { cells: ['nope'] }))).rejects.toThrow(/HE-RUN-002 shard cell\(s\) nope are not in the plan/);
   });
 
-  test("the receipt vouches for the manifest's commit when the plan files match it, so a run pinned before this script changed can launch", async () => {
+  // Value: protects=a manifest shard that names a plan shard but lists other cells is refused, because Harbor runs the plan's
+  // cells under that name and the receipt would vouch for the wrong ones; fails_when=preflight checks the manifest's cells only
+  // against the plan's cell list; seam=the scripted transport; no_claim=Harbor itself.
+  test("a manifest shard whose cells differ from the plan's shard of the same name is refused", async () => {
+    const f = fixture();
+    const manifest = join(dir('m'), 'fanout.json');
+    writeFileSync(manifest, JSON.stringify({ commit: 'x', prereg: 'p', dest: 'd', shards: [{ name: 's0', cells: 'sol', lease_usd: 30 }, { name: 's1', cells: 'sol', lease_usd: 30 }] }));
+    await expect(preflight(options(f, transport(), { manifest, shard: 's0', cells: [] }))).rejects.toThrow(/HE-RUN-002 manifest shard s0 lists cells sol, but the plan's shard s0 runs claude, and Harbor runs the plan's; fix the manifest/);
+    const r = await preflight(options(f, transport(), { manifest, shard: 's1', cells: [] }));
+    expect(r.lines[0]).toBe('PREFLIGHT: fixture-run shard=s1 cells=sol lease=$30.00');
+  });
+
+  // Value: protects=a shard on Gemini CLI's openrouter-fallback route is checked through OpenRouter, the route its calls take,
+  // so an OpenRouter key out of credit refuses it and a missing GEMINI_API_KEY does not; fails_when=the check probes Google's
+  // own API whatever the route; seam=the scripted transport; no_claim=a real provider.
+  test('on the openrouter-fallback route a google: model is checked through OpenRouter, from the manifest or the flag', async () => {
+    const f = fixture();
+    const manifest = join(dir('m'), 'fanout.json');
+    writeFileSync(manifest, JSON.stringify({ commit: 'x', prereg: 'p', dest: 'd', options: ['--', '--gemini-cli-route', 'openrouter-fallback'], shards: [{ name: 'g', cells: 'carbon', lease_usd: 30 }, { name: 'n', cells: 'carbon', lease_usd: 30, args: ['--gemini-cli-route', 'native'] }] }));
+    const noGemini = { ...KEYS, GEMINI_API_KEY: '' };
+    const t = transport();
+    const o = options(f, t, { manifest, shard: 'g', cells: [] });
+    const r = await preflight({ ...o, probe: { ...o.probe, env: noGemini } });
+    expect(r.exit).toBe(0);
+    expect(t.calls.map(c => c.provider)).toEqual(['openrouter']);
+    expect(t.calls[0]!.body.model).toBe('google/gemini-4-carbon');
+    expect(r.lines).toContain('ROUTE: --gemini-cli-route openrouter-fallback, so each google: model is checked through OpenRouter as google/<model>, the way the shard calls it');
+    expect(JSON.parse(readFileSync(join(o.dest, 'launch-preflight.json'), 'utf8')).shard.gemini_cli_route).toBe('openrouter-fallback');
+    const native = transport();
+    const n = options(f, native, { manifest, shard: 'n', cells: [] });
+    expect((await preflight(n)).exit).toBe(0);
+    expect(native.calls.map(c => c.provider)).toEqual(['google']);
+    const flag = transport();
+    const byFlag = options(f, flag, { cells: ['carbon'], geminiRoute: 'openrouter-fallback' }, keyLimit(1));
+    const refused = await preflight(byFlag);
+    expect(flag.calls.map(c => c.provider)).toEqual(['openrouter']);
+    expect(refused.exit).toBe(3);
+    expect(refused.lines.join('\n')).toContain('HE-PROVIDER-002 openrouter key has $1.00 left');
+    await expect(preflight(options(f, transport(), { manifest, shard: undefined as unknown as null, cells: [] }))).rejects.toThrow(/different --gemini-cli-route values/);
+    await expect(preflight(options(f, transport(), { manifest, shard: 'n', cells: [], geminiRoute: 'openrouter-fallback' }))).rejects.toThrow(/--gemini-cli-route openrouter-fallback disagrees with the manifest, whose shards run native/);
+    expect((await preflight(options(f, transport(), { manifest, shard: 'g', cells: [], geminiRoute: 'openrouter-fallback' }, keyLimit(500)))).exit).toBe(0);
+  });
+
+  test("the receipt vouches for the manifest's commit when the plan files match it, so a run pinned before this script changed can launch, and for no commit when they don't", async () => {
     const f = fixture();
     const repo = dir('repo');
     const git = (...a: string[]) => spawnSync('git', ['-C', repo, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', ...a], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: repo } }).stdout.trim();
@@ -236,10 +279,25 @@ describe('the launch check', () => {
     expect(ok.r.lines).toContain(`COMMIT: ${pinned} (the manifest's; the plan files read here match it; this script ran at ${ok.receipt.tool_commit.slice(0, 12)})`);
     writeFileSync(join(repo, 'plan', 'PREREGISTRATION.md'), '## Cost projection\n\n- Spend stop: $999\n');
     const edited = await run();
-    expect(edited.receipt.commit).toBe(edited.receipt.tool_commit);
+    expect(edited.receipt.commit).toBeNull();
+    expect(edited.r.lines.join('\n')).toContain(`COMMIT: none, so fanout.sh refuses this receipt for the manifest's commit ${pinned.slice(0, 12)}`);
     expect(edited.r.lines.join('\n')).toContain('the plan folder or a --plan-file differs from that commit');
     git('checkout', '-q', '--', 'plan');
     writeFileSync(join(repo, 'plan', 'extra.json'), '{}');
-    expect((await run()).receipt.commit).not.toBe(pinned);
+    expect((await run()).receipt.commit).toBeNull();
+    rmSync(join(repo, 'plan', 'extra.json'));
+    expect((await run()).receipt.commit).toBe(pinned);
+    writeFileSync(join(repo, '.git', 'info', 'exclude'), 'prereg-ignored.json\nresults/\n');
+    mkdirSync(join(repo, 'plan', 'results'), { recursive: true });
+    writeFileSync(join(repo, 'plan', 'results', 'ledger.sqlite'), 'pilot ledger, ignored');
+    expect((await run()).receipt.commit).toBe(pinned);
+    const extra = JSON.parse(readFileSync(join(repo, 'plan', 'prereg-harbor-s0.json'), 'utf8'));
+    extra.cells = extra.cells.map((c: { id: string }) => ({ ...c, id: c.id + '-ignored' }));
+    writeFileSync(join(repo, 'plan', 'prereg-ignored.json'), JSON.stringify(extra));
+    const ignored = await run();
+    rmSync(join(repo, 'plan', 'prereg-ignored.json'));
+    expect(ignored.receipt.commit).toBeNull();
+    expect(ignored.r.lines.join('\n')).toContain('the plan folder or a --plan-file differs from that commit');
+    expect(typeof ignored.receipt.tool_clean).toBe('boolean');
   });
 });

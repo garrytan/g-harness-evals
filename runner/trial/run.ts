@@ -96,7 +96,7 @@ export interface RunOptions {
 /** executeRun's exit codes. 3 is the cap or tag stop, which scripts/run-shard.sh passes through on purpose. 7 is a trial whose harness
  *  never started: scripts/ubicloud/run-shard.sh reads 4 as a failed smoke, so 4 is never a runner code (tests/exit-codes.test.ts).
  *  8 is the provider stop (runner/cost/provider-stop.ts): one provider refused PROVIDER_STOP_AFTER trials in a row for want of
- *  credit or permission, so the run stopped and wrote provider-stop.json. */
+ *  credit, so the run stopped and wrote provider-stop.json. */
 export const RUN_EXIT = { ok: 0, capStop: 3, harnessNotStarted: 7, providerStop: PROVIDER_STOP_EXIT } as const;
 
 export const NOT_STARTED_FILE = 'not-started.jsonl';
@@ -388,9 +388,12 @@ export async function executeRun(manifest: Manifest, manifestPath: string, opts:
     log(`run ${manifest.run_id}: ${unstarted.length} trials never started (cells ${[...new Set(unstarted.map((t) => t.cell))].join(', ')}), listed in ${NOT_STARTED_FILE}; fix the harness start and rerun with --resume`);
     if (exit !== RUN_EXIT.capStop && exit !== RUN_EXIT.providerStop) exit = RUN_EXIT.harnessNotStarted;
   }
-  const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: readRecords(runDir).length, trials_planned: manifest.trials.length, cap_stop: capStop, ...(providerStop ? { provider_stop: providerStop.provider } : {}), complete: readRecords(runDir).length === manifest.trials.length && !capStop && !providerStop, ...(logSections ? { log_sections: true } : {}), ...(opts.capture ? { capture: captureSummary(opts.capture) } : {}) };
+  const allRecords = readRecords(runDir), recorded = allRecords.length, ids = new Set(allRecords.map((r) => r.trial_id));
+  const lastTrialStop = !!providerStop && selected.every((t) => ids.has(t.id));
+  if (lastTrialStop && exit === RUN_EXIT.providerStop) exit = RUN_EXIT.ok;
+  const summary = { run_id: manifest.run_id, finished_at: new Date().toISOString(), trials_recorded: recorded, trials_planned: manifest.trials.length, cap_stop: capStop, ...(providerStop ? { provider_stop: providerStop.provider } : {}), complete: recorded === manifest.trials.length && !capStop, ...(logSections ? { log_sections: true } : {}), ...(opts.capture ? { capture: captureSummary(opts.capture) } : {}) };
   writeAtomic(join(runDir, 'run-summary.json'), JSON.stringify(summary, null, 1) + '\n');
-  log(`run ${manifest.run_id}: ${records.length} trials recorded this invocation; ${summary.trials_recorded}/${summary.trials_planned} total${capStop ? '; incomplete (cap stop)' : ''}${providerStop ? `; incomplete (provider stop: ${providerStop.provider})` : ''}`);
+  log(`run ${manifest.run_id}: ${records.length} trials recorded this invocation; ${summary.trials_recorded}/${summary.trials_planned} total${capStop ? '; incomplete (cap stop)' : ''}${providerStop ? (lastTrialStop ? `; provider stop (${providerStop.provider}) after the last trial, so nothing was left to stop` : `; incomplete (provider stop: ${providerStop.provider})`) : ''}`);
   return { exit, records, skipped, cap_stop: capStop };
 }
 

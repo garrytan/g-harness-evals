@@ -90,6 +90,18 @@ def units(rep, run_id, stage, who, when):
     return out
 
 
+def reservations(rep):
+    """{reservation: its reserving row} from the ledger, so a release names the run id, stage and dest the reservation was
+    made for, whatever the manifest says by then. An unreadable ledger raises OSError, so nothing is released from it; an
+    unreadable line is skipped."""
+    out = {}
+    for line in open(os.path.join(rep, LEDGER)).read().split('\n'):
+        try: e = json.loads(line)
+        except ValueError: continue
+        if isinstance(e, dict) and e.get('reservation') and e.get('reserved_at') and not e.get('released'): out.setdefault(e['reservation'], e)
+    return out
+
+
 def torn_mark(line):
     try: return json.loads(line).get(TORN) is True
     except (ValueError, AttributeError): return False

@@ -1,5 +1,5 @@
 // The provider stop (internal-task): a shard stops once a provider has refused PROVIDER_STOP_AFTER trials in a row for want of
-// credit or permission, instead of turning every trial after it into a $0 infrastructure record (about 100 trials went that
+// credit, instead of turning every trial after it into a $0 infrastructure record (about 100 trials went that
 // way when xAI credit ran out mid-shard in 2026-11). The launch check (scripts/launch-preflight.ts) asks each provider once
 // before a shard starts; this watches the trials while it runs, with the same credit rule (creditRefusal).
 //
@@ -34,13 +34,15 @@ export const PROVIDER_STOP_FILE = 'provider-stop.json';
 
 const CREDIT = /credit|balance|quota|billing|spending[ _-]?limit|insufficient_quota|payment|exhausted|monthly limit/i;
 const CREDIT_429 = /credit|billing|spending[ _-]?limit|insufficient_quota|payment|monthly limit/i;
+const PLAN_AND_BILLING = /check your plan and billing details/gi;
 
 /** A provider's answer that says the account cannot pay or may not call: 402, a 400, 401 or 403 with credit wording, or a 429
- *  with credit wording beyond "quota" or "exhausted". The launch check (runner/cost/provider-probe.ts classify) reads it as
+ *  with credit wording beyond "quota", "exhausted" and "check your plan and billing details" (Google's and OpenAI's rate-limit
+ *  text; OpenAI's out-of-credit 429 still counts by its insufficient_quota code). The launch check (runner/cost/provider-probe.ts classify) reads it as
  *  HE-PROVIDER-002. */
 export function creditRefusal(status: number | undefined | null, text: string): boolean {
   if (status === 402) return true;
-  if (status === 429) return CREDIT_429.test(text);
+  if (status === 429) return CREDIT_429.test(text.replace(PLAN_AND_BILLING, ''));
   return (status === 400 || status === 401 || status === 403) && CREDIT.test(text);
 }
 
@@ -67,6 +69,11 @@ export class ProviderStopWatch {
   private runs = new Map<string, string[]>();
   constructor(readonly after = PROVIDER_STOP_AFTER) {}
 
+  /** A trial still running: each provider it called has no verdict yet, so that provider's run is broken, not carried past it. */
+  unsettled(lines: ReadonlyArray<StopLine>): void {
+    for (const l of lines) if (l.outcome === 'forwarded') this.runs.delete(l.provider);
+  }
+
   observe(trial: string, lines: ReadonlyArray<StopLine>, at = new Date()): ProviderStop | null {
     for (const [provider, v] of trialVerdicts(lines)) {
       if (!v.refused) { this.runs.delete(provider); continue; }
@@ -84,7 +91,8 @@ export class ProviderStopWatch {
 
 /** A whole usage log: its lines grouped by trial key (slot: keys, the proxy's refusals of an unknown token, are no trial), each
  *  trial's lines in log order, the trials in the order of their first line. With since (ms), lines logged before it are left
- *  out; with settledBefore (ms), a trial whose last line is later is still running and is left out until it settles. */
+ *  out; with settledBefore (ms), a trial whose last line is later is still running and is left out until it settles, and it
+ *  breaks the run of each provider it called, so refusals on either side of it are not counted as in a row. */
 export function scanUsage(lines: ReadonlyArray<StopLine>, after = PROVIDER_STOP_AFTER, at = new Date(),
   window: { since?: number; settledBefore?: number } = {}): ProviderStop | null {
   const ms = (l: StopLine) => (l.at === undefined ? NaN : Date.parse(l.at));
@@ -96,7 +104,7 @@ export function scanUsage(lines: ReadonlyArray<StopLine>, after = PROVIDER_STOP_
   }
   const watch = new ProviderStopWatch(after);
   for (const [key, ls] of trials) {
-    if (window.settledBefore !== undefined && !(ms(ls.at(-1)!) <= window.settledBefore)) continue;
+    if (window.settledBefore !== undefined && !(ms(ls.at(-1)!) <= window.settledBefore)) { watch.unsettled(ls); continue; }
     const stop = watch.observe(key, ls, at);
     if (stop) return stop;
   }
@@ -113,7 +121,7 @@ function readUsage(file: string): StopLine[] {
   return out;
 }
 
-export const stopLine = (s: ProviderStop, file: string) => `HE-PROVIDER-006 ${s.provider} refused ${s.after} trials in a row for want of credit or permission (last answer HTTP ${s.last.status}${s.last.error_code ? ' ' + s.last.error_code : ''}; trials ${s.trials.join(', ')}); the shard stops so no more trials become $0 infra records. Stop reason in ${file}. Recovery: a person tops up or fixes access for ${s.provider}, the launch check passes again, then the shard resumes`;
+export const stopLine = (s: ProviderStop, file: string) => `HE-PROVIDER-006 ${s.provider} refused ${s.after} trials in a row for want of credit (last answer HTTP ${s.last.status}${s.last.error_code ? ' ' + s.last.error_code : ''}; trials ${s.trials.join(', ')}); the shard stops so no more trials become $0 infra records. Stop reason in ${file}. Recovery: a person tops up or fixes access for ${s.provider}, the launch check passes again, then the shard resumes`;
 
 if (import.meta.main) {
   const [mode, ...rest] = process.argv.slice(2);

@@ -295,6 +295,50 @@ describe('fanout.sh gives back the reservation of a shard an interrupt left in t
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+  // Value: protects=a shard that never launched is released under the run id, stage and dest its reservation was made for,
+  // even when manifest.json was edited while the fan-out ran; fails_when=the release rereads the manifest and writes the
+  // released line under the new stage or dest, so the original stage's sum keeps counting s2; seam=the same fake
+  // run-shard.sh as the test above and a driver that rewrites manifest.json before the TERM; no_claim=a real VM.
+  test('a manifest rewritten to another stage and dest before the TERM does not change the released line of s2', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-fanout-release-'));
+    try {
+      for (const s of ['fanout.sh', 'stage_ledger.py', 'prune-pending.sh']) copyFileSync(join(FANOUT, '..', s), join(dir, s));
+      writeFileSync(join(dir, 'prereg.json'), JSON.stringify({ run_id: 'stage-test', caps_usd: { main: 2 } }));
+      const dest = join(dir, 'dest'), replica = join(dir, 'replica');
+      script(dir, 'run-shard.sh', [
+        'arg() { sed -E "s/.* --$1 ([^ ]+).*/\\1/" <<<"$*"; }',
+        'name=$(arg name "$*") d=$(arg dest "$*") rep=$(arg replicate-to "$*") at=2026-11-17T00:00:00Z',
+        'printf \'{"lease_usd": 1, "launched_at": "%s", "vm": "vm-%s", "resume": false, "reservation": "%s"}\\n\' "$at" "$name" "$UBI_LEASE_RESERVATION" >> "$d/leases.jsonl"',
+        'printf \'{"run_id": "stage-test", "stage": "main", "dest": "%s", "lease_usd": 1, "resume": false, "launched_at": "%s", "vm": "vm-%s", "by": "run-shard.sh", "reservation": "%s"}\\n\' "$(realpath "$d")" "$at" "$name" "$UBI_LEASE_RESERVATION" >> "$rep/stage-ledger.jsonl"',
+        'echo "$name" >> "' + dir + '/started"',
+        'trap \'exit 130\' TERM',
+        'sleep 8 & wait',
+        'exit 0',
+      ].join('\n'));
+      script(dir, 'ubi-runner.sh', 'echo "total 0 0"');
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify({ commit: 'a'.repeat(40), prereg: join(dir, 'prereg.json'), dest, size: 'standard-16', stage_cap_usd: 2, shards: ['s1', 's2'].map((name) => ({ name, cells: 'c-' + name, lease_usd: 1, args: ['--stage', 'main', '--shards', '8'] })) }));
+      const driver = [
+        'bash "$1" --manifest "$2" --parallel 1 --workload qm-driver --replicate-to "$3/replica" & p=$!',
+        'for i in $(seq 1 150); do [ -s "$3/started" ] && break; sleep 0.1; done',
+        'python3 -c "import json, sys; m = json.load(open(sys.argv[1])); m[\'dest\'] = sys.argv[2]; [s.update(args=[\'--stage\', \'ext\', \'--shards\', \'8\']) for s in m[\'shards\']]; json.dump(m, open(sys.argv[1], \'w\'))" "$2" "$3/elsewhere"',
+        'kill -TERM $p; wait $p; echo "fanout exit $?"',
+      ].join('\n');
+      const r = spawnSync('bash', ['-c', driver, 'driver', join(dir, 'fanout.sh'), join(dir, 'manifest.json'), dir], {
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: { PATH: process.env.PATH, HOME: dir, UBI_OWNER: 'test-owner', UBI_RUNNER: join(dir, 'ubi-runner.sh') },
+      });
+      const rows = (p: string) => (existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+      expect(readFileSync(join(dir, 'started'), 'utf8').trim().split('\n')).toEqual(['s1']);
+      expect(r.stderr).toContain('released the stage-cap reservation of s2, which never launched');
+      expect(rows(join(dest, 's2', 'leases.jsonl')).filter((e) => e.released).length).toBe(1);
+      expect(rows(join(dest, 's1', 'leases.jsonl')).some((e) => e.released)).toBe(false);
+      expect(rows(join(replica, 'stage-ledger.jsonl')).filter((e) => e.released).map((e) => [e.run_id, e.stage, e.dest])).toEqual([['stage-test', 'main', join(dest, 's2')]]);
+      expect(existsSync(join(dir, 'elsewhere'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 describe('fanout.sh releases nothing for a shard whose stage-ledger line cannot be written', () => {

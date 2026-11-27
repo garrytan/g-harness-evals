@@ -29,7 +29,8 @@ const baseEnv = (dir: string, runner: string) => ({ PATH: process.env.PATH ?? '/
 // A full shard through run-shard.sh against a fake ubi-runner.sh. Each pull of shard/results takes the next step of
 // pulls (the last one repeats): ok:<line> brings back results/ with that trials.jsonl line, warn:<line> does the same and
 // exits 1 (tar's "file changed as we read it"), db:<line> adds ledger.sqlite and wal:<line> adds ledger.sqlite with its
-// -wal and -shm, empty brings back nothing, fails exits 1 with nothing. The shard reports
+// -wal and -shm, walerr:<line> adds ledger.sqlite and prints tar's warning that it could not open the -wal, walgone:<line> and walrm:<line>
+// the same with tar's two wordings for a -wal that vanished, empty brings back nothing, fails exits 1 with nothing. The shard reports
 // exit 0 once exitAfter pulls have happened; each poll records whether vm-map.jsonl was already in the replicate dir.
 // seed and seeds are files put in <dest> before the launch that the VM never has; workload is passed as --workload.
 function shard(o: { pulls: string[]; exitAfter: number; seed?: string; seeds?: string[]; workload?: string }) {
@@ -55,8 +56,8 @@ function shard(o: { pulls: string[]; exitAfter: number; seed?: string; seeds?: s
     '  pull) case "$2" in shard/results)',
     '      n=$(( $(cat "$d/npull" 2>/dev/null || echo 0) + 1 )); echo $n > "$d/npull"',
     '      step=$(sed -n "${n}p" "$d/pulls"); [ -n "$step" ] || step=$(tail -1 "$d/pulls")',
-    '      case $step in fails) exit 1 ;; empty) exit 0 ;; ok:*|warn:*|db:*|wal:*) mkdir -p "$3/results" && printf "%s\\n" "${step#*:}" > "$3/results/trials.jsonl" && echo "{\\"name\\": \\"s1\\"}" > "$3/results/shard.json"',
-    '        case $step in warn:*) exit 1 ;; db:*) echo "${step#*:}" > "$3/results/ledger.sqlite" ;; wal:*) for f in ledger.sqlite ledger.sqlite-wal ledger.sqlite-shm; do echo "${step#*:}" > "$3/results/$f"; done ;; esac ;; esac ;;',
+    '      case $step in fails) exit 1 ;; empty) exit 0 ;; ok:*|warn:*|db:*|wal:*|walerr:*|walgone:*|walrm:*) mkdir -p "$3/results" && printf "%s\\n" "${step#*:}" > "$3/results/trials.jsonl" && echo "{\\"name\\": \\"s1\\"}" > "$3/results/shard.json"',
+    '        case $step in warn:*) exit 1 ;; db:*) echo "${step#*:}" > "$3/results/ledger.sqlite" ;; wal:*) for f in ledger.sqlite ledger.sqlite-wal ledger.sqlite-shm; do echo "${step#*:}" > "$3/results/$f"; done ;; walerr:*) echo "${step#*:}" > "$3/results/ledger.sqlite"; echo "tar: results/ledger.sqlite-wal: Warning: Cannot open: Permission denied" >&2 ;; walgone:*) echo "${step#*:}" > "$3/results/ledger.sqlite"; echo "tar: results/ledger.sqlite-wal: Warning: Cannot stat: No such file or directory" >&2 ;; walrm:*) echo "${step#*:}" > "$3/results/ledger.sqlite"; echo "tar: results/ledger.sqlite-wal: File removed before we read it" >&2 ;; esac ;; esac ;;',
     '    *) exit 1 ;; esac ;;',
     '  ssh) case "$2" in',
     '      *"::trials"*) [ -s ' + JSON.stringify(join(rep, 'vm-map.jsonl')) + ' ] && echo map=yes >> "$d/polls" || echo map=no >> "$d/polls"',
@@ -127,6 +128,28 @@ describe('ubicloud/run-shard.sh mid-run replication', () => {
     expect(existsSync(join(r.dest, 'results', 'ledger.sqlite-wal'))).toBe(false);
     expect(existsSync(join(r.dest, 'results', 'ledger.sqlite-shm'))).toBe(false);
   }, 120_000);
+
+  // Value: protects=a ledger whose -wal the VM's tar could not open keeps the local -wal an earlier pull brought back, since
+  // it may hold committed pages the VM could lose before teardown; fails_when=pull_results reads the missing -wal as one the
+  // teardown checkpoint removed and deletes the local copy; why_new=#630's second-model review; seam=the fake ubi-runner.sh
+  // above printing tar's warning; no_claim=a real VM or tar.
+  test('a ledger whose -wal the VM could not read keeps the last pull\'s database, -wal and -shm together, never the new database beside the old -wal', () => {
+    const r = shard({ pulls: ['wal:v1', 'walerr:v2'], exitAfter: 1 });
+    expect(r.code, r.err).toBe(0);
+    for (const f of ['ledger.sqlite', 'ledger.sqlite-wal', 'ledger.sqlite-shm']) expect(read(join(r.dest, 'results', f)), f).toBe('v1\n');
+    expect(read(join(r.dest, 'results', 'trials.jsonl'))).toBe('v2\n');
+    expect(r.laneLog).toContain("WARNING: pull: the VM's results/ledger.sqlite-wal or -shm could not be read, so results/ledger.sqlite and its -wal and -shm stay as the last pull left them");
+  }, 120_000);
+
+  for (const step of ['walgone', 'walrm']) {
+    test('a ledger whose -wal vanished during the pull (' + step + ': the checkpoint removed it) still drops the local -wal', () => {
+      const r = shard({ pulls: ['wal:v1', step + ':v2'], exitAfter: 1 });
+      expect(r.code, r.err).toBe(0);
+      expect(read(join(r.dest, 'results', 'ledger.sqlite'))).toBe('v2\n');
+      expect(existsSync(join(r.dest, 'results', 'ledger.sqlite-wal'))).toBe(false);
+      expect(r.laneLog).not.toContain('could not be read');
+    }, 120_000);
+  }
 
   test('a frontier-harbor mirror leaves out proxy-capture/ and results/run/, which stay in the dest', () => {
     const capture = join('results', 'trials', 'c1', 't1', 'a1', 'harbor', 'proxy-capture', 'proxy-requests.ndjson');

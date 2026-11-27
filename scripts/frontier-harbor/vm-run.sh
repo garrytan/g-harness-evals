@@ -89,7 +89,9 @@
 # scans --out for the value (exit 5 on a hit, HE-CURSOR-003). With --fake-upstream no key file is written, so each Cursor
 # cell stops at agent setup with HE-CURSOR-002 before any command runs in its container (the keyless install check).
 # Exit: 0, or Harbor's last non-zero exit code; 2 usage or plan refusal; 3 setup failure; 5 the Cursor key scan found the
-# value; 6 the meter did not drain.
+# value (on every path, interrupts and provider stops included, and over any other code); 6 the meter did not drain, only
+# when no other code applies (accounting.json and the log say so either way); 8 the provider stop (HE-PROVIDER-006); 129,
+# 130 or 143 an interrupt.
 set -euo pipefail
 umask 077
 here=$(cd "$(dirname "$0")" && pwd)
@@ -162,6 +164,17 @@ cleanup() {
   for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done
 }
 trap cleanup EXIT
+# key_scan: the Cursor key scan (HE-CURSOR-003): the literal value (whole, first 16, last 12 characters, gzip decoded) in
+# any file under --out; key-scan.ts reads it from its own environment, deletes it there and prints a count, never the value.
+# A hit sets rc=5, which wins over every other exit, on the normal path and after an interrupt or a provider stop alike.
+key_scan() {
+  local scan_rc=0
+  [ -n "${cursor_key:+x}" ] || return 0
+  rm -rf "$cursor_key_dir"
+  cursor_key_dir=""
+  { (export CURSOR_API_KEY=$cursor_key; cd "$repo"; KEEP=CURSOR_API_KEY run_scrubbed bun scripts/cursor/key-scan.ts "$out") 2>&1 | tee -a "$out/run-shard.log"; scan_rc=${PIPESTATUS[0]}; } || true
+  [ "$scan_rc" -eq 0 ] || { say "HE-CURSOR-003 the key scan of $out exited $scan_rc (1: the CURSOR_API_KEY value is in a file there); keep $out off every copy, mirror, publication and drive until it is cleaned"; rc=5; }
+}
 on_signal() {
   trap - TERM INT HUP
   trap '' USR1
@@ -171,7 +184,9 @@ on_signal() {
   for p in ${lane_pids[@]+"${lane_pids[@]}"}; do timeout 70 tail --pid="$p" -f /dev/null 2>/dev/null || kill -KILL "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; done
   lane_pids=()
   [ "$harbor_started" -eq 0 ] || finish 1 30000 || true
-  exit "$1"
+  rc=$1
+  key_scan
+  exit "$rc"
 }
 trap 'on_signal 143' TERM
 trap 'on_signal 130' INT
@@ -349,11 +364,11 @@ fi
 # each trial's meter finalized ($1 rounds of up to $2 ms) so no request is still settling when the records are written.
 # <out>/accounting.json says whether every request settled; when one did not, its reservation stays charged.
 finish() {
+  trap '' USR1
   [ "$finished" -eq 0 ] || return 0
   finished=1
   local rounds=$1 wait_ms=$2 undrained=0 ok=true resp n k
   [ -z "$journal_pid" ] || { kill "$journal_pid" 2>/dev/null || true; wait "$journal_pid" 2>/dev/null || true; }
-  trap '' USR1
   [ -z "$stop_pid" ] || { kill "$stop_pid" 2>/dev/null || true; wait "$stop_pid" 2>/dev/null || true; }
   [ "$metered" -eq 0 ] || curl -fsS -X POST 127.0.0.1:8791/unbind-all >> "$out/run.log" 2>&1 || ok=false
   for k in $(python3 -c 'import json,sys; [print(json.loads(l)["trial"]) for l in open(sys.argv[1]) if l.strip()]' "$run/binds.jsonl" 2>/dev/null); do
@@ -400,7 +415,7 @@ harbor_env=("${safe_env[@]}" "PYTHONPATH=$here")
 journal_pid=$!
 pids+=("$journal_pid")
 # the provider stop (runner/cost/provider-stop.ts, internal-task): every 60 s it reads the proxy's usage log, and once one provider
-# has refused 3 trials in a row for want of credit or permission it writes <out>/provider-stop.json and sends this script
+# has refused 3 trials in a row for want of credit it writes <out>/provider-stop.json and sends this script
 # USR1, which stops Harbor as an interrupt does, writes the records so far and exits 8; the lane then frees the VM. An earlier
 # stop's file (a --resume or a later --stage reuses <out>) is moved aside first, and finish() stops the watcher before it
 # writes the records, so a stop found after Harbor ends still exits 8, with every record written
@@ -459,15 +474,5 @@ set -e
 finish 8 120000
 [ ! -e "$out/provider-stop.json" ] || { say "HE-PROVIDER-006 provider stop ($out/provider-stop.json), found after Harbor ended"; rc=8; }
 [ "$rc" -ne 0 ] || [ "$accounting_incomplete" -eq 0 ] || rc=6
-# the Cursor key scan (HE-CURSOR-003): the literal value (whole, first 16, last 12 characters, gzip decoded) in any file
-# under --out; key-scan.ts reads it from its own environment, deletes it there and prints a count, never the value
-if [ -n "${cursor_key:+x}" ]; then
-  rm -rf "$cursor_key_dir"
-  cursor_key_dir=""
-  set +e
-  (export CURSOR_API_KEY=$cursor_key; cd "$repo"; KEEP=CURSOR_API_KEY run_scrubbed bun scripts/cursor/key-scan.ts "$out") 2>&1 | tee -a "$out/run-shard.log"
-  scan_rc=${PIPESTATUS[0]}
-  set -e
-  [ "$scan_rc" -eq 0 ] || { say "HE-CURSOR-003 the key scan of $out exited $scan_rc (1: the CURSOR_API_KEY value is in a file there); keep $out off every copy, mirror, publication and drive until it is cleaned"; rc=5; }
-fi
+key_scan
 exit "$rc"

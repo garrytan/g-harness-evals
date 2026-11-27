@@ -42,7 +42,7 @@ function manifest(r: ReturnType<typeof repo>, over: Record<string, unknown> = {}
 
 function receipt(r: ReturnType<typeof repo>, shard: string, over: Record<string, unknown> = {}) {
   mkdirSync(join(r.dest, shard), { recursive: true });
-  writeFileSync(join(r.dest, shard, 'launch-preflight.json'), JSON.stringify({ schema: 'launch-preflight/1', at: new Date().toISOString(), commit: r.commit, run_id: 'fixture', shard: { name: shard, cells: ['c-' + shard] }, verdict: 'pass', ...over }));
+  writeFileSync(join(r.dest, shard, 'launch-preflight.json'), JSON.stringify({ schema: 'launch-preflight/1', at: new Date().toISOString(), commit: r.commit, run_id: 'fixture', shard: { name: shard, cells: ['c-' + shard], lease_usd: 1 }, verdict: 'pass', ...over }));
 }
 
 function fanout(r: ReturnType<typeof repo>, file: string, args: string[] = ['--dry-run']) {
@@ -76,7 +76,7 @@ describe("fanout.sh's launch check", () => {
     } finally { rmSync(r.dir, { recursive: true, force: true }); }
   });
 
-  test('a refused verdict, another commit, another shard, a stale receipt or one from the future is refused, each with its reason', () => {
+  test('a refused verdict, another commit, shard, run, cell list or lease, a stale receipt or one from the future is refused, each with its reason', () => {
     const r = repo();
     try {
       const old = new Date(Date.now() - 61 * 60_000).toISOString();
@@ -87,6 +87,10 @@ describe("fanout.sh's launch check", () => {
         [{ at: old }, 'it is 61 minutes old (limit 60)'],
         [{ at: new Date(Date.now() + 3600_000).toISOString() }, 'is in the future'],
         [{ schema: 'other/1' }, "schema 'other/1', not launch-preflight/1"],
+        [{ run_id: 'other-run' }, "checked run 'other-run', not the prereg's 'fixture'"],
+        [{ shard: { name: 's1', cells: ['c-s1', 'c-extra'], lease_usd: 1 } }, "checked cells c-s1,c-extra, not the manifest's c-s1"],
+        [{ shard: { name: 's1', cells: ['c-s1'], lease_usd: 5 } }, "checked a lease of 5, not the manifest's 1"],
+        [{ shard: { name: 's1', cells: ['c-s1'], lease_usd: 1, gemini_cli_route: 'openrouter-fallback' } }, "checked Gemini CLI route openrouter-fallback, not the manifest's native"],
       ];
       receipt(r, 's2');
       for (const [over, why] of cases) {
@@ -98,6 +102,25 @@ describe("fanout.sh's launch check", () => {
       }
     } finally { rmSync(r.dir, { recursive: true, force: true }); }
   });
+
+  // Value: protects=a fetch of a commit the controller lacks cannot hang the fan-out before its first VM; fails_when=the git
+  // fetch has no timeout and a stuck remote holds the controller; seam=origin at an ssh URL and a fake ssh on PATH that
+  // sleeps; no_claim=a real remote.
+  test('a fetch of a missing commit that hangs gives up after UBI_LAUNCH_FETCH_SECONDS', () => {
+    const r = repo();
+    try {
+      const bin = join(r.dir, 'bin');
+      mkdirSync(bin);
+      script(join(bin, 'ssh'), 'sleep 30');
+      spawnSync('git', ['remote', 'add', 'origin', 'ssh://fixture.invalid/repo.git'], { cwd: r.dir });
+      const started = Date.now();
+      const out = spawnSync('bash', [join(r.dir, 'scripts', 'ubicloud', 'fanout.sh'), '--manifest', manifest(r, { commit: 'c'.repeat(40) }), '--dry-run'], { cwd: r.dir, encoding: 'utf8', timeout: 60_000,
+        env: { PATH: bin + ':' + (process.env.PATH ?? ''), HOME: r.dir, UBI_OWNER: 'internal-task', UBI_RUNNER: join(r.dir, 'ubi-runner.sh'), UBI_LAUNCH_FETCH_SECONDS: '2' } });
+      expect(Date.now() - started).toBeLessThan(25_000);
+      expect(out.stderr).toContain('fetching ' + 'c'.repeat(40) + ' for the launch check timed out');
+      expect(out.stderr).toContain('launch check skipped: commit ' + 'c'.repeat(40) + ' is not in this repository');
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  }, 60_000);
 
   test('a scratch prereg, a keyless install check and the gstack-laneb workload are not counted, so no receipt is needed', () => {
     const r = repo();

@@ -379,17 +379,31 @@ lines() { if [ -f "$1" ]; then wc -l < "$1"; else echo 0; fi; }
 # <dest>/.pull to move into place; a sealed shard's staged plaintext is always deleted (scripts/sealed/cleanup.ts does not
 # know .pull and the VM still holds the results). Removal diagnostics go to $errs, so a failure can name no sealed path on stderr. A *.sqlite that comes back without
 # its -wal or -shm (teardown checkpoints and closes the ledger) drops the local one, which an earlier pull left and which
-# would replay old pages over the newer database.
+# would replay old pages over the newer database. When the pull's tar errors (kept in <dest>/.pull/pull.err on every pull)
+# name that -wal or -shm as one tar could not stat, open or read (not one that vanished, "No such file or directory" or "File
+# removed before we read it", which the checkpoint removed), the local database and its -wal and -shm all stay as the last
+# pull left them, with a warning, and this pull's copy of that database is not used: an old -wal is never paired with a
+# newer database, and a -wal that may hold committed pages is never deleted.
 pull_results() {
-  local rc=0 db s p a keep=0 skip=() inc=() err=/dev/null live=() other=() errs=$dest/lane.log
+  local rc=0 db s p a keep=0 skip=() inc=() err=$dest/.pull/pull.err live=() other=() errs=$dest/lane.log
   for a in "$@"; do case $a in keep-staged) keep=1 ;; --skip-unreadable) skip=(--skip-unreadable) ;; since-mark) inc=(--since-mark shard/.pull-mark --exclude '*/.gbrain/brain.pglite' --exclude '*/.bun/install/cache') ;; esac; done
   [ "$sealed" -eq 0 ] || errs=$dest/sealed-upload.log
   chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"
-  [ ${#skip[@]} -eq 0 ] || { mkdir -p "$dest/.pull" && err=$dest/.pull/pull.err; }
+  mkdir -p "$dest/.pull" || err=/dev/null
   bash "$runner" pull "$vm" shard/results "$dest/.pull" ${skip[@]+"${skip[@]}"} ${inc[@]+"${inc[@]}"} 2>"$err" || rc=$?
   if [ "$rc" -gt 1 ] || [ ! -d "$dest/.pull/results" ]; then chmod -R u+w "$dest/.pull" 2>/dev/null; rm -rf "$dest/.pull" 2>>"$errs"; return 1; fi
   while IFS= read -r db; do
-    for s in -wal -shm; do [ -e "$dest/.pull/results/$db$s" ] || rm -f "$dest/results/$db$s"; done
+    db=${db#./} a=0
+    for s in -wal -shm; do
+      [ ! -e "$dest/.pull/results/$db$s" ] || continue
+      ! grep -F -- "tar: results/$db$s: " "$err" 2>/dev/null | grep -vqE 'No such file or directory|File removed before we read it' || a=1
+    done
+    if [ "$a" -eq 1 ]; then
+      rm -f "$dest/.pull/results/$db" "$dest/.pull/results/$db-wal" "$dest/.pull/results/$db-shm"
+      [ "$sealed" -eq 1 ] || log "WARNING: pull: the VM's results/$db-wal or -shm could not be read, so results/$db and its -wal and -shm stay as the last pull left them"
+    else
+      for s in -wal -shm; do [ -e "$dest/.pull/results/$db$s" ] || rm -f "$dest/results/$db$s"; done
+    fi
   done < <(cd "$dest/.pull/results" && find . -name '*.sqlite')
   chmod -R u+w "$dest/results" 2>/dev/null
   if ! { mkdir -p "$dest/results" && cp -a "$dest/.pull/results/." "$dest/results/" 2>>"$errs"; }; then
@@ -528,7 +542,7 @@ replica_preflight() {
 mirror() {
   [ -n "$replicate_to" ] || return 0
   local stage=$dest/.mirror to=$replicate_to/${name:-attach} hits skip=()
-  local packs=() found=() parts=() raw=() t e b p w c task bases rc why ext=gz other=zst comp=(gzip -c) real
+  local packs=() found=() parts=() raw=() lit=() t e b p w c task bases rc why ext=gz other=zst comp=(gzip -c) real
   clear_parts "$to"
   if [ -e "$dest/CURSOR-KEY-FOUND" ]; then log "WARNING: replicate: $dest/CURSOR-KEY-FOUND exists (the Cursor key scan hit); no mirror to $replicate_to"; return 1; fi
   ! command -v zstd >/dev/null 2>&1 || { ext=zst other=gz; comp=(zstd -q -c -T0 -19); }
@@ -538,16 +552,17 @@ mirror() {
   # harbor, the trial folder), and following it would have git and cp work on a tree outside <dest>. A finished trial's
   # work/ must be the same path with symlinks followed and not, and work/repo and work/remote.git no symlinks; otherwise it
   # is logged and neither packed nor copied raw, and the first symlink on its path is left out of the staging tar, which
-  # stores a symlink as a link and never follows it.
+  # stores a symlink as a link and never follows it. That path is excluded literally (--no-wildcards), since a trial path
+  # holding *, ? or [ would otherwise be read as a pattern and miss its symlink or leave out other trials.
   real=$(realpath -e "$dest")
   for t in ${found[@]+"${found[@]}"}; do
     if [ "$(realpath -e "$dest/$t/work" 2>/dev/null)" = "$real/$t/work" ] && [ ! -L "$dest/$t/work/repo" ] && [ ! -L "$dest/$t/work/remote.git" ]; then packs+=("$t"); continue; fi
     log "WARNING: replicate: $t/work has a symlink on its path; its work trees are neither packed nor copied into $to"
     IFS=/ read -ra parts <<<"$t/work"; p=.
-    for c in "${parts[@]}"; do p=$p/$c; [ ! -L "$dest/$p" ] || { skip+=(--exclude="$p"); break; }; done
+    for c in "${parts[@]}"; do p=$p/$c; [ ! -L "$dest/$p" ] || { lit+=(--exclude="$p"); break; }; done
   done
   rm -rf "$stage" && mkdir -p "$stage" &&
-    tar -C "$dest" -cf - --exclude='./.pull*' --exclude='./results.partial-*' --exclude=./.mirror --exclude=./smoke/work/gstack-edition --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} . | tar -C "$stage" -xf - ||
+    tar -C "$dest" -cf - --exclude='./.pull*' --exclude='./results.partial-*' --exclude=./.mirror --exclude=./smoke/work/gstack-edition --exclude='./results/trials/*/*/*/state' --exclude='./results/trials/*/*/*/workspace' ${skip[@]+"${skip[@]}"} ${lit[@]+--no-wildcards "${lit[@]}" --wildcards} . | tar -C "$stage" -xf - ||
     { log "WARNING: replicate: staging $dest for $to failed; the previous mirror stays"; rm -rf "$stage"; return 1; }
   for t in ${packs[@]+"${packs[@]}"}; do
     task=${t#results/trials/*/}; task=${task%%/*}

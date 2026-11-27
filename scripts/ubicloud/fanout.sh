@@ -129,13 +129,44 @@ log() { printf '%(%Y-%m-%dT%H:%M:%SZ)T fanout: %s\n' -1 "$*" >&2; }
 # shard's latest lease. A dest from before leases.jsonl counts its shard-vm.json lease. "check" runs before any VM call;
 # "reserve" runs before the first launch under an exclusive lock on <dest>/.stage-cap.lock (waiting up to
 # UBI_STAGE_LOCK_SECONDS, default 300), checks again and appends one reservation per shard it launches fresh, printing
-# "<shard><TAB><reservation>" lines, so two fan-outs on one dest cannot spend the same budget. "release <shard> <reservation>
-# ..." runs at the end for the shards that never launched: each reservation no launch line names gets a released line in
-# leases.jsonl (and the stage ledger), which drops it from the sum, and the shard is printed.
+# "<shard><TAB><reservation>" lines, so two fan-outs on one dest cannot spend the same budget. "release <dest> <shard>
+# <reservation> ..." runs at the end for the shards that never launched: each reservation no launch line names gets a
+# released line in leases.jsonl (and the stage ledger, with the run id, stage and dest of the ledger's reservation line, not
+# of the manifest as it reads by then), which drops it from the sum, and the shard is printed. Under qm-driver a reservation
+# the stage ledger cannot be read for, or has no line for, is not released in either ledger.
 stage_cap() {
   python3 - "$manifest" "$workload" "$1" "$rep_to" "$here" "${@:2}" <<'PY'
 import fcntl, json, os, sys, time
-m = json.load(open(sys.argv[1])); workload, mode, rep_to, here = sys.argv[2:6]
+workload, mode, rep_to, here = sys.argv[2:6]
+if mode == 'release':
+    dest, stamp, booked = sys.argv[6], time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), None
+    if workload == 'qm-driver':
+        sys.path.insert(0, here); sys.dont_write_bytecode = True
+        import stage_ledger as sl
+        try: booked = sl.reservations(os.path.abspath(rep_to))
+        except OSError as e: booked = e
+    for name, rid in zip(sys.argv[7::2], sys.argv[8::2]):
+        p = os.path.join(dest, name, 'leases.jsonl')
+        try: rows = [json.loads(l) for l in open(p) if l.strip()]
+        except (OSError, ValueError): continue
+        mine = [e for e in rows if isinstance(e, dict) and e.get('reservation') == rid]
+        if not mine or any(e.get('launched_at') or e.get('released') for e in mine): continue
+        row = {'reservation': rid, 'lease_usd': mine[0].get('lease_usd'), 'released': True, 'released_at': stamp, 'by': 'fanout.sh', 'resume': False}
+        try:
+            if isinstance(booked, OSError): raise booked
+            if booked is not None:
+                b = booked.get(rid)
+                if not b:
+                    print('fanout: the stage ledger in %s has no reservation line %s for %s, so its reservation is not released; %s still counts it' % (rep_to, rid, name, p), file=sys.stderr)
+                    continue
+                sl.append(os.path.abspath(rep_to), dict(row, run_id=b.get('run_id'), stage=b.get('stage'), dest=b.get('dest')))
+            with open(p, 'a') as f: f.write(json.dumps(row) + '\n')
+        except OSError as e:
+            print('fanout: releasing the reservation of %s failed (%s); %s still counts it, and so does the stage ledger unless its line was written' % (name, e, p), file=sys.stderr)
+            continue
+        print(name)
+    sys.exit(0)
+m = json.load(open(sys.argv[1]))
 num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
 cap = m.get('stage_cap_usd')
 if workload == 'qm-driver' and cap is None:
@@ -151,28 +182,6 @@ dest = os.path.expanduser(m['dest'])
 opts = m.get('options', [])
 resume = '--resume' in (opts[:opts.index('--')] if '--' in opts else opts)
 when = 'before any VM call' if mode == 'check' else 'before any VM was created'
-if mode == 'release':
-    stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-    if workload == 'qm-driver':
-        sys.path.insert(0, here); sys.dont_write_bytecode = True
-        import stage_ledger as sl
-        design = sl.prereg(os.path.dirname(os.path.dirname(here)), m['commit'], m['prereg'], 'fanout')
-        stage = sl.stage_of(shards[0].get('args') or [])
-    for name, rid in zip(sys.argv[6::2], sys.argv[7::2]):
-        p = os.path.join(dest, name, 'leases.jsonl')
-        try: rows = [json.loads(l) for l in open(p) if l.strip()]
-        except (OSError, ValueError): continue
-        mine = [e for e in rows if isinstance(e, dict) and e.get('reservation') == rid]
-        if not mine or any(e.get('launched_at') or e.get('released') for e in mine): continue
-        row = {'reservation': rid, 'lease_usd': mine[0].get('lease_usd'), 'released': True, 'released_at': stamp, 'by': 'fanout.sh', 'resume': False}
-        try:
-            if workload == 'qm-driver': sl.append(os.path.abspath(rep_to), dict(row, run_id=design['run_id'], stage=stage, dest=os.path.realpath(os.path.join(dest, name))))
-            with open(p, 'a') as f: f.write(json.dumps(row) + '\n')
-        except OSError as e:
-            print('fanout: releasing the reservation of %s failed (%s); %s still counts it, and so does the stage ledger unless its line was written' % (name, e, p), file=sys.stderr)
-            continue
-        print(name)
-    sys.exit(0)
 if mode == 'reserve':
     os.makedirs(dest, exist_ok=True)
     lp = os.path.join(dest, '.stage-cap.lock')
@@ -277,11 +286,13 @@ PY
 stage_cap check || exit 2
 # The launch check (internal-task): a counted manifest launches only shards whose <dest>/<shard>/launch-preflight.json, written by
 # scripts/launch-preflight.ts --manifest <this manifest> --shard <shard> --dest <dest>/<shard>, ran at the manifest's commit for
-# that shard, has verdict pass or overridden, and is under an hour old (UBI_LAUNCH_CHECK_SECONDS, 3600), so the spend stop,
+# that shard (its run id, cells, lease_usd and Gemini CLI route as the prereg and the manifest give them now), has verdict pass or overridden,
+# and is under an hour old (UBI_LAUNCH_CHECK_SECONDS, 3600), so the spend stop,
 # the pilot prices and the providers' credit were checked just before the spend starts. Counted means the harness or
 # frontier-harbor workload with a prereg that is a path in this repository at the commit (run-shard.sh's rule; a scratch
 # preregistration is an uncounted smoke or check) and no --install-check (keyless). It runs once for every shard before any
-# VM call, the quota read included, and again for each shard as it launches, so a shard that waited for room past the hour is
+# VM call, the quota read included (a fetch of a missing commit waits at most UBI_LAUNCH_FETCH_SECONDS, 120), and again for
+# each shard as it launches, so a shard that waited for room past the hour is
 # not launched (its exit is launch-check). Other workloads' cells are not preregistration cells, which the check cannot read.
 launch_check() {
   python3 - "$manifest" "$workload" "$here" "$@" <<'PY'
@@ -293,7 +304,8 @@ if workload not in ('harness', 'frontier-harbor') or '--install-check' in m.get(
     sys.exit(0)
 full = git('rev-parse', '--verify', '--quiet', m['commit'] + '^{commit}').stdout.strip()
 if not full:
-    git('fetch', '-q', 'origin', m['commit'])
+    try: subprocess.run(['git', '-C', root, 'fetch', '-q', 'origin', m['commit']], capture_output=True, timeout=int(os.environ.get('UBI_LAUNCH_FETCH_SECONDS') or 120))
+    except subprocess.TimeoutExpired: print('fanout: fetching %s for the launch check timed out' % m['commit'], file=sys.stderr)
     full = git('rev-parse', '--verify', '--quiet', m['commit'] + '^{commit}').stdout.strip()
 if not full:
     if not names: print('fanout: launch check skipped: commit %s is not in this repository and could not be fetched; run-shard.sh refuses every shard for that before any VM call' % m['commit'], file=sys.stderr)
@@ -302,6 +314,15 @@ if git('cat-file', '-e', full + ':' + m['prereg']).returncode != 0:
     if not names: print('fanout: launch check skipped: %s is not a path in the repository at %s, so this is a scratch (uncounted) run' % (m['prereg'], full[:12]), file=sys.stderr)
     sys.exit(0)
 limit = int(os.environ.get('UBI_LAUNCH_CHECK_SECONDS') or 3600)
+try: run_id = json.loads(git('show', full + ':' + m['prereg']).stdout).get('run_id')
+except (ValueError, AttributeError): run_id = None
+planned = {sh['name']: sh for sh in m['shards']}
+cells = lambda c: [x.strip() for x in (c if isinstance(c, list) else str(c or '').split(',')) if x.strip()]
+opts = m.get('options', [])
+def route(sh):
+    extra = (opts[opts.index('--') + 1:] if '--' in opts else []) + list(sh.get('args') or [])
+    i = len(extra) - 1 - extra[::-1].index('--gemini-cli-route') if '--gemini-cli-route' in extra else -1
+    return extra[i + 1] if 0 <= i < len(extra) - 1 else ('' if i >= 0 else 'native')
 now = datetime.datetime.now(datetime.timezone.utc)
 dest = os.path.expanduser(m['dest'])
 bad = []
@@ -316,6 +337,10 @@ for name in names or [s['name'] for s in m['shards']]:
         r.get('schema') != 'launch-preflight/1' and 'schema %r, not launch-preflight/1' % r.get('schema'),
         r.get('commit') != full and 'ran at commit %s, not the manifest\'s %s' % (str(r.get('commit'))[:12], full[:12]),
         (r.get('shard') or {}).get('name') != name and 'checked shard %r, not %s' % ((r.get('shard') or {}).get('name'), name),
+        r.get('run_id') != run_id and 'checked run %r, not the prereg\'s %r' % (r.get('run_id'), run_id),
+        cells((r.get('shard') or {}).get('cells')) != cells((planned.get(name) or {}).get('cells')) and 'checked cells %s, not the manifest\'s %s' % (','.join(cells((r.get('shard') or {}).get('cells'))), ','.join(cells((planned.get(name) or {}).get('cells')))),
+        (r.get('shard') or {}).get('gemini_cli_route', 'native') != route(planned.get(name) or {}) and 'checked Gemini CLI route %s, not the manifest\'s %s' % ((r.get('shard') or {}).get('gemini_cli_route', 'native'), route(planned.get(name) or {})),
+        (r.get('shard') or {}).get('lease_usd') != (planned.get(name) or {}).get('lease_usd') and 'checked a lease of %r, not the manifest\'s %r' % ((r.get('shard') or {}).get('lease_usd'), (planned.get(name) or {}).get('lease_usd')),
         r.get('verdict') not in ('pass', 'overridden') and 'verdict %s' % r.get('verdict'),
         age is None and 'its time %r is unreadable' % r.get('at'),
         age is not None and age > limit and 'it is %d minutes old (limit %d)' % (age // 60, limit // 60),
@@ -516,7 +541,7 @@ if [ "$stopping" -eq 1 ]; then for line in "${queue[@]}"; do IFS=$'\t' read -r n
 back=()
 for name in "${!exit_of[@]}"; do case ${exit_of[$name]} in no-room|interrupted|launch-check) [ -z "${rid_of[$name]:-}" ] || back+=("$name" "${rid_of[$name]}") ;; esac; done
 if [ ${#back[@]} -gt 0 ]; then
-  freed=$(stage_cap release "${back[@]}") || log "WARNING: the stage-cap reservations of the shards that never launched could not be released; they still count against the cap"
+  freed=$(stage_cap release "$dest" "${back[@]}") || log "WARNING: the stage-cap reservations of the shards that never launched could not be released; they still count against the cap"
   [ -z "${freed:-}" ] || log "released the stage-cap reservation of $(paste -sd' ' - <<<"$freed"), which never launched"
 fi
 

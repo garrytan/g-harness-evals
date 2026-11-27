@@ -158,6 +158,41 @@ describe('ubi-runner.sh pull --since-mark', () => {
     }
   });
 
+  // Value: protects=a listed file tar cannot even stat (a folder on its path the shard user cannot search) keeps the mark,
+  // like one it cannot open; fails_when=only "Cannot open" and "Cannot read" hold the mark, so "Cannot stat: Permission
+  // denied" moves it and the next pull never sends that file; why_new=#630's second-model review; seam=a fake find that
+  // lists the file and hides its own error, so only tar's line can keep the mark; no_claim=a real VM or ssh.
+  test.skipIf(process.getuid?.() === 0)('a listed file tar cannot stat keeps the mark where it was', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-ubi-since-'));
+    dirs.push(dir);
+    const remote = join(dir, 'vm-home');
+    const locked = join(remote, 'shard/results/locked');
+    mkdirSync(locked, { recursive: true });
+    writeFileSync(join(locked, 'f.log'), 'x');
+    writeFileSync(join(remote, 'shard/results/trials.jsonl'), '{}\n');
+    writeFileSync(join(remote, 'shard/.pull-mark'), '100\n');
+    const bin = join(dir, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'ssh'), '#!/usr/bin/env bash\ncd "$FAKE_VM_HOME" && HOME="$FAKE_VM_HOME" exec bash -c "${@: -1}"\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'find'), '#!/usr/bin/env bash\n/usr/bin/find "$@" 2>/dev/null; printf \'results/locked/f.log\\0\'; exit 0\n', { mode: 0o755 });
+    const state = join(dir, 'state');
+    mkdirSync(join(state, 'vm1'), { recursive: true });
+    writeFileSync(join(state, 'vm1/env'), 'IP=127.0.0.1\n');
+    const env = { PATH: bin + ':/usr/bin:/bin', HOME: dir, UBI_RUNNER_STATE: state, FAKE_VM_HOME: remote, UBICLOUD_API_KEY: 'placeholder-not-a-key' };
+    chmodSync(locked, 0o600);
+    try {
+      const r = spawnSync('bash', [join(ROOT, 'scripts/ubicloud/ubi-runner.sh'), 'pull', 'vm1', 'shard/results', join(dir, 'out'), '--since-mark', 'shard/.pull-mark'], { encoding: 'utf8', env });
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stderr).toContain('Cannot stat: Permission denied');
+      expect(r.stderr).toContain('pull: mark kept');
+      expect(existsSync(join(dir, 'out/results/trials.jsonl'))).toBe(true);
+      expect(readFileSync(join(remote, 'shard/.pull-mark'), 'utf8')).toBe('100\n');
+      expect(existsSync(join(remote, 'shard/.pull-mark.next'))).toBe(false);
+    } finally {
+      chmodSync(locked, 0o755);
+    }
+  });
+
   test('a listed file that vanishes before tar reads it is skipped and the mark still moves', () => {
     const dir = mkdtempSync(join(tmpdir(), 'he-ubi-since-'));
     dirs.push(dir);

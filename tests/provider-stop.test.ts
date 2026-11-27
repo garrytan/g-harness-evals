@@ -1,5 +1,5 @@
 // The provider stop (runner/cost/provider-stop.ts, internal-task): a shard stops once one provider has refused 3 trials in a row
-// for want of credit or permission. The rule against single trials' proxy lines, the usage-log scan and its CLI (which
+// for want of credit. The rule against single trials' proxy lines, the usage-log scan and its CLI (which
 // frontier-harbor's vm-run.sh runs beside Harbor), and the runner's trial loop end to end, offline: the fixture adapter as a
 // host process makes one model call per trial through the real metering proxy to a fake Anthropic upstream. No key, no
 // model, no docker.
@@ -32,6 +32,10 @@ describe('the credit rule', () => {
     expect(creditRefusal(429, 'Number of requests per minute exceeded')).toBe(false);
     expect(creditRefusal(429, JSON.stringify({ error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Resource has been exhausted (e.g. check quota).' } }))).toBe(false);
     expect(classify(429, 'Resource has been exhausted (e.g. check quota).').code).toBe('HE-PROVIDER-004');
+    const geminiRate = JSON.stringify({ error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.' } });
+    expect(creditRefusal(429, geminiRate)).toBe(false);
+    expect(classify(429, geminiRate).code).toBe('HE-PROVIDER-004');
+    expect(creditRefusal(429, 'insufficient_quota You exceeded your current quota, please check your plan and billing details.')).toBe(true);
     expect(creditRefusal(429, JSON.stringify(XAI_OUT))).toBe(true);
     expect(creditRefusal(403, 'model access denied')).toBe(false);
     expect(creditRefusal(500, 'credit')).toBe(false);
@@ -90,6 +94,17 @@ describe('trials in a row', () => {
       line('f', 'xai', 403, { at: at(400), error_text: XAI_OUT.error })];
     expect(scanUsage([...old, ...now], PROVIDER_STOP_AFTER, new Date(), { since: t0, settledBefore: t0 + 100_000 })).toBeNull();
     expect(scanUsage([...old, ...now], PROVIDER_STOP_AFTER, new Date(), { since: t0, settledBefore: t0 + 400_000 })?.trials).toEqual(['d', 'e', 'f']);
+  });
+
+  test('a trial still logging between refused ones breaks the run, and the stop waits until it settles refused', () => {
+    const t0 = Date.parse('2026-11-26T10:00:00.000Z'), at = (s: number) => new Date(t0 + s * 1000).toISOString();
+    const refused = (k: string, s: number) => line(k, 'xai', 403, { at: at(s), error_text: XAI_OUT.error });
+    const log = [refused('d', 10), refused('e', 20), line('g', 'xai', 403, { at: at(30), error_text: XAI_OUT.error }), line('g', 'xai', 200, { at: at(500) }), refused('f', 40), refused('h', 50)];
+    expect(scanUsage(log, PROVIDER_STOP_AFTER, new Date(), { since: t0, settledBefore: t0 + 100_000 })).toBeNull();
+    expect(scanUsage(log, PROVIDER_STOP_AFTER, new Date(), { since: t0, settledBefore: t0 + 600_000 })).toBeNull();
+    const late = [...log.slice(0, 3), line('g', 'xai', 403, { at: at(500), error_text: XAI_OUT.error }), ...log.slice(4)];
+    expect(scanUsage(late, PROVIDER_STOP_AFTER, new Date(), { since: t0, settledBefore: t0 + 100_000 })).toBeNull();
+    expect(scanUsage(late, PROVIDER_STOP_AFTER, new Date(), { since: t0, settledBefore: t0 + 600_000 })?.trials).toEqual(['d', 'e', 'g']);
   });
 
   test('a scan of a usage log orders trials by their first line and skips slot: keys', () => {
@@ -167,6 +182,33 @@ describe("vm-run.sh's watcher (read from the script: vm-run.sh runs only on a VM
     expect(sig).not.toMatch(/trap - [A-Z ]*USR1/);
     expect(src.indexOf('mv "$out/provider-stop.json"')).toBeLessThan(src.indexOf('provider-stop.ts watch'));
   });
+
+  // Value: protects=the Cursor key scan runs, and a hit exits 5, after a provider stop or an interrupt as well as at the normal
+  // end, so results holding the key are never handed to the lane as a plain exit 8; and finish() ignores USR1 from its first
+  // line, before it stops the journal; fails_when=on_signal exits with its own code before any key scan; why_new=#626's
+  // second-model review (exit 8 hid the scan); seam=vm-run.sh's own key_scan and on_signal, cut from the script and run in
+  // bash with finish and the key scanner stubbed; no_claim=a VM, Harbor or the real key scan.
+  test("after a provider stop, on_signal still runs the Cursor key scan, and a hit exits 5, not 8", () => {
+    const fn = (name: string) => { const i = src.indexOf('\n' + name + '() {\n'); expect(i).toBeGreaterThan(-1); return src.slice(i + 1, src.indexOf('\n}\n', i) + 3); };
+    expect(fin.split('\n')[1]?.trim()).toBe("trap '' USR1");
+    const dir = mkdtempSync(join(tmp, 'vmrun-'));
+    mkdirSync(join(dir, 'bin'));
+    const shell = (scan: number) => {
+      writeFileSync(join(dir, 'bin', 'bun'), '#!/usr/bin/env bash\necho "scanned $2"\nexit ' + scan + '\n', { mode: 0o755 });
+      const body = ['set -euo pipefail', 'say() { echo "say: $*"; }', 'run_scrubbed() { "$@"; }', 'finish() { echo finished; }',
+        'out=' + JSON.stringify(dir) + ' repo=' + JSON.stringify(dir) + ' cursor_key=placeholder-not-a-key cursor_key_dir=' + JSON.stringify(join(dir, 'kd')),
+        'harbor_pid="" harbor_started=1 lane_pids=() rc=""', fn('key_scan'), fn('on_signal'), 'on_signal 8'].join('\n');
+      return spawnSync('bash', ['-c', body], { encoding: 'utf8', env: { PATH: join(dir, 'bin') + ':/usr/bin:/bin', HOME: dir } });
+    };
+    const clean = shell(0);
+    expect(clean.status, clean.stderr).toBe(8);
+    expect(clean.stdout).toContain('finished\n');
+    expect(clean.stdout).toContain('scanned ' + dir);
+    const hit = shell(1);
+    expect(hit.status, hit.stderr).toBe(5);
+    expect(hit.stdout).toContain('say: HE-CURSOR-003 the key scan of ' + dir + ' exited 1');
+    expect(src.slice(src.indexOf('\nfinish 8 120000\n')).trim().split('\n').slice(-2)).toEqual(['key_scan', 'exit "$rc"']);
+  });
 });
 
 describe("the runner's trial loop", () => {
@@ -184,7 +226,7 @@ describe("the runner's trial loop", () => {
     } });
   }
 
-  async function run(name: string, plan: number[], tasks = 5) {
+  async function run(name: string, plan: number[], tasks = 5, only?: string[]) {
     const root = join(tmp, name, 'tasks');
     const ids = Array.from({ length: tasks }, (_, i) => `fx-model-${i + 1}`);
     for (const id of ids) {
@@ -198,7 +240,8 @@ describe("the runner's trial loop", () => {
     const dir = join(tmp, runId);
     mkdirSync(dir, { recursive: true });
     const preregFile = join(dir, 'prereg.json');
-    writeFileSync(preregFile, JSON.stringify({ schema_version: 1, run_id: runId, question: 'fixture', tasks: {}, cells: [cell], wall_clock_s: { multiuser: 120 }, spend_cap_usd: 1, drop_order: [], minimum_v01: [] } satisfies Prereg));
+    const cells = only ? [cell, { ...cell, id: 'fx2' }] : [cell];
+    writeFileSync(preregFile, JSON.stringify({ schema_version: 1, run_id: runId, question: 'fixture', tasks: {}, cells, wall_clock_s: { multiuser: 120 }, spend_cap_usd: 1, drop_order: [], minimum_v01: [] } satisfies Prereg));
     const { prereg, sha256 } = loadPrereg(preregFile);
     const manifest = buildManifest(prereg, sha256, '2026-11-26T00:00:00Z', { tasksRoot: root });
     const manifestPath = join(dir, 'manifest.json');
@@ -206,7 +249,7 @@ describe("the runner's trial loop", () => {
     const fake = fakeAnthropic(plan);
     try {
       const result = await executeRun(manifest, manifestPath, { harnessMode: 'process', preamblePath: join(FIXTURES, 'preamble.md'), grade: stubGrade, proxyEnv: PROXY_ENV,
-        leaseUsd: 1, newLease: true, turnGraceS: 1, stopGraceS: 2, readyTimeoutS: 20, repoRoot: ROOT, proxyUpstream: { anthropic: `http://127.0.0.1:${fake.port}` } });
+        ...(only ? { cells: only } : {}), leaseUsd: 1, newLease: true, turnGraceS: 1, stopGraceS: 2, readyTimeoutS: 20, repoRoot: ROOT, proxyUpstream: { anthropic: `http://127.0.0.1:${fake.port}` } });
       return { result, dir, manifest };
     } finally { fake.stop(true); }
   }
@@ -221,6 +264,21 @@ describe("the runner's trial loop", () => {
     expect(stop).toMatchObject({ schema: 'provider-stop/1', run_id: manifest.run_id, provider: 'anthropic', after: 3, last: { status: 400 } });
     expect(stop.trials).toEqual(manifest.trials.slice(0, 3).map((t) => t.id));
     expect(JSON.parse(readFileSync(join(dir, 'run-summary.json'), 'utf8'))).toMatchObject({ provider_stop: 'anthropic', complete: false, trials_recorded: 3, trials_planned: 5 });
+  }, 120_000);
+
+  test('a stop reached on the last trial leaves a full run complete with exit 0, and still writes provider-stop.json', async () => {
+    const { result, dir } = await run('last', [400], 3);
+    expect(result.exit).toBe(RUN_EXIT.ok);
+    expect(readRecords(dir)).toHaveLength(3);
+    expect(JSON.parse(readFileSync(join(dir, 'provider-stop.json'), 'utf8'))).toMatchObject({ provider: 'anthropic', after: 3 });
+    expect(JSON.parse(readFileSync(join(dir, 'run-summary.json'), 'utf8'))).toMatchObject({ provider_stop: 'anthropic', complete: true, trials_recorded: 3, trials_planned: 3 });
+  }, 120_000);
+
+  test("a stop on the last trial of a shard's selected cells exits 0, while the run as a whole stays incomplete", async () => {
+    const { result, dir } = await run('shard', [400], 3, ['fx']);
+    expect(result.exit).toBe(RUN_EXIT.ok);
+    expect(readRecords(dir)).toHaveLength(3);
+    expect(JSON.parse(readFileSync(join(dir, 'run-summary.json'), 'utf8'))).toMatchObject({ provider_stop: 'anthropic', complete: false, trials_recorded: 3, trials_planned: 6 });
   }, 120_000);
 
   test('two refused trials and then an answered one do not stop the run', async () => {

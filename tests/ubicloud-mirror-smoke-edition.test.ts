@@ -348,6 +348,28 @@ describe('run-shard.sh mirrors each finished trial\'s work trees, and only once 
       expect(existsSync(join(r.mirror, other, 'manifest.json'))).toBe(true);
     }, 60_000);
   }
+  // Value: protects=a symlinked trial whose task folder name holds a * is left out by its literal path only, so another
+  // finished trial its name would match as a pattern still mirrors; fails_when=the symlink's exclude goes to tar as a
+  // wildcard, which also drops gd-dev-ship-01's work tree from the staging copy; seam=a fake pull whose tree holds a
+  // symlinked work folder under task gd-*; no_claim=other tar pattern characters (? and [ behave the same way in tar).
+  test('a symlinked trial whose task name holds a * is left out by its literal path, and a finished trial the name would match still mirrors', () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'he-ubi-outside-'));
+    dirs.push(scratch);
+    const outside = join(scratch, 'outside');
+    mkdirSync(join(outside, 'repo'), { recursive: true });
+    writeFileSync(join(outside, 'repo', 'OUTSIDE-SENTINEL'), 'outside\n');
+    const links = join(scratch, 'links');
+    mkdirSync(links);
+    symlinkSync(outside, join(links, 'work'));
+    const star = art('gd-*');
+    const two = [journal, JSON.stringify({ record: { trial_id: 'gstack-delivery-2026-11/sol-pi-hook/gd-*/a1' } }) + '\n'].join('');
+    const r = attachWithSmoke(base({ 'results/trials.journal.jsonl': two, [star + '/manifest.json']: '{}\n' }), 'frontier-harbor', [], [[links, star]]);
+    expect(r.code, r.err).toBe(0);
+    expect(r.laneLog).toContain('WARNING: replicate: ' + star + '/work has a symlink on its path; its work trees are neither packed nor copied');
+    for (const f of ['/work/repo/pkg/a.py', '/work/remote.git/HEAD', '/work/out/review.json']) expect(existsSync(join(r.mirror, done + f))).toBe(true);
+    expect(existsSync(join(r.mirror, star, 'manifest.json'))).toBe(true);
+    expect(spawnSync('find', [r.mirror, '-name', 'OUTSIDE-SENTINEL'], { encoding: 'utf8' }).stdout.trim()).toBe('');
+  }, 60_000);
   test('key-shaped text in a finished trial\'s work tree is found before packing and keeps the mirror from being written', () => {
     const path = done + '/work/repo/pkg/settings.py';
     const r = attachWithSmoke(base({ [path]: 'TOKEN = "' + KEY_SHAPED + '"\n' }), 'frontier-harbor');
