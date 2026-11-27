@@ -175,6 +175,29 @@ describe('rules-fix-v1 helpers', () => {
     } finally { p?.kill(); rmSync(d, { recursive: true, force: true }); }
   }, 20_000);
 
+  test('the contract check waits for the edit watcher\'s lines instead of a fixed sleep, so a slow poll on a busy machine still counts, and skips a line still being written', () => {
+    const d = mkdtempSync(join(tmpdir(), 'rf-settle-'));
+    try {
+      const py = [
+        'import os, runpy, sys, threading, time',
+        'g = runpy.run_path(sys.argv[1], run_name="x")',
+        'f = sys.argv[2]',
+        'threading.Timer(2.5, lambda: open(f, "w").write("x")).start()',
+        't = time.monotonic()',
+        'ok = g["settle"](lambda: os.path.exists(f))',
+        'late = time.monotonic() - t',
+        'he = os.path.dirname(f)',
+        'g["lines"].__globals__["HE"] = he',
+        'open(os.path.join(he, "edits.log"), "w").write(\'{"path": "a.py", "kind": "modified"}\\n{"path": "b.p\')',
+        'partial = [x["path"] for x in g["lines"]("edits.log")]',
+        'print(ok, late > 2, g["settle"](lambda: False, timeout=0.5), g["WATCH_WAIT_S"] >= 10, partial)',
+      ].join('\n');
+      const r = spawnSync('/usr/bin/env', ['-i', 'PATH=' + ENV.PATH, 'LANG=C.UTF-8', 'python3', '-c', py, join(import.meta.dir, '..', 'scripts', 'repo-tasks', 'rules-fix', 'contract_check.py'), join(d, 'late-line')], { encoding: 'utf8' });
+      expect(r.stderr).toBe('');
+      expect(r.stdout.trim()).toBe("True True False True ['a.py']");
+    } finally { rmSync(d, { recursive: true, force: true }); }
+  }, 20_000);
+
   test('the precheck tree hash follows the contract: git-listed regular files, caches dropped, sha256sum-style lines', () => {
     const d = mkdtempSync(join(tmpdir(), 'rf-hash-'));
     try {

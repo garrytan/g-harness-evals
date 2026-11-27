@@ -118,9 +118,9 @@ describe('rules-at-scale analysis', () => {
   });
 
   test('the final analysis keeps interim decisions and flags early stops', () => {
-    const ts = world(0.05);
-    const rec = interimLook(ts, design);
-    const a = analyze(ts, design, rec);
+    const all36 = world(0.05);
+    const rec = interimLook(all36, design);
+    const a = analyze(all36.filter((t) => !rec.cells_stopping.some((c) => c.setup === t.setup && c.arm === t.arm) || rec.tasks.includes(t.task)), design, rec);
     expect(a.status).toBe('final');
     const cc = a.setups.find((s) => s.setup === 'cc')!;
     const top = cc.ladder.steps[0]!;
@@ -130,12 +130,14 @@ describe('rules-at-scale analysis', () => {
   });
 
   test('completeness: a missing planned row makes the analysis incomplete; a stopped cell needs only its interim half; a setup with no trials is listed as not run', () => {
-    const ts = world(0.05);
-    const rec = interimLook(ts, design);
+    const all36 = world(0.05);
+    const rec = interimLook(all36, design);
     expect(rec.missing_rows).toEqual([]);
+    const asPlanned = (rows: Trial[], look: typeof rec) => rows.filter((t) => !look.cells_stopping.some((c) => c.setup === t.setup && c.arm === t.arm) || look.tasks.includes(t.task));
+    const ts = asPlanned(all36, rec);
     const done = analyze(ts, design, rec);
     expect(done.status).toBe('final');
-    expect(done.completeness).toMatchObject({ setups_with_rows: ['cc', 'cx'], setups_without_rows: [], missing_rows: [] });
+    expect(done.completeness).toMatchObject({ setups_with_rows: ['cc', 'cx'], setups_without_rows: [], missing_rows: [], extra_rows: [] });
     const gap = analyze(ts.filter((t) => !(t.setup === 'cc' && t.arm === 'b8k' && t.task === TASKS[30])), design, rec);
     expect(gap.status.startsWith('incomplete: 1 planned row(s) have no trial')).toBe(true);
     expect(gap.completeness.missing_rows).toEqual(['cc|b8k|' + TASKS[30]]);
@@ -143,8 +145,9 @@ describe('rules-at-scale analysis', () => {
     const stopped = rec.cells_stopping.find((c) => c.setup === 'cc' && c.arm === 'hook')!;
     const second = new Set(TASKS.slice(18));
     expect(analyze(ts.filter((t) => !(t.setup === stopped.setup && t.arm === stopped.arm && second.has(t.task))), design, rec).status).toBe('final');
-    const ccOnly = ts.filter((t) => t.setup === 'cc');
-    const solo = analyze(ccOnly, design, interimLook(ccOnly, design));
+    const ccAll = all36.filter((t) => t.setup === 'cc');
+    const ccLook = interimLook(ccAll, design);
+    const solo = analyze(asPlanned(ccAll, ccLook), design, ccLook);
     expect(solo.status).toBe('final');
     expect(solo.completeness.setups_without_rows).toEqual(['cx']);
     const early = ts.filter((t) => !(t.setup === 'cx' && t.arm === 'short' && t.task === TASKS[2]));
@@ -159,12 +162,37 @@ describe('rules-at-scale analysis', () => {
     expect(look.status).toBe(1);
     expect(look.stderr).toContain('the look is incomplete: 1 planned row(s) of the interim half have no trial: cx|short|' + TASKS[2]);
     expect(JSON.parse(readFileSync(join(dir, 'look', 'interim.json'), 'utf8')).status.startsWith('incomplete')).toBe(true);
-    const healed = analyze(ts, design, lookGap);
+    const healed = analyze(asPlanned(all36, lookGap), design, lookGap);
     expect(healed.status).toBe('incomplete: 0 planned row(s) have no trial, and the interim look was taken with 1 missing (see completeness)');
-    expect(analyze(ts, design, null).status.startsWith('provisional')).toBe(true);
+    expect(analyze(all36, design, null).status.startsWith('provisional')).toBe(true);
     const unanswered = analyze(ts.map((t) => (t.setup === 'cc' && t.arm === 'b8k' && t.task === TASKS[3] ? { ...t, infra: 'no_model_response', rules: all('unscorable') } : t)), design, rec);
     expect(unanswered.setups.find((s) => s.setup === 'cc')!.counts.b8k!.no_model_response).toBe(1);
     expect(render(unanswered)).toContain('b8k 0.0% (1 more with no answer from the cell model, unscored, timed out or not)');
+  });
+
+  test('completeness rejects rows outside the plan: a second-half row of a cell the interim look stopped, or a task not in the order; the CLI writes the analysis and exits 1', () => {
+    const all36 = world(0.05);
+    const rec = interimLook(all36, design);
+    const stop = rec.cells_stopping[0]!;
+    const planned = all36.filter((t) => !rec.cells_stopping.some((c) => c.setup === t.setup && c.arm === t.arm) || rec.tasks.includes(t.task));
+    const late = all36.find((t) => t.setup === stop.setup && t.arm === stop.arm && !rec.tasks.includes(t.task))!;
+    const stray = { ...planned.find((t) => t.setup === 'cx' && t.arm === 'short')!, task: 'task-99' };
+    const a = analyze([...planned, late, stray], design, rec);
+    expect(a.completeness.extra_rows).toEqual([stop.setup + '|' + stop.arm + '|' + late.task, 'cx|short|task-99']);
+    expect(a.completeness.missing_rows).toEqual([]);
+    expect(a.status).toBe('invalid: 2 row(s) outside the plan (see completeness.extra_rows)');
+    expect(render(a)).toContain('2 row(s) outside the plan, first ' + stop.setup + '|' + stop.arm + '|' + late.task);
+    expect(analyze(planned, design, rec).status).toBe('final');
+    expect(rec.setups_with_rows).toEqual(['cc', 'cx']);
+    expect(() => analyze(planned, design, { ...rec, tasks: TASKS.slice(1, 19) })).toThrow('not the first half of this design\'s task order');
+    const dir = mkdtempSync(join(tmpdir(), 'ras-extra-'));
+    writeFileSync(join(dir, 'trials.jsonl'), [...planned, late].map((t) => JSON.stringify(t)).join('\n') + '\n');
+    writeFileSync(join(dir, 'design.json'), JSON.stringify(design));
+    writeFileSync(join(dir, 'interim.json'), JSON.stringify(rec));
+    const cli = spawnSync('bun', [join(import.meta.dir, '..', 'scripts', 'rules-at-scale', 'analyze.ts'), '--trials', join(dir, 'trials.jsonl'), '--design', join(dir, 'design.json'), '--interim', join(dir, 'interim.json'), '--out', join(dir, 'out')], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
+    expect(cli.status).toBe(1);
+    expect(cli.stderr).toContain('1 row(s) outside the plan: ' + stop.setup + '|' + stop.arm + '|' + late.task);
+    expect(JSON.parse(readFileSync(join(dir, 'out', 'analysis.json'), 'utf8')).status.startsWith('invalid')).toBe(true);
   });
 
   test('timed-out trials count in every rate, and each arm reports its timeout share and the rates without them', () => {

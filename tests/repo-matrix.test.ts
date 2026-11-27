@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { matrixPlan, RESTORE, taskId } from '../scripts/repo-tasks/matrix.ts';
+import { matrixPlan, RESTORE, taskId, verifierReward } from '../scripts/repo-tasks/matrix.ts';
 
 // scripts/repo-tasks/matrix.ts (docs/repo-tasks.md, Acceptance). The docker path runs in the generator and in
 // tests/repo-dev-split.test.ts's committed ACCEPTANCE.json; these checks are keyless.
@@ -16,6 +16,16 @@ describe('repo task matrix', () => {
     expect(plan[1]).toEqual(['start', null, 0]);
     expect(plan.slice(2).every(([n, s, e]) => n.startsWith('check:') && s === '/checks/' + n.slice(6) + '.sh' && e === 0)).toBe(true);
     expect(plan.map((p) => p[0])).toContain('check:shim');
+  });
+
+  test('a verifier that exits nonzero or writes no reward is a miss, never the 0 that verify.sh writes before grading', () => {
+    expect(verifierReward(0, '1\n')).toBe(1);
+    expect(verifierReward(0, '0\n')).toBe(0);
+    expect(verifierReward(0, '0.5')).toBe(0.5);
+    expect(verifierReward(1, '0\n')).toBe(-1);
+    expect(verifierReward(124, '1\n')).toBe(-1);
+    expect(verifierReward(0, '')).toBe(-1);
+    expect(verifierReward(0, 'nan\n')).toBe(-1);
   });
 
   test('taskId reads task.toml', () => {

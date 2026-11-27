@@ -57,6 +57,15 @@ export const RESTORE = [
 
 export interface ScenarioResult { reward: number; result: Record<string, unknown> | null }
 
+/** The scenario's reward from verify.sh's exit status and reward.txt: -1 (a miss, whatever was expected) when the verifier
+ * exited nonzero or wrote no number, because verify.sh writes 0 before grading and a crashed verifier would otherwise
+ * pass every scenario that expects 0. */
+export function verifierReward(status: number, rewardText: string): number {
+  const text = rewardText.trim();
+  const reward = Number(text);
+  return status === 0 && text !== '' && Number.isFinite(reward) ? reward : -1;
+}
+
 /** One scenario. script is a path inside the agent container (/oracle/solve.sh, /checks/<name>.sh) or null. */
 export function scenario(taskDir: string, imgs: Images, script: string | null, verifierTimeoutS = 1800, card?: string): ScenarioResult {
   const tag = Math.random().toString(36).slice(2, 10);
@@ -73,11 +82,11 @@ export function scenario(taskDir: string, imgs: Images, script: string | null, v
     if (docker(['run', '-d', '--network', 'none', '--name', ver, imgs.verifier, 'sleep', 'infinity']).status !== 0) return { reward: -1, result: null };
     docker(['cp', state, ver + ':/tmp/state.tar']);
     if (docker(['exec', ver, '/usr/local/bin/python3', '-c', RESTORE]).status !== 0) return { reward: -1, result: null };
-    docker(['exec', ver, '/bin/bash', '/tests/verify.sh'], { timeoutS: verifierTimeoutS });
-    const reward = Number(docker(['exec', ver, 'cat', '/logs/verifier/reward.txt']).stdout.trim());
+    const verified = docker(['exec', ver, '/bin/bash', '/tests/verify.sh'], { timeoutS: verifierTimeoutS }).status;
+    const reward = verifierReward(verified, docker(['exec', ver, 'cat', '/logs/verifier/reward.txt']).stdout);
     let result: Record<string, unknown> | null = null;
     try { result = JSON.parse(docker(['exec', ver, 'cat', '/logs/verifier/result.json']).stdout); } catch { result = null; }
-    return { reward: Number.isFinite(reward) ? reward : -1, result };
+    return { reward, result };
   } finally {
     docker(['rm', '-f', agent, ver]);
     rmSync(tmp, { recursive: true, force: true });

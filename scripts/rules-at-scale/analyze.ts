@@ -41,6 +41,10 @@
 //     (completeness.missing_rows, and missing_rows in interim.json for the look's half), and an analysis with any, at the
 //     look or at the end, is labelled "incomplete", never "final". The look with any missing row writes interim.json with
 //     status "incomplete", prints every missing row and exits 1. A setup with no trial at all is listed as not run here.
+//     A row outside the plan (a task not in the order, or a second-half task of a cell the interim look stopped) is
+//     listed in completeness.extra_rows; the analysis is then labelled "invalid", and the CLI writes it and exits 1.
+//     An interim record taken on other tasks than the first half of the design's order is refused. interim.json lists the
+//     setups that had rows at the look (setups_with_rows), which plan.ts --interim requires of every setup it plans.
 //
 // The interim look (R113): with --look interim, only the first half of the design's task order is used. Each confirmatory
 // comparison gets z = delta / cluster-robust SE, oriented so the planned effect is positive (a drop for ladder steps, a
@@ -175,18 +179,23 @@ const repairsOf = (s: Setup) => REPAIR_ARMS.filter((a) => s.arms.includes(a));
 export const LOOK_MIN_PAIRS = 6;
 
 export interface InterimEntry { setup: string; comparison: string; a: string; b: string; z: number; conditional_power: number; decision: LookDecision; bounds: { interim: number; final: number }; alpha: number; n_pairs: number }
-export interface InterimRecord { look: 'interim'; fraction: number; tasks: string[]; comparisons: InterimEntry[]; cells_stopping: Array<{ setup: string; arm: string }>; missing_rows?: string[]; status?: string }
+export interface InterimRecord { look: 'interim'; fraction: number; tasks: string[]; comparisons: InterimEntry[]; cells_stopping: Array<{ setup: string; arm: string }>; missing_rows?: string[]; setups_with_rows?: string[]; status?: string }
+
+/** The interim look's tasks: the first LOOKS.fraction of the design's order, as interimLook takes them. */
+export const lookTasks = (order: string[]) => order.slice(0, Math.ceil(order.length * LOOKS.fraction));
 
 /** Planned rows with no trial, as setup|arm|task: each arm of every setup that has a row, on each of the tasks, or on the
  *  interim half alone for a cell the interim look stopped. A setup with no row at all did not run in these trials (its cells
- *  come by amendment) and is listed apart, never as missing rows. */
+ *  come by amendment) and is listed apart, never as missing rows. Rows on a task outside that plan are extra_rows. */
 export function completeness(all: Trial[], design: Design, tasks: string[], interim: InterimRecord | null) {
   const have = new Set(all.map((t) => t.setup + '|' + t.arm + '|' + t.task));
   const ran = design.setups.filter((s) => all.some((t) => t.setup === s.id));
   const stopped = new Set((interim?.cells_stopping ?? []).map((c) => c.setup + '|' + c.arm));
+  const planned = (setup: string, arm: string) => (stopped.has(setup + '|' + arm) ? interim!.tasks : tasks);
   const missing: string[] = [];
-  for (const s of ran) for (const arm of s.arms) for (const task of stopped.has(s.id + '|' + arm) ? interim!.tasks : tasks) if (!have.has(s.id + '|' + arm + '|' + task)) missing.push(s.id + '|' + arm + '|' + task);
-  return { setups_with_rows: ran.map((s) => s.id), setups_without_rows: design.setups.filter((s) => !ran.includes(s)).map((s) => s.id), missing_rows: missing };
+  for (const s of ran) for (const arm of s.arms) for (const task of planned(s.id, arm)) if (!have.has(s.id + '|' + arm + '|' + task)) missing.push(s.id + '|' + arm + '|' + task);
+  const extra = all.filter((t) => !planned(t.setup, t.arm).includes(t.task)).map((t) => t.setup + '|' + t.arm + '|' + t.task);
+  return { setups_with_rows: ran.map((s) => s.id), setups_without_rows: design.setups.filter((s) => !ran.includes(s)).map((s) => s.id), missing_rows: missing, extra_rows: extra };
 }
 
 /** The comparisons a setup's run decides, with the arms each one feeds and its own alpha at the look. */
@@ -199,7 +208,7 @@ function confirmatory(s: Setup, design: Design) {
 }
 
 export function interimLook(all: Trial[], design: Design): InterimRecord {
-  const half = design.task_order.slice(0, Math.ceil(design.task_order.length * LOOKS.fraction));
+  const half = lookTasks(design.task_order);
   const keep = new Set(half);
   const trials = usable(all).filter((t) => keep.has(t.task));
   const comparisons: InterimEntry[] = [];
@@ -225,8 +234,8 @@ export function interimLook(all: Trial[], design: Design): InterimRecord {
     };
     for (const arm of s.arms) if (stopped(arm)) cells_stopping.push({ setup: s.id, arm });
   }
-  const missing_rows = completeness(all, design, half, null).missing_rows;
-  return { look: 'interim', fraction: LOOKS.fraction, tasks: half, comparisons, cells_stopping, missing_rows,
+  const { missing_rows, setups_with_rows } = completeness(all, design, half, null);
+  return { look: 'interim', fraction: LOOKS.fraction, tasks: half, comparisons, cells_stopping, missing_rows, setups_with_rows,
     status: missing_rows.length ? 'incomplete: ' + missing_rows.length + ' planned row(s) of the interim half have no trial (see missing_rows)' : 'complete' };
 }
 
@@ -236,6 +245,7 @@ function meanCi(xs: number[], design: Design) {
 }
 
 export function analyze(all: Trial[], design: Design, interim: InterimRecord | null) {
+  if (interim && JSON.stringify(interim.tasks) !== JSON.stringify(lookTasks(design.task_order))) throw new Error('the interim record\'s tasks are not the first half of this design\'s task order, so its stops cannot be applied here');
   const rot = loadRotations();
   const trials = usable(all);
   const untimed = trials.filter((t) => !timedOut(t));
@@ -355,7 +365,7 @@ export function analyze(all: Trial[], design: Design, interim: InterimRecord | n
   const complete = { ...completeness(all, design, design.task_order, interim), missing_at_interim: interim?.missing_rows ?? null };
   const gaps = complete.missing_rows.length + (complete.missing_at_interim?.length ?? 0);
   return {
-    status: gaps ? 'incomplete: ' + complete.missing_rows.length + ' planned row(s) have no trial' + (complete.missing_at_interim?.length ? ', and the interim look was taken with ' + complete.missing_at_interim.length + ' missing' : '') + ' (see completeness)'
+    status: complete.extra_rows.length ? 'invalid: ' + complete.extra_rows.length + ' row(s) outside the plan (see completeness.extra_rows)' : gaps ? 'incomplete: ' + complete.missing_rows.length + ' planned row(s) have no trial' + (complete.missing_at_interim?.length ? ', and the interim look was taken with ' + complete.missing_at_interim.length + ' missing' : '') + ' (see completeness)'
       : lookNamed ? 'final' : 'provisional: the preregistered interim look has no record here (--interim)',
     completeness: complete,
     design: { alpha: design.alpha, power: design.power, planned_effect: design.planned_effect, sd: design.sd, tasks: nTasks,
@@ -372,6 +382,7 @@ export function render(a: ReturnType<typeof analyze>): string {
   const out = ['# Rules at scale: analysis', '', 'Status: ' + a.status + '. Points are percentage points of rules followed; ranges are 95% task-clustered bootstrap ranges.', '',
     'Completeness: ' + (a.completeness.missing_rows.length ? a.completeness.missing_rows.length + ' planned row(s) have no trial, first ' + a.completeness.missing_rows.slice(0, 5).join(', ') : 'every planned row of ' + (a.completeness.setups_with_rows.join(', ') || 'no setup') + ' is present')
       + (a.completeness.missing_at_interim?.length ? '; the interim look was taken with ' + a.completeness.missing_at_interim.length + ' row(s) missing' : '')
+      + (a.completeness.extra_rows.length ? '; ' + a.completeness.extra_rows.length + ' row(s) outside the plan, first ' + a.completeness.extra_rows.slice(0, 5).join(', ') : '')
       + (a.completeness.setups_without_rows.length ? '; no trials for ' + a.completeness.setups_without_rows.join(', ') + ', not run here' : '') + '.', '',
     'Smallest detectable difference per setup and rung: ' + pts(a.design.smallest_detectable_fixed) + ' points (' + pts(a.design.smallest_detectable_with_look) + ' with the interim look), at SD ' + a.design.sd + ' over ' + a.design.tasks + ' tasks.', ''];
   for (const s of a.setups) {
@@ -412,5 +423,9 @@ if (import.meta.main) {
     const result = analyze(trials, design, interimPath ? JSON.parse(readFileSync(interimPath, 'utf8')) : null);
     writeFileSync(join(outDir, 'analysis.json'), JSON.stringify(result, null, 2) + '\n');
     writeFileSync(join(outDir, 'analysis.md'), render(result));
+    if (result.completeness.extra_rows.length) {
+      console.error('analyze: ' + result.completeness.extra_rows.length + ' row(s) outside the plan: ' + result.completeness.extra_rows.join(', '));
+      process.exit(1);
+    }
   }
 }
