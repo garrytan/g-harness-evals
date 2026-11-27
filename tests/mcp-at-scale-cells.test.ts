@@ -122,6 +122,60 @@ describe('grade.py connection rule', () => {
   });
 });
 
+describe('grade.py held calls (QM approval stops)', () => {
+  const right = { server: 'ash-tracker', tool: 'create_issue', arguments: { workspace: 'ACME', title: 'Login fails' } };
+  /** Grades a QM-style trial against a live host: its ready line names the variant, the held file is beside the task. */
+  async function gradeHeld(variant: string, held: unknown, offline = false): Promise<any> {
+    const host = createHost({ servers: r30, log: null, logToken: 'tok' });
+    const srv = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: host.fetch });
+    try {
+      await host.fetch(new Request('http://catalog:8080/_he/ready?connect=eager&variant=' + variant));
+      host.lines.push(...(connectAll(servers30) as any[]));
+      const d = mkdtempSync(join(dir, 'h-'));
+      writeFileSync(join(d, 'expected.json'), JSON.stringify(toolReq));
+      writeFileSync(join(d, 'held.json'), typeof held === 'string' ? held : JSON.stringify(held));
+      const args = ['python3', GRADE, '--expected', join(d, 'expected.json'), '--out', join(d, 'out'), '--held', join(d, 'held.json')];
+      if (offline) {
+        writeFileSync(join(d, 'calls.jsonl'), host.lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+        args.push('--log', join(d, 'calls.jsonl'));
+      }
+      const p = Bun.spawn(args, { env: { PATH: '/usr/local/bin:/usr/bin:/bin', HE_CATALOG_URL: 'http://127.0.0.1:' + srv.port, HE_CATALOG_LOG_TOKEN: 'tok' }, stdout: 'pipe', stderr: 'pipe' });
+      expect(await p.exited).toBe(0);
+      return JSON.parse(readFileSync(join(d, 'out', 'outcomes.json'), 'utf8'));
+    } finally {
+      srv.stop(true);
+    }
+  }
+
+  test('a QM cell grades a held call the host validates as a call the model made', async () => {
+    const out = await gradeHeld('qm', { calls: [right], other: [] });
+    expect(out).toMatchObject({ infra: null, right_tool: true, reward: 1, approval_pending_calls: 1, held_error: null });
+    expect(out.calls.at(-1)).toMatchObject({ ...right, approval_pending: true, validation_ok: true, result_ok: null });
+  });
+
+  test('a held call the schema refuses is invalid and not right', async () => {
+    const out = await gradeHeld('qm', { calls: [{ ...right, arguments: { ...right.arguments, bogus: 1 } }], other: [] });
+    expect(out).toMatchObject({ infra: null, right_tool: false, reward: 0, invalid_calls: 1, approval_pending_calls: 1 });
+  });
+
+  test('no other cell reads the held file the agent could have written', async () => {
+    expect(await gradeHeld('codex', { calls: [right], other: [] })).toMatchObject({ right_tool: false, approval_pending_calls: 0, calls: [], held_error: null });
+  });
+
+  test('an unreadable held file counts no held call and the trial is still scored', async () => {
+    const out = await gradeHeld('qm', 'not json');
+    expect(out).toMatchObject({ infra: null, right_tool: false, approval_pending_calls: 0 });
+    expect(out.held_error).toContain('held-calls.json could not be read');
+  });
+
+  test('held calls the host could not check make the trial INFRA HE-MCP-002, as an unreadable log does', async () => {
+    const out = await gradeHeld('qm', { calls: [right], other: [] }, true);
+    expect(out.infra.code).toBe('HE-MCP-002');
+    expect(out.infra.detail).toContain('the catalog host could not check the held calls');
+    expect(out.reward).toBe(0);
+  });
+});
+
 describe('materialize.ts', () => {
   test('task.toml lists every rung server for Harbor, and the verifier holds the log token', () => {
     const t = Bun.TOML.parse(taskToml({ name: 'x__r30', servers: servers30, token: 'abc' })) as any;

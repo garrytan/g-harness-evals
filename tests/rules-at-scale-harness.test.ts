@@ -78,9 +78,9 @@ describe('arms each harness can run', () => {
       'except rw.RulesRefused as e:',
       '    astral_over = e.code',
       'try:',
-      '    rw.resolve("qm", {"arm": "none"}, "particle:particle-1"); particle = None',
+      '    rw.resolve("qm", {"arm": "none"}, "xai:grok-4.7"); unrouted = None',
       'except rw.RulesRefused as e:',
-      '    particle = e.code',
+      '    unrouted = e.code',
       'try:',
       '    rw.qm_soul_text("b8k", {"soul": None}); missing = None',
       'except rw.RulesRefused as e:',
@@ -88,7 +88,7 @@ describe('arms each harness can run', () => {
       'from pathlib import Path',
       'repo = rw.load_files({"arm": "qm-repo", "hooktext": False}, "qm", Path(' + JSON.stringify(materialize('qm', 'qm-repo')) + '))',
       'b8k = rw.load_files({"arm": "b8k", "hooktext": False}, "qm", Path(' + JSON.stringify(materialize('qm', 'b8k')) + '))',
-      'print(json.dumps({"ok": [ok["name"], ok["method"], ok["path"], len(ok["body"]["content"])], "over": over, "astral": [astral_ok, astral_over], "particle": particle, "missing": missing, "none": rw.qm_soul_text("none", {}),' +
+      'print(json.dumps({"ok": [ok["name"], ok["method"], ok["path"], len(ok["body"]["content"])], "over": over, "astral": [astral_ok, astral_over], "unrouted": unrouted, "missing": missing, "none": rw.qm_soul_text("none", {}),' +
         ' "repo": [rw.qm_soul_text("qm-repo", repo), [f["path"] for f in repo["files"]]], "b8k": [rw.qm_soul_text("b8k", b8k), b8k["files"]]}))',
     ].join('\n');
     const r = run('python3', ['-c', py]);
@@ -97,7 +97,7 @@ describe('arms each harness can run', () => {
     expect(o.ok).toEqual(['soul', 'PUT', '/v1/admin/scopes/org:harness-eval/soul', 100000]);
     expect(o.over).toBe('HE-RULES-011');
     expect(o.astral).toEqual([50000, 'HE-RULES-011']);
-    expect(o.particle).toBe('HE-RULES-003');
+    expect(o.unrouted).toBe('HE-RULES-003');
     expect([o.missing, o.none, o.repo]).toEqual(['HE-RULES-002', null, ['', ['AGENTS.md']]]);
     expect(o.b8k[1]).toEqual([]);
     for (const t of Object.values(RULES)) expect(o.b8k[0]).toContain(t);

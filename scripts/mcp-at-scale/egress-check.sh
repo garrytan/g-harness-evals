@@ -7,7 +7,8 @@
 #   UBI_OWNER=<thread> UBI_TTL_HOURS=2 ubi-runner.sh run -s standard-8 --setup scripts/ubicloud/bootstrap.sh \
 #       --pull egress-out:<local dir> -- bash scripts/mcp-at-scale/egress-check.sh
 #
-# Harbor comes from the hashed lock file. No key is read: the model side is listing-map.ts's fake upstream. The results
+# Harbor comes from the hashed lock file, and the QM images from qm-images.sh, since QM is one of the harnesses listed. No
+# key is read: the model side is listing-map.ts's fake upstream. The results
 # (listing-map.json, every trial's outcomes.json, catalog-calls.jsonl, mcp-ready.json and job logs) are copied to
 # ~/egress-out. It fails closed: exit 1 when the listing run failed, when listing-map.json or listing-run.json is missing,
 # or when a job has no usable verifier and selected-model request evidence.
@@ -20,6 +21,7 @@ venv=$HOME/he-harbor-venv
 "$HOME/.bun/bin/bun" install --frozen-lockfile >/dev/null
 out=$HOME/egress-run
 rm -rf "$out" "$HOME/egress-out"
+sg docker -c "env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=$HOME bash scripts/mcp-at-scale/qm-images.sh"
 listing=0
 sg docker -c "env -i PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin HOME=$HOME TZ=UTC $HOME/.bun/bin/bun scripts/mcp-at-scale/listing-map.ts run --venv $venv --egress --catalog tasks/mcp-at-scale/catalog --rungs 300 --out $out --concurrency ${HE_EGRESS_CONCURRENCY:-3}" 2>&1 | tee "$out.log" || listing=$?
 mkdir -p "$HOME/egress-out"

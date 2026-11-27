@@ -23,9 +23,7 @@ nothing; where it drops them, the class here puts them back the way Harbor's own
   support. The servers are kept away from Harbor's Pi class (so it installs no adapter and passes no --extension) and
   written to $PI_CODING_AGENT_DIR/mcp.json with the cell's exposure: codemode (Pi's default), deferred or direct.
 
-QM: no class here. internal-task is adding QM to the Harbor runner (handoffs/internal-task/qm-harness.md); when its class lands, an
-McpQm subclass registers each catalog server through QM's admin API and lists the catalog host's origin in
-PRIVATE_NETWORK_ALLOWED_ORIGINS (plan, "Arms" 1), and scripts/mcp-at-scale/listing-map.ts drops its "qm" skip entry.
+QM: its classes (McpQm and the three gbrain cells, on internal-task's FrontierQm) are in agents_qm.py.
 
 Versions: a job may name pin.json's version of a harness or the release frozen in scripts/mcp-at-scale/versions.json (the
 newest on 2026-11-19); pin.json stays internal-task's. At a frozen version McpClaudeCode checks the native binary's sha256 against
@@ -203,12 +201,18 @@ class _McpCell:
     def _mcp_record(self) -> dict[str, Any]:
         return {"variant": self.VARIANT, "connect": self.CONNECT, "servers": server_record(self._cell_servers())}
 
-    async def setup(self, environment: BaseEnvironment) -> None:
-        await super().setup(environment)  # type: ignore[misc]
+    async def _mcp_ready(self, environment: BaseEnvironment) -> None:
+        if getattr(self, "_mcp_probed", False):
+            return
         args = " ".join(shlex.quote(a) for a in (ready_url(self._cell_servers()), self.CONNECT, self.VARIANT))
         probe = await environment.exec(command="mkdir -p /logs/agent && python3 -c " + shlex.quote(READY_PROBE) + " " + args, timeout_sec=60)
         if probe.return_code != 0:
             raise RuntimeError("HE-MCP-001 the catalog was not ready during agent setup")
+        self._mcp_probed = True
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        await super().setup(environment)  # type: ignore[misc]
+        await self._mcp_ready(environment)
         if self.HARNESS in ("claude-code", "codex"):
             cli = "claude" if self.HARNESS == "claude-code" else "codex"
             command = 'export PATH="$HOME/.local/bin:$PATH"; claude --version' if cli == "claude" else self.get_version_command()
@@ -366,7 +370,7 @@ class McpPiDirect(McpPi):
 
 
 # Variant name -> (class, harness in scripts/frontier-harbor/pin.json, default cell model from pin.json or versions.json's
-# "models"). QM is not here yet (see above).
+# "models"). QM's are in agents_qm.py.
 VARIANTS: dict[str, tuple[type, str, str]] = {
     "claude-code": (McpClaudeCode, "claude-code", "anthropic/claude-opus-5-5"),
     "claude-code-no-tool-search": (McpClaudeCodeNoToolSearch, "claude-code", "anthropic/claude-opus-5-5"),

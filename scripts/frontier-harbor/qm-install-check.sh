@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The keyless install check of QM on the frontier Harbor path (internal-task), the same shape as install-check.sh's agents,
 # zdr and canary steps, on its own cells file (install-check-qm-prereg.json: QM on Claude Opus 5.5 through the proxy's
-# anthropic route, GPT-6.2 Sol through its openai route and Gemini 4 Carbon through its OpenRouter route, one task each,
+# anthropic route, GPT-6.2 Sol through its openai route, Gemini 4 Carbon through its OpenRouter route and particle-1 through
+# its Particle route, one task each,
 # uncounted, fake upstream). Keyless: no provider key is read or passed. Run on a fresh Ubicloud VM after
 # scripts/ubicloud/bootstrap.sh, from the repository root:
 #

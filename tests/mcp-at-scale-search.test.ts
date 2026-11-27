@@ -2,13 +2,13 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { classify, effort, trialEffort, turnsFromOpenClawSession, turnsFromTrajectory } from '../scripts/mcp-at-scale/search-effort.ts';
+import { classify, effort, trialEffort, turnsFromOpenClawSession, turnsFromQmSession, turnsFromTrajectory } from '../scripts/mcp-at-scale/search-effort.ts';
 import { ALLOW, TOKEN_PATTERNS } from '../scripts/publish-audit.ts';
 import { plan } from '../scripts/mcp-at-scale/search-script.ts';
 
 const FIXTURE = join(import.meta.dir, '../scripts/mcp-at-scale/fixtures/search-effort.json');
 const raw = readFileSync(FIXTURE, 'utf8');
-const fx = JSON.parse(raw) as { target: { server: string; tool: string }; cases: Array<{ variant: string; version: string; source: 'trajectory' | 'openclaw-session'; transcript: any; right_tool: boolean }> };
+const fx = JSON.parse(raw) as { target: { server: string; tool: string }; cases: Array<{ variant: string; version: string; source: 'trajectory' | 'openclaw-session' | 'qm-session'; transcript: any; right_tool: boolean }> };
 const T = fx.target;
 
 const EXPECTED: Record<string, { search: number; turnsBefore: number; mechanisms: string[] }> = {
@@ -22,6 +22,7 @@ const EXPECTED: Record<string, { search: number; turnsBefore: number; mechanisms
   'pi-direct@1.5.0': { search: 0, turnsBefore: 0, mechanisms: ['direct'] },
   'openclaw@2026.10.6': { search: 1, turnsBefore: 1, mechanisms: ['tool_search', 'tool_call'] },
   'openclaw@2026.11.5': { search: 1, turnsBefore: 1, mechanisms: ['tool_search', 'dispatch_action'] },
+  'qm@main@7d552d94': { search: 1, turnsBefore: 1, mechanisms: ['tool_search', 'mcp_call'] },
 };
 
 describe('search effort on captured transcripts', () => {
@@ -36,7 +37,7 @@ describe('search effort on captured transcripts', () => {
 
   for (const c of fx.cases) {
     test(c.variant + '@' + c.version + ' reaches the target through its own search route', () => {
-      const turns = c.source === 'trajectory' ? turnsFromTrajectory(c.transcript) : turnsFromOpenClawSession(c.transcript);
+      const turns = c.source === 'trajectory' ? turnsFromTrajectory(c.transcript) : c.source === 'qm-session' ? turnsFromQmSession(c.transcript) : turnsFromOpenClawSession(c.transcript);
       const e = effort(turns, T, c.source);
       const want = EXPECTED[c.variant + '@' + c.version]!;
       expect(c.right_tool).toBe(true);
@@ -71,6 +72,14 @@ describe('classify', () => {
     expect(classify({ name: 'exec', args: { command: 'ls', input: 'tools.mcp__ash_tracker__create_issue()' } }, T)).toEqual(['other']);
     expect(classify({ name: 'exec', args: 'text(JSON.stringify(ALL_TOOLS.length))' }, T)).toEqual(['search']);
     expect(classify({ name: 'Bash', args: { command: 'ls' } }, T)).toEqual(['other']);
+    expect(classify({ name: 'mcp_call', args: { server: 'birch-tracker', tool: 'create_issue', args: {} } }, T)).toEqual(['wrong']);
+  });
+
+  test('QM: a call held for approval is the model call, and server ids map back to server names', () => {
+    const held = { kind: 'ToolCall', tool: 'at-2_create_issue', body: { blocked: 'needs_approval', wire: { name: 'mcp_call', argumentsJson: '{"server":"at-2","tool":"create_issue","args":{}}', message: { id: 'm1' } } } };
+    const turns = turnsFromQmSession({ items: [held] }, { 'at-2': 'ash-tracker' });
+    expect(turns).toEqual([[{ name: 'mcp_call', args: { server: 'ash-tracker', tool: 'create_issue', args: {} } }]]);
+    expect(effort(turns, T, 'qm-session')).toMatchObject({ found: true, first_right_turn: 1, mechanisms: ['mcp_call'] });
   });
 
   test('counts everything before the first right call and stops there', () => {

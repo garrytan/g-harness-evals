@@ -19,6 +19,7 @@ venv=$HOME/he-harbor-venv
 out=$HOME/mcp-out/$shard
 mkdir -p "$out"
 export PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin TZ=UTC
+"${clean[@]}" sg docker -c "bash scripts/mcp-at-scale/qm-images.sh .mcp-input/spec.json" >&2
 rc=0
 # run.ts removes every provider key from its own environment at start and passes them to the metering proxy alone.
 args=(shard --spec .mcp-input/spec.json --name "$shard" --out "$out" --venv "$venv" "$@")

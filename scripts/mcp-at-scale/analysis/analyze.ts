@@ -46,7 +46,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Item, TItem } from '../requests/sets.ts';
-import { lookTrials } from './interim.ts';
+import { AFTER_LOOK_HARNESSES, look as recomputeLook, lookTrials, type Design } from './interim.ts';
 import { gbrainMargin } from './power.ts';
 import { RUNGS, hasTranscript, isInfra, isOpus, loadTrials, paired, rate, readJsonl, requestIndex, setup, setupItemRep, taskSuccess, trialsDigest, VALUES, type Contrast, type Requests, type Trial } from './stats.ts';
 
@@ -80,9 +80,11 @@ const isStopped = (decision: InterimDecision) => decision.startsWith('stop_');
 const stopNote = (decision: InterimDecision) => STOPPED_NOTE + (decision === 'stop_futility' ? ' (futility)' : '');
 
 function loadInterim(path: string, recordPath: string, sets: string[], margin: number, trials: Trial[], items: Item[]): { decisions: InterimDecisions; look: InterimLook } {
+  const later = [...new Set(trials.filter((t) => AFTER_LOOK_HARNESSES.has(t.harness)).map((t) => t.harness))];
+  if (later.length) throw new Error('the final analysis reads only the run\'s own harnesses; analyze ' + later.join(', ') + ' rows on their own with --exploratory (Amendment 6)');
   const designFile = join(import.meta.dir, 'interim-design.json');
   const sha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
-  const design = JSON.parse(readFileSync(designFile, 'utf8')) as { comparisons: { id: string }[]; seed: string; fraction: number };
+  const design = JSON.parse(readFileSync(designFile, 'utf8')) as Design;
   const state = JSON.parse(readFileSync(path, 'utf8')) as {
     schema?: string; look?: string; status?: string; design_sha256?: string; sets_sha256?: string[]; gbrain_margin?: number; trials_digest?: string; decisions?: InterimDecisions;
   };
@@ -108,7 +110,12 @@ function loadInterim(path: string, recordPath: string, sets: string[], margin: n
   if (record.trials_digest !== state.trials_digest || Object.keys(look).length !== design.comparisons.length || !design.comparisons.every(({ id }) => look[id]?.decision === decisions[id])) {
     throw new Error('the interim record does not match the interim state');
   }
-  return { decisions, look };
+  const numbers = (x: LookRecord) => JSON.stringify([x.decision, x.z, x.conditional_power, x.contrast.delta, x.contrast.ci95, x.contrast.n_pairs]);
+  const recomputed: InterimLook = Object.fromEntries(recomputeLook({ trials, items, design, margin }).results.map(({ id, decision, z, conditional_power, contrast, note }) =>
+    [id, { decision, z, conditional_power, contrast: { delta: contrast.delta, ci95: contrast.ci95, n_pairs: contrast.n_pairs }, note }]));
+  const differ = design.comparisons.map(({ id }) => id).filter((id) => !recomputed[id] || numbers(recomputed[id]!) !== numbers(look[id]!));
+  if (differ.length) throw new Error('the interim record does not match the look recomputed from these trials: ' + differ.join(', '));
+  return { decisions, look: recomputed };
 }
 
 export interface Ctx { trials: Trial[]; req: Requests; tItems: Map<string, TItem>; cl: (t: Trial) => string; interimDecisions?: InterimDecisions; interimLook?: InterimLook }

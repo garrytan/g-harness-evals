@@ -4,14 +4,19 @@
 // Sources, by what the trial's agent/ directory holds, first match wins:
 //   openclaw.session.jsonl   OpenClaw's session events (scripts/mcp-at-scale/agents.py exports them from OpenClaw's
 //                            SQLite store, since Harbor's own copy finds no file from 2026.10 on);
+//   qm-session.json          QM's session transcript (agents_qm.py saves GET /v1/admin/sessions/<id> before core goes):
+//                            one model turn per assistant message (body.wire.message.id), each ToolCall item as the call
+//                            the model made (body.wire.name and argumentsJson when QM recorded them, else the item's tool
+//                            and its recorded arguments); server ids are turned back into server names through
+//                            harness_settings.json mcp_cell.server_ids;
 //   trajectory.json          Harbor's ATIF trajectory: Claude Code, Codex, Hermes and Pi.
 // A trial with neither has source null and found false: the parser saw no transcript, which is not a search miss.
 // Each agent step is one model turn. Each tool call in it is classified by the harness's search mechanism:
-//   search    ToolSearch (Claude Code); tool_search (Hermes, OpenClaw, Pi deferred); a codemode script (Pi) or a Codex
+//   search    ToolSearch (Claude Code); tool_search (Hermes, OpenClaw, Pi deferred, QM); a codemode script (Pi) or a Codex
 //             exec script that calls searchTools(, describeTool( or reads ALL_TOOLS;
 //   describe  tool_describe (Hermes, OpenClaw);
 //   right     the target tool called by name (direct exposure, or loaded by a search), through an indirect route
-//             (Hermes tool_call calls[].name, OpenClaw tool_call or dispatch_action id), or as tools.<name>( inside a
+//             (Hermes tool_call calls[].name, OpenClaw tool_call or dispatch_action id, QM mcp_call server and tool), or as tools.<name>( inside a
 //             codemode or Codex exec script;
 //   wrong     any other catalog tool reached the same ways (an mcp-qualified name or id);
 //   other     everything else (shell, file tools, OpenClaw's shell exec, which takes a command and never a script).
@@ -26,7 +31,7 @@ export interface Target { server: string; tool: string }
 export interface Call { name: string; args: unknown }
 export type Kind = 'search' | 'describe' | 'right' | 'wrong' | 'other';
 export interface Effort {
-  source: 'trajectory' | 'openclaw-session' | null;
+  source: 'trajectory' | 'openclaw-session' | 'qm-session' | null;
   turns: number;
   found: boolean;
   first_right_turn: number | null;
@@ -63,6 +68,26 @@ export function turnsFromOpenClawSession(text: string): Call[][] {
   return turns;
 }
 
+/** One model turn per assistant message, with the calls the model made, from QM's session transcript; serverNames maps a
+ *  QM server id back to the catalog server's name. */
+export function turnsFromQmSession(session: { items?: Array<Record<string, any>> }, serverNames: Record<string, string> = {}): Call[][] {
+  const turns = new Map<string, Call[]>();
+  for (const it of session.items ?? []) {
+    const msg = it.body?.wire?.message?.id;
+    if (!msg || (it.kind !== 'ToolCall' && it.kind !== 'AgentMessage')) continue;
+    const calls = turns.get(msg) ?? [];
+    turns.set(msg, calls);
+    if (it.kind !== 'ToolCall') continue;
+    const { wire, ...recorded } = it.body ?? {};
+    let args: any = recorded.args ?? recorded;
+    if (typeof wire?.argumentsJson === 'string') { try { args = JSON.parse(wire.argumentsJson); } catch { /* keep the recorded arguments */ } }
+    const name = String(wire?.name ?? it.tool);
+    if (name === 'mcp_call' && args && typeof args.server === 'string') args = { ...args, server: serverNames[args.server] ?? args.server };
+    calls.push({ name, args });
+  }
+  return [...turns.values()];
+}
+
 /** The script a codemode or Codex exec call runs, or null for any other call (OpenClaw's exec takes a shell command). */
 function script(c: Call): string | null {
   const a = c.args as any;
@@ -77,6 +102,7 @@ export function classify(c: Call, t: Target): Kind[] {
   const a = (c.args ?? {}) as any;
   if (c.name === 'ToolSearch' || c.name === 'tool_search') return ['search'];
   if (c.name === 'tool_describe') return ['describe'];
+  if (c.name === 'mcp_call') return [isTarget(String(a.server ?? '') + '__' + String(a.tool ?? ''), t) ? 'right' : 'wrong'];
   if (c.name === 'tool_call' || c.name === 'dispatch_action') {
     const names: string[] = Array.isArray(a.calls) ? a.calls.map((x: any) => String(x?.name ?? '')) : [String(a.id ?? a.name ?? '')];
     return [names.some((n) => isTarget(n, t)) ? 'right' : 'wrong'];
@@ -94,7 +120,7 @@ export function classify(c: Call, t: Target): Kind[] {
   return [isCatalog(c.name) ? 'wrong' : 'other'];
 }
 
-const MECHANISM: Record<string, string> = { ToolSearch: 'ToolSearch', tool_search: 'tool_search', tool_describe: 'tool_describe', tool_call: 'tool_call', dispatch_action: 'dispatch_action', codemode: 'codemode', exec: 'exec' };
+const MECHANISM: Record<string, string> = { ToolSearch: 'ToolSearch', tool_search: 'tool_search', tool_describe: 'tool_describe', tool_call: 'tool_call', dispatch_action: 'dispatch_action', mcp_call: 'mcp_call', codemode: 'codemode', exec: 'exec' };
 
 export function effort(turns: Call[][], t: Target, source: Effort['source']): Effort {
   const e: Effort = { source, turns: turns.length, found: false, first_right_turn: null, turns_before_right: null, search_calls: 0, search_calls_before_right: 0, describe_calls_before_right: 0, wrong_calls_before_right: 0, other_calls_before_right: 0, mechanisms: [] };
@@ -120,6 +146,12 @@ export function trialEffort(trialDir: string, t: Target): Effort {
   const agent = join(trialDir, 'agent');
   const oc = join(agent, 'openclaw.session.jsonl');
   if (existsSync(oc)) return effort(turnsFromOpenClawSession(readFileSync(oc, 'utf8')), t, 'openclaw-session');
+  const qm = join(agent, 'qm-session.json');
+  if (existsSync(qm)) {
+    const settings = join(agent, 'harness_settings.json');
+    const ids: Record<string, string> = existsSync(settings) ? JSON.parse(readFileSync(settings, 'utf8')).mcp_cell?.server_ids ?? {} : {};
+    return effort(turnsFromQmSession(JSON.parse(readFileSync(qm, 'utf8')), Object.fromEntries(Object.entries(ids).map(([name, id]) => [id, name]))), t, 'qm-session');
+  }
   const traj = join(agent, 'trajectory.json');
   if (existsSync(traj)) return effort(turnsFromTrajectory(JSON.parse(readFileSync(traj, 'utf8'))), t, 'trajectory');
   return effort([], t, null);

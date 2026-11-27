@@ -24,8 +24,8 @@
 //   bun scripts/mcp-at-scale/listing-map.ts analyze --out <dir>
 //
 // Without --catalog the synthetic catalog (catalog-load.ts) is written to <out>/catalog. Writes <out>/listing-map.json
-// (rows per variant and rung) and <out>/listing-map-tools.jsonl (the place of every tool). QM is listed and skipped: see
-// SKIPPED below. --search runs SEARCH_REQUEST against the scripted model instead (the search-effort fixtures).
+// (rows per variant and rung) and <out>/listing-map-tools.jsonl (the place of every tool). QM's class is in agents_qm.py.
+// --search runs SEARCH_REQUEST against the scripted model instead (the search-effort fixtures).
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { agentLoopRequests, type CapturedRequest } from '../frontier-harbor/gstack-exposure.ts';
@@ -51,13 +51,10 @@ export const VARIANTS: Record<string, { cls: string; harness: string; model: str
   'pi-deferred': { cls: 'McpPiDeferred', harness: 'pi', model: 'anthropic/claude-opus-5-5' },
   'pi-direct': { cls: 'McpPiDirect', harness: 'pi', model: 'anthropic/claude-opus-5-5' },
   'gemini-cli': { cls: 'McpGeminiCli', harness: 'gemini-cli', model: 'google/gemini-4-carbon' },
+  qm: { cls: 'agents_qm:McpQm', harness: 'qm', model: 'anthropic/claude-opus-5-5' },
 };
-/** Harnesses the map names but cannot run yet, with the reason. QM: when internal-task's Harbor class lands, add an McpQm class
- *  in agents.py (catalog servers registered through QM's admin API, the host's origin in PRIVATE_NETWORK_ALLOWED_ORIGINS)
- *  and a "qm" entry in VARIANTS, and drop it here. */
-export const SKIPPED: Record<string, string> = {
-  qm: 'skipped: QM has no Harbor class yet; internal-task is adding QM to the Harbor runner (handoffs/internal-task/qm-harness.md)',
-};
+/** Harnesses the map names but cannot run yet, with the reason. */
+export const SKIPPED: Record<string, string> = {};
 
 export const LISTING_REQUEST: McpRequest = { id: 'listing', text: 'Reply with the single word ready.', kind: 'none' };
 
@@ -222,7 +219,7 @@ export function writeJobs(o: { out: string; variants: string[]; rungs: string[];
         job_name: job, jobs_dir: join(o.out, 'jobs'), n_attempts: 1, n_concurrent_trials: 1, quiet: true, retry: { max_retries: 0 },
         environment: { import_path: o.egress ? EGRESS_ENVIRONMENT : 'harbor.environments.docker.docker:DockerEnvironment', delete: true },
         verifier: { disable: false },
-        agents: [{ name: 'mcp-' + v, import_path: 'agents:' + c.cls, model_name: c.model,
+        agents: [{ name: 'mcp-' + v, import_path: c.cls.includes(':') ? c.cls : 'agents:' + c.cls, model_name: c.model,
           kwargs: { version, broker_url: 'http://127.0.0.1:' + o.brokerPort, cell: 'mcp-' + v + '-r' + rung + suffix, attempt: 1 } }],
         tasks: [{ path: join(o.out, 'tasks', o.requestId + '__r' + rung + suffix) }],
       };

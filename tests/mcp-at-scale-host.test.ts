@@ -160,6 +160,26 @@ describe('catalog host over streamable HTTP', () => {
     expect((await res.text()).trim().split('\n').length).toBe(logged().length);
   });
 
+  test('the validate endpoint needs the token, checks held arguments as tools/call does and logs nothing', async () => {
+    const before = host.lines.length;
+    const body = JSON.stringify([
+      { server: 'ash-tracker', tool: 'create_issue', arguments: { title: 'no workspace' } },
+      { server: 'ash-tracker', tool: 'create_issue', arguments: { workspace: 'ACME', title: 'Broken login' } },
+      { server: 'ash-tracker', tool: 'delete_everything', arguments: {} },
+      { server: 'not-on-this-rung', tool: 'create_issue', arguments: {} },
+    ]);
+    expect((await fetch(base + '/_he/validate', { method: 'POST', body })).status).toBe(404);
+    expect((await fetch(base + '/_he/validate', { method: 'POST', headers: { 'x-he-log-token': 'wrong' }, body })).status).toBe(404);
+    expect((await fetch(base + '/_he/validate', { headers: { 'x-he-log-token': 'tok' } })).status).toBe(404);
+    expect((await fetch(base + '/_he/validate', { method: 'POST', headers: { 'x-he-log-token': 'tok' }, body: '{}' })).status).toBe(400);
+    const res = await fetch(base + '/_he/validate', { method: 'POST', headers: { 'x-he-log-token': 'tok' }, body });
+    const checks = (await res.json()) as Array<{ ok: boolean | null; error?: string }>;
+    expect(checks.map((c) => c.ok)).toEqual([false, true, false, false]);
+    expect(checks[0]!.error).toContain('workspace');
+    expect(checks[2]!.error).toBe('unknown tool');
+    expect(host.lines.length).toBe(before);
+  });
+
   test('a GET to an endpoint is refused, as a stateless server does', async () => {
     expect((await fetch(base + '/mcp/ash-tracker')).status).toBe(405);
   });

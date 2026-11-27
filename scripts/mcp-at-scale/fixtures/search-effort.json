@@ -1,5 +1,5 @@
 {
- "about": "Search-effort parser fixtures: real Harbor transcripts of the keyless scripted search model (scripts/mcp-at-scale/search-script.ts) on the synthetic catalog at rung 150, cut to the agent turns and their tool calls. listing-map.ts run --search, 2026-11-19.",
+ "about": "Search-effort parser fixtures: real Harbor transcripts of the keyless scripted search model (scripts/mcp-at-scale/search-script.ts) on the synthetic catalog at rung 150, cut to the agent turns and their tool calls. listing-map.ts run --search, 2026-11-19. QM (qm-session: the session transcript agents_qm.py saves, cut to its ToolCall and AgentMessage items) from 2026-11-19 at QM main 7d552d94.",
  "target": {
   "server": "ash-tracker",
   "tool": "create_issue"
@@ -338,6 +338,57 @@
    "version": "2026.11.5",
    "source": "openclaw-session",
    "transcript": "{\"type\": \"message\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"toolCall\", \"name\": \"tool_search\", \"arguments\": {\"queries\": [{\"query\": \"ash tracker create issue\"}]}}]}}\n{\"type\": \"message\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"toolCall\", \"name\": \"dispatch_action\", \"arguments\": {\"id\": \"mcp:ash-tracker:ash-tracker__create_issue\", \"args\": {\"workspace\": \"acme\", \"title\": \"Login button broken\"}}}]}}\n{\"type\": \"message\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Done: the scripted search model called the tool and is stopping here.\"}]}}\n",
+   "right_tool": true
+  },
+  {
+   "variant": "qm",
+   "version": "main@7d552d94",
+   "source": "qm-session",
+   "transcript": {
+    "items": [
+     {
+      "kind": "ToolCall",
+      "tool": "tool_search",
+      "body": {
+       "query": "ash tracker create issue",
+       "wire": {
+        "message": {
+         "id": "84ba9085-35c7-40b4-8a34-fd1a0ae756f9"
+        }
+       }
+      }
+     },
+     {
+      "kind": "ToolCall",
+      "tool": "ash-tracker_create_issue",
+      "body": {
+       "args": {
+        "title": "Login button broken",
+        "workspace": "acme"
+       },
+       "mcpServer": "ash-tracker",
+       "wire": {
+        "name": "mcp_call",
+        "argumentsJson": "{\"server\":\"ash-tracker\",\"tool\":\"create_issue\",\"args\":{\"workspace\":\"acme\",\"title\":\"Login button broken\"}}",
+        "message": {
+         "id": "4a90afa2-5004-4bf1-b818-643263c03fd1"
+        }
+       }
+      }
+     },
+     {
+      "kind": "AgentMessage",
+      "tool": null,
+      "body": {
+       "wire": {
+        "message": {
+         "id": "41b62e0a-65f9-49ea-adb1-cc539474eeb9"
+        }
+       }
+      }
+     }
+    ]
+   },
    "right_tool": true
   }
  ]

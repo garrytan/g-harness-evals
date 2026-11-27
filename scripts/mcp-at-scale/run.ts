@@ -822,7 +822,7 @@ export async function runShard(l: LoadedSpec, plan: Plan, name: string, o: Shard
         job_name: job, jobs_dir: join(out, 'jobs'), n_attempts: 1, n_concurrent_trials: 1, quiet: true, retry: { max_retries: 0 },
         environment: { import_path: o.egress ? EGRESS_ENVIRONMENT : 'harbor.environments.docker.docker:DockerEnvironment', delete: true },
         verifier: { disable: false },
-        agents: [{ name: 'mcp-' + c.cell.variant, import_path: 'agents:' + c.cls, model_name: c.cell.model, kwargs: { version: c.version, broker_url: 'http://127.0.0.1:' + o.brokerPort, cell: c.cell.id, attempt: 1 } }],
+        agents: [{ name: 'mcp-' + c.cell.variant, import_path: c.cls.includes(':') ? c.cls : 'agents:' + c.cls, model_name: c.cell.model, kwargs: { version: c.version, broker_url: 'http://127.0.0.1:' + o.brokerPort, cell: c.cell.id, attempt: 1 } }],
         tasks: [{ path: taskDir(c, t) }],
       };
       writeFileSync(join(out, 'configs', job + '.json'), JSON.stringify(config, null, 1) + '\n');

@@ -357,7 +357,8 @@ describe('spec checker', () => {
     expect(problemsOf(variant((s) => { s.cells[0].arm = 'mechanism'; })).join('\n')).toContain('needs a mechanism variant');
     expect(problemsOf(variant((s) => { s.cells[0].variant = 'claude-code-no-tool-search'; })).join('\n')).toContain('its arm is mechanism');
     expect(problemsOf(variant((s) => { s.cells[0].arm = 'gbrain'; })).join('\n')).toContain('names gbrain_cell');
-    expect(problemsOf(variant((s) => { s.cells[0].variant = 'qm'; })).join('\n')).toContain('QM has no Harbor class');
+    expect(problemsOf(variant((s) => { s.cells[0].variant = 'qm'; })).join('\n')).toContain('harness_versions has no version for qm');
+    expect(problemsOf(variant((s) => { s.cells[0].variant = 'qm'; s.harness_versions.qm = 'main@77024e79'; }))).toEqual([]);
     expect(problemsOf(variant((s) => { s.cells[1].model = 'anthropic/claude-opus-5-5'; })).join('\n')).toContain('codex cannot call anthropic models');
     expect(problemsOf(variant((s) => { s.cells[0].model = 'anthropic/claude-nonesuch'; })).join('\n')).toContain('not in pin.json models or scripts/mcp-at-scale/versions.json models');
     expect(problemsOf(variant((s) => { s.harness_versions['claude-code'] = '0.0.1'; })).join('\n')).toContain('is neither pinned');
@@ -794,6 +795,7 @@ describe('review fixes before the counted run', () => {
     const root = tmp(), home = join(root, 'home'), bin = join(root, 'bin');
     for (const d of [join(root, 'scripts/mcp-at-scale'), join(home, '.bun/bin'), join(home, 'he-harbor-venv/bin'), bin]) mkdirSync(d, { recursive: true });
     writeFileSync(join(root, 'scripts/mcp-at-scale/listing-map.ts'), '');
+    writeFileSync(join(root, 'scripts/mcp-at-scale/qm-images.sh'), 'echo qm-images: built\n');
     writeFileSync(join(home, 'he-harbor-venv/bin/harbor'), '', { mode: 0o755 });
     writeFileSync(join(bin, 'sudo'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     writeFileSync(join(bin, 'sg'), '#!/bin/bash\nexec bash -c "$3"\n', { mode: 0o755 });
@@ -815,6 +817,7 @@ describe('review fixes before the counted run', () => {
     expect(check('infra').stderr.toString()).toContain('lacks a usable verifier outcome');
     const good = check('good');
     expect(good.exitCode).toBe(0);
+    expect(good.stdout.toString()).toContain('qm-images: built');
     expect(good.stdout.toString()).toContain('egress-check: done');
   });
 });

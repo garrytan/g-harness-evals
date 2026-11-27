@@ -56,7 +56,7 @@ OPENCLAW_OPENROUTER_DENY = ["music_generate", "video_generate"]
 # plugin, pinned file by file in pin.json, adds both (amendment 1 of frontier-shootout-2026-11).
 HERMES_OPENROUTER_PLUGIN = PIN["harnesses"]["hermes"]["openrouter_plugin"]
 PROVIDERS = {"claude-code": ("anthropic",), "codex": ("openai",), "dsh": ("anthropic", "openai", "particle", "openrouter"), "cursor": ("anthropic",),
-             "gemini-cli": ("google",), "grok-build": ("xai",), "muse-code": ("openrouter",), "qm": ("anthropic", "openai", "openrouter"),
+             "gemini-cli": ("google",), "grok-build": ("xai",), "muse-code": ("openrouter",), "qm": ("anthropic", "openai", "openrouter", "particle"),
              **{h: ("anthropic", "openai", "particle", "openrouter", "google", "xai") for h in ("hermes", "openclaw", "pi")}}
 # Amendment 2 of frontier-shootout-2026-11: Gemini 4 Carbon and Hydrogen in Hermes, OpenClaw and Pi go to Google's Gemini API on
 # the proxy's google route, each through the harness's own Gemini provider. Hermes v0.23.1 runs its native Gemini client only for

@@ -86,11 +86,14 @@ export function decide(x: Contrast, cmp: Comparison, margin: number, design: Des
   return { id: cmp.id, decision, contrast: x, bounds: b, z: Number(z.toFixed(4)), conditional_power: Number(cp.toFixed(4)), ...(shift ? { margin } : {}), note };
 }
 
-/** The trials of the look's units, the only ones it reads. */
+/** Harnesses an amendment added after the look (Amendment 6: QM). Their rows never enter the look or its recompute. */
+export const AFTER_LOOK_HARNESSES = new Set(['qm']);
+
+/** The trials of the look's units from the run's own harnesses, the only ones it reads. */
 export function lookTrials(trials: Trial[], items: Item[], design: Pick<Design, 'seed' | 'fraction'>) {
   const units = interimUnits(items, design.seed, design.fraction);
   const byId = new Map(items.map((i) => [i.id, i]));
-  return { units, kept: trials.filter((t) => { const it = byId.get(t.request); return !!it && units.has(clusterOf(it).cluster); }) };
+  return { units, kept: trials.filter((t) => { const it = byId.get(t.request); return !AFTER_LOOK_HARNESSES.has(t.harness) && !!it && units.has(clusterOf(it).cluster); }) };
 }
 
 export function look(o: { trials: Trial[]; items: Item[]; design: Design; margin?: number | null }) {

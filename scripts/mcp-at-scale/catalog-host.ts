@@ -21,8 +21,10 @@
 //
 // The log is the evaluator's: one JSON line per completed request, including tool failures, but only successful
 // initialize and tools/list responses count as connections. run is a random id per host process. GET /_he/log returns it to a caller holding the token in
-// the variable --log-token-env names (header x-he-log-token), so a verifier can read it and the agent cannot. GET
-// /healthz answers ok. GET /_he/ready?connect=<eager|lazy>&variant=<v> (the trial's readiness probe, agents.py) answers
+// the variable --log-token-env names (header x-he-log-token), so a verifier can read it and the agent cannot. POST
+// /_he/validate, with the same token, checks a JSON list of {server, tool, arguments} against this rung's tools with the
+// validator tools/call uses and answers one {ok, error?} each, logging nothing: grade.py's check of the calls QM held for
+// approval, which never reached the host (a tool not on the rung is ok false). GET /healthz answers ok. GET /_he/ready?connect=<eager|lazy>&variant=<v> (the trial's readiness probe, agents.py) answers
 // ok and logs a "ready" line with them, which grade.py reads as the cell's connect mode. Stdio mode serves one server the same way (logging locally), or with --upstream relays every
 // request to a running host so the sidecar's log stays the one record.
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
@@ -200,6 +202,17 @@ export function createHost(o: HostOptions) {
     if (url.pathname === '/_he/log') {
       if (!o.logToken || req.headers.get('x-he-log-token') !== o.logToken) return new Response('not found\n', { status: 404 });
       return new Response(lines.map((l) => JSON.stringify(l) + '\n').join(''), { headers: { 'content-type': 'application/x-ndjson' } });
+    }
+    if (url.pathname === '/_he/validate') {
+      if (!o.logToken || req.headers.get('x-he-log-token') !== o.logToken || req.method !== 'POST') return new Response('not found\n', { status: 404 });
+      let held: unknown;
+      try { held = await req.json(); } catch { return new Response('bad json\n', { status: 400 }); }
+      if (!Array.isArray(held)) return new Response('bad json\n', { status: 400 });
+      return Response.json(held.map((c) => {
+        const s = byName.get(String(c?.server));
+        const tool = s?.tools.find((t) => t.name === c?.tool);
+        return s && tool ? validate(s.server, tool, c?.arguments ?? {}) : { ok: false, error: 'unknown tool' };
+      }));
     }
     const m = /^\/mcp\/([A-Za-z0-9_-]+)\/?$/.exec(url.pathname);
     const s = m ? byName.get(m[1]!) : undefined;

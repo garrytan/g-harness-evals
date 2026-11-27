@@ -68,7 +68,7 @@ export function trialsDigest(trials: Trial[]): string {
 }
 
 export const isInfra = (t: Trial) => !t.outcomes || !!t.outcomes.infra;
-export const hasTranscript = ({ effort }: Trial) => (effort?.source === 'trajectory' || effort?.source === 'openclaw-session') && effort.turns > 0;
+export const hasTranscript = ({ effort }: Trial) => (effort?.source === 'trajectory' || effort?.source === 'openclaw-session' || effort?.source === 'qm-session') && effort.turns > 0;
 export const setup = (t: Trial) => t.harness + ':' + t.model;
 export const setupItemRep = (t: Trial) => JSON.stringify([setup(t), t.request, t.rep ?? 1]);
 export const isOpus = (model: string) => /opus/i.test(model);

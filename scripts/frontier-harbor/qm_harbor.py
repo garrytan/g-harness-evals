@@ -47,7 +47,7 @@ ORG = "harness-eval"
 SCOPE = f"org:{ORG}"
 ACTOR = "U1"
 SANDBOX_SCOPE = f"personal:{ACTOR}"
-CUSTOM_PROVIDER = "he-openrouter"
+CUSTOM_PROVIDERS = {"openrouter": "OpenRouter", "particle": "Particle"}
 DAEMON_DIR = "/tmp/frontier-qm"
 WORKDIR = "/root/workspace"
 SHIM = HERE / "qm-docker-shim.sh"
@@ -92,10 +92,10 @@ def route(model: str) -> dict[str, Any]:
     provider = spec["provider"]
     if provider in HOUSEKEEPING:
         return {"provider": provider, "pi_model": spec["name"], "housekeeping": [f"{provider}:{m}" for m in HOUSEKEEPING[provider]], "custom": None}
-    if provider != "openrouter":
+    if provider not in CUSTOM_PROVIDERS:
         raise ValueError(f"HE-QM-001 QM has no route for {provider} models on this path")
     custom = {"id": spec["name"], "name": spec["name"], "reasoning": True, "contextWindow": spec["context_window"], "maxTokens": spec["max_output_tokens"]}
-    return {"provider": provider, "pi_model": f"custom/{CUSTOM_PROVIDER}/{spec['name']}", "housekeeping": [], "custom": custom}
+    return {"provider": provider, "pi_model": f"custom/he-{provider}/{spec['name']}", "housekeeping": [], "custom": custom}
 
 
 def housekeeping_models(model: str) -> list[str]:
@@ -175,8 +175,8 @@ def admin_calls(model: str, url: str) -> list[dict[str, Any]]:
     r = route(model)
     calls = []
     if r["custom"]:
-        calls.append({"name": "custom_provider", "method": "PUT", "path": f"/v1/admin/custom-providers/{CUSTOM_PROVIDER}", "body": {
-            "name": "OpenRouter through the metering proxy", "protocol": "openai", "baseUrl": url.rstrip("/") + "/v1",
+        calls.append({"name": "custom_provider", "method": "PUT", "path": f"/v1/admin/custom-providers/he-{r['provider']}", "body": {
+            "name": f"{CUSTOM_PROVIDERS[r['provider']]} through the metering proxy", "protocol": "openai", "baseUrl": url.rstrip("/") + "/v1",
             "models": [r["custom"]], "apiKey": "@HE_QM_PROXY_TOKEN@", "validate": False}})
     calls.append({"name": "runtime", "method": "PUT", "path": f"/v1/admin/scopes/{SCOPE}/runtime", "body": {"modelId": r["pi_model"], "effortLevel": fs.EFFORT, "fastMode": False}})
     calls.append({"name": "command_policy", "method": "PUT", "path": f"/v1/admin/scopes/{SCOPE}/command-policy", "body": COMMAND_POLICY})
@@ -248,9 +248,9 @@ def settings_fields(model: str) -> dict[str, Any]:
         "housekeeping_model": {"model": (r["housekeeping"] or [model])[0], "models": r["housekeeping"] or [model], "note": ("harness housekeeping, shipped default, metered and never scored: QM's auxiliary model for the provider takes the utility calls (auxiliaryModelFor, src/model/pi-models.ts)"
                                + (", and Claude Sonnet 5.5 writes session titles (DESCRIPTIVE_TITLE_MODEL_ID at the pin; TITLE_MODEL_ID for every title on QM main from 2026-11; src/agent/session-title-prompt.ts)" if r["provider"] == "anthropic" else "")
                                if r["housekeeping"] else "a custom provider has no auxiliary model in QM, so its utility calls name the cell model (shipped behaviour, src/model/pi-models.ts); QM's Claude title model has no Anthropic key in this cell, so no call goes to it (QM main from 2026-11 then titles on the cell model)")},
-        **({"reasoning_replay": {"field": "reasoning_details", "verdict": "replays", "how": "QM's vendored pi-ai (@earendil-works/pi-ai 0.82.0-qm.3, openai-completions) keeps the reasoning_details the endpoint streams with each assistant message and sends them back on that message in every later request, the tool-call turn included; seen keyless, the Gemini signature entry still keyed to its unchanged call id. Seen accepted live: OpenRouter's Gemini endpoint (pinned to Google AI Studio) answered HTTP 200 to every replayed tool-call turn carrying them (install-check-qm-smoke.json)", "checked": "keyless, install-check-qm.json (qm-carbon replay_verdict): the real QM core at the pin, through broker.ts and the metering proxy to a fake upstream that answers shell tool calls with a Gemini thought signature in reasoning_details and checks it on each replayed tool-call turn; then one metered trial, install-check-qm-smoke.json"}} if custom else {}),
+        **({"reasoning_replay": {"field": "reasoning_details", "verdict": "replays", "how": "QM's vendored pi-ai (@earendil-works/pi-ai 0.82.0-qm.3, openai-completions) keeps the reasoning_details the endpoint streams with each assistant message and sends them back on that message in every later request, the tool-call turn included; seen keyless, the Gemini signature entry still keyed to its unchanged call id. Seen accepted live: OpenRouter's Gemini endpoint (pinned to Google AI Studio) answered HTTP 200 to every replayed tool-call turn carrying them (install-check-qm-smoke.json)", "checked": "keyless, install-check-qm.json (qm-carbon replay_verdict): the real QM core at the pin, through broker.ts and the metering proxy to a fake upstream that answers shell tool calls with a Gemini thought signature in reasoning_details and checks it on each replayed tool-call turn; then one metered trial, install-check-qm-smoke.json"}} if custom and r["provider"] == "openrouter" else {}),
         "qm": {
-            "commit": COMMIT, "image": IMAGE, "pi_model": r["pi_model"], "provider_route": "custom provider " + CUSTOM_PROVIDER + " (protocol openai)" if custom else "QM's built-in " + r["provider"] + " provider",
+            "commit": COMMIT, "image": IMAGE, "pi_model": r["pi_model"], "provider_route": "custom provider he-" + r["provider"] + " (protocol openai)" if custom else "QM's built-in " + r["provider"] + " provider",
             "topology": "Postgres and QM core as two containers on the VM in the task container's network namespace; QM's exec daemon (agent.mjs, sha256 " + pin()["daemon_sha256"][:12] + "...) in the task container on 127.0.0.1:" + str(PORTS["daemon"]) + "; qm-docker-shim.sh as core's docker CLI",
             "ports": PORTS, "org": ORG, "actor": ACTOR, "security_posture": shipped_core_env().get("HARNESS_SECURITY_POSTURE"), "command_policy": COMMAND_POLICY,
         },

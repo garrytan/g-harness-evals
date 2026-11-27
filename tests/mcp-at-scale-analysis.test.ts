@@ -415,6 +415,13 @@ describe('end to end on synthetic outcomes (2 harnesses x 4 rungs)', () => {
       expect(refused.code).not.toBe(0);
       expect(refused.err).toContain('the interim record does not match the interim state');
     }
+    const editedNumbers = join(dir, 'edited-numbers-interim.json');
+    writeFileSync(editedNumbers, JSON.stringify({ ...rec, results: rec.results.map((x: { id: string; z: number; contrast: { delta: number } }) =>
+      (x.id === 'slip:hermes' ? { ...x, z: x.z + 1, contrast: { ...x.contrast, delta: x.contrast.delta + 0.1 } } : x)) }));
+    const numbersRefused = run([...analysisArgs, '--interim-state', state, '--interim-record', editedNumbers, '--out', join(dir, 'edited-numbers')]);
+    expect(numbersRefused.code).not.toBe(0);
+    expect(numbersRefused.err).toContain('the interim record does not match the look recomputed from these trials: slip:hermes');
+    expect(existsSync(join(dir, 'edited-numbers'))).toBe(false);
     const fin = run([...analysisArgs, '--interim-state', state, '--interim-record', record, '--out', join(dir, 'final')]);
     expect(fin.code).toBe(0);
     expect(fin.out).toContain(STOPPED_NOTE);
@@ -444,6 +451,22 @@ describe('end to end on synthetic outcomes (2 harnesses x 4 rungs)', () => {
     expect(rebound.code).not.toBe(0);
     expect(rebound.err).toContain('interim state was computed from different trials');
     expect(existsSync(join(dir, 'refused-trials'))).toBe(false);
+    const withQm = join(dir, 'with-qm');
+    mkdirSync(withQm);
+    const runRows = readFileSync(join(dir, 'trials.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const qmRows = runRows.filter((t) => t.harness === runRows[0].harness).map((t) => ({ ...t, trial_id: t.trial_id + '-qm', harness: 'qm' }));
+    writeFileSync(join(withQm, 'trials.jsonl'), [...runRows, ...qmRows].map((t) => JSON.stringify(t)).join('\n') + '\n');
+    const merged = run([join(A, 'analyze.ts'), '--trials', join(withQm, 'trials.jsonl'), '--sets', ...sets, '--interim-state', state, '--interim-record', record, '--out', join(dir, 'with-qm-final')]);
+    expect(merged.code).not.toBe(0);
+    expect(merged.err).toContain('the final analysis reads only the run\'s own harnesses; analyze qm rows on their own with --exploratory');
+    expect(existsSync(join(dir, 'with-qm-final'))).toBe(false);
+    const qmOnly = join(withQm, 'qm.jsonl');
+    writeFileSync(qmOnly, qmRows.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    expect(run([join(A, 'analyze.ts'), '--trials', qmOnly, '--sets', ...sets, '--exploratory', '--out', join(dir, 'qm-alone')]).code).toBe(0);
+    const lookItems = sets.flatMap((s) => readFileSync(s, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Item));
+    const design = JSON.parse(readFileSync(join(A, 'interim-design.json'), 'utf8')) as Design;
+    const withQmLook = look({ trials: loadTrials(join(withQm, 'trials.jsonl')), items: lookItems, design });
+    expect(withQmLook.trials_digest).toBe(look({ trials: loadTrials(join(dir, 'trials.jsonl')), items: lookItems, design }).trials_digest);
     const invalidState = join(dir, 'invalid-state.json');
     writeFileSync(invalidState, JSON.stringify({ ...JSON.parse(readFileSync(state, 'utf8')), design_sha256: 'not-the-frozen-design' }));
     const refused = run([...analysisArgs, '--interim-state', invalidState, '--out', join(dir, 'refused')]);

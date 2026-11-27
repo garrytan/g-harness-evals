@@ -12,7 +12,7 @@
 //     exec, custom (Codex)          ALL_TOOLS filtered by the tool's name (OpenClaw's exec is a shell tool and is never used)
 //   k = 1, the target still not declared: call it through the harness's indirect route, by the exact name the search
 //     result returned when it holds one (tool_call for Hermes and OpenClaw 2026.10, dispatch_action for OpenClaw 2026.11, a
-//     codemode or exec script for Pi and Codex);
+//     codemode or exec script for Pi and Codex, mcp_call with the server id tool_search returned for QM);
 //   otherwise: a short text answer, so the turn ends.
 // Requests that declare no tools (titles, summaries) and Gemini routes get scripts/frontier-harbor/fake-upstream.ts's reply.
 import { sse } from '../frontier-harbor/fake-upstream.ts';
@@ -80,6 +80,10 @@ export function plan(body: Record<string, any>, t: SearchTarget): Call | 'text' 
     if (has('codemode')) return { name: 'codemode', input: { code: 'const hits = await searchTools(' + JSON.stringify(words) + ');\ntext(JSON.stringify(hits.map((h) => h.name)));' } };
     if (codexExec) return { name: 'exec', custom: 'const hits = ALL_TOOLS.filter((t) => t.name.includes(' + JSON.stringify(t.tool) + ')).map((t) => t.name);\ntext(JSON.stringify(hits));\n' };
     return 'text';
+  }
+  if (has('mcp_call')) {
+    const id = new RegExp('"server":"([a-z][a-z0-9-]*)","tool":' + JSON.stringify(t.tool)).exec(lastResult)?.[1] ?? t.server;
+    return { name: 'mcp_call', input: { server: id, tool: t.tool, args: t.args } };
   }
   const name = found ?? qualified;
   if (has('tool_call')) {
