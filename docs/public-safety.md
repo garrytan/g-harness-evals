@@ -181,7 +181,7 @@ Allowlistable with a blob-bound `allow.json` entry.
 <a id="ps-gitleaks"></a>
 ### PS-GITLEAKS
 
-The pinned gitleaks (8.30.1, run with `--redact` under `scripts/public-safety/gitleaks.toml`) found a credential-shaped string in a new blob, a decoded container member, a commit message, a path name or the PR text. Key-class, like PS-KEY-SHAPE.
+The pinned gitleaks (8.30.1, run with `--redact` under `scripts/public-safety/gitleaks.toml`) found a credential-shaped string in a new blob, a decoded container member, a commit message, a path name or the PR text. Key-class, like PS-KEY-SHAPE. Besides gitleaks' default rules, `gitleaks.toml` adds `he-ingest-tokens-digest` and `he-ingest-tokens-digest-yaml`, which refuse every `ingest_tokens_sha256` value written as JSON, as JSON escaped inside a string (a JSONL line or a session log) or as a YAML value on its own line. gitleaks' generic rule skips a value that contains one of its stopwords, and these rules have none, so a committed record's digest passes only through its blob-bound allow.json entry. A key spelled with unicode escapes is not covered.
 
 **Fix:** Remove the credential-shaped string gitleaks found; for a proven false positive, add a blob-bound allow.json entry with --allow.
 
@@ -201,9 +201,9 @@ Not allowlistable.
 <a id="ps-spend-path"></a>
 ### PS-SPEND-PATH
 
-A new object is a spend ledger (`ledger.sqlite`, `*.ledger.sqlite`), a proxy usage log (`proxy-usage*.ndjson`) or a spend reconciliation file (`spend-reconciliation*.json`), even if a later commit deletes it.
+A new object is a spend file, even if a later commit deletes it. At any path that's a spend ledger (`ledger.sqlite`, `*.ledger.sqlite`), a proxy usage log (`proxy-usage*.ndjson`) or a spend reconciliation file (`spend-reconciliation*.json`). Under `docs/benchmarks/`, where runs write them, it's also every name the public export's spend exclude rule leaves out: lease ledgers and ledger summaries (`*ledger*.sqlite`, `*ledger-summary*`), proxy usage logs and proxy logs (`*proxy-usage*.ndjson`, `*proxy*.log`), lease logs (`*lease*.log`, `leases.jsonl`), infrastructure lease records (`infra-lease.json`), VM records (`*shard-vm*.json`), fan-out manifests (`fanout*.json`), spend tallies (`spend.json`, `*spend-reconciliation*`) and internal spend notes (`spend-internal.md`). A compressed copy of any of these (`.gz`, `.zst`, `.xz` or `.bz2`) counts too. Only paths that commits in the pushed range add or change count, so the spend files the public copy already holds, which pinned preregistrations and published pages read, don't fail a push that leaves them alone. A merge commit counts the paths it brings in from either side, so merging public main into a branch can be refused when main gained a spend file after the branch's last pushed commit.
 
-**Fix:** Remove the spend ledger, proxy usage log or spend reconciliation file from every commit of the branch; it stays private.
+**Fix:** Remove the spend file (a lease ledger, proxy usage log, spend reconciliation file, lease log, VM record, fan-out manifest or spend tally, compressed or not) from every commit of the branch; it stays private.
 
 Not allowlistable.
 

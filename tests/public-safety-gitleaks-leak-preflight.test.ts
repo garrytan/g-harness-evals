@@ -72,13 +72,17 @@ test.skipIf(!READY)('every value the gate flags in the committed records is a ma
   expect(after.status).toBe(0);
 }, 300_000);
 
-test.skipIf(!READY)('a real-shaped key in the same records, a fresh 64-hex value in the digest field, or a 64-hex value under any other key, is still refused and never printed', () => {
+test.skipIf(!READY)('a real-shaped key in the same records, a fresh 64-hex value in the digest field, or a 64-hex value under any other key, is still refused on the injected line and never printed', () => {
   const base = RECORDS.find((p) => readFileSync(join(ROOT, p), 'utf8').includes('"ingest_tokens_sha256"'))!;
   const text = readFileSync(join(ROOT, base), 'utf8');
   const key = keyCanary();
   const tok = tokenCanary();
   const generic = rand(40);
-  const hex = hex64();
+  const hex = (() => { for (;;) { const h = hex64(); if (!/dead|feed|000000|aaaaaa/.test(h)) return h; } })();
+  const stop = rand(18) + 'vpn' + rand(19);
+  const stopEsc = rand(18) + 'yaml' + rand(18);
+  const stopYaml = rand(18) + 'hero' + rand(18);
+  const hexStop = hex64().slice(0, 30) + 'dead' + hex64().slice(0, 30);
   const field = (k: string, v: string) => JSON.stringify(k) + ': ' + JSON.stringify(v);
   const swap = (k: string, to: string) => text.replace(new RegExp(JSON.stringify(k) + ': "[^"]*"'), to);
   const cases: Record<string, string> = {
@@ -87,14 +91,21 @@ test.skipIf(!READY)('a real-shaped key in the same records, a fresh 64-hex value
     'digest-not-hex': swap('ingest_tokens_sha256', field('ingest_tokens_sha256', generic)),
     'digest-real-shaped': swap('ingest_tokens_sha256', field('ingest_tokens_sha256', hex)),
     'hex-other-key': swap('ingest_tokens_sha256', field('ingest_tokens_sha256', hex64()) + ',\n    ' + field('access_token', hex)),
+    'digest-stopword': swap('ingest_tokens_sha256', field('ingest_tokens_sha256', stop)),
+    'digest-hex-stopword': swap('ingest_tokens_sha256', field('ingest_tokens_sha256', hexStop)),
+    'digest-escaped-json': swap('ingest_tokens_sha256', field('note', JSON.stringify({ ingest_tokens_sha256: stopEsc }))),
+    'digest-yaml': swap('ingest_tokens_sha256', field('ingest_tokens_sha256', hex64()) + ',\n  "yaml": ""\n  ingest_tokens_sha256: ' + stopYaml + '\n  "end": ""'),
   };
+  const injected: Record<string, string> = { 'secret-key': key, 'token-pat': tok, 'digest-not-hex': generic, 'digest-real-shaped': hex, 'hex-other-key': hex, 'digest-stopword': stop, 'digest-hex-stopword': hexStop, 'digest-escaped-json': stopEsc, 'digest-yaml': stopYaml };
   for (const [name, body] of Object.entries(cases)) {
     expect(body).not.toBe(text);
+    const line = body.split('\n').findIndex((l) => l.includes(injected[name]!)) + 1;
+    expect(line, name).toBeGreaterThan(0);
     const r = fresh();
     r.commit({ [base]: body }, name);
     const out = range(r);
-    expect(out.status).toBe(1);
-    expect(hits(out.stdout, name === 'secret-key' ? 'PS-KEY-SHAPE' : 'PS-GITLEAKS').length, name).toBeGreaterThanOrEqual(1);
-    for (const s of [key, tok, generic, hex]) expect(out.all).not.toContain(s);
+    expect(out.status, name).toBe(1);
+    expect(hits(out.stdout, name === 'secret-key' ? 'PS-KEY-SHAPE' : 'PS-GITLEAKS'), name).toContainEqual({ path: base, line });
+    for (const s of [key, tok, generic, hex, stop, hexStop, stopEsc, stopYaml]) expect(out.all).not.toContain(s);
   }
 }, 300_000);

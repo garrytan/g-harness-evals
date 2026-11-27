@@ -533,7 +533,7 @@ describe('bundle adapters against this checkout', () => {
 
   test.skipIf(!existsSync(join(repo, 'publication/manifest.json')))('the spend rule covers every spend glob the public export leaves out', () => {
     const m = JSON.parse(readFileSync(join(repo, 'publication/manifest.json'), 'utf8')) as { exclude: Array<{ globs: string[] }> };
-    const rule = m.exclude.find((e) => e.globs.includes('docs/benchmarks/**/*ledger*.sqlite'))!;
+    const rule = m.exclude.find((e) => e.globs.some((g) => g.startsWith('docs/benchmarks/**/*ledger*.sqlite')))!;
     for (const g of [...rule.globs, 'docs/benchmarks/**/spend-internal.md'].map((x) => x.replace(/^docs\/benchmarks\//, ''))) expect(SPEND_GLOBS.includes(g) || new Bun.Glob('*spend*').match(g.split('/').pop()!)).toBe(true);
   });
 });

@@ -23,7 +23,7 @@ export interface RunAdapter {
  *  judge shard records (their lease_usd) and charged-reservation tallies. VM lifecycle logs (vms.jsonl, vm-steps.jsonl) hold no
  *  cost and stay, and so do lease caps (a shard record's or run summary's lease_usd, a preregistration's caps), which the
  *  public copy also keeps. Per-trial usage inside trials.jsonl stays, because the records are copied byte for byte. */
-export const SPEND_GLOBS = ['**/*spend*', '**/*ledger*.sqlite', '**/*ledger*.sqlite.gz', '**/*ledger-summary*', '**/*proxy-usage*.ndjson', '**/*proxy-usage*.ndjson.gz', '**/*proxy*.log', '**/*proxy*.log.gz', '**/leases.jsonl', '**/*lease*.log', '**/infra-lease.json', '**/*shard-vm*.json', '**/fanout*.json', '**/meter-summary*', '**/run-summary.json', '**/*judge-shard.json', '**/charged-reservations*.json'];
+export const SPEND_GLOBS = ['**/*spend*', '**/*ledger*.sqlite{,.gz,.zst,.xz,.bz2}', '**/*ledger-summary*', '**/*proxy-usage*.ndjson{,.gz,.zst,.xz,.bz2}', '**/*proxy*.log{,.gz,.zst,.xz,.bz2}', '**/leases.jsonl{,.gz,.zst,.xz,.bz2}', '**/*lease*.log{,.gz,.zst,.xz,.bz2}', '**/infra-lease.json{,.gz,.zst,.xz,.bz2}', '**/*shard-vm*.json{,.gz,.zst,.xz,.bz2}', '**/fanout*.json{,.gz,.zst,.xz,.bz2}', '**/meter-summary*', '**/run-summary.json{,.gz,.zst,.xz,.bz2}', '**/*judge-shard.json{,.gz,.zst,.xz,.bz2}', '**/charged-reservations*.json{,.gz,.zst,.xz,.bz2}'];
 
 const harbor = (names: string[]) => names.map((n) => `prereg-harbor${n}.json`);
 
