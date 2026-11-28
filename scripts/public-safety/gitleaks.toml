@@ -9,6 +9,7 @@ useDefault = true
 [[allowlists]]
 description = "Per-trial proxy keys are logged as trial-token:<trial id>; the bearer token is never logged, and the tests' trial-token:<id>.<hex> values are fixtures"
 regexTarget = "match"
+targetRules = ["generic-api-key"]
 regexes = ['''^trial-token:[A-Za-z0-9._-]+["']?$''']
 
 [[allowlists]]
@@ -42,7 +43,7 @@ regexes = ['''^(?:(?:he-)?member-[a-z]{2,16}(?:-[a-z]{2,16})?|trial-leak-preflig
 # every ingest_tokens_sha256 value is refused, in JSON, in JSON escaped inside a string (a JSONL line or a session log)
 # and as an unquoted YAML value, and the committed records' 64-hex digests pass only through their blob-bound allow.json
 # entries. The one exception is the literal pattern text [0-9a-f]{64} that configs and tests use to describe a digest.
-# A key spelled with unicode escapes is not covered yet.
+# A key spelled with unicode escapes is refused too: the gate runs gitleaks at its default decode depth, which decodes them.
 [[rules]]
 id = "he-ingest-tokens-digest"
 description = "An ingest_tokens_sha256 value in JSON, plain or escaped inside a string: only a committed record's digest passes, through its blob-bound allow.json entry"
@@ -61,3 +62,74 @@ description = "An unquoted or quoted YAML ingest_tokens_sha256 value on its own 
 regex = '''(?m)^\s*ingest_tokens_sha256\s*:\s*['"]?([A-Za-z0-9_+/=.-]{8,})['"]?\s*(?:#.*)?$'''
 secretGroup = 1
 keywords = ["ingest_tokens_sha256"]
+
+# Tokens this repository's tools mint. gitleaks' generic rule catches them only beside a key-like name, and skips any that
+# contain one of its stopwords ("dead", "cafe", "hero", ...), so each shape has its own rule with no stopwords and no
+# entropy floor (tests/public-safety-minted-tokens.test.ts). Provider key shapes are PS-KEY-SHAPE in rules.json. A bare
+# 64-hex or base64 token with no name beside it is not refused: that would take a broad rule that also flags every digest.
+[[rules]]
+id = "he-trial-token"
+description = "A metering-proxy trial token, trial-token:<trial id>.<32 hex>, the id any run of non-space characters such as <run>/<cell>/<task>/rN (runner/trial/proxy.ts trialToken, scripts/frontier-harbor/broker.ts, scripts/anatomy/count-tokens.ts)"
+regex = '''trial-token:[^\s"'\\]*?\.([0-9a-f]{32})\b'''
+secretGroup = 1
+keywords = ["trial-token:"]
+
+[[rules.allowlists]]
+description = "Made-up fixture suffixes: 0123...f twice, 0011...ff, all zeros with a short tail, or one repeated character or pair"
+regexTarget = "secret"
+regexes = ['''^(?:(?:0123456789abcdef){2}|00112233445566778899aabbccddeeff|0{24,}[0-9a-f]{0,8}|(?:ab)+|a+|b+|c+|d+|e+|f+|1+|2+|3+|4+|5+|6+|7+|8+|9+)$''']
+
+[[rules]]
+id = "he-judge-token"
+description = "A QM judge-shard slot token, judge-<role>:<run id>.<32 hex>, the role primary or secondary (harnesses/qm/gstack/judge-shard.ts)"
+regex = '''\bjudge-[A-Za-z0-9]+:[^\s"'\\]*?\.([0-9a-f]{32})\b'''
+secretGroup = 1
+keywords = ["judge-"]
+
+[[rules.allowlists]]
+description = "Made-up fixture suffixes, as for he-trial-token"
+regexTarget = "secret"
+regexes = ['''^(?:(?:0123456789abcdef){2}|00112233445566778899aabbccddeeff|0{24,}[0-9a-f]{0,8}|(?:ab)+|a+|b+|c+|d+|e+|f+|1+|2+|3+|4+|5+|6+|7+|8+|9+)$''']
+
+[[rules]]
+id = "he-laneb-token"
+description = "A Lane B proxy session token, laneb-<48 hex> (scripts/gstack-laneb/pinned/quick/laneb/runner/proxy.ts)"
+regex = '''\blaneb-([0-9a-f]{48})\b'''
+secretGroup = 1
+keywords = ["laneb-"]
+
+[[rules]]
+id = "he-proxy-bind-token"
+description = "The 64-hex token a proxy slot is bound with, as the token field of a /__proxy/bind body (scripts/gstack-laneb/vm-run.sh)"
+regex = '''\\?"token\\?"\s*:\s*\\?"([0-9a-f]{64})\\?"'''
+secretGroup = 1
+keywords = ["token"]
+
+[[rules]]
+id = "he-proxy-control-token"
+description = "A proxy control or slot token beside its name: the x-proxy-control header, SHOOTOUT_PROXY_CONTROL_TOKEN, HE_LANEB_UPSTREAM_TOKEN, control_token, controlToken, the --control-token argument (runner/trial/proxy.ts) or slot_token"
+regex = '''(?i)(?:x-proxy-control|proxy_control_token|laneb_upstream_token|control[-_]?token|slot_token)\\?["']?(?:\s*[:=]\s*|\s+)\\?["']?([A-Za-z0-9_-]{16,})'''
+secretGroup = 1
+keywords = ["proxy-control", "proxy_control", "upstream_token", "control_token", "control-token", "controltoken", "slot_token"]
+
+[[rules.allowlists]]
+description = "A placeholder: an environment variable name"
+regexTarget = "secret"
+regexes = ['''^[A-Z][A-Z0-9_]+$''']
+
+[[rules]]
+id = "he-bearer-token"
+description = "A value sent as an Authorization bearer credential in a captured request or log; the proxy and slot tokens ride here with no other name beside them"
+regex = '''(?i)\bauthorization\\?["']?\s*[:=,]\s*\\?["']?bearer\s+([A-Za-z0-9._~+/:-]{16,})'''
+secretGroup = 1
+keywords = ["bearer"]
+
+[[rules.allowlists]]
+description = "Documented placeholders: an environment variable name (Bearer HE_MODEL_API_KEY) or dashed lowercase words (Bearer world-token-golden)"
+regexTarget = "secret"
+regexes = ['''^[A-Z][A-Z0-9_]+$''', '''^[a-z]+(?:-[a-z]+)+$''']
+
+[[rules.allowlists]]
+description = "A trial token sent as a bearer value: he-trial-token above judges it, so a real suffix is still refused and a fixture suffix passes"
+regexTarget = "secret"
+regexes = ['''^trial-token:''']

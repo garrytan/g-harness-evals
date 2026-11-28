@@ -172,7 +172,7 @@ Allowlistable with a blob-bound `allow.json` entry.
 <a id="ps-key-shape"></a>
 ### PS-KEY-SHAPE
 
-A string shaped like a model provider API key appears in a new object. This is a key-class finding: in GitHub Actions the gate prints only the code and a correlation id.
+A string shaped like a model provider API key appears in a new object: Anthropic (`sk-ant-<kind>-`, with or without digits after the kind), OpenAI (`sk-proj-`, `sk-svcacct-`, `sk-admin-` and the older `T3BlbkFJ` form), OpenRouter, xAI, Perplexity, Google (`AIza` and `AQ.`), Ubicloud (`pat-`) or Particle. The patterns are plain regular expressions, so no stopword can make one skip a key. This is a key-class finding: in GitHub Actions the gate prints only the code and a correlation id.
 
 **Fix:** Remove the key-shaped string. A test builds its canary at run time from parts; a real key is reported, not rotated by an agent.
 
@@ -181,7 +181,9 @@ Allowlistable with a blob-bound `allow.json` entry.
 <a id="ps-gitleaks"></a>
 ### PS-GITLEAKS
 
-The pinned gitleaks (8.30.1, run with `--redact` under `scripts/public-safety/gitleaks.toml`) found a credential-shaped string in a new blob, a decoded container member, a commit message, a path name or the PR text. Key-class, like PS-KEY-SHAPE. Besides gitleaks' default rules, `gitleaks.toml` adds `he-ingest-tokens-digest` and `he-ingest-tokens-digest-yaml`, which refuse every `ingest_tokens_sha256` value written as JSON, as JSON escaped inside a string (a JSONL line or a session log) or as a YAML value on its own line. gitleaks' generic rule skips a value that contains one of its stopwords, and these rules have none, so a committed record's digest passes only through its blob-bound allow.json entry. A key spelled with unicode escapes is not covered.
+The pinned gitleaks (8.30.1, run with `--redact` under `scripts/public-safety/gitleaks.toml`) found a credential-shaped string in a new blob, a decoded container member, a commit message, a path name or the PR text. Key-class, like PS-KEY-SHAPE. Besides gitleaks' default rules, `gitleaks.toml` adds `he-ingest-tokens-digest` and `he-ingest-tokens-digest-yaml`, which refuse every `ingest_tokens_sha256` value written as JSON, as JSON escaped inside a string (a JSONL line or a session log) or as a YAML value on its own line. gitleaks' generic rule skips a value that contains one of its stopwords, and these rules have none, so a committed record's digest passes only through its blob-bound allow.json entry. A key spelled with unicode escapes is refused too, because the gate runs gitleaks at its default decode depth, which decodes them.
+
+`gitleaks.toml` also refuses the tokens this repository's tools mint, each by its own shape and with no stopwords: trial tokens (`trial-token:<trial id>.<32 hex>`), judge-shard tokens, Lane B session tokens (`laneb-<48 hex>`), the 64-hex token in a proxy bind body, a proxy control or slot token written beside its name, and any `Authorization: Bearer` value. Made-up fixture suffixes (such as `0123...f` twice or all zeros) and placeholders (an environment variable name) pass. A bare 64-hex or base64 token with no name beside it is not refused, because catching it would take a broad rule that also flags every digest.
 
 **Fix:** Remove the credential-shaped string gitleaks found; for a proven false positive, add a blob-bound allow.json entry with --allow.
 
