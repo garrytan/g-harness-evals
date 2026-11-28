@@ -100,8 +100,9 @@ test.skipIf(!HAVE_BASE)('the adapter baselines in tests/fixtures/adapter-baselin
 interface Run { exit: number | null; files: Map<string, Buffer>; ready: Record<string, any> | null; route: Record<string, any> | null; calls: string[][]; root: string; log: string }
 interface Opts { harness: Harness; entry: Entry; harnessDir?: string; config?: string; baseUrl?: string; env?: Record<string, string>; seed?: (root: string) => void; pathPrefix?: string; requests?: Array<Record<string, any>> }
 
-/** One adapter run on this host. Serve posts one turn after ready and stops on SIGTERM, sent while the adapter idles in its
- *  poll's sleep (tests/helpers/term-when-idle.ts: bash 5.2's trap bug); run is one turn. */
+/** One adapter run on this host. Serve posts one turn after ready and stops on SIGTERM; run is one turn.
+ *  A baseline copy without the stop supervisor gets it while it idles in its poll's sleep (tests/helpers/term-when-idle.ts:
+ *  bash 5.2's trap bug). */
 async function runAdapter(o: Opts): Promise<Run> {
   const root = join(tmp, 'trial-' + ++seq);
   const d = { workspace: join(root, 'workspace'), state: join(root, 'state'), logs: join(root, 'logs'), turns: join(root, 'turns') };
@@ -139,7 +140,8 @@ async function runAdapter(o: Opts): Promise<Run> {
         renameSync(join(d.turns, file + '.request.json.tmp'), join(d.turns, file + '.request.json'));
         await wait(join(d.turns, file + '.response.json'));
       }
-      await termWhenIdle(child.pid!);
+      if (readFileSync(adapter, 'utf8').includes('# >>> stop supervisor')) child.kill('SIGTERM');
+      else await termWhenIdle(child.pid!);
     }
     exit = await Promise.race([exited, Bun.sleep(15_000).then(() => { child.kill('SIGKILL'); return null; })]);
   }

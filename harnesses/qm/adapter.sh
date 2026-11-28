@@ -36,6 +36,44 @@
 # skill-resolver/infra.json.
 set -euo pipefail
 
+# >>> stop supervisor: the same lines in every bash adapter (tests/adapter-stop.test.ts checks them)
+# bash 5.2 drops a trap that fires while it parses a $(...), and under set -e the adapter then exits 2 instead of stopping
+# (fixed in bash 5.3). As container PID 1, which is how every trial runs it, the adapter keeps the trap 'stopping=1' below
+# and nothing here runs: no worker and no stop file, so a trial stops and survives in-container kills exactly as before.
+# Anywhere else (the process harness, the keyless tests), the process that gets the signal runs this file again as a worker
+# and only waits. Once the worker passes the line where the trap is set (HE_STOP_FILE.armed), the supervisor turns SIGTERM
+# or SIGINT into the file HE_STOP_FILE, which he_stop_check copies into stopping; before it, the signal goes on to the
+# worker. The worker keeps the arguments, stdin, directory and environment of a plain run, with SIGINT and SIGQUIT not
+# ignored, dies with the supervisor where setpriv is installed, and its exit code is the supervisor's.
+if [ "$$" -eq 1 ]; then
+  unset HE_STOP_FILE HE_STOP_SUPERVISOR
+elif [ -n "${HE_STOP_FILE:-}" ] && [ "${HE_STOP_SUPERVISOR:-}" = "$PPID" ]; then
+  export -n HE_STOP_FILE HE_STOP_SUPERVISOR
+else
+  he_stop_dir=$(mktemp -d "${TMPDIR:-/tmp}/he-stop.XXXXXX"); HE_STOP_FILE=$he_stop_dir/stop; HE_STOP_SUPERVISOR=$$
+  export HE_STOP_FILE HE_STOP_SUPERVISOR
+  if setpriv --pdeathsig KILL true 2>/dev/null; then
+    ( trap - INT QUIT; exec setpriv --pdeathsig KILL "$BASH" "${BASH_SOURCE[0]}" "$@" ) <&0 &
+  else
+    ( trap - INT QUIT; exec "$BASH" "${BASH_SOURCE[0]}" "$@" ) <&0 &
+  fi
+  he_worker=$!
+  he_signal() { if [ -e "$HE_STOP_FILE.armed" ]; then : > "$HE_STOP_FILE"; else kill -"$1" "$he_worker" 2>/dev/null; fi; }
+  trap 'he_signal TERM' TERM; trap 'he_signal INT' INT
+  set +e
+  while kill -0 "$he_worker" 2>/dev/null; do wait "$he_worker"; done
+  wait "$he_worker"; he_code=$?
+  rm -rf "$he_stop_dir"
+  exit "$he_code"
+fi
+he_stop_check() { [ -z "${HE_STOP_FILE:-}" ] || [ ! -e "$HE_STOP_FILE" ] || stopping=1; }
+he_turn_wait() {
+  [ -n "${HE_STOP_FILE:-}" ] || return 1
+  while kill -0 "$1" 2>/dev/null && [ ! -e "$HE_STOP_FILE" ]; do sleep 0.2; done
+  he_stop_check; [ "$stopping" -eq 1 ] && kill -0 "$1" 2>/dev/null && code=143
+}
+# <<< stop supervisor
+
 : "${HE_WORKSPACE_DIR:=/workspace}"
 : "${HE_SESSION_STATE_DIR:=/harness-state}"
 : "${HE_LOG_DIR:?HE_LOG_DIR must be set}"
@@ -388,7 +426,7 @@ write_response() {
 }
 
 stopping=0
-trap 'stopping=1' TERM INT
+if [ -n "${HE_STOP_FILE:-}" ]; then : > "$HE_STOP_FILE.armed"; else trap 'stopping=1' TERM INT; fi
 # Slack event keys this adapter process has handed to QM. A redelivered message whose key is here is dropped with no
 # reply, as QM's own Slack surface drops it (slack-event-key.mjs). Like QM's in-memory deduper, the set starts empty
 # when the adapter starts, and a key whose turn failed is forgotten so a redelivery can retry it.
@@ -396,7 +434,7 @@ declare -A seen_events
 printf '{"harness":"qm","version":"%s","trial":"%s","ready_at":"%s","inner_harness":"%s","config":"%s","session_keys":"conversation.threadRef dm:<member> (scope personal:<slack user id>) | channel:<id> (scope channel:<id>); :t<thread_ts> appended on a thread turn"%s}\n' "${QM_VERSION:-}" "$HE_TRIAL_ID" "$(now)" "$QM_HARNESS" "$HE_HARNESS_CONFIG" "$owner_card_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
-while [ "$stopping" -eq 0 ]; do
+while { he_stop_check; [ "$stopping" -eq 0 ]; }; do
   for req in "$HE_TURNS_DIR"/turn-*.request.json; do
     [ -e "$req" ] || continue
     base=${req%.request.json}; name=$(basename "$base"); resp="$base.response.json"
@@ -421,8 +459,8 @@ while [ "$stopping" -eq 0 ]; do
     set +e
     serve_turn "$req" "$key" "$name" "$budget" &
     tpid=$!
-    wait "$tpid"; code=$?
-    if [ "$stopping" -eq 1 ] && kill -0 "$tpid" 2>/dev/null; then
+    he_turn_wait "$tpid" || { wait "$tpid"; code=$?; }
+    if { he_stop_check; [ "$stopping" -eq 1 ]; } && kill -0 "$tpid" 2>/dev/null; then
       log "turn $turn: SIGTERM during the turn; abandoning the request to core"
       pkill -TERM -P "$tpid" 2>/dev/null; kill -TERM "$tpid" 2>/dev/null; wait "$tpid"; code=143
     fi

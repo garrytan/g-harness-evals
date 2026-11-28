@@ -34,6 +34,44 @@
 #        a turn (run or serve), HE_MODEL_BASE_URL not ending in /anthropic
 set -euo pipefail
 
+# >>> stop supervisor: the same lines in every bash adapter (tests/adapter-stop.test.ts checks them)
+# bash 5.2 drops a trap that fires while it parses a $(...), and under set -e the adapter then exits 2 instead of stopping
+# (fixed in bash 5.3). As container PID 1, which is how every trial runs it, the adapter keeps the trap 'stopping=1' below
+# and nothing here runs: no worker and no stop file, so a trial stops and survives in-container kills exactly as before.
+# Anywhere else (the process harness, the keyless tests), the process that gets the signal runs this file again as a worker
+# and only waits. Once the worker passes the line where the trap is set (HE_STOP_FILE.armed), the supervisor turns SIGTERM
+# or SIGINT into the file HE_STOP_FILE, which he_stop_check copies into stopping; before it, the signal goes on to the
+# worker. The worker keeps the arguments, stdin, directory and environment of a plain run, with SIGINT and SIGQUIT not
+# ignored, dies with the supervisor where setpriv is installed, and its exit code is the supervisor's.
+if [ "$$" -eq 1 ]; then
+  unset HE_STOP_FILE HE_STOP_SUPERVISOR
+elif [ -n "${HE_STOP_FILE:-}" ] && [ "${HE_STOP_SUPERVISOR:-}" = "$PPID" ]; then
+  export -n HE_STOP_FILE HE_STOP_SUPERVISOR
+else
+  he_stop_dir=$(mktemp -d "${TMPDIR:-/tmp}/he-stop.XXXXXX"); HE_STOP_FILE=$he_stop_dir/stop; HE_STOP_SUPERVISOR=$$
+  export HE_STOP_FILE HE_STOP_SUPERVISOR
+  if setpriv --pdeathsig KILL true 2>/dev/null; then
+    ( trap - INT QUIT; exec setpriv --pdeathsig KILL "$BASH" "${BASH_SOURCE[0]}" "$@" ) <&0 &
+  else
+    ( trap - INT QUIT; exec "$BASH" "${BASH_SOURCE[0]}" "$@" ) <&0 &
+  fi
+  he_worker=$!
+  he_signal() { if [ -e "$HE_STOP_FILE.armed" ]; then : > "$HE_STOP_FILE"; else kill -"$1" "$he_worker" 2>/dev/null; fi; }
+  trap 'he_signal TERM' TERM; trap 'he_signal INT' INT
+  set +e
+  while kill -0 "$he_worker" 2>/dev/null; do wait "$he_worker"; done
+  wait "$he_worker"; he_code=$?
+  rm -rf "$he_stop_dir"
+  exit "$he_code"
+fi
+he_stop_check() { [ -z "${HE_STOP_FILE:-}" ] || [ ! -e "$HE_STOP_FILE" ] || stopping=1; }
+he_turn_wait() {
+  [ -n "${HE_STOP_FILE:-}" ] || return 1
+  while kill -0 "$1" 2>/dev/null && [ ! -e "$HE_STOP_FILE" ]; do sleep 0.2; done
+  he_stop_check; [ "$stopping" -eq 1 ] && kill -0 "$1" 2>/dev/null && code=143
+}
+# <<< stop supervisor
+
 : "${HE_WORKSPACE_DIR:=/workspace}"
 : "${HE_SESSION_STATE_DIR:=/harness-state}"
 : "${HE_LOG_DIR:?HE_LOG_DIR must be set}"
@@ -96,7 +134,7 @@ fi
 # Set before anything long runs, run included: bash is PID 1 in the container and ignores a SIGTERM it has no trap for, so
 # docker stop would otherwise wait for its SIGKILL while the turn's processes kept running. A turn checks the flag (run_turn).
 stopping=0
-trap 'stopping=1' TERM INT
+if [ -n "${HE_STOP_FILE:-}" ]; then : > "$HE_STOP_FILE.armed"; else trap 'stopping=1' TERM INT; fi
 
 # The install ladder (HE_GBRAIN_INSTALL, docs/gbrain-arm.md): gbrain documents one install for Claude Code, its installer
 # (gbrain-installer, applied below once HOME is set). A cell that asks for another stops here instead of running as a bare-MCP cell.
@@ -769,7 +807,7 @@ process.stdout.write([x.slice(0, 8), x.slice(8, 12), x.slice(12, 16), x.slice(16
   turn_pid=$!
   deadline=$((SECONDS + budget))
   while kill -0 "$turn_pid" 2>/dev/null; do
-    if [ "$stopping" -eq 1 ]; then stopped=1; stop_session "$turn_pid" "$grace"; break; fi
+    if { he_stop_check; [ "$stopping" -eq 1 ]; }; then stopped=1; stop_session "$turn_pid" "$grace"; break; fi
     if [ "$SECONDS" -ge "$deadline" ]; then timed_out=1; stop_session "$turn_pid" "$grace"; break; fi
     sleep 0.2
   done
@@ -838,7 +876,7 @@ JS
 
 if [ "$entry" = "run" ]; then
   [ -r "$HE_WORKSPACE_DIR/instruction.md" ] || { log "no readable $HE_WORKSPACE_DIR/instruction.md"; exit 2; }
-  [ "$stopping" -eq 0 ] || { log "stopped by SIGTERM before the turn"; exit 2; }
+  { he_stop_check; [ "$stopping" -eq 0 ]; } || { log "stopped by SIGTERM before the turn"; exit 2; }
   run_turn "$HE_LOG_DIR/run" "$HE_WORKSPACE_DIR/instruction.md" "run:$HE_TRIAL_ID" "$HE_TIME_BUDGET_S" 60 "run:$HE_TRIAL_ID"
   case "$turn_code" in
     0) cat "$HE_LOG_DIR/run.reply.txt"; echo; log "completed" ;;
@@ -870,10 +908,10 @@ printf '{"harness":"claude-code","version":"%s","trial":"%s","ready_at":"%s","se
   "$claude_version" "$HE_TRIAL_ID" "$(now)" "${mcp_servers[*]}" "$adapter_sha256" "$official_minimal_json$gbrain_install_json$route_json$owner_card_json$sdk_json$skill_arm_json$sas_arm_json$install_json$oi_capture_json" > "$HE_LOG_DIR/ready.tmp"
 mv "$HE_LOG_DIR/ready.tmp" "$HE_LOG_DIR/ready"
 log "serve: ready; polling $HE_TURNS_DIR"
-while [ "$stopping" -eq 0 ]; do
+while { he_stop_check; [ "$stopping" -eq 0 ]; }; do
   for req in "$HE_TURNS_DIR"/turn-*.request.json; do
     [ -e "$req" ] || continue
-    [ "$stopping" -eq 0 ] || break
+    { he_stop_check; [ "$stopping" -eq 0 ]; } || break
     base=${req%.request.json}; name=$(basename "$base"); resp="$base.response.json"
     [ -e "$resp" ] && continue
     read -r turn budget key window_key < <(node -e '
