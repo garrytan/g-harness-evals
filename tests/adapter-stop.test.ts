@@ -7,7 +7,8 @@
  * harness, these tests), the process that gets the signal runs the adapter again as a worker and only waits; once the worker
  * passes its trap line (HE_STOP_FILE.armed), the supervisor's trap writes HE_STOP_FILE, which he_stop_check copies into
  * stopping. This file checks the block and where each adapter uses it, that the worker gets the same arguments, stdin,
- * directory, environment and ignored signals as a plain run, the early-signal, SIGKILL, temp-directory and exit-code cases,
+ * directory, environment and ignored signals as a plain run, the early-signal, SIGKILL, temp-directory (a relative TMPDIR
+ * included) and exit-code cases,
  * an adapter-shaped loop under SIGTERMs at random moments with the old trap and with the supervisor, and, as PID 1 in a PID
  * namespace or a container, that the adapter makes no stop file and that kill -9 -1 and pkill -9 bash from inside end the
  * run the same way as the old trap does. Keyless, scrubbed environment.
@@ -106,6 +107,13 @@ describe('an adapter-shaped loop off PID 1 under SIGTERM at random moments', () 
     expect(slow).not.toBe(block);
     expect(await sigtermRuns(NEW(slow), 20)).toBe(0);
   }, 120_000);
+
+  test('a supervisor slow to go on after starting the worker still turns the stop into the stop file', async () => {
+    const block = supervisor(source('_fake'));
+    const late = block.replace('  he_worker=$!\n', '  he_worker=$!\n  sleep 0.05\n');
+    expect(late).not.toBe(block);
+    expect(await sigtermRuns(NEW(late), 20)).toBe(0);
+  }, 120_000);
 });
 
 describe('the worker runs as the plain adapter would', () => {
@@ -143,7 +151,10 @@ describe('the worker runs as the plain adapter would', () => {
 describe('off PID 1, a stop the supervisor does not turn into the stop file ends the run as a plain run would', () => {
   const HAVE_SETPRIV = spawnSync('setpriv', ['--pdeathsig', 'KILL', 'true']).status === 0;
   const early = (head: string) => ['set -euo pipefail', '', head, 'echo $$ > "$1/worker"', 'sleep 30', 'exit 0', ''].join('\n');
-  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const alive = (pid: number) => {
+    try { process.kill(pid, 0); } catch { return false; }
+    try { return !/^\d+ \(.*\) Z /s.test(readFileSync('/proc/' + pid + '/stat', 'utf8')); } catch { return false; }
+  };
 
   function started(script: string, env: Record<string, string> = {}) {
     const dir = mkdtempSync(join(tmpdir(), 'he-adapter-early-'));
@@ -181,6 +192,45 @@ describe('off PID 1, a stop the supervisor does not turn into the stop file ends
       expect(alive(worker)).toBe(false);
     } finally {
       rmSync(r.dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test('a SIGTERM or SIGINT that lands as the worker starts is sent again until the worker takes it', async () => {
+    const block = supervisor(source('_fake'));
+    for (const [sig, code] of [['TERM', 143], ['INT', 130]] as const) {
+      const queued = block.replace(TRAPS + '\n', () => TRAPS + '\n  kill -' + sig + ' $$\n');
+      expect(queued).not.toBe(block);
+      const runs = Array.from({ length: 20 }, async () => {
+        const r = started(['set -euo pipefail', '', queued + 'while :; do :; done', ''].join('\n'));
+        try {
+          return await Promise.race([r.exited, Bun.sleep(5000).then(() => null)]);
+        } finally {
+          r.child.kill('SIGKILL');
+          rmSync(r.dir, { recursive: true, force: true });
+        }
+      });
+      for (const exit of await Promise.all(runs)) expect(exit).toEqual({ code, signal: null });
+    }
+  }, 60_000);
+
+  test('a relative TMPDIR still stops the run cleanly after the worker changes directory', async () => {
+    const script = ['set -euo pipefail', '', supervisor(source('_fake')) + 'cd "$1/work"', 'stopping=0', ARM + OLD_TRAP + '; fi',
+      'echo $$ > "$1/worker"', 'while { he_stop_check; [ "$stopping" -eq 0 ]; }; do sleep 0.05; done', 'exit 0', ''].join('\n');
+    const dir = mkdtempSync(join(tmpdir(), 'he-adapter-reltmp-'));
+    writeFileSync(join(dir, 'adapter.sh'), script);
+    spawnSync('mkdir', [join(dir, 'work')]);
+    const child = spawn('bash', [join(dir, 'adapter.sh'), dir], { cwd: dir, env: { ...ENV, TMPDIR: '.' }, stdio: 'ignore' });
+    const exited = new Promise<{ code: number | null; signal: string | null }>((res) => child.once('exit', (code, signal) => res({ code, signal })));
+    try {
+      const until = Date.now() + 5000;
+      while (!existsSync(join(dir, 'worker')) && child.exitCode === null && Date.now() < until) await Bun.sleep(5);
+      expect(existsSync(join(dir, 'worker'))).toBe(true);
+      child.kill('SIGTERM');
+      expect(await Promise.race([exited, Bun.sleep(5000).then(() => null)])).toEqual({ code: 0, signal: null });
+    } finally {
+      child.kill('SIGKILL');
+      try { process.kill(Number(readFileSync(join(dir, 'worker'), 'utf8')), 'SIGKILL'); } catch {}
+      rmSync(dir, { recursive: true, force: true });
     }
   }, 20_000);
 

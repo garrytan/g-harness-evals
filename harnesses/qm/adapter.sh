@@ -43,25 +43,35 @@ set -euo pipefail
 # Anywhere else (the process harness, the keyless tests), the process that gets the signal runs this file again as a worker
 # and only waits. Once the worker passes the line where the trap is set (HE_STOP_FILE.armed), the supervisor turns SIGTERM
 # or SIGINT into the file HE_STOP_FILE, which he_stop_check copies into stopping; before it, the signal goes on to the
-# worker. The worker keeps the arguments, stdin, directory and environment of a plain run, with SIGINT and SIGQUIT not
-# ignored, dies with the supervisor where setpriv is installed, and its exit code is the supervisor's.
+# worker. The supervisor sets its traps before it starts the worker, and a signal that comes before the worker can take it
+# stays pending: the supervisor sends it again every 0.05 s until the worker exits or passes that line. The worker keeps
+# the arguments, stdin, directory and environment of a plain run, with SIGINT and SIGQUIT not ignored, dies with the
+# supervisor where setpriv is installed, and its exit code is the supervisor's. Two limits off PID 1: a signal sent to the
+# whole process group also reaches the worker, which then ends as a run with no trap would, and without setpriv a SIGKILL
+# of the supervisor leaves the worker running.
 if [ "$$" -eq 1 ]; then
   unset HE_STOP_FILE HE_STOP_SUPERVISOR
 elif [ -n "${HE_STOP_FILE:-}" ] && [ "${HE_STOP_SUPERVISOR:-}" = "$PPID" ]; then
   export -n HE_STOP_FILE HE_STOP_SUPERVISOR
 else
-  he_stop_dir=$(mktemp -d "${TMPDIR:-/tmp}/he-stop.XXXXXX"); HE_STOP_FILE=$he_stop_dir/stop; HE_STOP_SUPERVISOR=$$
+  he_stop_dir=$(mktemp -d "${TMPDIR:-/tmp}/he-stop.XXXXXX"); case $he_stop_dir in /*) ;; *) he_stop_dir=$PWD/$he_stop_dir ;; esac
+  HE_STOP_FILE=$he_stop_dir/stop; HE_STOP_SUPERVISOR=$$
   export HE_STOP_FILE HE_STOP_SUPERVISOR
+  he_worker='' he_pending=''
+  he_signal() {
+    if [ -e "$HE_STOP_FILE.armed" ]; then he_pending=''; : > "$HE_STOP_FILE"; else he_pending=$1; [ -z "$he_worker" ] || kill -"$1" "$he_worker" 2>/dev/null || :; fi
+  }
+  trap 'he_signal TERM' TERM; trap 'he_signal INT' INT
   if setpriv --pdeathsig KILL true 2>/dev/null; then
     ( trap - INT QUIT; exec setpriv --pdeathsig KILL "$BASH" "${BASH_SOURCE[0]}" "$@" ) <&0 &
   else
     ( trap - INT QUIT; exec "$BASH" "${BASH_SOURCE[0]}" "$@" ) <&0 &
   fi
   he_worker=$!
-  he_signal() { if [ -e "$HE_STOP_FILE.armed" ]; then : > "$HE_STOP_FILE"; else kill -"$1" "$he_worker" 2>/dev/null; fi; }
-  trap 'he_signal TERM' TERM; trap 'he_signal INT' INT
   set +e
-  while kill -0 "$he_worker" 2>/dev/null; do wait "$he_worker"; done
+  while kill -0 "$he_worker" 2>/dev/null; do
+    if [ -n "$he_pending" ]; then he_signal "$he_pending"; sleep 0.05; else wait "$he_worker"; fi
+  done
   wait "$he_worker"; he_code=$?
   rm -rf "$he_stop_dir"
   exit "$he_code"
