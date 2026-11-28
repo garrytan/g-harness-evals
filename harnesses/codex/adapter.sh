@@ -449,7 +449,8 @@ fi
 # runner/trial/owner-card.ts). It is appended to $CODEX_HOME/AGENTS.md (Codex's global instructions) after anything the gbrain installer wrote there: a blank line
 # when the file already has bytes, the card, a newline. $HE_LOG_DIR/owner-card.json records the card's sha256 and length, the file,
 # whether it existed and its sha256 after; ready carries owner_card. A card that is empty, over 4,000 bytes or not canonical base64
-# is HE-ADAPTER-007, exit 2 before ready. Unset, nothing here runs.
+# is HE-ADAPTER-007, exit 2 before ready. Unset, nothing here runs. A card already in the file is not written again (a mid-trial restart re-runs
+# this on the same state); owner-card.json says already_present.
 owner_card_json=''
 if [ -n "${HE_OWNER_CARD_B64:-}" ]; then
   set +e
@@ -468,9 +469,10 @@ if (!card.length || card.length > 4000 || card.toString("base64") !== b64) {
 }
 fs.mkdirSync(path.dirname(file), { recursive: true });
 const before = rec.existed ? fs.readFileSync(file) : Buffer.alloc(0);
-const after = Buffer.concat([before, Buffer.from(before.length ? "\n\n" : ""), card, Buffer.from("\n")]);
-fs.writeFileSync(file, after);
-Object.assign(rec, { bytes_before: before.length, file_sha256: sha(after), status: "ok", code: null });
+const present = before.includes(card);
+const after = present ? before : Buffer.concat([before, Buffer.from(before.length ? "\n\n" : ""), card, Buffer.from("\n")]);
+if (!present) fs.writeFileSync(file, after);
+Object.assign(rec, { bytes_before: before.length, already_present: present, file_sha256: sha(after), status: "ok", code: null });
 fs.writeFileSync(recPath, JSON.stringify(rec) + "\n");
 console.log("ok " + rec.card_sha256 + " " + rec.existed);
 JS

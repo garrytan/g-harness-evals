@@ -33,7 +33,10 @@ test('owner-identity claims are decided from verdicts and sealed row P inside cu
   const bank = join(f.tmp, 'oi-bank');
   writeBank(generateBank(randomBytes(32).toString('hex'), 'heldout', 42), bank);
   const all = readdirSync(join(bank, 'heldout')).sort();
-  const kept = [...all.filter((t) => t.endsWith('-import')).slice(0, 3)];
+  // three imports gbrain can parse: a task with an unknown-format file is left out of P against G, so a bank whose first three
+  // imports all hold one (about 1 seed in 70) would leave the P-against-G claim with no pair
+  const knownFormat = (t: string) => (JSON.parse(readFileSync(join(bank, 'heldout', t, 'gold.json'), 'utf8')) as { formats: Array<{ format_known_to_gbrain: boolean }> }).formats.every((x) => x.format_known_to_gbrain);
+  const kept = [...all.filter((t) => t.endsWith('-import') && knownFormat(t)).slice(0, 3)];
   for (const t of all) if (!kept.includes(t)) rmSync(join(bank, 'heldout', t), { recursive: true });
   const people = JSON.parse(readFileSync(join(bank, 'world', 'people.json'), 'utf8')) as { owner: string; people: Array<{ id: string; name: string }> };
   const sealed = await sealSet({ repo: f.repo, set: SET, tasks: join(bank, 'heldout'), corpus: join(bank, 'corpus'), custody: f.custody, recipient: f.recipient, gh: f.gh, world: join(bank, 'world') });

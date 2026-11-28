@@ -33,7 +33,9 @@ test('every other held-out tree is sealed and matches its manifest', () => {
 // internal-task: the openings ledger sits outside the tree digest, so both sets keep the digests their runs were sealed under,
 // and resealing an unchanged tree reproduces the committed manifest, ledger included.
 test('the openings ledgers leave both tree digests unchanged and survive a reseal', () => {
-  const [v01, v02] = heldoutSets();
+  const sets = heldoutSets();
+  const v01 = sets.find(s => s.name === 'v0.1');
+  const v02 = sets.find(s => s.name === 'v0.2');
   expect(readManifest(v01)!.tree_sha256).toBe('9a95a465632c705b2ba4485bde48f05bf95e6b0f2b7a5c9edb251ed97e330472');
   expect(readManifest(v02)!.tree_sha256).toBe('f12ba073f8f76fe8ffdcff5f3ac97d937e07dd9f55f1c05dba4423967ecd6c74');
   for (const set of [v01!, v02!]) {

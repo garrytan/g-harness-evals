@@ -119,7 +119,8 @@ esac
 # with that version as expectedVersion (/v1/admin/scopes/<org>/soul) and reads it again, which must return the new text.
 # $HE_LOG_DIR/owner-card.json records the setting, the card's sha256 and length, the SOUL's versions, length and sha256 before
 # and after; ready carries owner_card with the setting named. A card that is empty, over 4,000 bytes or not canonical base64, or
-# a SOUL that does not read back, is HE-ADAPTER-007, exit 2 before any turn. Unset, nothing here runs.
+# a SOUL that does not read back, is HE-ADAPTER-007, exit 2 before any turn. Unset, nothing here runs. A SOUL that already holds the card is not PUT again (a mid-trial
+# restart re-runs this on the same state); owner-card.json says already_present.
 owner_card_json=''
 if [ -n "${HE_OWNER_CARD_B64:-}" ]; then
   set +e
@@ -139,15 +140,16 @@ const api = (args) => {
 };
 const read = () => { const r = api(["admin-get", "/v1/admin/scopes/" + scope + "?view=customize"]).body ?? {}; return { soul: typeof r.soul === "string" ? r.soul : "", version: typeof r.soulVersion === "number" ? r.soulVersion : 0 }; };
 const before = read();
+rec.existed = before.soul.length > 0;
+if (before.soul.includes(card.toString("utf8"))) done({ bytes_before: Buffer.byteLength(before.soul), already_present: true, file_sha256: sha(Buffer.from(before.soul)), soul_before: { version: before.version, chars: before.soul.length, sha256: sha(Buffer.from(before.soul)) }, status: "ok", code: null }, "ok " + rec.card_sha256 + " " + rec.existed, 0);
 const content = before.soul + (before.soul.length ? "\n\n" : "") + card.toString("utf8") + "\n";
 fs.writeFileSync(bodyPath, JSON.stringify({ content, expectedVersion: before.version }));
 const put = api(["admin-put", "/v1/admin/scopes/" + scope + "/soul", bodyPath]);
 const after = read();
-rec.existed = before.soul.length > 0;
 rec.soul_before = { version: before.version, chars: before.soul.length, sha256: sha(Buffer.from(before.soul)) };
 rec.put_http = put.http;
 if (after.soul !== content) refuse("the org SOUL did not read back as written (version " + after.version + ", " + after.soul.length + " characters)");
-done({ bytes_before: Buffer.byteLength(before.soul), file_sha256: sha(Buffer.from(after.soul)), soul_after: { version: after.version, chars: after.soul.length }, status: "ok", code: null }, "ok " + rec.card_sha256 + " " + rec.existed, 0);
+done({ bytes_before: Buffer.byteLength(before.soul), already_present: false, file_sha256: sha(Buffer.from(after.soul)), soul_after: { version: after.version, chars: after.soul.length }, status: "ok", code: null }, "ok " + rec.card_sha256 + " " + rec.existed, 0);
 JS
 )
   owner_card_code=$?

@@ -25,7 +25,7 @@ For each cell (one model in one harness), it works out:
   - Money spent on trials that failed for infrastructure reasons, or were rerun, stays in the cost. A counted run pays for those too.
   - Those failed trials don't count as units, so the cost per scored unit goes up, which matches what the counted run will pay.
   - `usage.usd` already includes reservations the proxy charged in full. They are counted once and shown on their own.
-- **Units left.** The plan's counted units (tasks times attempts) minus the scored trials already in `--results`.
+- **Units left.** The plan's counted units (tasks times attempts) minus the scored trials already in `--results`. A held-out cell of a sealed set is counted without opening the set: its units are the set's public `task_count` times its tries, or for a cell that names task families, the generator's public count for those families (today only the owner-identity families have one, so any other family is refused).
 - **Projected cost.** Cost per unit times units left.
 - **A 95% upper bound** from resampling the pilot trials, printed beside the average. Pilots are small and a few trials can cost far more than the rest, so read the two together.
 

@@ -69,14 +69,15 @@ export interface OITrial {
 export interface PTry { p_model: string; extraction_model: string; task: string; try: number; verdicts: Verdicts; gold: Gold | null; failed_steps: string[] }
 
 type Metric = 'false_owner' | 'owner_recall';
-interface Fact { harness: string; model: string; arm: string; family: string; task: string; trial: string; fact: string; primary: string; hard_case: string; fo: boolean; fo_strict: boolean; recall: boolean; cue: string | null }
+interface Fact { harness: string; model: string; arm: string; family: string; task: string; trial: string; fact: string; primary: string; hard_case: string; fo: boolean; fo_strict: boolean; recall: boolean; cue: string | null; known_format: boolean }
 
 const scored = (t: OITrial) => !EXCLUDED.has(t.termination) && !!t.verdicts;
 
 function factsOf(v: Verdicts, gold: Gold | null, at: { harness: string; model: string; arm: string; task: string; trial: string }): Fact[] {
   const cue = new Map((gold?.facts ?? []).map((f) => [f.id, (f as { cue?: string }).cue ?? null]));
+  const known_format = (gold?.formats ?? []).every((f) => f.format_known_to_gbrain);
   return v.facts.map((f) => ({ ...at, family: v.family, fact: f.id, primary: f.primary, hard_case: f.hard_case, fo: f.false_owner_hit,
-    fo_strict: f.false_owner_hit && f.owner_sources.some((s) => !HOOK_SWEEP.has(s)), recall: f.owner_hit, cue: cue.get(f.id) ?? null }));
+    fo_strict: f.false_owner_hit && f.owner_sources.some((s) => !HOOK_SWEEP.has(s)), recall: f.owner_hit, cue: cue.get(f.id) ?? null, known_format }));
 }
 
 const hit = (f: Fact, m: Metric, strict = false) => (m === 'false_owner' ? (strict ? f.fo_strict : f.fo) : f.recall);
@@ -91,16 +92,19 @@ export interface Comparison {
   noninferiority?: { margin: number; direction: 'higher' | 'lower'; p: number | null };
 }
 
+/** Tasks with an import in a format gbrain has no importer for (gold.formats format_known_to_gbrain false): their own stratum. */
+export interface FormatStratum { n_tasks: number; false_owner: ClusteredRate; owner_recall: ClusteredRate }
+
 export interface Analysis {
   schema_version: 1; kind: 'owner-identity-analysis'; seed: number; draws: number; config: AnalysisConfig | null; cuts: typeof CUTS;
   cells: Array<{ cell: string; harness: string; model: string; arm: string | null; families: string[]; n_trials: number; n_tasks: number; scored: number;
     excluded: Record<string, number>; extraction: { trials_with_dropped: number; dropped_jobs: number; timed_out_jobs: number };
-    false_owner: ClusteredRate; owner_recall: ClusteredRate; recorder_label: { clear: ClusteredRate; all: ClusteredRate } }>;
-  row_p: Array<{ p_model: string; extraction_model: string; tries: number; failed_tries: number; n_tasks: number; false_owner: ClusteredRate; owner_recall: ClusteredRate; recorder_label: { clear: ClusteredRate; all: ClusteredRate } }>;
+    false_owner: ClusteredRate; owner_recall: ClusteredRate; recorder_label: { clear: ClusteredRate; all: ClusteredRate }; unknown_format: FormatStratum }>;
+  row_p: Array<{ p_model: string; extraction_model: string; tries: number; failed_tries: number; n_tasks: number; false_owner: ClusteredRate; owner_recall: ClusteredRate; recorder_label: { clear: ClusteredRate; all: ClusteredRate }; unknown_format: FormatStratum }>;
   comparisons: Comparison[];
   recommendation: Array<{ model: string; harness: string | null; reason: string }>;
   hard_cases: Array<{ scope: 'G' | 'P'; model: string; hard_case: string; false_owner: ClusteredRate; owner_recall: ClusteredRate; flagged: boolean }>;
-  arms: Array<{ arm: string; false_owner: ClusteredRate; above_bar: boolean | null; interval_above_bar: boolean | null }>;
+  arms: Array<{ arm: string; false_owner: ClusteredRate; above_bar: boolean | null; interval_above_bar: boolean | null; unknown_format: FormatStratum }>;
   family_c: Array<{ harness: string; model: string; trials: number; false_owner: ClusteredRate; owner_recall: ClusteredRate;
     sessions: { owner: { planned: number; banked: number }; orchestrator: { planned: number; banked: number }; worker: { planned: number; started: number; not_run: number; banked: number; speaker_ok: number } };
     worker_briefs_as_owner: { env: ClusteredRate; detected: ClusteredRate; not_run_facts: number } }>;
@@ -112,6 +116,10 @@ export function analyze(trials: OITrial[], pTries: PTry[], config: AnalysisConfi
   const rate = (items: ClusterCount[]) => clusteredRate(items, { seed, draws, rare: CUTS.rare, ...(config?.design_effect_fallback !== undefined ? { designEffectFallback: config.design_effect_fallback } : {}) });
   const count = (facts: Fact[], keep: (f: Fact) => boolean, isHit: (f: Fact) => boolean): ClusterCount[] => facts.filter(keep).map((f) => ({ cluster: f.task, num: isHit(f) ? 1 : 0, den: 1 }));
   const metricRate = (facts: Fact[], m: Metric) => rate(count(facts, (f) => inMetric(f, m), (f) => hit(f, m)));
+  const unknownFormat = (facts: Fact[]): FormatStratum => {
+    const fs = facts.filter((f) => !f.known_format);
+    return { n_tasks: new Set(fs.map((f) => f.task)).size, false_owner: metricRate(fs, 'false_owner'), owner_recall: metricRate(fs, 'owner_recall') };
+  };
   const recorder = (facts: Fact[]) => ({
     clear: rate(count(facts, (f) => f.hard_case === 'recorder_label_absorbs' && f.primary === 'false_owner' && f.cue === 'clear', (f) => f.fo)),
     all: rate(count(facts, (f) => f.hard_case === 'recorder_label_absorbs' && f.primary === 'false_owner', (f) => f.fo)),
@@ -143,12 +151,12 @@ export function analyze(trials: OITrial[], pTries: PTry[], config: AnalysisConfi
       families: [...new Set(ts.map((t) => t.verdicts?.family).filter((x): x is Gold['family'] => !!x))].sort(),
       n_trials: ts.length, n_tasks: new Set(ts.map((t) => t.task)).size, scored: ts.filter(scored).length, excluded,
       extraction: { trials_with_dropped: ts.filter((t) => t.dropped_jobs + t.timed_out_jobs > 0).length, dropped_jobs: ts.reduce((s, t) => s + t.dropped_jobs, 0), timed_out_jobs: ts.reduce((s, t) => s + t.timed_out_jobs, 0) },
-      false_owner: metricRate(fs, 'false_owner'), owner_recall: metricRate(fs, 'owner_recall'), recorder_label: recorder(fs) };
+      false_owner: metricRate(fs, 'false_owner'), owner_recall: metricRate(fs, 'owner_recall'), recorder_label: recorder(fs), unknown_format: unknownFormat(fs) };
   });
   const pModels = [...new Set(pTries.map((p) => p.p_model))];
   const row_p = pModels.map((m) => {
     const ps = pTries.filter((p) => p.p_model === m), fs = pFacts.filter((f) => f.model === m);
-    return { p_model: m, extraction_model: ps[0]!.extraction_model, tries: ps.length, failed_tries: ps.filter((p) => p.failed_steps.length).length, n_tasks: new Set(ps.map((p) => p.task)).size, false_owner: metricRate(fs, 'false_owner'), owner_recall: metricRate(fs, 'owner_recall'), recorder_label: recorder(fs) };
+    return { p_model: m, extraction_model: ps[0]!.extraction_model, tries: ps.length, failed_tries: ps.filter((p) => p.failed_steps.length).length, n_tasks: new Set(ps.map((p) => p.task)).size, false_owner: metricRate(fs, 'false_owner'), owner_recall: metricRate(fs, 'owner_recall'), recorder_label: recorder(fs), unknown_format: unknownFormat(fs) };
   });
 
   const comparisons: Comparison[] = [];
@@ -183,7 +191,10 @@ export function analyze(trials: OITrial[], pTries: PTry[], config: AnalysisConfi
 
   const models = [...new Set(facts.map((f) => f.model))].sort();
   const harnessesOf = (model: string) => [...new Set(facts.filter((f) => f.model === model).map((f) => f.harness))].sort();
-  const sel = (model: string, arm: string, harness?: string) => facts.filter((f) => f.model === model && f.arm === arm && (!harness || f.harness === harness));
+  // Family C is reported per harness and model only (family_c below), never pooled: the capture cells carry the owner card and
+  // grade as G, so every pooled G figure, hard case, arm rate and comparison reads the facts of families I and L.
+  const pooled = facts.filter((f) => f.family !== 'C');
+  const sel = (model: string, arm: string, harness?: string) => pooled.filter((f) => f.model === model && f.arm === arm && (!harness || f.harness === harness));
   const perTask = (f: Fact) => `${f.task}/${f.fact}`;
   const perHarnessTask = (f: Fact) => `${f.harness}/${f.task}/${f.fact}`;
   for (const model of models) {
@@ -209,7 +220,8 @@ export function analyze(trials: OITrial[], pTries: PTry[], config: AnalysisConfi
   const pv = config?.p_vs_g;
   if (pv) {
     const pm = pv.p_model ?? 'opus';
-    const P = pFacts.filter((f) => f.model === pm), G = facts.filter((f) => f.model === pv.model && f.arm === 'G');
+    // Tasks with an import gbrain has no importer for are their own stratum and are left out of P against G.
+    const P = pFacts.filter((f) => f.model === pm && f.known_format), G = pooled.filter((f) => f.model === pv.model && f.arm === 'G' && f.known_format);
     if (P.length && G.length) for (const metric of ['false_owner', 'owner_recall'] as const)
       compare({ kind: 'p_vs_g', sddKind: 'p_vs_g', metric, model: pv.model, harness: 'pooled', family: 'I', a: `G/pooled/${pv.model}`, b: `P/${pm}`, A: G, B: P, key: perTask });
   }
@@ -242,9 +254,9 @@ export function analyze(trials: OITrial[], pTries: PTry[], config: AnalysisConfi
   for (const model of models) hardCases('G', model, sel(model, 'G'));
   for (const m of pModels) hardCases('P', m, pFacts.filter((f) => f.model === m));
 
-  const arms = [...new Set([...facts.map((f) => f.arm), ...(pFacts.length ? ['P'] : [])])].sort().map((arm) => {
-    const fo = metricRate([...facts, ...pFacts].filter((f) => f.arm === arm), 'false_owner');
-    return { arm, false_owner: fo, above_bar: fo.rate === null ? null : fo.rate > CUTS.bar, interval_above_bar: fo.ci95 ? fo.ci95[0] > CUTS.bar : null };
+  const arms = [...new Set([...pooled.map((f) => f.arm), ...(pFacts.length ? ['P'] : [])])].sort().map((arm) => {
+    const own = [...pooled, ...pFacts].filter((f) => f.arm === arm), fo = metricRate(own, 'false_owner');
+    return { arm, false_owner: fo, above_bar: fo.rate === null ? null : fo.rate > CUTS.bar, interval_above_bar: fo.ci95 ? fo.ci95[0] > CUTS.bar : null, unknown_format: unknownFormat(own) };
   });
 
   const family_c: Analysis['family_c'] = [];
@@ -284,7 +296,7 @@ export function analyze(trials: OITrial[], pTries: PTry[], config: AnalysisConfi
       worker_briefs_as_owner: { env: rate(briefs.env), detected: rate(briefs.detected), not_run_facts: notRunFacts } });
   }
 
-  const ng = cells.filter((c) => c.arm === 'N' || c.arm === 'G');
+  const ng = cells.filter((c) => (c.arm === 'N' || c.arm === 'G') && !(c.families.length && c.families.every((f) => f === 'C')));
   const headroom_cells = ng.filter((c) => c.false_owner.rate !== null && c.false_owner.rate <= CUTS.headroom_false_owner && c.owner_recall.rate !== null && c.owner_recall.rate >= CUTS.headroom_recall).map((c) => c.cell);
   const unseen = plannedNG.filter((id) => !ng.some((c) => c.cell === id));
   const fault_cells = cells.filter((c) => c.n_trials && (c.excluded.exam_fault ?? 0) / c.n_trials > CUTS.exam_faults).map((c) => c.cell);
@@ -300,14 +312,16 @@ const pts = (x: number | null) => (x === null ? 'n/a' : `${x >= 0 ? '+' : ''}${(
 /** The short Markdown table: cells, paired comparisons and the flags. No task ids. */
 export function markdown(a: Analysis): string {
   const rate = (r: ClusteredRate) => `${pct(r.rate)} ${ci(r)} (${r.num}/${r.den})`;
+  const stratum = (u: FormatStratum) => (u.n_tasks ? `${u.n_tasks} task(s): ${rate(u.false_owner)}, ${rate(u.owner_recall)}` : 'none');
   return [
-    '| Cell | Arm | Harness | Model | Trials | Tasks | Excluded | Dropped jobs | False-owner [95%] | Owner recall [95%] |', '|---|---|---|---|---|---|---|---|---|---|',
-    ...a.cells.map((c) => `| ${c.cell} | ${c.arm ?? 'n/a'} | ${c.harness} | ${c.model} | ${c.n_trials} | ${c.n_tasks} | ${Object.values(c.excluded).reduce((s, x) => s + x, 0)} | ${c.extraction.dropped_jobs + c.extraction.timed_out_jobs} | ${rate(c.false_owner)} | ${rate(c.owner_recall)} |`),
-    ...a.row_p.map((p) => `| row-p/${p.p_model} | P | none | ${p.extraction_model} | ${p.tries} | ${p.n_tasks} | ${p.failed_tries} | n/a | ${rate(p.false_owner)} | ${rate(p.owner_recall)} |`),
+    '| Cell | Arm | Harness | Model | Trials | Tasks | Excluded | Dropped jobs | False-owner [95%] | Owner recall [95%] | Unknown-format tasks: false-owner, recall |', '|---|---|---|---|---|---|---|---|---|---|---|',
+    ...a.cells.map((c) => `| ${c.cell} | ${c.arm ?? 'n/a'} | ${c.harness} | ${c.model} | ${c.n_trials} | ${c.n_tasks} | ${Object.values(c.excluded).reduce((s, x) => s + x, 0)} | ${c.extraction.dropped_jobs + c.extraction.timed_out_jobs} | ${rate(c.false_owner)} | ${rate(c.owner_recall)} | ${stratum(c.unknown_format)} |`),
+    ...a.row_p.map((p) => `| row-p/${p.p_model} | P | none | ${p.extraction_model} | ${p.tries} | ${p.n_tasks} | ${p.failed_tries} | n/a | ${rate(p.false_owner)} | ${rate(p.owner_recall)} | ${stratum(p.unknown_format)} |`),
     '', '| Comparison | B minus A (points) [95%] | p | Holm p | SDD | Pairs | Tasks |', '|---|---|---|---|---|---|---|',
     ...a.comparisons.map((c) => `| ${c.id} | ${pts(c.delta)} ${c.ci95 ? `[${pts(c.ci95[0])}, ${pts(c.ci95[1])}]` : '[n/a]'} | ${c.p?.toFixed(3) ?? 'n/a'} | ${c.holm_p?.toFixed(3) ?? 'n/a'} | ${c.sdd === null ? 'n/a' : pts(c.sdd)} | ${c.n_pairs} | ${c.n_clusters} |`),
     '', `Flagged hard cases: ${a.hard_cases.filter((h) => h.flagged).map((h) => `${h.scope} ${h.model} ${h.hard_case} ${pct(h.false_owner.rate)}`).join('; ') || 'none'}.`,
     `Arms above the 1% false-owner bar: ${a.arms.filter((x) => x.above_bar).map((x) => `${x.arm} ${pct(x.false_owner.rate)}`).join('; ') || 'none'}.`,
+    `Unknown-format tasks per arm: ${a.arms.map((x) => `${x.arm} ${stratum(x.unknown_format)}`).join('; ') || 'none'}.`,
     `Stage-1 look: headroom stop ${a.look.headroom_stop ? 'yes' : 'no'}; fault stop ${a.look.fault_stop ? `yes (${a.look.fault_cells.join(', ')})` : 'no'}${a.look.unseen_cells.length ? `; no scored trial yet in ${a.look.unseen_cells.join(', ')}` : ''}.`,
     '',
   ].join('\n');
@@ -360,7 +374,8 @@ export function runAnalyze(o: { results: string; rowP?: string[]; config?: Analy
   };
   const rowDirs = o.rowP?.length ? o.rowP : existsSync(join(results, 'row-p')) ? [join(results, 'row-p')] : [];
   const pTries = rowDirs.flatMap((d) => readRowP(resolve(d), goldOfP, manifest.sealed ? manifest.run_id : undefined));
-  const plannedNG = manifest.cells.filter((c) => (c as { notes?: boolean }).notes || (c.gbrain && (c as { owner_card?: string }).owner_card)).map((c) => c.id);
+  const captureOnly = (c: { families?: string[] }) => !!c.families?.length && c.families.every((f) => f === 'owner_identity_C');
+  const plannedNG = manifest.cells.filter((c) => !captureOnly(c as { families?: string[] }) && ((c as { notes?: boolean }).notes || (c.gbrain && (c as { owner_card?: string }).owner_card))).map((c) => c.id);
   const analysis = analyze(trials, pTries, o.config ?? null, o.margins ?? [], plannedNG);
   const json = resolve(o.out ?? join(results, OUT_NAME)), md = json.replace(/\.json$/, '') + '.md';
   writeFileSync(json, JSON.stringify(analysis, null, 1) + '\n');

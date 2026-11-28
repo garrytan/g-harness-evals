@@ -91,6 +91,7 @@ import { analyzeLowCostSwap, analyzeModelSwap, checkLowCostSwapSpec, checkModelS
 import { NO_ROOM, noRoomReason, pairHeadroom, runCanTellApart } from '../runner/stats/headroom.ts';
 import { headroomGated } from './headroom.ts';
 import { TERMINATIONS, validateRecords } from './validate-records.ts';
+import { shardsOfCell } from './gbrain-ladder.ts';
 
 export interface SpecComparison { id: string; a: string; b: string }
 export interface SpecDrop { id: string; frontier: string; cheap: string }
@@ -579,12 +580,13 @@ export function loadResults(results: string, manifest: MatrixManifest): MatrixIn
     for (const r of rows) seenIn.set(r, f);
   });
   if (existsSync(join(results, 'shards.json'))) {
-    const { cells = {}, shards = {} } = readJsonFile<{ cells?: Record<string, string>; shards?: Record<string, unknown> }>(join(results, 'shards.json'));
-    const lost = Object.keys(shards).filter((s) => !logs.includes(`${s}.proxy-usage.ndjson`) && records.some((t) => cells[t.cell] === s && (t.usage?.usd ?? 0) > 0));
+    const { cells = {}, shards = {}, task_halves } = readJsonFile<{ cells?: Record<string, string>; shards?: Record<string, unknown>; task_halves?: Record<string, string[]> }>(join(results, 'shards.json'));
+    const shardsOf = (cell: string) => shardsOfCell({ cells, task_halves }, cell);
+    const lost = Object.keys(shards).filter((s) => !logs.includes(`${s}.proxy-usage.ndjson`) && records.some((t) => shardsOf(t.cell).includes(s) && (t.usage?.usd ?? 0) > 0));
     if (lost.length) throw new SpecError(`shards.json lists ${lost.length} shard(s) with spend whose proxy usage log is not in ${results}: ${lost.map((s) => `${s}.proxy-usage.ndjson`).join(', ')}; without it every USD figure of that shard's cells is a silent lower bound, so copy the shard's proxy-usage.ndjson back and merge again`);
     const keysIn = new Map(logs.map((f, i) => [f, new Set(parsed[i]!.map((r) => r.key))]));
-    const unmetered = records.filter((t) => (t.usage?.usd ?? 0) > 0 && cells[t.cell] && ![t.usage?.meter_id, `trial-token:${t.trial_id}`, `sk-trial-${t.trial_id}`].some((k) => k && keysIn.get(`${cells[t.cell]}.proxy-usage.ndjson`)?.has(k)));
-    if (unmetered.length) throw new SpecError(`${unmetered.length} trial(s) with spend have no row in their shard's proxy usage log, so the log that came back is cut short (a copy taken while the shard ran): ${unmetered.slice(0, 5).map((t) => `${t.trial_id} (shard ${cells[t.cell]})`).join(', ')}${unmetered.length > 5 ? ', ...' : ''}; copy the shard's final proxy-usage.ndjson back and merge again`);
+    const unmetered = records.filter((t) => (t.usage?.usd ?? 0) > 0 && shardsOf(t.cell).length && ![t.usage?.meter_id, `trial-token:${t.trial_id}`, `sk-trial-${t.trial_id}`].some((k) => k && shardsOf(t.cell).some((s) => keysIn.get(`${s}.proxy-usage.ndjson`)?.has(k))));
+    if (unmetered.length) throw new SpecError(`${unmetered.length} trial(s) with spend have no row in their shard's proxy usage log, so the log that came back is cut short (a copy taken while the shard ran): ${unmetered.slice(0, 5).map((t) => `${t.trial_id} (shard ${shardsOf(t.cell).join(' or ')})`).join(', ')}${unmetered.length > 5 ? ', ...' : ''}; copy the shard's final proxy-usage.ndjson back and merge again`);
   }
   const usageRows = logs.length ? parsed.flat() : null;
   return { manifest, records, eventsOf, usageRows, truncated: { get usage_logs() { return truncated.usage_logs.truncated; }, get event_logs() { return truncated.event_logs.truncated; } } };

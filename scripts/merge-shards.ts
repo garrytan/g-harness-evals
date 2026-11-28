@@ -3,19 +3,25 @@
 // sharded by whole cells across machines, each shard a clean checkout at the same commit running `plan` itself, trials
 // sequential within a shard).
 //
-//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--skipped-by-rule <cell>[=<reason>] ...] [--cells a,b] [--amendment <commit> ...]
+//   bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--stage1-look] [--skipped-by-rule <cell>[=<reason>] ...] [--cells a,b] [--amendment <commit> ...]
 //
 // --partial (internal-task, plan decision 9's stop rule): a run that stopped on its cap is reported from what exists and is never
 // resumed or backfilled. The merge then accepts manifest trials that no shard recorded, writes them, in manifest order,
 // to unstarted.json ({ run_id, count, trials: [{ id, cell }], cap_stops }) and writes trials.jsonl with the recorded trials
-// only. Each cell with unstarted trials must show its own cap stop: its recorded trials are an unbroken start of its
-// manifest order and the last of them has cap_stop (the runner records the refused trial and stops), backed by a cap
-// refusal under that trial's key at or after its started_at in its shard's proxy-usage.ndjson (cap_stop alone can come from
-// an earlier attempt, runner/trial/proxy.ts summarizeUsage; see TODOS.md). A cell with no
-// record, with a hole before a later record, or whose last record is not a cap stop, is refused: a shard lost to a crash or a failed copy-back is finished with run --resume. This assumes one cell per shard
-// with trials in manifest order, as internal-task runs; a multi-cell shard's later cells have no record after a cap stop and are
-// refused. cap_stops lists the evidence per cell ({ cell, shard, cap_stop_trial }). Every other refusal still applies.
+// only. Each shard with unstarted trials must show its own cap stop: the trials it runs (its cells' trials, interleaved in
+// manifest order, and for a half shard only its half's tasks) have an unbroken recorded start whose last record has cap_stop
+// (scripts/run-shard.sh runs the runner with --stop-on-cap, which records the refused trial and ends the shard), backed by
+// a cap refusal under that trial's key at or after its started_at in the shard's proxy-usage.ndjson (cap_stop alone can come
+// from an earlier attempt, runner/trial/proxy.ts summarizeUsage; see TODOS.md). A shard with no record, with a hole before
+// a later record, or whose last record is not a cap stop, is refused, and so is a cell no shard given runs: a shard lost to
+// a crash or a failed copy-back is finished with run --resume. cap_stops lists the evidence for every cell with unstarted
+// trials ({ cell, shard, cap_stop_trial }, the shard's one cap stop for each of its cells). Every other refusal still applies.
 // Without --partial a missing trial is a refusal.
+// --stage1-look (a run planned in two, R113): the preregistered look after stage 1 merges the half 1 shards alone, so a cell
+// held by a half 1 shard owes only the tasks its task-half.json lists. A half 2 shard is refused. Without it, a cell held by
+// half shards owes every planned trial, so a final merge that leaves out a half's shard is refused, with --partial too.
+// Either way the halves' task-half.json lists must split each cell's tasks (no task in both, none in neither), and a half 1
+// list must hold at least half the cell's tasks.
 // --vm-lost <cell> (with --partial; matrix-mu-2026-11, whose preregistration refuses --resume): a cell whose VM was lost
 // mid-run is merged with no trial at all, its shard left out, and listed in unstarted.json's vm_lost. Its partial trials
 // are reported from the backup copy, apart from the comparisons. A named cell with any recorded trial is refused.
@@ -116,7 +122,7 @@ function crossShardLayout(dir: string, record: LeakPreflightRecord, at: string):
 }
 
 /** Plan the merge without writing: every refusal is raised here. */
-export interface MergeOptions { partial?: boolean; vmLost?: string[]; skippedByRule?: Array<{ cell: string; reason: string }>; cells?: string[]; amendments?: AmendedPlan[] }
+export interface MergeOptions { partial?: boolean; stage1Look?: boolean; vmLost?: string[]; skippedByRule?: Array<{ cell: string; reason: string }>; cells?: string[]; amendments?: AmendedPlan[] }
 
 export function planMerge(out: string, shards: ShardInput[], options: MergeOptions = {}): { manifest: { run_id: string; trials: Array<{ id: string; cell: string }> } & Record<string, unknown>; subset: boolean; rows: TrialRecord[]; shardsFile: ShardsFile; copies: Array<{ from: string; to: string }>; unstarted: Array<{ id: string; cell: string }>; capStops: CapStopEvidence[]; vmLost: string[] } {
   const only = options.cells;
@@ -132,7 +138,7 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   const stale = existsSync(out) ? readdirSync(out).filter((f) => f === 'unstarted.json' || /(^|[.])proxy-usage[.]ndjson$/.test(f)) : [];
   if (stale.length) throw new MergeError(`${out} already holds ${stale.slice(0, 3).join(', ')} from an earlier merge; merge into an empty directory`);
   type Sealed = { set: string; receipt_sha256?: string; receipt: OpeningReceipt };
-  const manifests = shards.map((s) => readJsonFile<{ run_id: string; created_at?: string; sealed?: Sealed; trials: Array<{ id: string; cell: string }> } & Record<string, unknown>>(join(s.dir, 'manifest.json')));
+  const manifests = shards.map((s) => readJsonFile<{ run_id: string; created_at?: string; sealed?: Sealed; trials: Array<{ id: string; cell: string; task?: string }> } & Record<string, unknown>>(join(s.dir, 'manifest.json')));
   const strip = ({ created_at: _c, sealed: _s, ...rest }: Record<string, unknown>) => rest;
   const first = manifests[0]!;
   // A shard planned after the opening was resumed holds the rewritten receipt (and its sha256): the same opening merges.
@@ -167,7 +173,8 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   const owner = new Map<string, string>();
   const rowsById = new Map<string, TrialRecord>();
   const infos: Record<string, ShardInfo> = {};
-  const cellOwner = new Map<string, string>();
+  const cellShards = new Map<string, string[]>();
+  const listedCells = new Map<string, string[] | null>();
   const halfOf = new Map(shards.map((s) => {
     const half = existsSync(join(s.dir, 'shard.json')) ? readJsonFile<{ task_half?: unknown }>(join(s.dir, 'shard.json')).task_half : undefined;
     return [s.name, half === 1 || half === 2 ? half : null] as const;
@@ -181,19 +188,58 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
       if (other) throw new MergeError(`trial ${t.trial_id} is in shards ${other} and ${s.name}; a cell runs on one shard`);
       owner.set(t.trial_id, s.name);
       rowsById.set(t.trial_id, t);
-      const cellShard = cellOwner.get(t.cell);
-      if (cellShard && cellShard !== s.name && !halves(cellShard, s.name)) throw new MergeError(`cell ${t.cell} has trials in shards ${cellShard} and ${s.name}; a cell runs on one shard, or on the two shards of a run planned in two (shard.json task_half 1 and 2)`);
-      if (cellShard && cellShard !== s.name && !cellHalves.has(t.cell)) cellHalves.set(t.cell, [cellShard, s.name].sort((a, b) => halfOf.get(a)! - halfOf.get(b)!));
-      if (!cellShard) cellOwner.set(t.cell, s.name);
+      const held = cellShards.get(t.cell) ?? [];
+      if (held.includes(s.name)) continue;
+      const clash = held.find((other) => !halves(other, s.name));
+      if (clash) throw new MergeError(`cell ${t.cell} has trials in shards ${clash} and ${s.name}; a cell runs on one shard, or on the two shards of a run planned in two (shard.json task_half 1 and 2)`);
+      held.push(s.name);
+      cellShards.set(t.cell, held);
+      if (held.length === 2) cellHalves.set(t.cell, [...held].sort((a, b) => halfOf.get(a)! - halfOf.get(b)!));
     }
-    let meta: { name?: unknown; machine?: unknown; commit?: unknown; images?: unknown } = {};
+    let meta: { name?: unknown; machine?: unknown; commit?: unknown; images?: unknown; cells?: unknown } = {};
     if (existsSync(join(s.dir, 'shard.json'))) {
       meta = readJsonFile<typeof meta>(join(s.dir, 'shard.json'));
       if (meta.name !== undefined && meta.name !== s.name) throw new MergeError(`shard ${s.name}: its shard.json names itself ${JSON.stringify(meta.name)}`);
     }
+    listedCells.set(s.name, typeof meta.cells === 'string' && meta.cells ? meta.cells.split(',').map((c) => c.trim()) : null);
     infos[s.name] = { name: s.name, machine: typeof meta.machine === 'string' ? meta.machine : null, commit: typeof meta.commit === 'string' ? meta.commit : null, images: meta.images ?? null, source: s.dir, trials: rows.length, cells: [...new Set(rows.map((t) => t.cell))].sort() };
   }
   const planned = new Set(plannedTrials.map((t) => t.id));
+  const halfTasks = new Map<string, Set<string>>();
+  for (const s of shards) {
+    const half = halfOf.get(s.name);
+    if (half === null || half === undefined) continue;
+    const file = join(s.dir, 'task-half.json');
+    if (!existsSync(file)) throw new MergeError(`shard ${s.name}: shard.json records task_half ${half} but task-half.json, the half's task list the runner writes, is missing, so the half's planned trials cannot be told apart from the other half's`);
+    const listed = readJsonFile<{ half?: unknown; tasks?: unknown }>(file);
+    if (listed.half !== half || !Array.isArray(listed.tasks) || listed.tasks.some((x) => typeof x !== 'string')) throw new MergeError(`shard ${s.name}: task-half.json does not name half ${half} and its tasks`);
+    halfTasks.set(s.name, new Set(listed.tasks as string[]));
+  }
+  const taskOf = (t: { id: string; task?: string }) => t.task ?? t.id.split('/').at(-2)!;
+  for (const [trial, name] of owner) {
+    const tasks = halfTasks.get(name);
+    if (tasks && !tasks.has(taskOf({ id: trial, task: rowsById.get(trial)!.task }))) throw new MergeError(`shard ${name} records trial ${trial}, whose task is not in its task-half.json (half ${halfOf.get(name)}); a half shard runs only its own half's tasks, and a resume that left out its --task-half ran the other half's too`);
+  }
+  if (options.stage1Look) {
+    const second = [...halfTasks.keys()].filter((s) => halfOf.get(s) === 2);
+    if (second.length) throw new MergeError(`--stage1-look merges the half 1 shards of a run planned in two, and ${second.join(', ')} ${second.length > 1 ? 'are half 2 shards' : 'is a half 2 shard'}`);
+    if (!halfTasks.size) throw new MergeError('--stage1-look merges the half 1 shards of a run planned in two (shard.json task_half 1), and no shard given is one');
+  }
+  const halvesPlanning = (cell: string) => [...halfTasks.keys()].filter((s) => (listedCells.get(s) ?? infos[s]!.cells).includes(cell));
+  const owedTrials = options.stage1Look ? plannedTrials.filter((t) => { const hs = halvesPlanning(t.cell); return !hs.length || hs.some((s) => halfTasks.get(s)!.has(taskOf(t))); }) : plannedTrials;
+  for (const cell of [...new Set(plannedTrials.map((t) => t.cell))]) {
+    const hs = halvesPlanning(cell);
+    if (!hs.length) continue;
+    const tasks = [...new Set(plannedTrials.filter((t) => t.cell === cell).map(taskOf))];
+    const lists = hs.map((s) => tasks.filter((x) => halfTasks.get(s)!.has(x)));
+    if (lists.length === 2) {
+      const both = lists[0]!.filter((x) => lists[1]!.includes(x)), neither = tasks.filter((x) => !lists[0]!.includes(x) && !lists[1]!.includes(x));
+      if (both.length || neither.length) throw new MergeError(`cell ${cell}: the task-half.json lists of shards ${hs.join(' and ')} ${both.length ? `share ${both.join(', ')}` : `leave out ${neither.join(', ')}`}; the two halves of a run planned in two split the cell's tasks between them`);
+    }
+    hs.forEach((s, i) => {
+      if (halfOf.get(s) === 1 && lists[i]!.length < Math.ceil(tasks.length / 2)) throw new MergeError(`shard ${s}: its task-half.json lists ${lists[i]!.length} of cell ${cell}'s ${tasks.length} tasks; half 1 takes the 1st, 3rd, 5th ... task of every family, at least ${Math.ceil(tasks.length / 2)}`);
+    });
+  }
   const skipped = options.skippedByRule ?? [];
   const skippedCells = skipped.map((s) => s.cell);
   const twice = skippedCells.filter((c, i) => skippedCells.indexOf(c) !== i);
@@ -204,7 +250,7 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   if (recordedSkipped.length) throw new MergeError(`--skipped-by-rule cell(s) ${recordedSkipped.join(', ')} have recorded trials in the shards given; a cell the preregistration's rule skipped has none`);
   const lostAndSkipped = skippedCells.filter((c) => (options.vmLost ?? []).includes(c));
   if (lostAndSkipped.length) throw new MergeError(`cell(s) ${lostAndSkipped.join(', ')} named by both --vm-lost and --skipped-by-rule; a cell is one or the other`);
-  const missing = plannedTrials.filter((t) => !owner.has(t.id) && !skippedCells.includes(t.cell)).map((t) => t.id);
+  const missing = owedTrials.filter((t) => !owner.has(t.id) && !skippedCells.includes(t.cell)).map((t) => t.id);
   const shardLogs = new Map<string, UsageLine[]>();
   const capRefusedAfterStart = (dir: string, t: TrialRecord) => {
     const log = join(dir, 'proxy-usage.ndjson');
@@ -221,39 +267,64 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   if (recordedLost.length) throw new MergeError(`--vm-lost cell(s) ${recordedLost.join(', ')} have recorded trials in the shards given; a lost cell is merged with none (leave its shard out and report its partial trials from the backup copy)`);
   const capStops: CapStopEvidence[] = [];
   const unexplained: string[] = [];
-  for (const cell of [...new Set(plannedTrials.filter((t) => !owner.has(t.id)).map((t) => t.cell))]) {
-    if (vmLost.includes(cell) || skippedCells.includes(cell)) continue;
-    const planned = plannedTrials.filter((t) => t.cell === cell);
+  // A cap stop ends its whole shard (scripts/run-shard.sh runs the runner with --stop-on-cap), and a shard runs its cells'
+  // trials interleaved in manifest order, so the trials owed after a gap are grouped by the shard that runs them: a shard that
+  // stopped on its cap leaves an unstarted suffix of its own order, whatever cells that suffix holds.
+  const runsOn = (t: { id: string; cell: string; task?: string }): string | null => {
+    const hs = halvesPlanning(t.cell);
+    if (hs.length) return hs.find((s) => halfTasks.get(s)!.has(taskOf(t))) ?? null;
+    return shards.find((s) => !halfTasks.has(s.name) && (listedCells.get(s.name) ?? infos[s.name]!.cells).includes(t.cell))?.name ?? null;
+  };
+  const byShard = new Map<string | null, typeof owedTrials>();
+  for (const t of owedTrials) {
+    if (vmLost.includes(t.cell) || skippedCells.includes(t.cell)) continue;
+    const s = runsOn(t);
+    byShard.set(s, [...(byShard.get(s) ?? []), t]);
+  }
+  for (const [name, planned] of byShard) {
+    if (name === null) {
+      for (const cell of [...new Set(planned.filter((t) => !owner.has(t.id)).map((t) => t.cell))]) {
+        const rest = planned.filter((t) => t.cell === cell && !owner.has(t.id));
+        unexplained.push(halvesPlanning(cell).length ? `${cell} (${rest.length} trial(s) of a half with no shard given, such as ${rest[0]!.id}; a final merge takes both halves' shards, and the stage-1 look takes --stage1-look)` : `${cell} (no recorded trial)`);
+      }
+      continue;
+    }
     const gap = planned.findIndex((t) => !owner.has(t.id));
+    if (gap < 0) continue;
+    const label = `${[...new Set(planned.map((t) => t.cell))].join(', ')}${halfTasks.has(name) ? ` in shard ${name}` : ''}`;
     const last = gap > 0 ? rowsById.get(planned[gap - 1]!.id)! : undefined;
     const late = planned.slice(gap).find((t) => owner.has(t.id));
-    if (late) unexplained.push(`${cell} (${planned[gap]!.id} is missing but the later ${late.id} was recorded)`);
-    else if (last?.cap_stop && capRefusedAfterStart(shards.find((s) => s.name === owner.get(last.trial_id))!.dir, last)) capStops.push({ cell, shard: owner.get(last.trial_id)!, cap_stop_trial: last.trial_id });
-    else if (last?.cap_stop) unexplained.push(`${cell} (last record ${last.trial_id} has cap_stop, but shard ${owner.get(last.trial_id)}'s proxy-usage.ndjson shows no cap refusal for it at or after its started_at)`);
-    else unexplained.push(last ? `${cell} (last record ${last.trial_id} is not a cap stop)` : `${cell} (no recorded trial)`);
+    if (late) unexplained.push(`${label} (${planned[gap]!.id} is missing but the later ${late.id} was recorded)`);
+    else if (last?.cap_stop && capRefusedAfterStart(shards.find((s) => s.name === name)!.dir, last)) {
+      for (const cell of [...new Set(planned.slice(gap).map((t) => t.cell))]) capStops.push({ cell, shard: name, cap_stop_trial: last.trial_id });
+    } else if (last?.cap_stop) unexplained.push(`${label} (last record ${last.trial_id} has cap_stop, but shard ${name}'s proxy-usage.ndjson shows no cap refusal for it at or after its started_at)`);
+    else unexplained.push(last ? `${label} (last record ${last.trial_id} is not a cap stop)` : `${label} (no recorded trial)`);
   }
   if (options.partial && unexplained.length) throw new MergeError(`${missing.length} manifest trial(s) in no shard, and ${unexplained.length} cell(s) with unstarted trials show no cap stop: ${unexplained.slice(0, 10).join('; ')}${unexplained.length > 10 ? '; ...' : ''}. --partial merges only cells that stopped on their cap (the last recorded trial has cap_stop and a cap refusal at or after its started_at in its shard's proxy-usage.ndjson); an incomplete shard without one is finished with run --resume before the merge`);
-  if (missing.length && !options.partial) throw new MergeError(`${missing.length} manifest trial(s) in no shard: ${missing.slice(0, 20).join(', ')}${missing.length > 20 ? `, and ${missing.length - 20} more` : ''}; an incomplete shard is finished with run --resume before the merge, or, after a cap stop that is never resumed, merged with --partial`);
+  if (missing.length && !options.partial) throw new MergeError(`${missing.length} manifest trial(s) in no shard: ${missing.slice(0, 20).join(', ')}${missing.length > 20 ? `, and ${missing.length - 20} more` : ''}; an incomplete shard is finished with run --resume before the merge, or, after a cap stop that is never resumed, merged with --partial${halfTasks.size ? '; the stage-1 look of a run planned in two merges its half 1 shards with --stage1-look' : ''}`);
   const stray = [...owner.keys()].filter((id) => !planned.has(id));
   if (stray.length) throw new MergeError(`${stray.length} trial(s) not in the manifest${only ? "'s --cells" : ''}: ${stray.slice(0, 20).map((id) => `${id} (shard ${owner.get(id)})`).join(', ')}`);
   const cells: Record<string, string> = {};
-  for (const t of plannedTrials) if (owner.has(t.id)) cells[t.cell] = cellOwner.get(t.cell)!;
+  for (const t of plannedTrials) if (owner.has(t.id)) cells[t.cell] = cellShards.get(t.cell)![0]!;
   const copies: Array<{ from: string; to: string }> = [];
-  const trialDirs = new Map<string, string>();
+  const trialDirs = new Map<string, string[]>();
   shards.forEach((s, i) => {
     const trialsDir = join(s.dir, 'trials');
     if (existsSync(trialsDir)) {
       for (const cell of readdirSync(trialsDir)) {
-        const other = trialDirs.get(cell);
-        if (other && !halves(other, s.name)) throw new MergeError(`trials/${cell} is in shards ${other} and ${s.name}`);
-        if (other) {
-          const earlier = new Set(readdirSync(join(shards.find((x) => x.name === other)!.dir, 'trials', cell)));
-          const both = readdirSync(join(trialsDir, cell)).filter((e) => earlier.has(e));
-          if (both.length) throw new MergeError(`trials/${cell}/${both[0]} is in shards ${other} and ${s.name}; the two halves of a run planned in two hold different trials`);
+        const others = trialDirs.get(cell) ?? [];
+        const clash = others.find((other) => !halves(other, s.name));
+        if (clash) throw new MergeError(`trials/${cell} is in shards ${clash} and ${s.name}`);
+        trialDirs.set(cell, [...others, s.name]);
+        if (others.length) {
+          for (const other of others) {
+            const earlier = new Set(readdirSync(join(shards.find((x) => x.name === other)!.dir, 'trials', cell)));
+            const both = readdirSync(join(trialsDir, cell)).filter((e) => earlier.has(e));
+            if (both.length) throw new MergeError(`trials/${cell}/${both[0]} is in shards ${other} and ${s.name}; the two halves of a run planned in two hold different trials`);
+          }
           for (const e of readdirSync(join(trialsDir, cell))) copies.push({ from: join(trialsDir, cell, e), to: join(out, 'trials', cell, e) });
           continue;
         }
-        trialDirs.set(cell, s.name);
         copies.push({ from: join(trialsDir, cell), to: join(out, 'trials', cell) });
       }
     }
@@ -288,7 +359,7 @@ export function planMerge(out: string, shards: ShardInput[], options: MergeOptio
   }
   if (pinFiles.length) copies.push({ from: pinFiles[0]!, to: join(out, SET_WORLDS_FILE) });
   const rows = plannedTrials.filter((t) => rowsById.has(t.id)).map((t) => rowsById.get(t.id)!);
-  const unstarted = plannedTrials.filter((t) => !owner.has(t.id) && !skippedCells.includes(t.cell)).map((t) => ({ id: t.id, cell: t.cell }));
+  const unstarted = owedTrials.filter((t) => !owner.has(t.id) && !skippedCells.includes(t.cell)).map((t) => ({ id: t.id, cell: t.cell }));
   const skippedByRule = skipped.map((s) => ({ cell: s.cell, reason: s.reason, planned_trials: plannedTrials.filter((t) => t.cell === s.cell).length }));
   const shardsFile = { cells, shards: infos, ...(cellHalves.size ? { task_halves: Object.fromEntries(cellHalves) } : {}), ...(skippedByRule.length ? { skipped_by_rule: skippedByRule } : {}), ...(amendments.length ? { amendments } : {}) };
   if (!only) return { manifest: first, subset: false, rows, shardsFile, copies, unstarted, capStops, vmLost };
@@ -343,6 +414,7 @@ if (import.meta.main) {
   const shards: ShardInput[] = [];
   argv.forEach((a, i) => { if (a === '--shard') { const v = argv[i + 1] ?? ''; const eq = v.indexOf('='); if (eq < 1) { console.error(`--shard takes <name>=<dir>, not ${JSON.stringify(v)}`); process.exit(2); } shards.push({ name: v.slice(0, eq), dir: v.slice(eq + 1) }); } });
   const partial = argv.includes('--partial');
+  const stage1Look = argv.includes('--stage1-look');
   const vmLost = argv.flatMap((a, i) => (a === '--vm-lost' ? [argv[i + 1] ?? ''] : []));
   const skippedByRule = argv.flatMap((a, i) => {
     if (a !== '--skipped-by-rule') return [];
@@ -353,7 +425,7 @@ if (import.meta.main) {
     return [{ cell, reason: (eq < 0 ? '' : v.slice(eq + 1).trim()) || "the preregistration's conditional rule did not run this cell" }];
   });
   if (!argv.includes('--out') || !out || !shards.length) {
-    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--skipped-by-rule <cell>[=<reason>] ...] [--cells a,b] [--amendment <commit> ...]');
+    console.error('usage: bun scripts/merge-shards.ts --out <results dir> --shard <name>=<shard results dir> [--shard <name>=<dir> ...] [--sealed-root <dir>] [--partial [--vm-lost <cell> ...]] [--stage1-look] [--skipped-by-rule <cell>[=<reason>] ...] [--cells a,b] [--amendment <commit> ...]');
     process.exit(2);
   }
   const sealedRoot = argv.includes('--sealed-root') ? argv[argv.indexOf('--sealed-root') + 1] : undefined;
@@ -378,7 +450,7 @@ if (import.meta.main) {
   if (sealed) sealedGuard({ root: sealedRoot!, set: sealed.set, repoRoot: process.cwd(), preregJson: sealed.receipt?.prereg_json, logFile: join(out, 'merge-shards.sealed.log'), allow: [/^Merged \d+ shard\(s\) into /, /^\| /, /^Partial merge: \d+ manifest trial/], label: 'scripts/merge-shards.ts' });
   try {
     const amendments = argv.flatMap((a, i) => (a === '--amendment' ? [argv[i + 1] ?? ''] : [])).map((c) => resolveAmendment(c, planned[0]?.m.run_id ?? ''));
-    const f = mergeShards(out, shards, { partial, vmLost, skippedByRule, cells: only, amendments });
+    const f = mergeShards(out, shards, { partial, stage1Look, vmLost, skippedByRule, cells: only, amendments });
     const cellsOf = (name: string) => Object.entries(f.cells).filter(([, s]) => s === name).map(([c]) => c);
     console.log([`Merged ${shards.length} shard(s) into ${out}: ${Object.keys(f.cells).length} cells, ${Object.values(f.shards).reduce((s, i) => s + i.trials, 0)} trials.`, '', '| Shard | Machine | Commit | Trials | Cells |', '|---|---|---|---|---|',
       ...Object.values(f.shards).map((i) => `| ${i.name} | ${i.machine ?? 'unknown'} | ${i.commit ?? 'unknown'} | ${i.trials} | ${cellsOf(i.name).join(', ')} |`)].join('\n'));

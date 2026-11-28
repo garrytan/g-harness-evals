@@ -7,7 +7,6 @@
 // identity, the custody branch and the gh answer come from tests/sealed-fixture.ts; nothing here is a real key or a real seed.
 import { afterAll, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { sha256, verifySealedRoot } from '../runner/heldout/sealed.ts';
@@ -33,9 +32,9 @@ const refused = async (p: Promise<unknown>) => p.then(() => 'no refusal', (e: Er
 
 test('a set with its own world seals, opens, runs on its own world, people and card, exports and releases', async () => {
   f = await makeFixture(2);
-  // the bank: a throwaway seed, two import tasks and one live task kept (the rest of the 48 go, to keep the test short)
+  // the bank: a fixed throwaway seed (about 1 random seed in 200 makes the generator refuse a repeated token), two import tasks and one live task kept (the rest of the 48 go, to keep the test short)
   const bank = join(f.tmp, 'oi-bank');
-  writeBank(generateBank(randomBytes(32).toString('hex'), 'heldout', 42), bank);
+  writeBank(generateBank('sealed-own-world-test', 'heldout', 42), bank);
   const all = readdirSync(join(bank, 'heldout')).sort();
   const kept = [...all.filter((t) => t.endsWith('-import')).slice(0, 2), all.find((t) => t.endsWith('-live'))!];
   for (const t of all) if (!kept.includes(t)) rmSync(join(bank, 'heldout', t), { recursive: true });

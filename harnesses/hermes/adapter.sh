@@ -787,7 +787,8 @@ fi
 # the card entry and its delimiter: the agent keeps the room it has in a cell with no card. A config.yaml that already has a
 # memory: section is refused. $HE_LOG_DIR/owner-card.json records the card's sha256 and length, the file, whether it existed,
 # its sha256 after and the limit; ready carries owner_card. A card that is empty, over 4,000 bytes or not canonical base64 is
-# HE-ADAPTER-007, exit 2 before ready, nothing written. Unset, nothing here runs.
+# HE-ADAPTER-007, exit 2 before ready, nothing written. Unset, nothing here runs. A card already in USER.md, with this block's memory: section in config.yaml, is not
+# written again (a mid-trial restart re-runs this on the same state); owner-card.json says already_present.
 owner_card_json=''
 if [ -n "${HE_OWNER_CARD_B64:-}" ]; then
   set +e
@@ -816,17 +817,20 @@ except UnicodeDecodeError:
 if DELIM in "\n" + entry + "\n":
     refuse("the owner card holds Hermes's memory entry delimiter, a line with only §")
 text = open(config, encoding="utf-8").read() if os.path.isfile(config) else ""
-if re.search(r"(?m)^memory:", text):
-    refuse("%s already has a memory: section; the owner card's user_char_limit would replace it" % config)
 limit = DEFAULT_LIMIT + len(entry) + len(DELIM)
+block = "memory:\n  user_char_limit: %d\n" % limit
 before = open(path, "rb").read() if rec["existed"] else b""
 existing = before.decode("utf-8").strip()
-after = ((existing + DELIM) if existing else "") + entry
-os.makedirs(os.path.dirname(path), exist_ok=True)
-open(path, "w", encoding="utf-8").write(after)
-with open(config, "a", encoding="utf-8") as f:
-    f.write(("" if not text or text.endswith("\n") else "\n") + "memory:\n  user_char_limit: %d\n" % limit)
-rec.update(bytes_before=len(before), file_sha256=sha(after.encode("utf-8")), user_char_limit={"default": DEFAULT_LIMIT, "set": limit, "config": config}, status="ok", code=None)
+present = entry in existing.split(DELIM)
+if re.search(r"(?m)^memory:", text) and not (present and block in text):
+    refuse("%s already has a memory: section; the owner card's user_char_limit would replace it" % config)
+after = existing if present else ((existing + DELIM) if existing else "") + entry
+if not present:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    open(path, "w", encoding="utf-8").write(after)
+    with open(config, "a", encoding="utf-8") as f:
+        f.write(("" if not text or text.endswith("\n") else "\n") + block)
+rec.update(bytes_before=len(before), already_present=present, file_sha256=sha(after.encode("utf-8")), user_char_limit={"default": DEFAULT_LIMIT, "set": limit, "config": config}, status="ok", code=None)
 open(out, "w").write(json.dumps(rec) + "\n")
 print("ok %s %s %d" % (rec["card_sha256"], "true" if rec["existed"] else "false", limit))
 PY

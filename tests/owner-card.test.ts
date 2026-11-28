@@ -71,6 +71,17 @@ for (const harness of Object.keys(STARTUP) as StartupHarness[]) {
       expect(fragment(r.fragment)).toEqual({ owner_card: { file: r.rec.file, card_sha256: sha(CARD), appended_to_existing: true } });
     });
 
+    test('a second run on the same state, as after a mid-trial restart, leaves one copy and records already_present', () => {
+      const installer = 'Check GBrain first.\n';
+      const first = run(harness, 'restart', b64(CARD), installer);
+      expect(first.rec.already_present).toBe(false);
+      const again = run(harness, 'restart', b64(CARD));
+      expect(again.status).toBe(0);
+      expect(again.startup).toBe(installer + '\n\n' + CARD + '\n');
+      expect(again.rec).toMatchObject({ status: 'ok', already_present: true, existed: true, file_sha256: sha(first.startup!) });
+      expect(fragment(again.fragment)).toEqual(fragment(first.fragment));
+    });
+
     test('with no startup file the card alone is written', () => {
       const r = run(harness, 'fresh', b64(CARD));
       expect(r.status).toBe(0);
@@ -139,6 +150,15 @@ describe.skipIf(!HAVE_PY)('hermes adapter owner card: the user profile', () => {
     expect(r.rec).toMatchObject({ status: 'ok', card_sha256: sha(card), card_bytes: card.length, existed: false, bytes_before: 0, file_sha256: sha(CARD), user_char_limit: { default: 1375, set: limit } });
     expect(r.rec.file.endsWith('/memories/USER.md')).toBe(true);
     expect(fragment(r.fragment)).toEqual({ owner_card: { file: r.rec.file, setting: 'user profile (memories/USER.md)', card_sha256: sha(card), appended_to_existing: false, user_char_limit: limit } });
+  });
+
+  test('a second run on the same home, as after a mid-trial restart, keeps one card entry and one memory: section', () => {
+    const first = runHermes('restart', b64(card));
+    const again = runHermes('restart', b64(card), { config: first.config! });
+    expect(again.status).toBe(0);
+    expect(again.user).toBe(CARD);
+    expect(again.config).toBe(first.config);
+    expect(again.rec).toMatchObject({ status: 'ok', already_present: true, existed: true, file_sha256: sha(CARD) });
   });
 
   test("existing entries stay first; the card is a new entry after Hermes's delimiter, so Hermes parses both", () => {
@@ -241,6 +261,18 @@ describe.skipIf(!NODE)('qm adapter owner card: the org SOUL', () => {
       expect(r.rec.setting).toContain('system prompt');
       expect(r.rec.per_actor_profile).toContain('personal:<actor>');
       expect(fragment(r.fragment)).toEqual({ owner_card: { file: 'qm:org:harness-eval/soul', setting: 'system prompt (org SOUL)', card_sha256: sha(CARD), appended_to_existing: true } });
+    } finally { core.stop(); }
+  });
+
+  test('a second run against the same core, as after a mid-trial restart, reads the SOUL, finds the card and PUTs nothing', async () => {
+    const core = fakeCore();
+    try {
+      expect((await runQm('restart', b64(CARD), core)).status).toBe(0);
+      const again = await runQm('restart', b64(CARD), core);
+      expect(again.status).toBe(0);
+      expect(core.soul).toEqual({ content: DEFAULT_ORG_SOUL + '\n\n' + CARD + '\n', version: 2 });
+      expect(core.calls.map((c) => c.method)).toEqual(['GET', 'PUT', 'GET', 'GET']);
+      expect(again.rec).toMatchObject({ status: 'ok', already_present: true, existed: true });
     } finally { core.stop(); }
   });
 

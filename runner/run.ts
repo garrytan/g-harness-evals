@@ -1386,7 +1386,10 @@ async function main(argv: string[]): Promise<number> {
     if (half !== undefined && half !== '1' && half !== '2') throw new RunnerError('HE-RUN-002', `--task-half takes 1 or 2 (got ${half})`);
     const onlyTasks = half === undefined ? undefined : taskHalf(manifest.trials.filter((t) => (cells ? cells.includes(t.cell) : true)), Number(half) as 1 | 2,
       (t) => { const cell = manifest.cells.find((c) => c.id === t.cell)!; return loadTask(sealed && isSealedCell(cell, sealed.set) ? join(sealed.root, t.task_dir!) : t.task_dir!).family ?? ''; });
-    if (onlyTasks) console.log(`TASK-HALF: half ${half} runs ${onlyTasks.length} tasks`);
+    if (onlyTasks) {
+      console.log(`TASK-HALF: half ${half} runs ${onlyTasks.length} tasks`);
+      writeFileSync(join(dirname(path), 'task-half.json'), JSON.stringify({ half: Number(half), tasks: onlyTasks }) + '\n');
+    }
     const { executeRun } = await import('./trial/run.ts');
     const result = await executeRun(manifest, path, {
       ...(onlyTasks ? { tasks: onlyTasks } : {}),

@@ -115,7 +115,12 @@ export function endpointValue(endpoint: Endpoint, t: TrialRecord, view: { grade:
 
 // ---- shards ---------------------------------------------------------------------------------------
 
-export interface Shards { cells: Record<string, string>; shards: Record<string, { machine?: string | null }> }
+export interface Shards { cells: Record<string, string>; shards: Record<string, { machine?: string | null }>; task_halves?: Record<string, string[]> }
+
+/** Every shard that ran a cell: both shards of a run planned in two (shards.json task_halves), else the one shard cells names. */
+export function shardsOfCell(shards: Pick<Shards, 'cells' | 'task_halves'>, cell: string): string[] {
+  return shards.task_halves?.[cell] ?? (shards.cells[cell] === undefined ? [] : [shards.cells[cell]!]);
+}
 
 /** results/<run>/shards.json when present (scripts/merge-shards.ts writes it): cell id to shard name, and per shard what the
  *  dispatcher recorded about it. */
@@ -125,14 +130,17 @@ export function readShards(results: string): Shards | null {
   const parsed = JSON.parse(readFileSync(p, 'utf8')) as Partial<Shards> | null;
   const cells = parsed?.cells;
   if (!cells || typeof cells !== 'object' || Array.isArray(cells) || Object.values(cells).some((v) => typeof v !== 'string') || !parsed?.shards || typeof parsed.shards !== 'object') throw new Error(`${p}: expected { cells: { <cell id>: <shard name> }, shards: { <name>: {...} } } as scripts/merge-shards.ts writes it`);
-  return { cells, shards: parsed.shards };
+  const halves = parsed.task_halves;
+  if (halves !== undefined && (!halves || typeof halves !== 'object' || Array.isArray(halves) || Object.values(halves).some((v) => !Array.isArray(v) || v.some((s) => typeof s !== 'string')))) throw new Error(`${p}: task_halves must map each cell id to its shard names, as scripts/merge-shards.ts writes it`);
+  return { cells, shards: parsed.shards, ...(halves ? { task_halves: halves } : {}) };
 }
 
 /** What a latency row says about where its two cells ran: the shard names, with the machine label when the shard has one. */
 export function shardsLabel(shards: Shards | null, a: string, b: string): string {
   if (!shards) return 'shards unknown (no shards.json)';
-  const sa = shards.cells[a], sb = shards.cells[b];
-  if (sa === undefined || sb === undefined) return `shard unknown for ${[...new Set([a, b])].filter((c) => shards.cells[c] === undefined).join(' and ')}`;
+  const sa = shardsOfCell(shards, a), sb = shardsOfCell(shards, b);
+  if (!sa.length || !sb.length) return `shard unknown for ${[...new Set([a, b])].filter((c) => !shardsOfCell(shards, c).length).join(' and ')}`;
   const name = (s: string) => { const m = shards.shards[s]?.machine; return m ? `${s} on ${m}` : s; };
-  return sa === sb ? `same machine (${name(sa)})` : `different machines (${name(sa)}, ${name(sb)})`;
+  const all = [...new Set([...sa, ...sb])];
+  return all.length === 1 ? `same machine (${name(all[0]!)})` : `different machines (${all.map(name).join(', ')})`;
 }

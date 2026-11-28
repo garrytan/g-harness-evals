@@ -19,7 +19,7 @@ import { SET_WORLDS_FILE, setWorldPins } from '../runner/run.ts';
 import { DEFAULT_WORLD_PATH } from '../runner/grade/play.ts';
 import { designMdd, LADDER_DESIGN, pairedMdd } from '../scripts/paired-mdd.ts';
 import { clusteredPairedDelta, seededRandom } from '../runner/stats/paired.ts';
-import { ENDPOINTS, endpointValue, ladderPairs, readShards, rungOf, shardsLabel } from '../scripts/gbrain-ladder.ts';
+import { ENDPOINTS, endpointValue, ladderPairs, readShards, rungOf, shardsLabel, shardsOfCell } from '../scripts/gbrain-ladder.ts';
 import { buildLadderFixture, LADDER_FIXTURE_MODEL, writeLadderFixture } from './fixtures/gbrain-ladder/build-fixture.ts';
 
 const ROOT = join(import.meta.dir, '..');
@@ -504,6 +504,17 @@ describe('install ladder: rungs and neighbour pairs', () => {
     expect(shardsLabel(null, 'a', 'b')).toBe('shards unknown (no shards.json)');
     writeFileSync(join(dir, 'shards.json'), JSON.stringify({ a: 'alpha' }));
     expect(() => readShards(dir)).toThrow('expected { cells: { <cell id>: <shard name> }, shards: { <name>: {...} } }');
+  });
+
+  test('a cell of a run planned in two names both shards from task_halves, so the label and the commit check see the half 2 shard', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'he-shards-halves-'));
+    writeFileSync(join(dir, 'shards.json'), JSON.stringify({ cells: { a: 'h1', b: 'h1' }, shards: { h1: { machine: null }, h2: { machine: 'vm-2' } }, task_halves: { a: ['h1', 'h2'], b: ['h1', 'h2'] } }));
+    const shards = readShards(dir)!;
+    expect(shardsOfCell(shards, 'a')).toEqual(['h1', 'h2']);
+    expect(shardsOfCell(shards, 'z')).toEqual([]);
+    expect(shardsLabel(shards, 'a', 'b')).toBe('different machines (h1, h2 on vm-2)');
+    writeFileSync(join(dir, 'shards.json'), JSON.stringify({ cells: { a: 'h1' }, shards: { h1: {} }, task_halves: { a: 'h1' } }));
+    expect(() => readShards(dir)).toThrow('task_halves must map each cell id to its shard names');
   });
 });
 

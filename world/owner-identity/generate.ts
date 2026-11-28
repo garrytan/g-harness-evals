@@ -44,6 +44,12 @@ export const PROFILES: Record<number, { imports: Array<[Source, number]>; live: 
   15: { imports: DEV_I, live: [0, 1, 2, 3], capture: [0, 1], min: DEV_MIN, minFormats: { recorder_label_absorbs: 2 } },
   42: { imports: PROBE_I, live: [0, 1, 2, 3], capture: [0, 1, 2, 3, 4, 5], min: Object.fromEntries(HARD_CASES.map((h) => [h, 6])), minFormats: { recorder_label_absorbs: 2 } },
 };
+/** Tasks per family (as task.toml names them) in a bank of `total` tasks, from the public profiles alone, or null when no
+ *  profile makes that many: lets a plan count a sealed bank's units without its seed or its sealed root. */
+export function familyCounts(total: number): Record<string, number> | null {
+  const p = Object.values(PROFILES).find((x) => x.imports.length + x.live.length + x.capture.length === total);
+  return p ? { owner_identity_I: p.imports.length, owner_identity_L: p.live.length, owner_identity_C: p.capture.length } : null;
+}
 export const CAPTURE_SOURCE = 'session-capture';
 export type Split = 'dev' | 'heldout';
 

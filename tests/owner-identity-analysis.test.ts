@@ -144,7 +144,36 @@ test('family C per harness: a worker that never started is not run, and its brie
   expect(cc.worker_briefs_as_owner.detected.den).toBe(0);
   expect(cc.worker_briefs_as_owner.not_run_facts).toBe(1);
   expect(cc.false_owner).toMatchObject({ num: 1, den: 1 });
-  expect(a.arms.find((x) => x.arm === 'G')!.false_owner).toMatchObject({ num: 2, den: 2 });
+  expect(a.arms.find((x) => x.arm === 'G')).toBeUndefined();
+});
+
+test('family C is never pooled: the capture cells leave the G arm, hard cases, comparisons and the stage-1 look', () => {
+  const { trials, p } = fixture();
+  const capture = TASKS.map((t): OITrial => ({ ...trial('gc-h1', 'h1', 'G', `c-${t}`, facts({ f1: true, f2: true, recall: false })),
+    verdicts: verdicts(`c-${t}`, 'C', 'G', facts({ f1: true, f2: true, recall: false })), gold: { ...gold(`c-${t}`, 'clear'), family: 'C', facts: [{ id: 'f2', cue: 'clear', where: { session: 1 } } as unknown as Gold['facts'][number]] } }));
+  const base = analyze(trials, p, config, [], ['n-h1', 'n-h2', 'g-h1', 'g-h2']);
+  const both = analyze([...trials, ...capture], p, config, [], ['n-h1', 'n-h2', 'g-h1', 'g-h2']);
+  expect(both.cells.find((c) => c.cell === 'gc-h1')!.false_owner).toMatchObject({ num: 12, den: 12 });
+  expect(both.family_c.map((x) => [x.harness, x.trials])).toEqual([['h1', 6]]);
+  expect(both.arms).toEqual(base.arms);
+  expect(both.hard_cases).toEqual(base.hard_cases);
+  expect(both.comparisons).toEqual(base.comparisons);
+  expect(both.look).toEqual(base.look);
+});
+
+test('tasks with an import gbrain cannot parse are their own stratum in the cell, row P and arm tables and leave P against G', () => {
+  const { trials, p } = fixture();
+  const unknown = (g: Gold | null): Gold => ({ ...g!, formats: [{ file: 'export.weird', format: 'weird', format_known_to_gbrain: false }] });
+  const base = analyze(trials, p, config);
+  const a = analyze(trials.map((t) => (t.task === 't6' ? { ...t, gold: unknown(t.gold) } : t)), p.map((x) => (x.task === 't6' ? { ...x, gold: unknown(x.gold) } : x)), config);
+  expect(a.cells.find((c) => c.cell === 'g-h1')!.unknown_format).toMatchObject({ n_tasks: 1, false_owner: { num: 1, den: 2 } });
+  expect(a.cells.find((c) => c.cell === 'g-h1')!.false_owner).toEqual(base.cells.find((c) => c.cell === 'g-h1')!.false_owner);
+  expect(a.row_p[0]!.unknown_format.n_tasks).toBe(1);
+  expect(a.arms.find((x) => x.arm === 'P')!.unknown_format.n_tasks).toBe(1);
+  expect(base.cells.find((c) => c.cell === 'g-h1')!.unknown_format.n_tasks).toBe(0);
+  const pg = (x: typeof a) => x.comparisons.filter((c) => c.kind === 'p_vs_g').map((c) => [c.metric, c.n_pairs]);
+  expect(pg(base)).toEqual([['false_owner', 12], ['owner_recall', 6]]);
+  expect(pg(a)).toEqual([['false_owner', 10], ['owner_recall', 5]]);
 });
 
 test('the analysis config and the claim checks for comparisons.owner-identity.json', () => {

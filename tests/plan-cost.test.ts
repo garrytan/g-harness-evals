@@ -11,10 +11,11 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { BudgetRun, closeLedgers } from '../runner/ledger/budget-ledger.ts';
 import { MIN_SCORED_UNITS, project, VM_USD_PER_HOUR, type CostRecord, type PlanUnits } from '../runner/cost/projection.ts';
 import { planCost, readPlan } from '../scripts/plan-cost.ts';
+import { familyCounts } from '../world/owner-identity/generate.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const tmp = mkdtempSync(join(tmpdir(), 'he-plan-cost-'));
@@ -266,3 +267,48 @@ test('project() alone: an unpriced cell with nothing left to run does not make t
   expect(p.lower_bound).toBe(false);
   expect(p.total_usd).toBe(2);
 });
+
+describe('a sealed held-out plan (owner-identity-2026-11)', () => {
+  const folder = join(ROOT, 'docs/benchmarks/2026-11-21-owner-identity');
+  const prereg = join(folder, 'prereg.json');
+
+  test('each sealed cell counts its family profile from public files: 42 import and live tasks or 6 capture tasks, times 3 tries', () => {
+    expect(familyCounts(48)).toEqual({ owner_identity_I: 38, owner_identity_L: 4, owner_identity_C: 6 });
+    expect(familyCounts(17)).toEqual({ owner_identity_I: 11, owner_identity_L: 4, owner_identity_C: 2 });
+    expect(familyCounts(49)).toBeNull();
+    const { plan } = readPlan(folder, [prereg]);
+    expect(plan.cells).toHaveLength(30);
+    expect(plan.cells.find(c => c.id === 'cc-opus-n')).toMatchObject({ units: 126, lease_usd: null });
+    expect(plan.cells.find(c => c.id === 'codex-sol-gc')).toMatchObject({ units: 18, lease_usd: null });
+    expect(plan.cells.reduce((a, c) => a + c.units, 0)).toBe(3564);
+  });
+
+  test('a sealed cell whose families have no public count is refused, never counted as zero', () => {
+    const copy = dir('sealed-plan');
+    const json = JSON.parse(readFileSync(prereg, 'utf8'));
+    json.cells[0].families = ['owner_identity_I', 'owner_identity_X'];
+    writeFileSync(join(copy, 'prereg.json'), JSON.stringify(json));
+    expect(() => readPlan(copy, [])).toThrow(/HE-BUDGET-006 cell cc-opus-n: sealed set owner-identity-b1 \(48 tasks\) has no public task count for families owner_identity_I, owner_identity_X/);
+  });
+
+  const strace = spawnSync('strace', ['-V'], { encoding: 'utf8' }).status === 0;
+  test.skipIf(!strace)('pricing it opens nothing outside the repository and the runtime, and nothing of custody: no sealed root, key, bundle, drive or .git', () => {
+    const log = join(dir('trace'), 'strace.log');
+    const r = spawnSync('strace', ['-f', '-qq', '-e', 'trace=openat,execve', '-o', log, 'bun', 'scripts/plan-cost.ts', folder, '--plan-file', prereg, '--stop', '1650'],
+      { cwd: ROOT, encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' } });
+    expect(r.status).toBe(4);
+    expect(r.stdout).toContain('CELL: cc-opus-n model=anthropic:claude-opus-5-5 UNPRICED pilot=0/0 scored (needs 5) units=126');
+    const lines = readFileSync(log, 'utf8').split('\n');
+    const opened = lines.filter(l => / openat\(/.test(l) && /= \d+$/.test(l)).map(l => l.match(/openat\([^,]*, "([^"]*)"/)?.[1] ?? '');
+    const execs = lines.filter(l => / execve\(/.test(l) && /= 0$/.test(l)).map(l => basename(l.match(/execve\("([^"]*)"/)?.[1] ?? ''));
+    expect(opened).toContain(join(ROOT, 'tasks/multiuser/owner-identity-b1/heldout/MANIFEST.json'));
+    const home = process.env.HOME ?? '/nonexistent';
+    const runtime = ['/usr/', '/lib', '/proc/', '/sys/', '/etc/', '/dev/', '/tmp/', '/opt/', '/run/', `${dirname(process.execPath)}/`, ...['.bun', '.gstack', '.local', '.cache'].map(d => `${home}/${d}/`)];
+    expect(opened.filter(p => p.split('/').includes('..'))).toEqual([]);
+    const outside = opened.filter(p => p.startsWith('/') && !(p + '/').startsWith(ROOT + '/') && !(ROOT + '/').startsWith(p.replace(/\/?$/, '/')) && !runtime.some(r => p.startsWith(r)));
+    expect(outside).toEqual([]);
+    expect(opened.filter(p => p.startsWith(join(ROOT, '.git')) || /\.capy\/drive|\.age(-key)?$|bundle\.tar|\/custody\//.test(p))).toEqual([]);
+    expect(execs.filter(e => ['git', 'age', 'ssh', 'gh'].includes(e))).toEqual([]);
+  });
+});
+

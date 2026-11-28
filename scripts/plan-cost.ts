@@ -5,7 +5,9 @@
 //     [--ledger <ledger.sqlite> ...] [--plan-file <prereg json> ...] [--map <pilot cell>=<counted cell> ...] [--stop <usd>]
 //     [--own-usd <n>] [--json] [--out <receipt.json>]
 //
-// Reads the plan's counted units (prereg.json through runner/run.ts buildManifest, or frontier-harbor/1 plan files' cells),
+// Reads the plan's counted units (prereg.json through runner/run.ts buildManifest, or frontier-harbor/1 plan files' cells;
+// a held-out cell of a sealed set counts its set's public task_count, or for owner-identity families the generator's public
+// profile, times its repetitions, so no sealed root is ever opened),
 // every pilot trial record, the counted records already finished, the shard VM receipts beside them and every ledger given,
 // and prints a CELL line per cell, the spend so far, the total and the verdict against the plan's spend stop
 // ("- Spend stop: $<n>" in PREREGISTRATION.md's "## Cost projection" section, or --stop for a plan that has none).
@@ -19,7 +21,9 @@ import type { TrialRecord } from '../runner/contracts.ts';
 import { RunnerError } from '../runner/errors.ts';
 import { costRecord, money, project, renderProjection, type CostRecord, type PlanCell, type PlanUnits, type Projection } from '../runner/cost/projection.ts';
 import { dollars, fields, sections } from '../runner/prereg/practices.ts';
-import { buildManifest, loadPrereg } from '../runner/run.ts';
+import { buildManifest, loadPrereg, sealedSetsOf, taskSetName } from '../runner/run.ts';
+import { heldoutSet, readManifest } from './seal-heldout.ts';
+import { familyCounts } from '../world/owner-identity/generate.ts';
 import { settledSpend } from './ubicloud/wave2-admit.ts';
 
 export interface PlanCostOptions {
@@ -84,9 +88,21 @@ export function readPlan(folder: string, planFiles: string[]): { plan: PlanUnits
   for (const p of parsed) {
     if (p.format === 'runner') {
       const { prereg, sha256: sha } = loadPrereg(p.file);
-      const manifest = buildManifest(prereg, sha);
+      const sealed = new Set(sealedSetsOf(prereg.cells));
+      const isSealedCell = (c: (typeof prereg.cells)[number]) => c.split === 'heldout' && sealed.has(taskSetName(c));
+      const manifest = buildManifest({ ...prereg, cells: prereg.cells.filter(c => !isSealedCell(c)) }, sha);
       for (const c of prereg.cells) {
-        cells.push({ id: c.id, model: c.model, also: c.utility_models ?? [], units: manifest.trials.filter(t => t.cell === c.id).length, lease_usd: manifest.per_cell_ceiling_usd[c.id] ?? null, shard: null });
+        if (!isSealedCell(c)) {
+          cells.push({ id: c.id, model: c.model, also: c.utility_models ?? [], units: manifest.trials.filter(t => t.cell === c.id).length, lease_usd: manifest.per_cell_ceiling_usd[c.id] ?? null, shard: null });
+          continue;
+        }
+        const set = taskSetName(c);
+        const total = readManifest(heldoutSet(set))?.sealed?.task_count;
+        if (!Number.isInteger(total)) throw new RunnerError('HE-BUDGET-006', `cell ${c.id}: sealed set ${set} has no task_count in its public MANIFEST.json, so its units cannot be counted without opening it`);
+        const counts = familyCounts(total!);
+        const tasks = !c.families ? total! : c.families.reduce((sum, f) => sum + (counts?.[f] ?? NaN), 0);
+        if (!Number.isInteger(tasks)) throw new RunnerError('HE-BUDGET-006', `cell ${c.id}: sealed set ${set} (${total} tasks) has no public task count for families ${c.families!.join(', ')}; plan-cost never opens a sealed root, so fix: give the set's generator a public profile of ${total} tasks`);
+        cells.push({ id: c.id, model: c.model, also: c.utility_models ?? [], units: tasks * c.repetitions, lease_usd: null, shard: null });
       }
       concurrency = Math.min(concurrency, 1);
       continue;

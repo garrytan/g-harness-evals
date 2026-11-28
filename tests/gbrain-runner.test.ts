@@ -118,7 +118,7 @@ test('gbrain.install and gbrain.embeddings: validated under HE-GBRAIN-001 naming
   expect(m.per_cell_ceiling_usd['fake-semantic']!).toBeGreaterThanOrEqual(m.per_cell_ceiling_usd['fake-mcp']!);
 });
 
-test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, the host-harness pilot, the Claude Code and Codex installer run, the shared-bot scope run, the shared-brain access run and the always-on week run carry gbrain cells, each on a pinned configuration', () => {
+test('every committed preregistration still loads; only the gbrain arm, the company-brain run, the install ladder and its verbs, installer and scoped follow-ups, the v0.2 held-out run, the memory run, the v0.3 dev pilot, its installer dev cells, its approval relay re-read and its Opus dev read, the host-harness pilot, the Claude Code and Codex installer run, the shared-bot scope run, the shared-brain access run, the always-on week run and the owner-identity run carry gbrain cells, each on a pinned configuration', () => {
   const dir = join(ROOT, 'docs', 'benchmarks');
   const files = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'prereg.json'))).map((d) => join(dir, d, 'prereg.json'));
   expect(files.length).toBeGreaterThan(0);
@@ -345,6 +345,14 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         if (!c.gbrain) { expect(['tasks/multiuser/_shared/preamble.week.md', 'tasks/multiuser/_shared/preamble.week-files.md']).toContain(c.preamble!); continue; }
         expect(c.harness).toBe('claude-code');
         expect(c.gbrain).toEqual({ surface: 'starter', brain: 'member', scope: 'member-sources', channel_remember: 'conversation', ingest: 'live' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.week-gbrain.md');
+      }
+      else if (p.run_id === 'owner-identity-2026-11') {
+        // The owner-identity counted run (internal-task) on sealed bank 1 at gbrain v0.60.778.0 (783bcde6), cap $1,650: arms G and B carry gbrain as shipped, through
+        // its installer (QM through its MCP route), with gbrain's own extraction model metered through the proxy; arm N carries none.
+        expect(c.split).toBe('heldout'); expect(c.task_set).toBe('owner-identity-b1'); expect(c.repetitions).toBe(3); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.owner-identity.md');
+        expect(p.spend_cap_usd).toBe(1650); expect(p.gbrain_commit).toBe('783bcde63e309e3315edf77f4148fda06958a923'); expect(p.cells).toHaveLength(30);
+        if (!c.gbrain) { expect(c.notes).toBe(true); continue; }
+        expect(c.gbrain).toEqual({ surface: 'starter', install: c.harness === 'qm' ? 'mcp' : 'gbrain-installer', llm: 'proxy', extraction_model: 'anthropic:claude-haiku-5-5' });
       }
       else expect(c.gbrain).toBeUndefined();
     }

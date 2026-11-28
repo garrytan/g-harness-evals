@@ -117,7 +117,7 @@ import { trialGbrainExposure } from '../runner/grade/index.ts';
 import { storedEvidence } from './stored-evidence.ts';
 import { leakTagLines, leakTags as gradeLeakTags } from './leak-tags.ts';
 import { isSealedCell, resolveGbrain, setWorldPinProblem, taskDirFor } from '../runner/run.ts';
-import { COMPARE_ENDPOINTS, ENDPOINT_LABEL, endpointValue, ladderPairs, readShards, shardsLabel, type Endpoint } from './gbrain-ladder.ts';
+import { COMPARE_ENDPOINTS, ENDPOINT_LABEL, endpointValue, ladderPairs, readShards, shardsLabel, shardsOfCell, type Endpoint } from './gbrain-ladder.ts';
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -307,7 +307,7 @@ if (pairMode === 'gbrain') {
     const ci = (c: [number, number] | null, f: (x: number) => string) => (c ? `[${f(c[0])}, ${f(c[1])}]` : '[n/a]');
     const lines: string[] = [`Scope: the install ladder (internal-task), each rung against its ladder neighbour within harness and model; grading ${useRegraded ? 'regraded' : 'as recorded'}; seed ${seed}, ${draws} draws; shards ${shards ? 'from shards.json' : 'unknown (no shards.json)'}.${ladder.unpaired.length ? ' Not paired: ' + ladder.unpaired.join('; ') + '.' : ''}`, '',
       '| Cell | Harness | Model | Rung | Configuration | Shard |', '|---|---|---|---|---|---|',
-      ...ladder.rungs.map((r) => `| \`${r.cell}\` | ${r.harness}${r.config ? ' ' + r.config : ''} | ${r.model} | ${r.rung} | ${r.configuration} | ${shards?.cells[r.cell] ?? 'unknown'} |`)];
+      ...ladder.rungs.map((r) => `| \`${r.cell}\` | ${r.harness}${r.config ? ' ' + r.config : ''} | ${r.model} | ${r.rung} | ${r.configuration} | ${(shards && shardsOfCell(shards, r.cell).join(', ')) || 'unknown'} |`)];
     const out: Array<Record<string, unknown>> = [];
     for (const { scope, families: fams } of scopes) {
       const scopeRows = rows.filter((t) => !fams || fams.includes(familyOf.get(t.task)!));
@@ -347,7 +347,7 @@ if (pairMode === 'gbrain') {
       { key: 'harness_input_tokens', label: 'Harness input tokens per trial', value: (t: TrialRecord) => (typeof t.usage?.input_tokens === 'number' ? t.usage.input_tokens : null), fmt: (x: number) => Math.round(x).toLocaleString() },
     ] as const;
     const costRows = ladder.pairs.map((cp) => {
-      const row: Record<string, unknown> = { ...cp, machines: shardsLabel(shards, cp.base_cell, cp.cell), shards: { base: shards?.cells[cp.base_cell] ?? null, rung: shards?.cells[cp.cell] ?? null } };
+      const row: Record<string, unknown> = { ...cp, machines: shardsLabel(shards, cp.base_cell, cp.cell), shards: { base: (shards && shardsOfCell(shards, cp.base_cell).join(', ')) || null, rung: (shards && shardsOfCell(shards, cp.cell).join(', ')) || null } };
       for (const m of metrics) {
         const { d, excluded } = paired(cp.base_cell, cp.cell, rows, m.value);
         const cellValues = (cell: string) => rows.filter((t) => t.cell === cell && scored(t)).map(m.value).filter((x): x is number => x !== null);
@@ -394,17 +394,17 @@ if (pairMode === 'gbrain') {
       ...exposureCounts.map((c) => `| \`${c.cell}\` | ${c.rung} | ${c.trials_with_exposure} / ${c.scored - c.no_value} | ${c.no_value} | ${counts(c.returned_by_tool)} | ${counts(c.refused_by_tool)} | ${c.unmapped ? `${c.unmapped} (map these before publishing)` : '0'} |`));
     // --require-exposure (a preregistration whose decision reads the exposure endpoint): the endpoint is ready only when every
     // scored trial has a value, nothing returned is unmapped, and the grader commit is known and clean; the JSON says so either way.
-    const runCommits = Object.fromEntries(ladder.rungs.map((r) => { const s = shards?.cells[r.cell]; const c = s ? (shards!.shards[s] as { commit?: unknown } | undefined)?.commit : undefined; return [r.cell, typeof c === 'string' ? c : null]; }));
+    const runCommits = ladder.rungs.flatMap((r) => { const ss = shards ? shardsOfCell(shards, r.cell) : []; return (ss.length ? ss : [undefined]).map((s) => { const c = s ? (shards!.shards[s] as { commit?: unknown } | undefined)?.commit : undefined; return [r.cell, typeof c === 'string' ? c : null] as const; }); });
     const exposureProblems = [
       ...exposureCounts.filter((c) => c.no_value > 0 || c.unmapped > 0).map((c) => `${c.cell} has ${c.no_value} scored trial(s) with no exposure value and ${c.unmapped} unmapped returned page(s) or fact(s)`),
       ...[...exposure.values()].flatMap((x) => (x.problem ? [x.problem] : [])),
       ...(graderCommit === null ? ['git could not name the grader commit'] : []),
       ...(graderDirty !== false ? ['runner, tasks, world or the comparison scripts hold uncommitted changes (or git could not tell), so the grader commit is not what graded'] : []),
-      ...(!shards ? ['no shards.json, so the commit the run executed at is unknown'] : Object.entries(runCommits).filter(([, c]) => c !== graderCommit).map(([cell, c]) => `cell ${cell} ran at ${c ?? 'a commit shards.json does not record'}, not the grader commit`)),
+      ...(!shards ? ['no shards.json, so the commit the run executed at is unknown'] : runCommits.filter(([, c]) => c !== graderCommit).map(([cell, c]) => `cell ${cell} ran at ${c ?? 'a commit shards.json does not record'}, not the grader commit`)),
     ];
     if (leakTags) lines.push('', ...leakTagLines(leakTags));
     console.log(lines.join('\n'));
-    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', ...(leakTags ? { leak_tags: leakTags } : {}), grading: useRegraded ? 'regraded' : 'as recorded', exposure: { grader_commit: graderCommit, grader_dirty: graderDirty, run_commits: runCommits, graded: 'live, with this checkout\'s grader, tasks and world', ready: exposureProblems.length === 0, problems: exposureProblems, counts: exposureCounts }, seed, draws, stats_kit: statsKit, shards, exclusions: [...EXCLUDED, ...(installerCells.size ? ['installer_not_applied'] : [])], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
+    writeFileSync(join(results, `comparisons.gbrain${suffix}`), JSON.stringify({ pair: 'gbrain', design: 'ladder', ...(leakTags ? { leak_tags: leakTags } : {}), grading: useRegraded ? 'regraded' : 'as recorded', exposure: { grader_commit: graderCommit, grader_dirty: graderDirty, run_commits: Object.fromEntries(ladder.rungs.map((r) => { const cs = [...new Set(runCommits.filter(([cell]) => cell === r.cell).map(([, c]) => c))]; return [r.cell, cs.length === 1 ? cs[0] : cs]; })), graded: 'live, with this checkout\'s grader, tasks and world', ready: exposureProblems.length === 0, problems: exposureProblems, counts: exposureCounts }, seed, draws, stats_kit: statsKit, shards, exclusions: [...EXCLUDED, ...(installerCells.size ? ['installer_not_applied'] : [])], not_paired: ladder.unpaired, rungs: ladder.rungs, pairs: ladder.pairs, scopes: out, cost: costRows, none_table: noneTable }, null, 1) + '\n');
     if (process.argv.includes('--require-exposure') && exposureProblems.length) {
       console.error(`--require-exposure: ${exposureProblems.join('; ')}; the exposure endpoint cannot decide until these are fixed`);
       process.exit(2);

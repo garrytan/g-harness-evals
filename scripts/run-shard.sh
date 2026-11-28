@@ -13,7 +13,12 @@
 #                        [--clean-arm-preflight] [--cursor-offline] [--skill-root <dir>] [--task-half 1|2]
 #
 # --task-half (internal-task, R113) runs one stage of a run planned in two: runner/run.ts run --task-half, half of every task
-# family of the shard's cells. The other half runs later from a new dest at the same commit, and merge-shards.ts joins them.
+# family of the shard's cells. The other half runs later from a new dest at the same commit, and merge-shards.ts joins them. A resume
+# repeats the half the shard started with (shard.json task_half): another --task-half, or none, is refused before anything runs.
+#
+# The runner runs with --stop-on-cap: the first call the proxy refuses on the spent lease records that trial with cap_stop and
+# ends the shard (exit 3), so its unstarted trials are one suffix of its interleaved order, which merge-shards.ts --partial
+# accepts for every cell of the shard.
 #
 # Cursor shards (harness cursor, harnesses/cursor/README.md): a shard whose cells run the Cursor CLI runs only Cursor cells
 # (scripted cells aside) and needs CURSOR_API_KEY in this shell; without it the shard stops with exit 2 before any build.
@@ -153,6 +158,12 @@ out="${out:-results/$run_id}"
 shard_resume=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("shard_resume", ""))' "$prereg")
 if [ "$shard_resume" = refused ] && { [ "$resume" -eq 1 ] || [ -f "$out/shard.json" ] || [ -s "$out/trials.jsonl" ]; }; then
   echo "run-shard: run $run_id's preregistration sets shard_resume refused: an interrupted shard ends its cell as incomplete and is never resumed or rerun into $out" >&2; exit 2
+fi
+if [ -f "$out/shard.json" ] && { [ "$resume" -eq 1 ] || [ -s "$out/trials.jsonl" ]; }; then
+  recorded_half=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("task_half", ""))' "$out/shard.json")
+  if [ "$recorded_half" != "$task_half" ]; then
+    echo "run-shard: $out/shard.json records task_half ${recorded_half:-none} and this launch passes --task-half ${task_half:-none}; a resume repeats the half the shard started with, or it would run the other half's tasks" >&2; exit 2
+  fi
 fi
 mkdir -p "$out"
 harnesses=$(python3 - "$prereg" "$cells" <<'PY'
@@ -406,7 +417,7 @@ PY
 prune &
 prune_pid=$!
 
-run_args=(run --manifest "$out/manifest.json" --cells "$cells" --lease-usd "$lease" --max-output-tokens "$max_output_tokens" --gbrain-image "$gbrain_image" ${sealed[@]+"${sealed[@]}"})
+run_args=(run --manifest "$out/manifest.json" --cells "$cells" --lease-usd "$lease" --stop-on-cap --max-output-tokens "$max_output_tokens" --gbrain-image "$gbrain_image" ${sealed[@]+"${sealed[@]}"})
 [ "$resume" -eq 1 ] || [ -f "$out/trials.jsonl" ] && run_args+=(--resume)
 [ "$cursor_offline" -eq 0 ] || run_args+=(--cursor-offline)
 [ -z "$task_half" ] || run_args+=(--task-half "$task_half")

@@ -553,6 +553,19 @@ test('matrix-analysis refuses a merged results directory missing the proxy usage
     writeFileSync(join(res, 'oc.proxy-usage.ndjson'), JSON.stringify({ at: '2', key: `trial-token:${spent[1]!.trial_id}`, actual_usd: 0.1 }) + '\n');
     expect(run().status).toBe(0);
   });
+test('loadResults meters a cell of a run planned in two against both shards task_halves names, not only the half 1 shard', () => {
+    const res = mkdtempSync(join(tmpdir(), 'matrix-task-half-'));
+    const records = cell('cc-opus', { t1: '1', t2: '0' }).map((r) => ({ ...r, usage: { usd: 0.1 } }) as unknown as TrialRecord);
+    writeFileSync(join(res, 'manifest.json'), JSON.stringify(manifestFor(records)));
+    writeFileSync(join(res, 'trials.jsonl'), records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    writeFileSync(join(res, 'shards.json'), JSON.stringify({ cells: { 'cc-opus': 'h1' }, shards: { h1: {}, h2: {} }, task_halves: { 'cc-opus': ['h1', 'h2'] } }));
+    writeFileSync(join(res, 'h1.proxy-usage.ndjson'), JSON.stringify({ at: '1', key: `trial-token:${records[0]!.trial_id}`, actual_usd: 0.1 }) + '\n');
+    expect(() => loadResults(res, manifestFor(records))).toThrow(/shards\.json lists 1 shard\(s\) with spend whose proxy usage log is not in .*h2\.proxy-usage\.ndjson/);
+    writeFileSync(join(res, 'h2.proxy-usage.ndjson'), JSON.stringify({ at: '2', key: 'k', actual_usd: 0.1 }) + '\n');
+    expect(() => loadResults(res, manifestFor(records))).toThrow(`${records[1]!.trial_id} (shard h1 or h2)`);
+    writeFileSync(join(res, 'h2.proxy-usage.ndjson'), JSON.stringify({ at: '2', key: `trial-token:${records[1]!.trial_id}`, actual_usd: 0.1 }) + '\n');
+    expect(loadResults(res, manifestFor(records)).usageRows).toHaveLength(2);
+  });
 test('matrix-analysis reads a missing proxy usage log as empty when every trial of that shard recorded $0', () => {
     const res = mkdtempSync(join(tmpdir(), 'matrix-zero-shard-'));
     const records = [...cell('cc-opus', { t1: '1' }), ...cell('oc-opus', { t1: 'H' })].map((r) => ({ ...r, usage: { usd: r.cell === 'cc-opus' ? 0.1 : 0 } }) as unknown as TrialRecord);
