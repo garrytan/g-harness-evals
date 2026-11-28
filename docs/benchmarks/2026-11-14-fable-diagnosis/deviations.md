@@ -28,7 +28,7 @@ Amendment 3's smoke retry also retried a try that failed its egress, canary or z
 
 - The Capy machine that ran the shard controllers slept from about 13:49Z to 18:37Z. The run agent had sent a report without first registering a wait on the running controller operations, so the machine went idle and every controller process on it ended.
 - The VMs kept running, and every trial ran on its VM, so no trial was affected. Each shard was re-joined with `run-shard.sh --attach`, which kept its original 9-hour deadline, pulled its results with exit 0 and destroyed the VM. `list --mine` printed nothing afterwards.
-- Most VMs had finished hours before the re-attach and sat idle until then, which added about a quarter to the VM time of s02 to s11: VM life was 1.26 times the time from VM creation to the last trial's end plus 5 minutes (1.00 to 1.63 times per shard). That is included in the $42.47 VM total in [spend-internal.md](spend-internal.md).
+- Most VMs had finished hours before the re-attach and sat idle until then, which added about a quarter to the VM time of s02 to s11: VM life was 1.26 times the time from VM creation to the last trial's end plus 5 minutes (1.00 to 1.63 times per shard). That is included in the $42.47 VM total in spend-internal.md.
 
 ## 2026-11-15: launch problems that spent nothing
 
