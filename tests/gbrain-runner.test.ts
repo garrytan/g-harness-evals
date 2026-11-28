@@ -347,10 +347,10 @@ test('every committed preregistration still loads; only the gbrain arm, the comp
         expect(c.gbrain).toEqual({ surface: 'starter', brain: 'member', scope: 'member-sources', channel_remember: 'conversation', ingest: 'live' }); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.week-gbrain.md');
       }
       else if (p.run_id === 'owner-identity-2026-11') {
-        // The owner-identity counted run (internal-task) on sealed bank 1 at gbrain v0.60.778.0 (783bcde6), cap $1,650: arms G and B carry gbrain as shipped, through
+        // The owner-identity counted run (internal-task) on sealed bank 1 at gbrain v0.60.782.0 (11f618fe, Amendment 1; the plan froze at v0.60.778.0), cap $1,650: arms G and B carry gbrain as shipped, through
         // its installer (QM through its MCP route), with gbrain's own extraction model metered through the proxy; arm N carries none.
         expect(c.split).toBe('heldout'); expect(c.task_set).toBe('owner-identity-b1'); expect(c.repetitions).toBe(3); expect(c.preamble).toBe('tasks/multiuser/_shared/preamble.owner-identity.md');
-        expect(p.spend_cap_usd).toBe(1650); expect(p.gbrain_commit).toBe('783bcde63e309e3315edf77f4148fda06958a923'); expect(p.cells).toHaveLength(30);
+        expect(p.spend_cap_usd).toBe(1650); expect(p.gbrain_commit).toBe('11f618fedee18596d6a99495303a2386cd75a8ee'); expect(p.cells).toHaveLength(30);
         if (!c.gbrain) { expect(c.notes).toBe(true); continue; }
         expect(c.gbrain).toEqual({ surface: 'starter', install: c.harness === 'qm' ? 'mcp' : 'gbrain-installer', llm: 'proxy', extraction_model: 'anthropic:claude-haiku-5-5' });
       }
